@@ -66,7 +66,7 @@ export default function CorretorCadastro() {
        * Invocamos a Edge Function 'cadastrar-usuario' que roda no servidor do Supabase.
        * Ela usa a SERVICE_ROLE_KEY de forma oculta e cria o usuário já confirmado.
        */
-      const { data, error: functionError } = await supabase.functions.invoke('cadastrar-usuario', {
+      const { data, error: functionError } = await supabase.functions.invoke('swift-task', {
         body: { 
           email: formData.email,
           password: formData.senha,
