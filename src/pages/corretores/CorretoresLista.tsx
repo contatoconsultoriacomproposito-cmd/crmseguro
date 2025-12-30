@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { supabase, supabaseAdmin } from "../../lib/supabaseClient"
+import { supabase } from "../../lib/supabaseClient"
 import { useAuth } from "../../auth/AuthContext"
 import { 
   Search, Edit2, Trash2, User, Phone, Mail, 
@@ -110,42 +110,45 @@ export default function CorretoresLista() {
   }
 
   async function handleExcluir() {
-    if (!corretorParaExcluir || !perfilLogado) return
-    setDeleting(true)
+  if (!corretorParaExcluir || !perfilLogado) return
+  setDeleting(true)
 
-    try {
-      // 1. Transfere clientes se houver
-      if (contagemClientes > 0) {
-        const { error: transferError } = await supabase
-          .from("tab_clientes")
-          .update({ corretor_id: transferirParaId })
-          .eq("corretor_id", corretorParaExcluir.id)
+  try {
+    // 1. Transfere clientes se houver (via cliente comum, pois o RLS deve permitir à corretora mãe)
+    if (contagemClientes > 0) {
+      const { error: transferError } = await supabase
+        .from("tab_clientes")
+        .update({ corretor_id: transferirParaId })
+        .eq("corretor_id", corretorParaExcluir.id)
 
-        if (transferError) throw new Error("Erro na transferência: " + transferError.message)
-      }
-
-      // 2. Deleta no Auth (Admin)
-      const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(corretorParaExcluir.id)
-      if (authError) throw authError
-
-      // 3. Deleta o perfil na tabela
-      const { error: dbError } = await supabase
-        .from("usuarios_perfis")
-        .delete()
-        .eq("id", corretorParaExcluir.id)
-      
-      if (dbError) throw dbError
-
-      setCorretores(prev => prev.filter(c => c.id !== corretorParaExcluir.id))
-      setIsDeleteModalOpen(false)
-      alert("Corretor removido e clientes migrados!")
-    } catch (error: any) {
-      alert("Erro ao excluir: " + error.message)
-    } finally {
-      setDeleting(false)
-      setCorretorParaExcluir(null)
+      if (transferError) throw new Error("Erro na transferência: " + transferError.message)
     }
+
+    // 2. NOVA LÓGICA: Deleta no Auth chamando a Edge Function
+    const { data, error: functionError } = await supabase.functions.invoke('deletar-usuario', {
+      body: { userId: corretorParaExcluir.id }
+    })
+    
+    if (functionError || data?.error) throw new Error(functionError?.message || data?.error)
+
+    // 3. Deleta o perfil na tabela (RLS deve permitir à corretora mãe)
+    const { error: dbError } = await supabase
+      .from("usuarios_perfis")
+      .delete()
+      .eq("id", corretorParaExcluir.id)
+    
+    if (dbError) throw dbError
+
+    setCorretores(prev => prev.filter(c => c.id !== corretorParaExcluir.id))
+    setIsDeleteModalOpen(false)
+    alert("Corretor removido e clientes migrados!")
+  } catch (error: any) {
+    alert("Erro ao excluir: " + error.message)
+  } finally {
+    setDeleting(false)
+    setCorretorParaExcluir(null)
   }
+}
 
   // Filtragem para a busca
   const corretoresFiltrados = corretores.filter(c => 
