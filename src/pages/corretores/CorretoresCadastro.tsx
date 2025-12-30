@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { supabase } from "../../lib/supabaseClient" // Removido o supabaseAdmin por segurança
+import { supabase } from "../../lib/supabaseClient" 
 import { useAuth } from "../../auth/AuthContext"
 import { Loader2, UserPlus, ArrowLeft, CheckCircle2, XCircle, ShieldAlert } from "lucide-react"
 
@@ -61,26 +61,32 @@ export default function CorretorCadastro() {
     setErrorMsg(null)
 
     try {
-      // NOVA LÓGICA: Chamando a função RPC que criamos no SQL
-      // Isso executa no servidor (DB) e evita o erro 403 de permissão
-      const { error: rpcError } = await supabase.rpc('cadastrar_novo_corretor', {
-        p_email: formData.email,
-        p_nome: formData.nome,
-        p_cpf: formData.cpf_corretor,
-        p_telefone: formData.telefone_corretor,
-        p_susep: formData.registro_susep, // Adicione esta linha aqui
-        p_corretora_id: authUser?.id, // ID da Corretora Master logada
-        p_senha: formData.senha
+      /**
+       * NOVA LÓGICA DE SEGURANÇA MÁXIMA:
+       * Invocamos a Edge Function 'swift-task' que roda no servidor do Supabase.
+       * Ela usa a SERVICE_ROLE_KEY de forma oculta e cria o usuário já confirmado.
+       */
+      const { data, error: functionError } = await supabase.functions.invoke('swift-task', {
+        body: { 
+          email: formData.email,
+          password: formData.senha,
+          nome: formData.nome,
+          cpf: formData.cpf_corretor,
+          telefone: formData.telefone_corretor,
+          susep: formData.registro_susep,
+          corretora_id: authUser?.id 
+        }
       })
 
-      if (rpcError) throw rpcError
+      // A Edge Function retorna erro no corpo da resposta (data.error) ou no objeto de erro
+      if (functionError) throw new Error(functionError.message)
+      if (data?.error) throw new Error(data.error)
 
-      // Se chegou aqui, o usuário e o perfil foram criados com sucesso
+      // Se chegou aqui, o usuário e o perfil foram criados com sucesso e confirmados
       setShowSuccess(true)
       setTimeout(() => navigate("/corretores/lista"), 2000)
 
     } catch (error: any) {
-      // Captura erros amigáveis (ex: e-mail já cadastrado)
       setErrorMsg(error.message || "Erro ao processar cadastro")
       setSubmitting(false)
     }
@@ -168,8 +174,6 @@ export default function CorretorCadastro() {
             value={formData.registro_susep}
             onChange={e => setFormData({...formData, registro_susep: e.target.value})}
           />
-          
-
         </div>
 
         <input
