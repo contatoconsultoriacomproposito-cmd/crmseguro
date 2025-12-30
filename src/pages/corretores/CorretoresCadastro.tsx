@@ -145,6 +145,14 @@ export default function CorretorCadastro() {
           onChange={e => setFormData({...formData, email: e.target.value})}
         />
 
+        <input
+          required
+          placeholder="Telefone Celular"
+          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20"
+          value={formData.telefone_corretor}
+          onChange={e => setFormData({...formData, telefone_corretor: e.target.value})}
+        />
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
             required
@@ -160,6 +168,8 @@ export default function CorretorCadastro() {
             value={formData.registro_susep}
             onChange={e => setFormData({...formData, registro_susep: e.target.value})}
           />
+          
+
         </div>
 
         <input
