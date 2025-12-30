@@ -68,6 +68,7 @@ export default function CorretorCadastro() {
         p_nome: formData.nome,
         p_cpf: formData.cpf_corretor,
         p_telefone: formData.telefone_corretor,
+        p_susep: formData.registro_susep, // Adicione esta linha aqui
         p_corretora_id: authUser?.id, // ID da Corretora Master logada
         p_senha: formData.senha
       })
