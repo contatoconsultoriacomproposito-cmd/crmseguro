@@ -1,0 +1,152 @@
+import { useState } from "react"
+import { motion } from "framer-motion"
+import { X, Mail, Lock, Loader2, LogIn, ShieldCheck } from "lucide-react"
+import { supabase } from "../../lib/supabaseClient"
+import { useNavigate } from "react-router-dom"
+
+export default function LoginModal({ onClose, onSwitch }: any) {
+  const navigate = useNavigate()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      setLoading(false)
+      setError(
+        error.message.includes("Invalid login credentials")
+          ? "E-mail ou senha incorretos."
+          : error.message
+      )
+      return
+    }
+
+    // Sucesso - O AuthContext cuidará do redirecionamento
+    navigate("/dashboard")
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      {/* Overlay com Blur */}
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm"
+      />
+      
+      {/* Container do Modal */}
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="relative w-full max-w-md bg-white dark:bg-[#121212] rounded-[32px] shadow-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800"
+      >
+        {/* Banner Superior Decorativo */}
+        <div className="h-2 bg-gradient-to-r from-blue-600 to-indigo-600" />
+
+        <div className="p-8">
+          <div className="flex justify-between items-start mb-8">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <ShieldCheck className="text-white" size={20} />
+              </div>
+              <h2 className="text-2xl font-black tracking-tight">Login</h2>
+            </div>
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors text-zinc-400"
+            >
+              <X size={20}/>
+            </button>
+          </div>
+
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl text-red-600 dark:text-red-400 text-sm font-medium text-center"
+            >
+              {error}
+            </motion.div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 ml-1">
+                E-mail de Acesso
+              </label>
+              <div className="relative group">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+                <input 
+                  required 
+                  type="email"
+                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" 
+                  placeholder="seu@email.com" 
+                  autoComplete="current-password" // Adicione esta linha
+                  value={email} 
+                  onChange={e => setEmail(e.target.value)} 
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center px-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                  Senha
+                </label>
+                <button type="button" className="text-[10px] font-bold text-blue-600 hover:underline">Esqueceu a senha?</button>
+              </div>
+              <div className="relative group">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+                <input 
+                  required 
+                  type="password" 
+                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" 
+                  placeholder="••••••••" 
+                  autoComplete="current-password" // Adicione esta linha
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                />
+              </div>
+            </div>
+
+            <button 
+              disabled={loading} 
+              className="w-full bg-zinc-900 dark:bg-blue-600 hover:bg-zinc-800 dark:hover:bg-blue-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-500/10 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 mt-4"
+            >
+              {loading ? (
+                <Loader2 className="animate-spin" size={20} />
+              ) : (
+                <>
+                  <LogIn size={20} />
+                  <span>Acessar Painel</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-8 pt-6 border-t border-zinc-100 dark:border-zinc-800 text-center">
+            <p className="text-sm text-zinc-500">
+              Ainda não tem uma conta?{" "}
+              <button 
+                onClick={onSwitch}
+                className="text-blue-600 font-bold hover:underline"
+              >
+                Cadastre sua Corretora
+              </button>
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  )
+}

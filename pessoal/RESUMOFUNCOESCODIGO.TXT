@@ -1,0 +1,253 @@
+📄 supabaseClient.ts
+
+Responsabilidade:
+👉 Criar e exportar a conexão única com o Supabase.
+
+O que faz:
+
+Lê as variáveis do .env.local
+
+Inicializa o cliente Supabase
+
+Evita múltiplas conexões no app
+
+Por que existe:
+Centraliza o acesso ao Supabase (auth, banco, storage).
+
+📄 Dashboard.tsx
+
+Responsabilidade:
+👉 Tela principal do usuário autenticado.
+
+O que faz:
+
+Renderiza conteúdo protegido
+
+Mostra informações do usuário logado
+
+Exibe o botão de Logout
+
+Por que existe:
+É o ponto de entrada após login bem-sucedido.
+
+📄 AuthContext.tsx
+
+Responsabilidade:
+👉 Gerenciar autenticação global da aplicação.
+
+O que faz:
+
+Mantém o estado do usuário (user)
+
+Controla carregamento (loading)
+
+Escuta mudanças de sessão do Supabase
+
+Expõe signOut() para logout global
+
+Por que existe:
+Evita repetir lógica de autenticação em várias telas.
+
+📄 LogoutButton.tsx
+
+Responsabilidade:
+👉 Encerrar a sessão do usuário.
+
+O que faz:
+
+Chama signOut() do AuthContext
+
+Redireciona para /login
+
+Por que existe:
+Componente reutilizável (Dashboard, Sidebar, Topbar).
+
+📄 ProtectedRoute.tsx
+
+Responsabilidade:
+👉 Proteger rotas privadas.
+
+O que faz:
+
+Verifica se o usuário está autenticado
+
+Mostra loading enquanto carrega sessão
+
+Redireciona para /login se não estiver logado
+
+Por que existe:
+Garante segurança mesmo se alguém tentar acessar URLs direto.
+
+📄 main.tsx
+
+Responsabilidade:
+👉 Ponto de entrada da aplicação React.
+
+O que faz:
+
+Inicializa o React
+
+Envolve o app com:
+
+BrowserRouter
+
+AuthProvider
+
+Por que existe:
+Sem ele, nada renderiza nem funciona.
+
+📄 Login.tsx
+
+Responsabilidade:
+👉 Autenticar o usuário.
+
+O que faz:
+
+Captura email e senha
+
+Faz login via Supabase
+
+Redireciona para /dashboard
+
+Redireciona automaticamente se já estiver logado
+
+Por que existe:
+É a porta de entrada do sistema.
+
+📄 App.tsx
+
+Responsabilidade:
+👉 Definir as rotas da aplicação.
+
+O que faz:
+
+Define /login
+
+Define /dashboard
+
+Aplica ProtectedRoute nas rotas privadas
+
+Por que existe:
+Centraliza a navegação e as regras de acesso.
+
+📄 Sidebar.tsx
+
+O que faz:
+
+Controla Menu Lateral no Dashboard
+
+Por que existe:
+São os botões de navegação entre a página
+
+📄 index.css
+O que faz:
+
+Controla o tailwind
+
+Por que existe:
+Sem ele quebra todo o html
+
+📄 ThemeContext.tsx
+O que faz:
+
+Controla o tema claro e escuro
+
+Por que existe:
+Permitir a troca para o cliente entre claro e escuro
+
+📄 DashboardLayout.tsx
+O que faz
+
+Define a estrutura base do Dashboard do CRM.
+
+Por que existe
+
+Evita repetir código de layout em todas as páginas
+
+Centraliza:
+
+Sidebar
+
+Área de conteúdo
+
+Controle de colapso da Sidebar
+
+O que controla
+
+Estado collapsed da Sidebar
+
+Organização visual:
+Sidebar à esquerda + conteúdo à direita
+
+Em resumo
+
+É o esqueleto visual do Dashboard.
+Toda tela interna do CRM passa por ele.
+
+🎛️ ThemeContext.tsx
+O que faz
+
+Gerencia o tema global da aplicação (claro / escuro).
+
+Por que existe
+
+Permite trocar tema de qualquer lugar
+
+Evita passar props manualmente
+
+Centraliza lógica de tema
+
+Responsabilidades
+
+Guarda o tema atual (light ou dark)
+
+Alterna o tema (toggleTheme)
+
+Aplica a classe dark ou light no <html>
+
+Salva a preferência no localStorage
+
+Em resumo
+
+É o cérebro do tema da aplicação.
+Sem ele, o dark mode seria fragmentado e difícil de manter.
+
+🌗 ThemeToggle.tsx
+O que faz
+
+É o botão visual que permite o usuário trocar entre tema claro e escuro.
+
+Por que existe
+
+Separar lógica (ThemeContext) da UI
+
+Reutilizar o botão onde quiser:
+
+Login
+
+Sidebar
+
+Header
+
+Configurações
+
+O que ele faz tecnicamente
+
+Lê o tema atual pelo useTheme
+
+Chama toggleTheme() ao clicar
+
+Mostra ícone diferente conforme o tema
+
+Em resumo
+
+É a interface do usuário para controlar o tema.
+Ele não decide nada — só dispara a ação.
+
+
+🧠 Visão geral (fluxo)
+main.tsx
+  └── AuthContext
+        └── App.tsx
+              ├── /login → Login.tsx
+              └── /dashboard → ProtectedRoute → Dashboard.tsx
