@@ -68,14 +68,14 @@ export default function CorretorCadastro() {
       setErrorMsg("Sua sessão expirou. Refaça o login para cadastrar corretores.");
       return;
     }
-    
+
     if (submitting || !isAuthorized) return
     setSubmitting(true)
     setErrorMsg(null)
 
     try {
       // Chamada para a nova Edge Function padronizada
-      const { data, error: functionError } = await supabase.functions.invoke('cadastrar-usuario', {
+      const { error: functionError } = await supabase.functions.invoke('cadastrar-usuario', {
         body: { 
           email: formData.email,
           password: formData.senha,
@@ -88,8 +88,11 @@ export default function CorretorCadastro() {
       })
 
       // Tratamento de erro detalhado vindo da Function
-      if (functionError) throw new Error(functionError.message)
-      if (data?.error) throw new Error(data.error)
+      if (functionError) {
+        // ESTA LINHA É A CHAVE: Ela vai ler o erro que a function enviou
+        const errData = await functionError.context?.json()
+        throw new Error(errData?.error || functionError.message)
+      }
 
       setShowSuccess(true)
       setTimeout(() => navigate("/corretores/lista"), 2500)
