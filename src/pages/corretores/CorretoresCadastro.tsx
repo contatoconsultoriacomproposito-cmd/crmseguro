@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { supabase, supabaseAdmin } from "../../lib/supabaseClient"
+import { supabase } from "../../lib/supabaseClient" // Removido o supabaseAdmin por segurança
 import { useAuth } from "../../auth/AuthContext"
 import { Loader2, UserPlus, ArrowLeft, CheckCircle2, XCircle, ShieldAlert } from "lucide-react"
 
@@ -8,7 +8,6 @@ export default function CorretorCadastro() {
   const { user: authUser } = useAuth()
   const navigate = useNavigate()
   
-  // Estados de Controle
   const [loading, setLoading] = useState(true)
   const [isAuthorized, setIsAuthorized] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -24,7 +23,6 @@ export default function CorretorCadastro() {
     senha: ""
   })
 
-  // 1. Blindagem: Verificar se o usuário logado é uma CORRETORA (Master)
   useEffect(() => {
     async function checkPermission() {
       if (!authUser?.id) {
@@ -63,45 +61,30 @@ export default function CorretorCadastro() {
     setErrorMsg(null)
 
     try {
-      // 1. Criar no Auth via Admin API
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email: formData.email,
-        password: formData.senha,
-        email_confirm: true,
-        user_metadata: { nome: formData.nome }
+      // NOVA LÓGICA: Chamando a função RPC que criamos no SQL
+      // Isso executa no servidor (DB) e evita o erro 403 de permissão
+      const { error: rpcError } = await supabase.rpc('cadastrar_novo_corretor', {
+        p_email: formData.email,
+        p_nome: formData.nome,
+        p_cpf: formData.cpf_corretor,
+        p_telefone: formData.telefone_corretor,
+        p_corretora_id: authUser?.id, // ID da Corretora Master logada
+        p_senha: formData.senha
       })
 
-      if (authError) throw authError
+      if (rpcError) throw rpcError
 
-      // 2. Inserir Perfil na Tabela (Tipo CORRETOR garantido)
-      if (authData.user) {
-        const { error: perfilError } = await supabase
-          .from("usuarios_perfis")
-          .insert({ 
-            id: authData.user.id,
-            nome: formData.nome,
-            email: formData.email,
-            telefone_corretor: formData.telefone_corretor,
-            registro_susep: formData.registro_susep,
-            cpf_corretor: formData.cpf_corretor,
-            tipo_usuario: "CORRETOR", 
-            corretora_id: authUser?.id, // ID da Corretora Master logada
-            ativo: true
-          })
-
-        if (perfilError) throw perfilError
-      }
-
+      // Se chegou aqui, o usuário e o perfil foram criados com sucesso
       setShowSuccess(true)
       setTimeout(() => navigate("/corretores/lista"), 2000)
 
     } catch (error: any) {
+      // Captura erros amigáveis (ex: e-mail já cadastrado)
       setErrorMsg(error.message || "Erro ao processar cadastro")
       setSubmitting(false)
     }
   }
 
-  // Tela de Loading inicial
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -110,7 +93,6 @@ export default function CorretorCadastro() {
     )
   }
 
-  // Tela de Acesso Negado (Blindagem)
   if (!isAuthorized) {
     return (
       <div className="max-w-md mx-auto mt-20 p-8 bg-white dark:bg-zinc-900 rounded-[32px] border border-red-100 dark:border-red-900/30 text-center shadow-xl">
@@ -197,7 +179,6 @@ export default function CorretorCadastro() {
         </button>
       </form>
 
-      {/* MODAL DE SUCESSO */}
       {showSuccess && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-10 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-zinc-800 text-center animate-in zoom-in duration-500">
@@ -205,7 +186,7 @@ export default function CorretorCadastro() {
               <CheckCircle2 className="text-emerald-500" size={44} />
             </div>
             <h2 className="text-2xl font-bold mb-2">Sucesso!</h2>
-            <p className="text-slate-500 dark:text-zinc-400">O corretor foi cadastrado com sucesso e já pode acessar o painel.</p>
+            <p className="text-slate-500 dark:text-zinc-400">O corretor foi cadastrado com sucesso e já pode acessar o painel com as credenciais informadas.</p>
           </div>
         </div>
       )}

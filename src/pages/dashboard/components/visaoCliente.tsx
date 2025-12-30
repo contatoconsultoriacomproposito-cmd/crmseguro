@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Users, User, Building2, PieChart as PieIcon, BarChart as BarIcon, Layers } from 'lucide-react';
+import { Users, User, Building2, PieChart as PieIcon, BarChart as BarIcon } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis } from 'recharts';
 
 // Interfaces para resolver os erros de Tipagem
@@ -82,12 +82,13 @@ export default function VisaoCliente({ dataRaw, dataInicio, dataFim }: VisaoClie
           </div>
         </div>
 
-        {/* COLUNA 2: Origens (Pizza) */}
+        {/* COLUNA 2: Origens (Pizza) - CORRIGIDO */}
         <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm">
           <p className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-2">
             <PieIcon size={12}/> Origens de Clientes
           </p>
-          <div className="h-48">
+          {/* Substituído className="h-48" por style fixo */}
+          <div style={{ width: '100%', height: 192 }}> 
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={chartOrigens} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
@@ -104,7 +105,7 @@ export default function VisaoCliente({ dataRaw, dataInicio, dataFim }: VisaoClie
           </div>
         </div>
 
-        {/* COLUNA 3: Status Kanban (Barras com Legenda) */}
+        {/* COLUNA 3: Status Kanban - CORRIGIDO */}
         <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm">
           <div className="flex justify-between items-start">
             <p className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-2">
@@ -119,41 +120,24 @@ export default function VisaoCliente({ dataRaw, dataInicio, dataFim }: VisaoClie
               </button>
             )}
           </div>
-          <div className="h-48">
+          {/* Substituído className="h-48" por style fixo */}
+          <div style={{ width: '100%', height: 192 }}>
             <ResponsiveContainer width="100%" height="100%">
-              {/* Adicionamos margens laterais para tirar as barras da extremidade */}
-              <BarChart 
-                data={chartStatus} 
-                margin={{ top: 20, right: 30, left: 30, bottom: 20 }}
-                barCategoryGap="30%" // Cria um respiro saudável entre as barras
-              >
+              <BarChart data={chartStatus} margin={{ top: 20, right: 30, left: 30, bottom: 20 }} barCategoryGap="30%">
                 <XAxis 
                   dataKey="name" 
                   axisLine={false}
                   tickLine={false}
                   tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }}
                   interval={0}
-                  dy={10} // Empurra a legenda um pouco para baixo
+                  dy={10}
                   tickFormatter={(value) => value.toUpperCase()}
                 />
-                
-                {/* Tooltip customizado para combinar com seu layout clean */}
                 <Tooltip 
                   cursor={{ fill: '#f8fafc', radius: 8 }}
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
                 />
-
-                <Bar 
-                  dataKey="value" 
-                  radius={[6, 6, 6, 6]} // Barras totalmente arredondadas ficam mais modernas
-                  barSize={40} // Largura fixa para manter a consistência
-                >
+                <Bar dataKey="value" radius={[6, 6, 6, 6]} barSize={40}>
                   {chartStatus.map((entry, index) => (
                     <Cell 
                       key={`cell-bar-${index}`} 
@@ -170,12 +154,13 @@ export default function VisaoCliente({ dataRaw, dataInicio, dataFim }: VisaoClie
           </div>
         </div>
 
-        {/* COLUNA 4: Fases Kanban (Pizza) */}
+        {/* COLUNA 4: Fases Kanban (Pizza) - CORRIGIDO */}
         <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm">
           <p className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-2">
-            <Layers size={12}/> Distribuição por Fases
+            <Building2 size={12}/> Distribuição por Fases
           </p>
-          <div className="h-48">
+          {/* Substituído className="h-48" por style fixo */}
+          <div style={{ width: '100%', height: 192 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={chartFases} outerRadius={60} dataKey="value">
