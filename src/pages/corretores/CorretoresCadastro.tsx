@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabaseClient" 
 import { useAuth } from "../../auth/AuthContext"
 import { Loader2, UserPlus, ArrowLeft, CheckCircle2, XCircle, ShieldAlert } from "lucide-react"
+import { maskPhone } from "../../utils/masks" // Certifique-se que o caminho está correto
 
 export default function CorretorCadastro() {
   const { user: authUser } = useAuth()
@@ -52,7 +53,13 @@ export default function CorretorCadastro() {
     checkPermission()
   }, [authUser, navigate])
 
-  const maskCPF = (v: string) => v.replace(/\D/g, "").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})/, "$1-$2").replace(/(-\d{2})\d+?$/, "$1")
+  // Máscara de CPF interna
+  const maskCPF = (v: string) => v
+    .replace(/\D/g, "")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d{1,2})/, "$1-$2")
+    .replace(/(-\d{2})\d+?$/, "$1")
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -61,12 +68,8 @@ export default function CorretorCadastro() {
     setErrorMsg(null)
 
     try {
-      /**
-       * NOVA LÓGICA DE SEGURANÇA MÁXIMA:
-       * Invocamos a Edge Function 'cadastrar-usuario' que roda no servidor do Supabase.
-       * Ela usa a SERVICE_ROLE_KEY de forma oculta e cria o usuário já confirmado.
-       */
-      const { data, error: functionError } = await supabase.functions.invoke('swift-task', {
+      // Chamada para a nova Edge Function padronizada
+      const { data, error: functionError } = await supabase.functions.invoke('cadastrar-usuario', {
         body: { 
           email: formData.email,
           password: formData.senha,
@@ -78,16 +81,20 @@ export default function CorretorCadastro() {
         }
       })
 
-      // A Edge Function retorna erro no corpo da resposta (data.error) ou no objeto de erro
+      // Tratamento de erro detalhado vindo da Function
       if (functionError) throw new Error(functionError.message)
       if (data?.error) throw new Error(data.error)
 
-      // Se chegou aqui, o usuário e o perfil foram criados com sucesso e confirmados
       setShowSuccess(true)
-      setTimeout(() => navigate("/corretores/lista"), 2000)
+      setTimeout(() => navigate("/corretores/lista"), 2500)
 
     } catch (error: any) {
-      setErrorMsg(error.message || "Erro ao processar cadastro")
+      console.error("Erro no cadastro:", error.message)
+      // Tradução amigável de erros comuns
+      const msg = error.message === "User already registered" 
+        ? "Este e-mail já está cadastrado no sistema." 
+        : error.message
+      setErrorMsg(msg || "Erro ao processar cadastro")
       setSubmitting(false)
     }
   }
@@ -116,8 +123,8 @@ export default function CorretorCadastro() {
   return (
     <div className="max-w-2xl mx-auto p-6 relative animate-in fade-in duration-500">
       <button 
-        onClick={() => navigate(-1)} 
-        className="flex items-center gap-2 text-zinc-500 mb-6 hover:text-zinc-800 transition-colors"
+        onClick={() => navigate("/corretores/lista")} 
+        className="flex items-center gap-2 text-zinc-500 mb-6 hover:text-zinc-800 dark:hover:text-zinc-300 transition-colors"
       >
         <ArrowLeft size={18} /> Voltar para a lista
       </button>
@@ -137,7 +144,7 @@ export default function CorretorCadastro() {
         <input
           required
           placeholder="Nome Completo"
-          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20"
+          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
           value={formData.nome}
           onChange={e => setFormData({...formData, nome: e.target.value})}
         />
@@ -146,7 +153,7 @@ export default function CorretorCadastro() {
           required
           type="email"
           placeholder="E-mail Profissional"
-          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20"
+          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
           value={formData.email}
           onChange={e => setFormData({...formData, email: e.target.value})}
         />
@@ -154,9 +161,10 @@ export default function CorretorCadastro() {
         <input
           required
           placeholder="Telefone Celular"
-          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20"
+          maxLength={15}
+          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
           value={formData.telefone_corretor}
-          onChange={e => setFormData({...formData, telefone_corretor: e.target.value})}
+          onChange={e => setFormData({...formData, telefone_corretor: maskPhone(e.target.value)})}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -164,13 +172,13 @@ export default function CorretorCadastro() {
             required
             placeholder="CPF"
             maxLength={14}
-            className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700"
+            className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
             value={formData.cpf_corretor}
             onChange={e => setFormData({...formData, cpf_corretor: maskCPF(e.target.value)})}
           />
           <input
             placeholder="Registro SUSEP"
-            className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700"
+            className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
             value={formData.registro_susep}
             onChange={e => setFormData({...formData, registro_susep: e.target.value})}
           />
@@ -180,7 +188,8 @@ export default function CorretorCadastro() {
           required
           type="password"
           placeholder="Senha de Acesso"
-          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20"
+          minLength={6}
+          className="w-full p-4 rounded-2xl border border-zinc-200 dark:bg-zinc-800/50 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
           value={formData.senha}
           onChange={e => setFormData({...formData, senha: e.target.value})}
         />
@@ -188,7 +197,7 @@ export default function CorretorCadastro() {
         <button
           type="submit"
           disabled={submitting || showSuccess}
-          className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+          className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-purple-500/20"
         >
           {submitting ? <Loader2 className="animate-spin" /> : <><UserPlus size={20} /> Cadastrar Corretor</>}
         </button>
