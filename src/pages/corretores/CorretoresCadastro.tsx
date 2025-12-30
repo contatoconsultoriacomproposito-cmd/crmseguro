@@ -63,6 +63,12 @@ export default function CorretorCadastro() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    if (!authUser?.id) {
+      setErrorMsg("Sua sessão expirou. Refaça o login para cadastrar corretores.");
+      return;
+    }
+    
     if (submitting || !isAuthorized) return
     setSubmitting(true)
     setErrorMsg(null)
