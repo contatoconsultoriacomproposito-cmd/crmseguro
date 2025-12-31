@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom";
 import { gerarPDFProposta } from "../../utils/gerarPDF";
 import { ModalFechamento } from '../../components/propostas/ModalFechamento';
 import { formatarDataBR } from "../../utils/dateUtils";
+// Importação do novo modal
+import { ModalExclusaoSegura } from "./ModalExclusaoSegura";
 
 export default function PropostasLista() {
   const navigate = useNavigate();
@@ -22,7 +24,13 @@ export default function PropostasLista() {
     proposta: null
   });
 
-  // 1. Busca o perfil do usuário logado
+  // Estado para o novo modal de exclusão
+  const [modalExclusao, setModalExclusao] = useState({
+    isOpen: false,
+    proposta: null as any,
+    dadosCriticos: { sinistros: 0, comissoes: 0, isVendido: false }
+  });
+
   useEffect(() => {
     async function getInitialData() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -32,14 +40,12 @@ export default function PropostasLista() {
           .select('id, corretora_id, tipo_usuario')
           .eq('id', user.id)
           .single();
-        
         setUserProfile(perfil);
       }
     }
     getInitialData();
   }, []);
 
-  // 2. Dispara a busca quando o perfil carregar
   useEffect(() => {
     if (userProfile?.corretora_id) {
       fetchPropostas();
@@ -48,7 +54,6 @@ export default function PropostasLista() {
 
   async function fetchPropostas() {
     if (!userProfile?.corretora_id) return;
-
     try {
       setLoading(true);
       let query = supabase
@@ -76,14 +81,12 @@ export default function PropostasLista() {
   }
 
   const propostasFiltradas = useMemo(() => {
-    if (!propostas) return []; // Garantia contra nulo
+    if (!propostas) return []; 
     const term = filter.toLowerCase().trim();
-    
     return propostas.filter(p => {
       const numero = (p.numero_proposta || "").toLowerCase();
       const nomeCliente = (p.tab_clientes?.nome || "").toLowerCase();
       const razaoSocial = (p.tab_clientes?.razao_social || "").toLowerCase();
-      
       return numero.includes(term) || nomeCliente.includes(term) || razaoSocial.includes(term);
     });
   }, [filter, propostas]);
@@ -122,7 +125,7 @@ export default function PropostasLista() {
         },
         produtosUnicos,
         opcoes: opcoesDb.map(opt => ({
-          companhia: (opt.base_seguradoras as any)?.nome || 'N/A', // Cast para evitar erro de tipo
+          companhia: (opt.base_seguradoras as any)?.nome || 'N/A',
           itens: opt.tab_proposta_itens.map((i: any) => ({
             nomeProduto: i.base_produtos?.nome,
             valor: i.valor_premio,
@@ -137,29 +140,68 @@ export default function PropostasLista() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  // Fase 1: Investiga e abre o Modal
+  const executarExclusaoSegura = async (proposta: any) => {
     if (!userProfile?.corretora_id) return;
     
-    if (confirm("Deseja realmente excluir esta proposta?")) {
-      // Criamos a base da query com a trava da corretora
+    let totalSinistros = 0;
+    let totalComissoes = 0;
+    const isVendido = proposta.status === 'Vendido';
+
+    try {
+      if (isVendido) {
+        const { data: itens } = await supabase
+          .from('tab_proposta_itens')
+          .select(`id, tab_proposta_opcoes!inner(proposta_id)`)
+          .eq('tab_proposta_opcoes.proposta_id', proposta.id);
+
+        const idsDosItens = itens?.map(i => i.id) || [];
+
+        if (idsDosItens.length > 0) {
+          const [resSinistros, resComissoes] = await Promise.all([
+            supabase.from('tab_sinistros').select('id', { count: 'exact' }).in('item_id', idsDosItens),
+            supabase.from('tab_comissoes').select('id', { count: 'exact' }).in('item_id', idsDosItens)
+          ]);
+          totalSinistros = resSinistros.count || 0;
+          totalComissoes = resComissoes.count || 0;
+        }
+      }
+
+      // Abre o modal estético em vez de usar confirm()
+      setModalExclusao({
+        isOpen: true,
+        proposta,
+        dadosCriticos: { sinistros: totalSinistros, comissoes: totalComissoes, isVendido }
+      });
+
+    } catch (error) {
+      console.error("Erro na investigação:", error);
+    }
+  };
+
+  // Fase 2: Execução Real após confirmação no Modal
+  const handleConfirmarExclusao = async () => {
+    const { proposta } = modalExclusao;
+    if (!proposta) return;
+
+    try {
       let query = supabase
         .from('tab_propostas')
         .delete()
-        .eq('id', id)
+        .eq('id', proposta.id)
         .eq('corretora_id', userProfile.corretora_id);
 
-      // Se for corretor, adicionamos a trava do ID dele
       if (userProfile.tipo_usuario === 'CORRETOR') {
         query = query.eq('corretor_id', userProfile.id);
       }
 
       const { error } = await query;
-      
-      if (error) {
-        alert("Erro ao excluir proposta ou você não tem permissão.");
-      } else {
-        fetchPropostas();
-      }
+      if (error) throw error;
+
+      setModalExclusao({ ...modalExclusao, isOpen: false });
+      fetchPropostas();
+    } catch (error: any) {
+      alert("Erro ao excluir: " + error.message);
     }
   };
 
@@ -249,7 +291,7 @@ export default function PropostasLista() {
                         <FileText size={18} />
                       </button>
 
-                      <button onClick={() => handleDelete(p.id)}
+                      <button onClick={() => executarExclusaoSegura(p)}
                         className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-all" title="Excluir">
                         <Trash2 size={18} />
                       </button>
@@ -265,12 +307,17 @@ export default function PropostasLista() {
       <ModalFechamento 
         isOpen={modalStatus.open}
         tipo={modalStatus.type}
-        // Transformamos a proposta única em uma array para manter compatibilidade com o componente
         proposta={modalStatus.proposta ? [modalStatus.proposta] : []} 
         onClose={() => setModalStatus({ ...modalStatus, open: false })}
-        onSuccess={() => {
-          fetchPropostas(); 
-        }}
+        onSuccess={() => fetchPropostas()}
+      />
+
+      {/* Renderização do Novo Modal de Exclusão */}
+      <ModalExclusaoSegura 
+        isOpen={modalExclusao.isOpen}
+        onClose={() => setModalExclusao({ ...modalExclusao, isOpen: false })}
+        onConfirm={handleConfirmarExclusao}
+        dadosCriticos={modalExclusao.dadosCriticos}
       />
     </div>
   );

@@ -5,11 +5,20 @@ import { useNavigate } from 'react-router-dom';
 import { gerarPDFProposta } from '../../../utils/gerarPDF';
 import { formatarDataBR } from '../../../utils/dateUtils';
 import { ModalFechamento } from '../../propostas/ModalFechamento';
+// 1. Importação do novo modal estético
+import { ModalExclusaoSegura } from '../../../pages/propostas/ModalExclusaoSegura';
 
 export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: () => void }) => {
   const [propostas, setPropostas] = useState<any[]>([]);
   const [modalStatus, setModalStatus] = useState({ open: false, type: '', proposta: null as any });
   const navigate = useNavigate();
+
+  // 2. Estado para o modal de exclusão estética
+  const [modalExclusao, setModalExclusao] = useState({
+    isOpen: false,
+    proposta: null as any,
+    dadosCriticos: { sinistros: 0, comissoes: 0, isVendido: false }
+  });
 
   const fetchPropostas = async () => {
     const { data } = await supabase
@@ -20,7 +29,9 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
     if (data) setPropostas(data);
   };
 
-  useEffect(() => { fetchPropostas(); }, [cliente.id]);
+  useEffect(() => {
+    fetchPropostas();
+  }, [cliente.id]);
 
   const handleGerarPDF = async (prop: any) => {
     try {
@@ -62,10 +73,53 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
     }
   };
 
-  const handleExcluir = async (id: string) => {
-    if (confirm("Deseja excluir esta proposta?")) {
-      await supabase.from('tab_propostas').delete().eq('id', id);
+  // 3. Fase de Investigação (Abre o modal em vez do alert)
+  const prepararExclusao = async (proposta: any) => {
+    let totalSinistros = 0;
+    let totalComissoes = 0;
+    const isVendido = proposta.status?.toLowerCase() === 'vendido';
+
+    try {
+      if (isVendido) {
+        const { data: itens } = await supabase
+          .from('tab_proposta_itens')
+          .select(`id, tab_proposta_opcoes!inner(proposta_id)`)
+          .eq('tab_proposta_opcoes.proposta_id', proposta.id);
+
+        const idsDosItens = itens?.map(i => i.id) || [];
+
+        if (idsDosItens.length > 0) {
+          const [resSinistros, resComissoes] = await Promise.all([
+            supabase.from('tab_sinistros').select('id', { count: 'exact' }).in('item_id', idsDosItens),
+            supabase.from('tab_comissoes').select('id', { count: 'exact' }).in('item_id', idsDosItens)
+          ]);
+          totalSinistros = resSinistros.count || 0;
+          totalComissoes = resComissoes.count || 0;
+        }
+      }
+
+      setModalExclusao({
+        isOpen: true,
+        proposta,
+        dadosCriticos: { sinistros: totalSinistros, comissoes: totalComissoes, isVendido }
+      });
+    } catch (error) {
+      console.error("Erro ao investigar vínculos:", error);
+    }
+  };
+
+  // 4. Execução Final (chamada pelo botão "Excluir Tudo" do modal)
+  const confirmarExclusaoFinal = async () => {
+    const { proposta } = modalExclusao;
+    try {
+      const { error } = await supabase.from('tab_propostas').delete().eq('id', proposta.id);
+      if (error) throw error;
+
+      setModalExclusao({ ...modalExclusao, isOpen: false });
       fetchPropostas();
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      alert("Erro ao excluir: " + error.message);
     }
   };
 
@@ -82,7 +136,6 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
                     R$ {Number(prop.valor_total_proposta || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
                   
-                  {/* EXIBIÇÃO DA VALIDADE USANDO CALENDAR E FORMATARDATABR */}
                   <div className="flex items-center gap-1 mt-1">
                     <Calendar size={10} className="text-slate-400" />
                     <span className="text-[9px] font-bold text-slate-500 uppercase">
@@ -91,9 +144,24 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => navigate(`/propostas/editar/${prop.id}`)} className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"><Pencil size={14} /></button>
-                  <button onClick={() => handleGerarPDF(prop)} className="p-1.5 text-slate-400 hover:text-green-600 transition-colors"><FileText size={14} /></button>
-                  <button onClick={() => handleExcluir(prop.id)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
+                  <button 
+                    onClick={() => navigate(`/propostas/editar/${prop.id}`)} 
+                    className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button 
+                    onClick={() => handleGerarPDF(prop)} 
+                    className="p-1.5 text-slate-400 hover:text-green-600 transition-colors"
+                  >
+                    <FileText size={14} />
+                  </button>
+                  <button 
+                    onClick={() => prepararExclusao(prop)} 
+                    className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
 
@@ -108,8 +176,18 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
                   </div>
                 ) : (
                   <>
-                    <button onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: prop })} className="flex-1 py-1.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors">Vendido</button>
-                    <button onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: prop })} className="flex-1 py-1.5 bg-red-50 text-red-700 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">Perdido</button>
+                    <button 
+                      onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: prop })} 
+                      className="flex-1 py-1.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors"
+                    >
+                      Vendido
+                    </button>
+                    <button 
+                      onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: prop })} 
+                      className="flex-1 py-1.5 bg-red-50 text-red-700 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors"
+                    >
+                      Perdido
+                    </button>
                   </>
                 )}
               </div>
@@ -130,15 +208,28 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
         <span className="text-sm font-bold uppercase">Nova Proposta</span>
       </button>
 
+      {/* Renderização do Modal de Fechamento */}
       {modalStatus.open && (
         <ModalFechamento
           isOpen={modalStatus.open}
           onClose={() => setModalStatus({ ...modalStatus, open: false })}
           tipo={modalStatus.type as 'VENDIDO' | 'PERDIDO'}
-          proposta={modalStatus.proposta}
-          onSuccess={() => { setModalStatus({ ...modalStatus, open: false }); fetchPropostas(); onUpdate(); }}
+          proposta={modalStatus.proposta ? [modalStatus.proposta] : []}
+          onSuccess={() => { 
+            setModalStatus({ ...modalStatus, open: false }); 
+            fetchPropostas(); 
+            onUpdate(); 
+          }}
         />
       )}
+
+      {/* 5. Renderização do Novo Modal de Exclusão Estética */}
+      <ModalExclusaoSegura 
+        isOpen={modalExclusao.isOpen}
+        onClose={() => setModalExclusao({ ...modalExclusao, isOpen: false })}
+        onConfirm={confirmarExclusaoFinal}
+        dadosCriticos={modalExclusao.dadosCriticos}
+      />
     </div>
   );
 };
