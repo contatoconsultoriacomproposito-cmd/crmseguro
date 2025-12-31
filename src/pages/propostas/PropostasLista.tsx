@@ -8,8 +8,9 @@ import { useNavigate } from "react-router-dom";
 import { gerarPDFProposta } from "../../utils/gerarPDF";
 import { ModalFechamento } from '../../components/propostas/ModalFechamento';
 import { formatarDataBR } from "../../utils/dateUtils";
-// Importação do novo modal
 import { ModalExclusaoSegura } from "./ModalExclusaoSegura";
+// 1. Importar o sincronizador
+import { sincronizarStatusCliente } from "./sincronizarStatusCliente";
 
 export default function PropostasLista() {
   const navigate = useNavigate();
@@ -24,7 +25,6 @@ export default function PropostasLista() {
     proposta: null
   });
 
-  // Estado para o novo modal de exclusão
   const [modalExclusao, setModalExclusao] = useState({
     isOpen: false,
     proposta: null as any,
@@ -60,7 +60,7 @@ export default function PropostasLista() {
         .from("tab_propostas")
         .select(`
           *,
-          tab_clientes (nome, razao_social, tipo_cliente, cpf, cnpj, telefone_whats),
+          tab_clientes (id, nome, razao_social, tipo_cliente, cpf, cnpj, telefone_whats),
           usuarios_perfis!tab_propostas_corretor_id_fkey(nome)
         `)
         .eq("corretora_id", userProfile.corretora_id)
@@ -140,13 +140,12 @@ export default function PropostasLista() {
     }
   };
 
-  // Fase 1: Investiga e abre o Modal
   const executarExclusaoSegura = async (proposta: any) => {
     if (!userProfile?.corretora_id) return;
     
     let totalSinistros = 0;
     let totalComissoes = 0;
-    const isVendido = proposta.status === 'Vendido';
+    const isVendido = proposta.status?.toLowerCase() === 'vendido';
 
     try {
       if (isVendido) {
@@ -167,7 +166,6 @@ export default function PropostasLista() {
         }
       }
 
-      // Abre o modal estético em vez de usar confirm()
       setModalExclusao({
         isOpen: true,
         proposta,
@@ -179,12 +177,12 @@ export default function PropostasLista() {
     }
   };
 
-  // Fase 2: Execução Real após confirmação no Modal
   const handleConfirmarExclusao = async () => {
     const { proposta } = modalExclusao;
     if (!proposta) return;
 
     try {
+      // 1. Executa a exclusão
       let query = supabase
         .from('tab_propostas')
         .delete()
@@ -197,6 +195,11 @@ export default function PropostasLista() {
 
       const { error } = await query;
       if (error) throw error;
+
+      // 2. SINCRONIZAÇÃO: Crucial para o Kanban refletir a realidade
+      if (proposta.cliente_id) {
+        await sincronizarStatusCliente(proposta.cliente_id);
+      }
 
       setModalExclusao({ ...modalExclusao, isOpen: false });
       fetchPropostas();
@@ -312,11 +315,12 @@ export default function PropostasLista() {
         onSuccess={() => fetchPropostas()}
       />
 
-      {/* Renderização do Novo Modal de Exclusão */}
+      {/* MODAL CORRIGIDO: Agora com clienteId */}
       <ModalExclusaoSegura 
         isOpen={modalExclusao.isOpen}
         onClose={() => setModalExclusao({ ...modalExclusao, isOpen: false })}
         onConfirm={handleConfirmarExclusao}
+        clienteId={modalExclusao.proposta?.cliente_id} 
         dadosCriticos={modalExclusao.dadosCriticos}
       />
     </div>

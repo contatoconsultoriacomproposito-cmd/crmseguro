@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { X, CheckCircle, XCircle, Loader2, Calendar, Hash } from "lucide-react";
+import { sincronizarStatusCliente } from "../../pages/propostas/sincronizarStatusCliente";
 
 interface ModalFechamentoProps {
   isOpen: boolean;
@@ -24,7 +25,6 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
   const listaPropostas = Array.isArray(proposta) ? proposta : proposta ? [proposta] : [];
 
   // FUNÇÃO PARA CORRIGIR O BUG DO ESPAÇO
-  // Ela impede que o evento de teclado suba para o Kanban
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === ' ') {
       e.stopPropagation();
@@ -91,13 +91,12 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
     );
   };
 
-  if (!isOpen || !propostaSelecionada) return null;
-
   const handleConfirmar = async () => {
     try {
       setLoading(true);
       const isVendido = type === 'VENDIDO';
 
+      // 1. Atualizar o Status da Proposta Atual
       const { error: errorProposta } = await supabase
         .from('tab_propostas')
         .update({
@@ -110,14 +109,15 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
 
       if (errorProposta) throw errorProposta;
 
+      // 2. Se for Venda, atualizar os itens (Apólice e Vigências)
       if (isVendido && itensProposta.length > 0) {
         for (const item of itensProposta) {
           const { error: errorItem } = await supabase
             .from('tab_proposta_itens')
             .update({ 
-              numero_apolice: dadosItens[item.id].apolice,
-              data_inicio_vigencia: dadosItens[item.id].inicioVigencia,
-              data_fim_vigencia: dadosItens[item.id].fimVigencia
+              numero_apolice: dadosItens[item.id]?.apolice,
+              data_inicio_vigencia: dadosItens[item.id]?.inicioVigencia,
+              data_fim_vigencia: dadosItens[item.id]?.fimVigencia
             })
             .eq('id', item.id);
           
@@ -125,6 +125,7 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         }
       }
 
+      // 3. Registrar a Interação no Histórico do Cliente
       await supabase.from('tab_interacoes').insert({
         cliente_id: propostaSelecionada.cliente_id,
         corretor_id: propostaSelecionada.corretor_id,
@@ -137,25 +138,23 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         horario_historico: new Date().toLocaleTimeString('pt-BR', { hour12: false })
       });
 
+      // 4. CHAMADA DA LÓGICA DE SINCRONIZAÇÃO (O "Cérebro")
+      // Esta função cuidará das suas 4 regras de hierarquia e fases automaticamente
       if (propostaSelecionada.cliente_id) {
-        await supabase
-          .from('tab_clientes')
-          .update({ 
-            status_kanban: isVendido ? 'vendido' : 'perdido', 
-            fase_kanban: isVendido ? 'pos' : 'recuperacao' 
-          })
-          .eq('id', propostaSelecionada.cliente_id);
+        await sincronizarStatusCliente(propostaSelecionada.cliente_id);
       }
 
       onSuccess();
       onClose();
     } catch (error) {
-      console.error("Erro ao fechar venda:", error);
+      console.error("Erro ao fechar venda/perda:", error);
       alert("Erro ao salvar dados.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (!isOpen || !propostaSelecionada) return null;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[999] p-4">

@@ -5,15 +5,15 @@ import { useNavigate } from 'react-router-dom';
 import { gerarPDFProposta } from '../../../utils/gerarPDF';
 import { formatarDataBR } from '../../../utils/dateUtils';
 import { ModalFechamento } from '../../propostas/ModalFechamento';
-// 1. Importação do novo modal estético
 import { ModalExclusaoSegura } from '../../../pages/propostas/ModalExclusaoSegura';
+// IMPORTANTE: Importar o sincronizador aqui também
+import { sincronizarStatusCliente } from '../../../pages/propostas/sincronizarStatusCliente';
 
 export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: () => void }) => {
   const [propostas, setPropostas] = useState<any[]>([]);
   const [modalStatus, setModalStatus] = useState({ open: false, type: '', proposta: null as any });
   const navigate = useNavigate();
 
-  // 2. Estado para o modal de exclusão estética
   const [modalExclusao, setModalExclusao] = useState({
     isOpen: false,
     proposta: null as any,
@@ -73,7 +73,6 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
     }
   };
 
-  // 3. Fase de Investigação (Abre o modal em vez do alert)
   const prepararExclusao = async (proposta: any) => {
     let totalSinistros = 0;
     let totalComissoes = 0;
@@ -108,16 +107,22 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
     }
   };
 
-  // 4. Execução Final (chamada pelo botão "Excluir Tudo" do modal)
   const confirmarExclusaoFinal = async () => {
     const { proposta } = modalExclusao;
     try {
+      // 1. Deleta a proposta
       const { error } = await supabase.from('tab_propostas').delete().eq('id', proposta.id);
       if (error) throw error;
 
+      // 2. SINCRONIZAÇÃO: Avisa o sistema que a proposta sumiu para recalcular o status do cliente
+      if (cliente.id) {
+        await sincronizarStatusCliente(cliente.id);
+      }
+
+      // 3. Fecha o modal e atualiza as telas
       setModalExclusao({ ...modalExclusao, isOpen: false });
-      fetchPropostas();
-      if (onUpdate) onUpdate();
+      await fetchPropostas();
+      if (onUpdate) onUpdate(); // Atualiza o Kanban lá atrás
     } catch (error: any) {
       alert("Erro ao excluir: " + error.message);
     }
@@ -144,22 +149,13 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button 
-                    onClick={() => navigate(`/propostas/editar/${prop.id}`)} 
-                    className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors"
-                  >
+                  <button onClick={() => navigate(`/propostas/editar/${prop.id}`)} className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors">
                     <Pencil size={14} />
                   </button>
-                  <button 
-                    onClick={() => handleGerarPDF(prop)} 
-                    className="p-1.5 text-slate-400 hover:text-green-600 transition-colors"
-                  >
+                  <button onClick={() => handleGerarPDF(prop)} className="p-1.5 text-slate-400 hover:text-green-600 transition-colors">
                     <FileText size={14} />
                   </button>
-                  <button 
-                    onClick={() => prepararExclusao(prop)} 
-                    className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
-                  >
+                  <button onClick={() => prepararExclusao(prop)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -176,18 +172,8 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
                   </div>
                 ) : (
                   <>
-                    <button 
-                      onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: prop })} 
-                      className="flex-1 py-1.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors"
-                    >
-                      Vendido
-                    </button>
-                    <button 
-                      onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: prop })} 
-                      className="flex-1 py-1.5 bg-red-50 text-red-700 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors"
-                    >
-                      Perdido
-                    </button>
+                    <button onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: prop })} className="flex-1 py-1.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors">Vendido</button>
+                    <button onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: prop })} className="flex-1 py-1.5 bg-red-50 text-red-700 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">Perdido</button>
                   </>
                 )}
               </div>
@@ -208,7 +194,6 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
         <span className="text-sm font-bold uppercase">Nova Proposta</span>
       </button>
 
-      {/* Renderização do Modal de Fechamento */}
       {modalStatus.open && (
         <ModalFechamento
           isOpen={modalStatus.open}
@@ -223,11 +208,12 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
         />
       )}
 
-      {/* 5. Renderização do Novo Modal de Exclusão Estética */}
+      {/* CORREÇÃO DO ERRO DE COMPILAÇÃO: Passando o clienteId */}
       <ModalExclusaoSegura 
         isOpen={modalExclusao.isOpen}
         onClose={() => setModalExclusao({ ...modalExclusao, isOpen: false })}
         onConfirm={confirmarExclusaoFinal}
+        clienteId={cliente.id} // RESOLVE O ERRO DE TYPESCRIPT
         dadosCriticos={modalExclusao.dadosCriticos}
       />
     </div>

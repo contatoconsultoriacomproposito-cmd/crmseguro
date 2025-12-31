@@ -1,10 +1,12 @@
 import { AlertTriangle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { sincronizarStatusCliente } from './sincronizarStatusCliente';
 
 interface ModalExclusaoProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void; // Esta função agora deve ser a que deleta no banco
+  clienteId: string; // Adicionado para permitir o sincronismo
   dadosCriticos: {
     sinistros: number;
     comissoes: number;
@@ -12,7 +14,30 @@ interface ModalExclusaoProps {
   };
 }
 
-export const ModalExclusaoSegura = ({ isOpen, onClose, onConfirm, dadosCriticos }: ModalExclusaoProps) => {
+export const ModalExclusaoSegura = ({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  clienteId, 
+  dadosCriticos 
+}: ModalExclusaoProps) => {
+
+  // Criamos uma função interna para garantir que o sincronismo ocorra após a exclusão
+  const handleConfirmAction = async () => {
+    try {
+      // 1. Executa a exclusão (que vem via props do componente pai)
+      await onConfirm();
+      
+      // 2. Dispara o cérebro de sincronização para reavaliar o cliente
+      // Se era a última venda, o cliente voltará para 'novo' ou 'perdido' automaticamente
+      if (clienteId) {
+        await sincronizarStatusCliente(clienteId);
+      }
+    } catch (error) {
+      console.error("Erro ao processar exclusão e sincronismo:", error);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -40,7 +65,7 @@ export const ModalExclusaoSegura = ({ isOpen, onClose, onConfirm, dadosCriticos 
               <div className="space-y-4">
                 <p className="text-sm text-slate-500 font-medium leading-relaxed">
                   {dadosCriticos.isVendido 
-                    ? "Esta proposta está marcada como VENDIDA. A exclusão removerá permanentemente todos os registros vinculados:" 
+                    ? "Esta proposta está marcada como VENDIDA. A exclusão removerá permanentemente todos os registros vinculados e reclassificará o status do cliente:" 
                     : "Tem certeza que deseja excluir esta proposta? Esta ação não pode ser desfeita e removerá todas as opções cadastradas."}
                 </p>
 
@@ -67,7 +92,7 @@ export const ModalExclusaoSegura = ({ isOpen, onClose, onConfirm, dadosCriticos 
                   Cancelar
                 </button>
                 <button 
-                  onClick={onConfirm}
+                  onClick={handleConfirmAction} 
                   className="flex-1 py-4 rounded-2xl text-xs font-black text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-200 transition-all uppercase tracking-widest"
                 >
                   Excluir Tudo
