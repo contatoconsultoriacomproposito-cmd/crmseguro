@@ -1,13 +1,14 @@
-import { Pencil, Trash2, Building2, User } from 'lucide-react';
+import { Pencil, Trash2, Building2, User, FileText } from 'lucide-react'; // Adicionado FileText
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../lib/supabaseClient';
 
 interface HeaderProps {
   cliente: any;
   onUpdate: () => void;
+  onOpenDocs: () => void; // Nova prop para abrir o modal
 }
 
-export const VisualCardHeader = ({ cliente, onUpdate }: HeaderProps) => {
+export const VisualCardHeader = ({ cliente, onUpdate, onOpenDocs }: HeaderProps) => {
   const navigate = useNavigate();
   const isPJ = cliente.tipo_cliente === 'PJ';
 
@@ -93,6 +94,17 @@ export const VisualCardHeader = ({ cliente, onUpdate }: HeaderProps) => {
         <p className="text-[13px] font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
            <span className="text-[10px] text-slate-400 font-black uppercase w-14">E-mail:</span> {cliente.email}
         </p>
+      </div>
+
+      {/* BOTÃO DE DOCUMENTOS - POSIÇÃO SOLICITADA */}
+      <div className="pt-2">
+        <button 
+          onClick={onOpenDocs}
+          className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 rounded-lg hover:bg-blue-600 hover:text-white transition-all border border-slate-200 dark:border-zinc-700 shadow-sm group"
+        >
+          <FileText size={14} className="group-hover:text-white" />
+          <span className="text-[10px] font-black uppercase tracking-widest">Documentos</span>
+        </button>
       </div>
     </div>
   );

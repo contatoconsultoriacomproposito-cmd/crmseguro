@@ -6,10 +6,12 @@ import { TabPropostas } from '../kanban/components_visual_card/TabPropostas';
 import { TabProdutos } from '../kanban/components_visual_card/TabProdutos';
 import { TabSinistros } from '../kanban/components_visual_card/TabSinistros';
 import { TabComissoesCliente } from './components_visual_card/TabComissoesCliente';
+import { ModalDocumentos } from './components_visual_card/ModalDocumentos'; // Certifique-se de que o caminho está correto
 
 export const VisualCard = ({ cliente, status, onUpdate }: any) => {
   const [abaAtiva, setAbaAtiva] = useState(1);
   const [expandido, setExpandido] = useState(false);
+  const [modalDocsAberto, setModalDocsAberto] = useState(false); // Estado para controlar o modal
 
   const borderColors = {
     lead: 'border-[#7D6F00]',
@@ -28,8 +30,12 @@ export const VisualCard = ({ cliente, status, onUpdate }: any) => {
   return (
     <div className={`bg-white dark:bg-zinc-900 rounded-[24px] border-2 ${borderColors[status as keyof typeof borderColors] || 'border-slate-200'} p-4 mb-4 shadow-sm transition-all`}>
       
-      {/* HEADER COMPONENTIZADO */}
-      <VisualCardHeader cliente={cliente} onUpdate={onUpdate} />
+      {/* HEADER COMPONENTIZADO COM FUNÇÃO DE DOCUMENTOS */}
+      <VisualCardHeader 
+        cliente={cliente} 
+        onUpdate={onUpdate} 
+        onOpenDocs={() => setModalDocsAberto(true)} 
+      />
 
       {/* CONTROLE DE EXPANSÃO */}
       <div className="pt-2 mt-4 border-t border-slate-100 dark:border-zinc-800">
@@ -67,14 +73,11 @@ export const VisualCard = ({ cliente, status, onUpdate }: any) => {
             {abaAtiva === 5 && <TabComissoesCliente clienteId={cliente.id} />}
           </div>
 
-         
-
           {/* RODAPÉ DO EXPANDIDO */}
           <div className="flex justify-between items-center px-1 mt-3">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-black text-slate-400 uppercase">Corretor(a):</span>
               <span className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 uppercase italic">
-                {/* Agora ele tentará ler 'corretor' primeiro */}
                 {cliente.corretor?.nome || cliente.usuarios_perfis?.nome || 'Não atribuído'}
               </span> 
             </div>
@@ -83,6 +86,14 @@ export const VisualCard = ({ cliente, status, onUpdate }: any) => {
             </span>
           </div>
         </div>
+      )}
+
+      {/* MODAL DE DOCUMENTOS - Renderizado fora do fluxo para evitar conflitos de z-index */}
+      {modalDocsAberto && (
+        <ModalDocumentos 
+          cliente={cliente} 
+          onClose={() => setModalDocsAberto(false)} 
+        />
       )}
     </div>
   );
