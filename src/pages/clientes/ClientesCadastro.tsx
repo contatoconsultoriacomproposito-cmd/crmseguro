@@ -41,7 +41,7 @@ export default function ClientesCadastro() {
     natureza_juridica: "", opcao_pelo_mei: false, opcao_pelo_simples: false,
     ddd_telefone_1: "", descricao_identificador_matriz_filial: "",
     cep: "", uf: "", municipio: "", bairro: "", logradouro: "", numero: "", complemento: "",
-    nome: "", cpf: "", rg: "", data_nascimento: "", 
+    nome: "", cpf: "", rg: "", data_nascimento: "", sexo:"",
     cep_pf: "", uf_pf: "", municipio_pf: "", bairro_pf: "", logradouro_pf: "", numero_pf: "", complemento_pf: "",
     email: "", telefone_whats: "", telefone_adicional: "", 
     origem_cliente: "Google", fase_kanban: "lead", status_kanban: "novo", corretor_id: ""
@@ -265,6 +265,7 @@ useEffect(() => {
         cpf: form.cpf,
         rg: form.rg,
         data_nascimento: form.data_nascimento === "" ? null : form.data_nascimento,
+        sexo: form.sexo,
         cep: form.cep,
         uf: toUpper(form.uf),
         municipio: toUpper(form.municipio),
@@ -370,23 +371,60 @@ useEffect(() => {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                <div className="md:col-span-2"><Input label="Nome Completo" name="nome" value={form.nome} onChange={handleChange} /></div>
-                <div className="md:col-span-1">
-                    <Input label="CPF" 
-                    name="cpf" 
-                    value={form.cpf} 
-                    onChange={(e: any) => {
-                        if(cpfInvalido) setCpfInvalido(false);
-                        handleChange(e);
-                        }}
-                        className={cpfInvalido ? "border-red-500 ring-2 ring-red-500/20" : ""}
-                    />
-                    </div>
-                <div className="md:col-span-1"><Input label="RG" name="rg" value={form.rg} onChange={handleChange} /></div>
-                <div className="md:col-span-1"><Input label="Data de Nascimento" name="data_nascimento" type="date" value={form.data_nascimento} onChange={handleChange} icon={<Calendar size={14}/>} /></div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+              {/* PRIMEIRA LINHA: Nome (2/4), CPF (1/4), RG (1/4) */}
+              <div className="md:col-span-2">
+                <Input label="Nome Completo" name="nome" value={form.nome} onChange={handleChange} />
               </div>
-            )}
+              
+              <div className="md:col-span-1">
+                <Input 
+                  label="CPF" 
+                  name="cpf" 
+                  value={form.cpf} 
+                  onChange={(e: any) => {
+                    if(cpfInvalido) setCpfInvalido(false);
+                    handleChange(e);
+                  }}
+                  className={cpfInvalido ? "border-red-500 ring-2 ring-red-500/20" : ""}
+                />
+              </div>
+
+              <div className="md:col-span-1">
+                <Input label="RG" name="rg" value={form.rg} onChange={handleChange} />
+              </div>
+
+              {/* SEGUNDA LINHA: Data de Nascimento (1/4), Sexo (1/4) */}
+              <div className="md:col-span-1">
+                <Input 
+                  label="Data de Nascimento" 
+                  name="data_nascimento" 
+                  type="date" 
+                  value={form.data_nascimento} 
+                  onChange={handleChange} 
+                  icon={<Calendar size={14}/>} 
+                />
+              </div>
+
+              <div className="md:col-span-1">
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1.5 ml-1">Sexo *</label>
+                <select 
+                  name="sexo"
+                  value={form.sexo}
+                  onChange={handleChange}
+                  required
+                  className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                >
+                  <option value="">Selecione...</option>
+                  <option value="Masculino">Masculino</option>
+                  <option value="Feminino">Feminino</option>
+                  <option value="Prefere não responder">Prefere não responder</option>
+                </select>
+              </div>
+              
+              {/* As outras 2 colunas da segunda linha ficam vazias por padrão */}
+            </div>
+          )}
           </Section>
 
           <Section icon={<MapPin className="text-orange-500" />} title={tipoCliente === "PJ" ? "Endereço da Empresa" : "Endereço Residencial"}>
@@ -404,32 +442,115 @@ useEffect(() => {
           {tipoCliente === "PJ" && (
             <Section icon={<User className="text-indigo-500" />} title="Dados do contato principal da empresa">
               <div className="space-y-6">
+                {/* LINHA 1 E 2: DADOS PESSOAIS */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                  <div className="md:col-span-2"><Input label="Nome Completo" name="nome" value={form.nome} onChange={handleChange} /></div>
-                  <div className="md:col-span-1">
-                    <Input label="CPF" name="cpf" value={form.cpf} onChange={handleChange} className={cpfInvalido ? "border-red-500" : ""} />
+                  {/* Primeira Linha */}
+                  <div className="md:col-span-2">
+                    <Input label="Nome Completo" name="nome" value={form.nome} onChange={handleChange} />
                   </div>
-                  <div className="md:col-span-1"><Input label="RG" name="rg" value={form.rg} onChange={handleChange} /></div>
-                  <div className="md:col-span-1"><Input label="Data de Nascimento" name="data_nascimento" type="date" value={form.data_nascimento} onChange={handleChange} icon={<Calendar size={14}/>} /></div>
+                  <div className="md:col-span-1">
+                    <Input 
+                      label="CPF" 
+                      name="cpf" 
+                      value={form.cpf} 
+                      onChange={(e: any) => {
+                        if(cpfInvalido) setCpfInvalido(false);
+                        handleChange(e);
+                      }} 
+                      className={cpfInvalido ? "border-red-500" : ""} 
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Input label="RG" name="rg" value={form.rg} onChange={handleChange} />
+                  </div>
+
+                  {/* Segunda Linha */}
+                  <div className="md:col-span-1">
+                    <Input 
+                      label="Data de Nascimento" 
+                      name="data_nascimento" 
+                      type="date" 
+                      value={form.data_nascimento} 
+                      onChange={handleChange} 
+                      icon={<Calendar size={14}/>} 
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-1.5 ml-1">Sexo *</label>
+                    <select 
+                      name="sexo"
+                      value={form.sexo}
+                      onChange={handleChange}
+                      required
+                      className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="Masculino">Masculino</option>
+                      <option value="Feminino">Feminino</option>
+                      <option value="Prefere não responder">Prefere não responder</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800">
-                   <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2"><MapPin size={16} className="text-slate-400" /><h3 className="text-sm font-bold text-slate-700 dark:text-zinc-300">Endereço do Responsável</h3></div>
-                      <label className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors">
-                        <input type="checkbox" checked={mesmoEndereco} onChange={(e) => setMesmoEndereco(e.target.checked)} className="rounded text-blue-600" />
-                        <span className="text-xs font-bold">Mesmo endereço da empresa</span>
-                      </label>
-                   </div>
-                   {!mesmoEndereco && (
-                      <div className="grid grid-cols-1 md:grid-cols-6 gap-5 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="md:col-span-2"><ActionInput label="CEP Pessoal" name="cep_pf" value={form.cep_pf} onChange={handleChange} onAction={() => handleBuscarCEP("PF")} loading={loadingCEPPF} /></div>
-                        <div className="md:col-span-3"><Input label="Logradouro" name="logradouro_pf" value={form.logradouro_pf} onChange={handleChange} /></div>
-                        <div className="md:col-span-1"><Input label="Número" name="numero_pf" value={form.numero_pf} onChange={handleChange} /></div>
-                        <div className="md:col-span-2"><Input label="Bairro" name="bairro_pf" value={form.bairro_pf} onChange={handleChange} /></div>
-                        <div className="md:col-span-3"><Input label="Cidade" name="municipio_pf" value={form.municipio_pf} onChange={handleChange} /></div>
-                        <div className="md:col-span-1"><Input label="UF" name="uf_pf" value={form.uf_pf} onChange={handleChange} /></div>
+
+                {/* DIVISOR E LOGICA DE ENDEREÇO */}
+                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Endereço do Sócio/Contato</h3>
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={mesmoEndereco} 
+                        onChange={(e) => setMesmoEndereco(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-xs font-bold text-slate-500 group-hover:text-blue-600 transition-colors">
+                        Mesmo endereço da empresa
+                      </span>
+                    </label>
+                  </div>
+
+                  {!mesmoEndereco && (
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="md:col-span-2">
+                        <ActionInput 
+                          label="CEP Pessoal" 
+                          name="cep_pf" 
+                          value={form.cep_pf} 
+                          onChange={handleChange} 
+                          onAction={() => handleBuscarCEP("PF")} 
+                          loading={loadingCEPPF} 
+                          placeholder="00000-000" 
+                        />
                       </div>
-                   )}
+                      <div className="md:col-span-3">
+                        <Input label="Logradouro" name="logradouro_pf" value={form.logradouro_pf} onChange={handleChange} />
+                      </div>
+                      <div className="md:col-span-1">
+                        <Input label="Número" name="numero_pf" value={form.numero_pf} onChange={handleChange} />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Input label="Bairro" name="bairro_pf" value={form.bairro_pf} onChange={handleChange} />
+                      </div>
+                      <div className="md:col-span-3">
+                        <Input label="Cidade" name="municipio_pf" value={form.municipio_pf} onChange={handleChange} />
+                      </div>
+                      <div className="md:col-span-1">
+                        <Input label="UF" name="uf_pf" value={form.uf_pf} onChange={handleChange} />
+                      </div>
+                      <div className="md:col-span-6">
+                        <Input label="Complemento" name="complemento_pf" value={form.complemento_pf} onChange={handleChange} />
+                      </div>
+                    </div>
+                  )}
+
+                  {mesmoEndereco && (
+                    <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 rounded-xl">
+                      <p className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                        <MapPin size={14} />
+                        O sistema utilizará o endereço empresarial cadastrado acima para este contato.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </Section>

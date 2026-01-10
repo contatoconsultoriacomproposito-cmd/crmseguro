@@ -15,7 +15,13 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
   const [loading, setLoading] = useState(false);
   const [propostaSelecionada, setPropostaSelecionada] = useState<any>(null);
   const [itensProposta, setItensProposta] = useState<any[]>([]);
-  const [form, setForm] = useState({ motivoPerda: "", observacoes: "" });
+  
+  // ESTADO DO FORMULÁRIO: Adicionada dataVenda iniciando com a data atual (formato YYYY-MM-DD)
+  const [form, setForm] = useState({ 
+    motivoPerda: "", 
+    observacoes: "",
+    dataVenda: new Date().toLocaleDateString('en-CA') 
+  });
   
   const [dadosItens, setDadosItens] = useState<{ 
     [key: string]: { apolice: string, inicioVigencia: string, fimVigencia: string } 
@@ -35,13 +41,13 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
     if (!user) {
       supabase.auth.getUser().then(({ data }) => setUser(data.user));
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (isOpen && listaPropostas.length > 0) {
       setPropostaSelecionada(listaPropostas[0]);
     }
-  }, [isOpen, proposta]);
+  }, [isOpen, proposta, listaPropostas]);
 
   useEffect(() => {
     async function carregarItens() {
@@ -83,6 +89,9 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
 
   const formValido = () => {
     if (type === 'PERDIDO') return form.motivoPerda !== "";
+    
+    // Validação para venda: exige data da venda e vigências preenchidas
+    if (!form.dataVenda) return false;
     if (itensProposta.length === 0) return false;
     
     return itensProposta.every(item => 
@@ -96,13 +105,14 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
       setLoading(true);
       const isVendido = type === 'VENDIDO';
 
-      // 1. Atualizar o Status da Proposta Atual
+      // 1. Atualizar o Status da Proposta e a Data da Venda
       const { error: errorProposta } = await supabase
         .from('tab_propostas')
         .update({
           status: isVendido ? 'Vendido' : 'Perdido',
           motivo_perda: !isVendido ? form.motivoPerda : null,
           observacoes_fechamento: form.observacoes,
+          data_venda: isVendido ? form.dataVenda : null, // NOVA COLUNA SENDO ALIMENTADA
           updated_at: new Date().toISOString()
         })
         .eq('id', propostaSelecionada.id);
@@ -132,14 +142,13 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         corretora_id: propostaSelecionada.corretora_id,
         tipo_acao: isVendido ? 'VENDA REALIZADA' : 'PROPOSTA PERDIDA',
         relato: isVendido 
-          ? `Venda finalizada. Vigências registradas.` 
+          ? `Venda finalizada. Data da Venda: ${new Date(form.dataVenda).toLocaleDateString('pt-BR')}. Vigências registradas.` 
           : `Perda: ${form.motivoPerda}. Obs: ${form.observacoes}`,
         data_historico: new Date().toLocaleDateString('en-CA'),
         horario_historico: new Date().toLocaleTimeString('pt-BR', { hour12: false })
       });
 
-      // 4. CHAMADA DA LÓGICA DE SINCRONIZAÇÃO (O "Cérebro")
-      // Esta função cuidará das suas 4 regras de hierarquia e fases automaticamente
+      // 4. Sincronização automática do Status/Fase do Cliente
       if (propostaSelecionada.cliente_id) {
         await sincronizarStatusCliente(propostaSelecionada.cliente_id);
       }
@@ -175,6 +184,23 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         </div>
 
         <div className="space-y-6">
+          {/* CAMPO DATA DA VENDA - Exclusivo para Fechamento Positivo */}
+          {type === 'VENDIDO' && (
+            <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100">
+              <label className="block text-[10px] font-black uppercase text-blue-600 mb-2">Data da Venda *</label>
+              <div className="relative">
+                <Calendar size={16} className="absolute left-4 top-3 text-blue-500" />
+                <input 
+                  type="date"
+                  onKeyDown={handleKeyDown}
+                  className="w-full h-11 pl-12 pr-4 rounded-xl border border-blue-200 outline-none font-bold text-slate-700"
+                  value={form.dataVenda}
+                  onChange={(e) => setForm({...form, dataVenda: e.target.value})}
+                />
+              </div>
+            </div>
+          )}
+
           {type === 'VENDIDO' && itensProposta.map((item) => (
             <div key={item.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
               <div className="flex justify-between items-center border-b border-slate-200 pb-2">
