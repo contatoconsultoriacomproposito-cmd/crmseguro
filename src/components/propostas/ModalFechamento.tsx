@@ -268,9 +268,10 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
                 onChange={(e) => setForm({...form, motivoPerda: e.target.value})}
               >
                 <option value="">Selecione...</option>
-                <option value="Preço">Preço</option>
-                <option value="Concorrência">Concorrência</option>
-                <option value="Desistência">Desistência</option>
+                <option value="Preço">Achou caro</option>
+                <option value="Concorrência">Fechou com a concorrência</option>
+                <option value="Desistência">Desisitiu do seguro</option>
+                <option value="Outros">Outros motivos</option>
               </select>
             </div>
           )}

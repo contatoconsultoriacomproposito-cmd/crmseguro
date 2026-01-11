@@ -571,6 +571,7 @@ useEffect(() => {
                   <option value="Linkedin">Linkedin</option>
                   <option value="Prospecção Ativa">Prospecção Ativa</option>
                   <option value="Parceiro de Negócio">Parceiro de Negócio</option>
+                  <option value="Reciprocidade">Reciprocidade</option>
                   <option value="Cliente Procurou">Cliente Procurou</option>
                   <option value="Outros On-line">Outros On-line</option>
                   <option value="Outros Off-line">Outros Off-line</option>
