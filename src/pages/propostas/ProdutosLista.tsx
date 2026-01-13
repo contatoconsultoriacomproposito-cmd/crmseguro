@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { 
-  Search, Edit3, Loader2, Calendar, Hash, ShieldCheck, ArrowRight 
+  Search, Edit3, Loader2, Calendar, Hash, ShieldCheck, ArrowRight, Users, Handshake, ShoppingCart 
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatarDataBR } from "../../utils/dateUtils";
@@ -9,8 +9,9 @@ import { formatarDataBR } from "../../utils/dateUtils";
 interface ItemRenovacaoFormatado {
   id_item: string;
   valor: number;
-  data_inicio_vigencia: string; // Novo
-  data_fim_vigencia: string;    // Novo (Substitui data_renovacao)
+  data_inicio_vigencia: string;
+  data_fim_vigencia: string;
+  data_venda: string; // Adicionado
   produto: string;
   seguradora: string;
   proposta_id: string;
@@ -20,6 +21,8 @@ interface ItemRenovacaoFormatado {
   status: string;
   cliente: string;
   corretor: string;
+  corretor_id: string;
+  parceiro_id: string | null;
 }
 
 export default function ProdutosLista() {
@@ -27,11 +30,54 @@ export default function ProdutosLista() {
   const [itens, setItens] = useState<ItemRenovacaoFormatado[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
+  const [userProfile, setUserProfile] = useState<any>(null);
+  
+  // Estados para Filtros Avançados
+  const [corretores, setCorretores] = useState<any[]>([]);
+  const [parceiros, setParceiros] = useState<any[]>([]);
+  const [selectedCorretores, setSelectedCorretores] = useState<string[]>([]);
+  const [selectedParceiros, setSelectedParceiros] = useState<string[]>([]);
+  
+  // Filtros de Data (Vigência e Venda)
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
+  const [dataVendaInicio, setDataVendaInicio] = useState(""); // Novo
+  const [dataVendaFim, setDataVendaFim] = useState("");       // Novo
+  
   const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
+    async function getInitialData() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: perfil } = await supabase
+          .from('usuarios_perfis')
+          .select('id, corretora_id, tipo_usuario')
+          .eq('id', user.id)
+          .single();
+        setUserProfile(perfil);
+
+        if (perfil) {
+          const { data: corr } = await supabase
+            .from('usuarios_perfis')
+            .select('id, nome')
+            .eq('corretora_id', perfil.corretora_id)
+            .eq('tipo_usuario', 'CORRETOR');
+          setCorretores(corr || []);
+
+          const { data: parc } = await supabase
+            .from('tab_parceiros')
+            .select('id, nome_parceiro')
+            .eq('corretora_id', perfil.corretora_id);
+          setParceiros(parc || []);
+          
+          if (perfil.tipo_usuario === 'CORRETOR') {
+            setSelectedCorretores([perfil.id]);
+          }
+        }
+      }
+    }
+    getInitialData();
     fetchItensRenovacao();
   }, []);
 
@@ -67,6 +113,8 @@ export default function ProdutosLista() {
               status,
               corretor_id,
               corretora_id,
+              parceiro_id,
+              data_venda,
               tab_clientes (nome, razao_social, tipo_cliente),
               usuarios_perfis!tab_propostas_corretor_id_fkey(nome)
             )
@@ -79,7 +127,6 @@ export default function ProdutosLista() {
         query = query.eq("tab_proposta_opcoes.tab_propostas.corretor_id", perfil.id);
       }
 
-      // Ordenamos agora pela data de fim da vigência (próxima renovação)
       const { data, error } = await query.order("data_fim_vigencia", { ascending: true });
       if (error) throw error;
 
@@ -97,6 +144,7 @@ export default function ProdutosLista() {
           valor: item.valor_premio,
           data_inicio_vigencia: item.data_inicio_vigencia,
           data_fim_vigencia: item.data_fim_vigencia,
+          data_venda: propostaObj?.data_venda || "",
           numero_cotacao: item.numero_cotacao || "",
           numero_apolice: item.numero_apolice || "",
           produto: produtoObj?.nome || "Não definido", 
@@ -107,7 +155,9 @@ export default function ProdutosLista() {
           cliente: propostaObj?.tab_clientes?.tipo_cliente === 'PJ' 
             ? propostaObj?.tab_clientes?.razao_social 
             : propostaObj?.tab_clientes?.nome,
-          corretor: propostaObj?.usuarios_perfis?.nome
+          corretor: propostaObj?.usuarios_perfis?.nome,
+          corretor_id: propostaObj?.corretor_id,
+          parceiro_id: propostaObj?.parceiro_id
         };
       });
 
@@ -148,45 +198,151 @@ export default function ProdutosLista() {
         (i.produto?.toLowerCase() || "").includes(filter.toLowerCase()) ||
         (i.numero_apolice?.toLowerCase() || "").includes(filter.toLowerCase());
 
-      // Filtro de data agora baseado no fim da vigência
-      const dataItem = i.data_fim_vigencia ? new Date(i.data_fim_vigencia + 'T12:00:00') : null;
-      const matchData = (!dataInicio || (dataItem && dataItem >= new Date(dataInicio + 'T00:00:00'))) &&
-                        (!dataFim || (dataItem && dataItem <= new Date(dataFim + 'T23:59:59')));
+      const matchCorretor = selectedCorretores.length === 0 || selectedCorretores.includes(i.corretor_id);
 
-      return matchTexto && matchData;
+      const matchParceiro = selectedParceiros.length === 0 || 
+        (selectedParceiros.includes("venda_direta") && !i.parceiro_id) || 
+        (i.parceiro_id && selectedParceiros.includes(i.parceiro_id));
+
+      // Filtro Renovação
+      const matchDataRenovacao = (!dataInicio || i.data_fim_vigencia >= dataInicio) &&
+                                 (!dataFim || i.data_fim_vigencia <= dataFim);
+
+      // Filtro Data da Venda
+      const matchDataVenda = (!dataVendaInicio || i.data_venda >= dataVendaInicio) &&
+                             (!dataVendaFim || i.data_venda <= dataVendaFim);
+
+      return matchTexto && matchCorretor && matchParceiro && matchDataRenovacao && matchDataVenda;
     });
-  }, [filter, dataInicio, dataFim, itens]);
+  }, [filter, dataInicio, dataFim, dataVendaInicio, dataVendaFim, selectedCorretores, selectedParceiros, itens]);
 
   return (
     <div className="p-8 bg-[#F8FAFC] min-h-screen">
       <div className="max-w-[1600px] mx-auto">
-        <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-2xl font-black italic uppercase text-slate-800 tracking-tighter">
-              Produtos & Vigências
-            </h1>
-            <p className="text-slate-400 text-[10px] font-bold uppercase italic tracking-widest">
-              Controle de Apólices e Renovação Automática
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-            <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 gap-2 shadow-sm">
-              <Calendar size={16} className="text-blue-500" />
-              <input type="date" className="text-xs font-bold outline-none bg-transparent text-slate-600" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
-              <span className="text-slate-300 text-xs font-bold px-1">até</span>
-              <input type="date" className="text-xs font-bold outline-none bg-transparent text-slate-600" value={dataFim} onChange={e => setDataFim(e.target.value)} />
+        <header className="mb-8">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+            <div>
+              <h1 className="text-2xl font-black italic uppercase text-slate-800 tracking-tighter">
+                Produtos & Vigências
+              </h1>
+              <p className="text-slate-400 text-[10px] font-bold uppercase italic tracking-widest">
+                Controle de Apólices e Renovação Automática
+              </p>
             </div>
 
-            <div className="relative flex-1 lg:flex-none">
+            <div className="relative w-full lg:w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 
                 type="text" 
                 placeholder="Buscar cliente, produto ou apólice..."
-                className="h-11 pl-10 pr-4 bg-white border border-slate-200 rounded-xl outline-none text-sm shadow-sm w-full lg:w-80"
+                className="w-full h-11 pl-10 pr-4 bg-white border border-slate-200 rounded-xl outline-none text-sm shadow-sm"
                 onChange={(e) => setFilter(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* BARRA DE FILTROS AVANÇADOS */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+              
+              <div className="flex flex-col gap-1 lg:col-span-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
+                  <Users size={12}/> Corretores
+                </label>
+                <select 
+                  multiple
+                  className="w-full h-20 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
+                  value={selectedCorretores}
+                  onChange={(e) => setSelectedCorretores(Array.from(e.target.selectedOptions, opt => opt.value))}
+                  disabled={userProfile?.tipo_usuario === 'CORRETOR'}
+                >
+                  {corretores.map(c => <option key={c.id} value={c.id}>{c.nome.toUpperCase()}</option>)}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1 lg:col-span-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
+                  <Handshake size={12}/> Parceiros
+                </label>
+                <select 
+                  multiple
+                  className="w-full h-20 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
+                  value={selectedParceiros}
+                  onChange={(e) => setSelectedParceiros(Array.from(e.target.selectedOptions, opt => opt.value))}
+                >
+                  <option value="venda_direta">VENDA DIRETA (SEM PARCEIRO)</option>
+                  {parceiros.map(p => <option key={p.id} value={p.id}>{p.nome_parceiro.toUpperCase()}</option>)}
+                </select>
+              </div>
+
+              {/* Filtros de Renovação */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
+                  <Calendar size={12}/> Renovação (De)
+                </label>
+                <input 
+                  type="date"
+                  className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                  value={dataInicio}
+                  onChange={(e) => setDataInicio(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
+                  <Calendar size={12}/> Renovação (Até)
+                </label>
+                <input 
+                  type="date"
+                  className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                  value={dataFim}
+                  onChange={(e) => setDataFim(e.target.value)}
+                />
+              </div>
+
+              {/* Filtros de Data da Venda (Novos) */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1">
+                  <ShoppingCart size={12}/> Venda (De)
+                </label>
+                <input 
+                  type="date"
+                  className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                  value={dataVendaInicio}
+                  onChange={(e) => setDataVendaInicio(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1">
+                  <ShoppingCart size={12}/> Venda (Até)
+                </label>
+                <input 
+                  type="date"
+                  className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                  value={dataVendaFim}
+                  onChange={(e) => setDataVendaFim(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {(selectedCorretores.length > 0 || selectedParceiros.length > 0 || dataInicio || dataFim || dataVendaInicio || dataVendaFim) && (
+              <div className="flex justify-end border-t border-slate-50 pt-3">
+                <button 
+                  onClick={() => {
+                      if(userProfile?.tipo_usuario !== 'CORRETOR') setSelectedCorretores([]);
+                      setSelectedParceiros([]);
+                      setDataInicio("");
+                      setDataFim("");
+                      setDataVendaInicio("");
+                      setDataVendaFim("");
+                  }}
+                  className="text-[10px] font-black text-red-500 uppercase hover:underline"
+                >
+                  × Limpar Todos os Filtros
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -199,15 +355,16 @@ export default function ProdutosLista() {
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Produto</th>
                 <th className="p-5 text-[10px] font-black uppercase text-blue-600 border-b border-slate-100">Nº Cotação</th>
                 <th className="p-5 text-[10px] font-black uppercase text-emerald-600 border-b border-slate-100">Nº Apólice</th>
+                <th className="p-5 text-[10px] font-black uppercase text-emerald-500 border-b border-slate-100">Data Venda</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Período de Vigência</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 text-center">Ações</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" /></td></tr>
+                <tr><td colSpan={8} className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" /></td></tr>
               ) : itensFiltrados.length === 0 ? (
-                <tr><td colSpan={7} className="p-10 text-center text-slate-400 font-bold uppercase text-xs">Nenhum item encontrado</td></tr>
+                <tr><td colSpan={8} className="p-10 text-center text-slate-400 font-bold uppercase text-xs">Nenhum item encontrado</td></tr>
               ) : itensFiltrados.map((item) => (
                 <tr key={item.id_item} className="group hover:bg-slate-50/50 transition-all">
                   <td className="p-5 border-b border-slate-50 font-black text-blue-600 italic text-sm">{item.numero_proposta}</td>
@@ -247,6 +404,16 @@ export default function ProdutosLista() {
                         className={`w-full bg-slate-100/50 border-transparent border focus:border-emerald-500 focus:bg-white rounded-lg py-1.5 pl-7 pr-2 text-xs font-bold text-slate-600 outline-none
                           ${savingId === `${item.id_item}-numero_apolice` ? 'border-emerald-500 ring-2 ring-emerald-500/10' : ''}`}
                       />
+                    </div>
+                  </td>
+
+                  {/* Nova coluna Data Venda */}
+                  <td className="p-5 border-b border-slate-50">
+                    <div className="flex flex-col">
+                      <span className="text-[13px] font-bold text-slate-600">
+                        {item.data_venda ? formatarDataBR(item.data_venda) : '---'}
+                      </span>
+                      <span className="text-[9px] font-black text-emerald-500 uppercase">Confirmada</span>
                     </div>
                   </td>
 

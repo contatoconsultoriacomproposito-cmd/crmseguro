@@ -2,14 +2,13 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { 
   Search, FileText, Edit3, Trash2, 
-  CheckCircle, XCircle, Loader2 
+  CheckCircle, XCircle, Loader2, Calendar, Users, Handshake
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { gerarPDFProposta } from "../../utils/gerarPDF";
 import { ModalFechamento } from '../../components/propostas/ModalFechamento';
 import { formatarDataBR } from "../../utils/dateUtils";
 import { ModalExclusaoSegura } from "./ModalExclusaoSegura";
-// 1. Importar o sincronizador
 import { sincronizarStatusCliente } from "./sincronizarStatusCliente";
 
 export default function PropostasLista() {
@@ -18,7 +17,19 @@ export default function PropostasLista() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [corretores, setCorretores] = useState<any[]>([]);
+  const [parceiros, setParceiros] = useState<any[]>([]);
   
+  // Estados de Filtro
+  const [selectedCorretores, setSelectedCorretores] = useState<string[]>([]);
+  const [selectedParceiros, setSelectedParceiros] = useState<string[]>([]);
+  
+  // Intervalos de Data
+  const [vencimentoInicio, setVencimentoInicio] = useState("");
+  const [vencimentoFim, setVencimentoFim] = useState("");
+  const [vendaInicio, setVendaInicio] = useState("");
+  const [vendaFim, setVendaFim] = useState("");
+
   const [modalStatus, setModalStatus] = useState<{ open: boolean, type: 'VENDIDO' | 'PERDIDO', proposta: any }>({
     open: false,
     type: 'VENDIDO',
@@ -41,6 +52,25 @@ export default function PropostasLista() {
           .eq('id', user.id)
           .single();
         setUserProfile(perfil);
+
+        if (perfil) {
+          const { data: corr } = await supabase
+            .from('usuarios_perfis')
+            .select('id, nome')
+            .eq('corretora_id', perfil.corretora_id)
+            .eq('tipo_usuario', 'CORRETOR');
+          setCorretores(corr || []);
+
+          const { data: parc } = await supabase
+            .from('tab_parceiros')
+            .select('id, nome_parceiro')
+            .eq('corretora_id', perfil.corretora_id);
+          setParceiros(parc || []);
+          
+          if (perfil.tipo_usuario === 'CORRETOR') {
+            setSelectedCorretores([perfil.id]);
+          }
+        }
       }
     }
     getInitialData();
@@ -81,15 +111,35 @@ export default function PropostasLista() {
   }
 
   const propostasFiltradas = useMemo(() => {
-    if (!propostas) return []; 
+    if (!propostas) return [];
     const term = filter.toLowerCase().trim();
+
     return propostas.filter(p => {
-      const numero = (p.numero_proposta || "").toLowerCase();
-      const nomeCliente = (p.tab_clientes?.nome || "").toLowerCase();
-      const razaoSocial = (p.tab_clientes?.razao_social || "").toLowerCase();
-      return numero.includes(term) || nomeCliente.includes(term) || razaoSocial.includes(term);
+      // 1. Termo de Busca
+      const matchTerm = !term || 
+        (p.numero_proposta || "").toLowerCase().includes(term) ||
+        (p.tab_clientes?.nome || "").toLowerCase().includes(term) ||
+        (p.tab_clientes?.razao_social || "").toLowerCase().includes(term);
+
+      // 2. Corretor
+      const matchCorretor = selectedCorretores.length === 0 || selectedCorretores.includes(p.corretor_id);
+
+      // 3. Parceiro (Lógica de Venda Direta vs Parceiro ID)
+      const matchParceiro = selectedParceiros.length === 0 || 
+        (selectedParceiros.includes("venda_direta") && !p.parceiro_id) || 
+        (p.parceiro_id && selectedParceiros.includes(p.parceiro_id));
+
+      // 4. Intervalo de Vencimento (Comparação de string YYYY-MM-DD é segura para tipo 'date')
+      const matchVencimento = (!vencimentoInicio || p.data_validade >= vencimentoInicio) &&
+                              (!vencimentoFim || p.data_validade <= vencimentoFim);
+
+      // 5. Intervalo de Venda
+      const matchVenda = (!vendaInicio || (p.data_venda && p.data_venda >= vendaInicio)) &&
+                         (!vendaFim || (p.data_venda && p.data_venda <= vendaFim));
+
+      return matchTerm && matchCorretor && matchParceiro && matchVencimento && matchVenda;
     });
-  }, [filter, propostas]);
+  }, [filter, propostas, selectedCorretores, selectedParceiros, vencimentoInicio, vencimentoFim, vendaInicio, vendaFim]);
 
   const handleRegerarPDF = async (proposta: any) => {
     try {
@@ -142,7 +192,6 @@ export default function PropostasLista() {
 
   const executarExclusaoSegura = async (proposta: any) => {
     if (!userProfile?.corretora_id) return;
-    
     let totalSinistros = 0;
     let totalComissoes = 0;
     const isVendido = proposta.status?.toLowerCase() === 'vendido';
@@ -155,7 +204,6 @@ export default function PropostasLista() {
           .eq('tab_proposta_opcoes.proposta_id', proposta.id);
 
         const idsDosItens = itens?.map(i => i.id) || [];
-
         if (idsDosItens.length > 0) {
           const [resSinistros, resComissoes] = await Promise.all([
             supabase.from('tab_sinistros').select('id', { count: 'exact' }).in('item_id', idsDosItens),
@@ -171,7 +219,6 @@ export default function PropostasLista() {
         proposta,
         dadosCriticos: { sinistros: totalSinistros, comissoes: totalComissoes, isVendido }
       });
-
     } catch (error) {
       console.error("Erro na investigação:", error);
     }
@@ -180,9 +227,7 @@ export default function PropostasLista() {
   const handleConfirmarExclusao = async () => {
     const { proposta } = modalExclusao;
     if (!proposta) return;
-
     try {
-      // 1. Executa a exclusão
       let query = supabase
         .from('tab_propostas')
         .delete()
@@ -196,7 +241,6 @@ export default function PropostasLista() {
       const { error } = await query;
       if (error) throw error;
 
-      // 2. SINCRONIZAÇÃO: Crucial para o Kanban refletir a realidade
       if (proposta.cliente_id) {
         await sincronizarStatusCliente(proposta.cliente_id);
       }
@@ -211,18 +255,118 @@ export default function PropostasLista() {
   return (
     <div className="p-8 bg-[#F8FAFC] min-h-screen">
       <div className="max-w-[1400px] mx-auto">
-        <header className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-black italic uppercase text-slate-800 tracking-tighter">
-            Gestão de Propostas
-          </h1>
-          <div className="relative w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Buscar cliente ou proposta..."
-              className="w-full h-11 pl-10 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20"
-              onChange={(e) => setFilter(e.target.value)}
-            />
+        <header className="mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-black italic uppercase text-slate-800 tracking-tighter">
+              Gestão de Propostas
+            </h1>
+            <div className="relative w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Buscar cliente ou proposta..."
+                className="w-full h-11 pl-10 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                onChange={(e) => setFilter(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              
+              {/* Filtro Corretor */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                  <Users size={12}/> Corretores
+                </label>
+                <select 
+                  multiple
+                  className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                  value={selectedCorretores}
+                  onChange={(e) => setSelectedCorretores(Array.from(e.target.selectedOptions, opt => opt.value))}
+                  disabled={userProfile?.tipo_usuario === 'CORRETOR'}
+                >
+                  {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
+
+              {/* Filtro Parceiro */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                  <Handshake size={12}/> Parceiros
+                </label>
+                <select 
+                  multiple
+                  className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                  value={selectedParceiros}
+                  onChange={(e) => setSelectedParceiros(Array.from(e.target.selectedOptions, opt => opt.value))}
+                >
+                  <option value="venda_direta">VENDA DIRETA (SEM PARCEIRO)</option>
+                  {parceiros.map(p => <option key={p.id} value={p.id}>{p.nome_parceiro.toUpperCase()}</option>)}
+                </select>
+              </div>
+
+              {/* Filtro Vencimento Intervalo */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                  <Calendar size={12}/> Período de Vencimento
+                </label>
+                <div className="flex flex-col gap-2">
+                  <input 
+                    type="date"
+                    className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                    value={vencimentoInicio}
+                    onChange={(e) => setVencimentoInicio(e.target.value)}
+                  />
+                  <input 
+                    type="date"
+                    className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                    value={vencimentoFim}
+                    onChange={(e) => setVencimentoFim(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Filtro Venda Intervalo */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                  <CheckCircle size={12}/> Período da Venda
+                </label>
+                <div className="flex flex-col gap-2">
+                  <input 
+                    type="date"
+                    className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                    value={vendaInicio}
+                    onChange={(e) => setVendaInicio(e.target.value)}
+                  />
+                  <input 
+                    type="date"
+                    className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                    value={vendaFim}
+                    onChange={(e) => setVendaFim(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Ações de Filtro */}
+            <div className="flex justify-end pt-2 border-t border-slate-50">
+              {(selectedCorretores.length > 0 || selectedParceiros.length > 0 || vencimentoInicio || vencimentoFim || vendaInicio || vendaFim) && (
+                <button 
+                  onClick={() => {
+                      if(userProfile?.tipo_usuario !== 'CORRETOR') setSelectedCorretores([]);
+                      setSelectedParceiros([]);
+                      setVencimentoInicio("");
+                      setVencimentoFim("");
+                      setVendaInicio("");
+                      setVendaFim("");
+                  }}
+                  className="text-[10px] font-black text-red-500 uppercase hover:bg-red-50 px-3 py-1 rounded-lg transition-colors"
+                >
+                  × Limpar Todos os Filtros
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -315,7 +459,6 @@ export default function PropostasLista() {
         onSuccess={() => fetchPropostas()}
       />
 
-      {/* MODAL CORRIGIDO: Agora com clienteId */}
       <ModalExclusaoSegura 
         isOpen={modalExclusao.isOpen}
         onClose={() => setModalExclusao({ ...modalExclusao, isOpen: false })}
