@@ -8,9 +8,10 @@ import DashboardLayout from "./layouts/DashboardLayout"
 // Páginas Públicas
 import HomePage from "./pages/homepage/HomePage"
 
-// Páginas Privadas - Corretores
+// Páginas Privadas - Corretores e parceiros
 import CorretoresCadastro from "./pages/corretores/CorretoresCadastro"
 import CorretoresLista from "./pages/corretores/CorretoresLista"
+import ParceirosCadastro from "./pages/parceiros/ParceirosCadastro"
 
 // Páginas Privadas - Clientes
 import ClientesCadastro from "./pages/clientes/ClientesCadastro"
@@ -69,6 +70,8 @@ export default function App() {
           <Route path="/corretores/cadastro" element={<CorretoresCadastro />} />
           <Route path="/corretores/lista" element={<CorretoresLista />} />
           <Route path="/corretores/editar/:id" element={<CorretoresCadastro />} />
+          <Route path="/parceiros/cadastro" element={<ParceirosCadastro />} />
+          <Route path="/parceiros/editar/:id" element={<ParceirosCadastro />} />
 
           {/* MÓDULO: CLIENTES */}
           <Route path="/clientes/cadastro" element={<ClientesCadastro />} />

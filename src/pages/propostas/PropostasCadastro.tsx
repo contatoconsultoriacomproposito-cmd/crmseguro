@@ -40,6 +40,8 @@ export default function PropostasCadastro() {
   const [clientes, setClientes] = useState<any[]>([]);
   const [seguradoras, setSeguradoras] = useState<any[]>([]);
   const [corretores, setCorretores] = useState<any[]>([]); 
+  const [parceiros, setParceiros] = useState<any[]>([]);
+  const [selectedParceiro, setSelectedParceiro] = useState("");
   
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState<any>(null);
@@ -134,6 +136,15 @@ useEffect(() => {
     
     setSeguradoras(seguradorasDistintas);
     
+    // Dentro da função fetchDados (Parte 1), adicione a busca:
+    const { data: pars } = await supabase
+      .from("tab_parceiros")
+      .select("id, nome_parceiro")
+      .eq("corretora_id", perfil.corretora_id)
+      .order('nome_parceiro', { ascending: true });
+    setParceiros(pars || []);
+
+
 
     // 5. Lógica de Corretores (mantém como estava)
     if (perfil.tipo_usuario === 'CORRETOR') {
@@ -180,6 +191,7 @@ useEffect(() => {
 
       setSelectedClient(prop.tab_clientes);
       setSelectedCorretor(prop.corretor_id);
+      setSelectedParceiro(prop.parceiro_id || ""); // <--- ADICIONE ESTA LINHA
       setValidadeProposta(prop.data_validade);
       setNumeroProposta(prop.numero_proposta);
 
@@ -367,7 +379,8 @@ useEffect(() => {
         numero_proposta: numeroProposta,
         cliente_id: selectedClient.id,
         corretor_id: selectedCorretor,
-        corretora_id: perfil.corretora_id, // <--- ADICIONE ESTA LINHA AQUI
+        parceiro_id: selectedParceiro || null, // <--- ADICIONE ESTA LINHA AQUI
+        corretora_id: perfil.corretora_id, 
         data_validade: validadeProposta,
         status: 'Em Negociação',
         valor_total_proposta: opcoes.reduce((acc, opt) => acc + calcularTotal(opt.cotacoes), 0)
@@ -708,6 +721,7 @@ useEffect(() => {
                 </div>
               </div>
 
+              {/* CAMPO: CORRETOR */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">
                   Corretor Responsável {selectedClient?.corretor_id ? "(Herdado do Cliente)" : ""}
@@ -718,7 +732,6 @@ useEffect(() => {
                   }`}
                   value={selectedCorretor}
                   onChange={(e) => setSelectedCorretor(e.target.value)}
-                  // TRAVA: Se o cliente já tem corretor, o select fica desativado
                   disabled={!!selectedClient?.corretor_id}
                 >
                   {corretores.length > 1 && !selectedClient?.corretor_id && <option value="">Selecione...</option>}
@@ -732,6 +745,24 @@ useEffect(() => {
                 )}
               </div>
 
+              {/* NOVO CAMPO: PARCEIRO INDICADOR */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">
+                  Parceiro Indicador (Opcional)
+                </label>
+                <select 
+                  className="w-full h-12 px-4 rounded-2xl border border-slate-200 dark:bg-zinc-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  value={selectedParceiro}
+                  onChange={(e) => setSelectedParceiro(e.target.value)}
+                >
+                  <option value="">Nenhum (Venda Direta)</option>
+                  {parceiros.map(p => (
+                    <option key={p.id} value={p.id}>{p.nome_parceiro}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* CAMPO: VALIDADE */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">Validade</label>
                 <input 
@@ -746,9 +777,9 @@ useEffect(() => {
                 onClick={handleSalvarBanco}
                 disabled={
                   loading || 
-                  (!selectedCorretor && !selectedClient?.corretor_id) || // Se não tem corretor em lugar nenhum
-                  !validadeProposta // Se a data estiver vazia
-                  }
+                  (!selectedCorretor && !selectedClient?.corretor_id) || 
+                  !validadeProposta
+                }
                 className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all"
               >
                 {loading ? "Salvando..." : "Confirmar e Salvar"}

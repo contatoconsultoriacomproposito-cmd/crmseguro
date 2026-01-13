@@ -17,7 +17,9 @@ import {
   FilePlus,
   DollarSign,
   AlertCircle,
-  Bell
+  Bell,
+  Handshake
+  
 } from "lucide-react"
 import { NavLink } from "react-router-dom"
 import { useNotifications } from "../contexts/NotificationContext"
@@ -35,6 +37,7 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     corretores: false,
     clientes: false,
+    parceiros: false,
     propostas: false,
     kanban: false,
     sinistros: false, 
@@ -132,6 +135,23 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/corretores/cadastro" label="Cadastro" icon={<UserPlus size={16} />} />
                 <SubNavItem to="/corretores/lista" label="Ver Listagem" icon={<List size={16} />} />
+              </div>
+            )}
+          </div>
+
+          {/* GRUPO PARCEIROS */}
+          <div className="space-y-1">
+            <MenuHeader 
+              icon={<Handshake size={20} className="text-amber-500" />} 
+              label="Parceiros" 
+              isOpen={openMenus.parceiros} 
+              onClick={() => toggleMenu("parceiros")}
+              collapsed={collapsed}
+            />
+            {!collapsed && openMenus.parceiros && (
+              <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
+                <SubNavItem to="/parceiros/cadastro" label="Gerenciar Parceiros" icon={<UserPlus size={16} />} />
+                {/* Você pode adicionar mais itens aqui no futuro, como 'Relatório de Indicações' */}
               </div>
             )}
           </div>
