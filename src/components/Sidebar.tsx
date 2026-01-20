@@ -213,7 +213,7 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
           <div className="space-y-1">
             <MenuHeader 
               icon={<AlertCircle size={20} className="text-red-500" />} 
-              label="Sinistros" 
+              label="Sinistros/Assistências" 
               isOpen={openMenus.sinistros} 
               onClick={() => toggleMenu("sinistros")}
               collapsed={collapsed}
