@@ -42,7 +42,7 @@ export default function VisaoComissoes({ data }: VisaoComissoesProps) {
 
       <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-50">
-          <h3 className="text-sm font-black uppercase text-slate-700">Detalhamento por Seguradora e Produto</h3>
+          <h3 className="text-sm font-black uppercase text-slate-700">Detalhamento Comissões</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
