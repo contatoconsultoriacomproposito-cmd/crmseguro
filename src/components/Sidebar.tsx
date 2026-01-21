@@ -18,6 +18,7 @@ import {
   DollarSign,
   AlertCircle,
   Bell,
+  Activity,
   Handshake
   
 } from "lucide-react"
@@ -140,21 +141,31 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
           </div>
 
           {/* GRUPO PARCEIROS */}
-          <div className="space-y-1">
-            <MenuHeader 
-              icon={<Handshake size={20} className="text-amber-500" />} 
-              label="Parceiros" 
-              isOpen={openMenus.parceiros} 
-              onClick={() => toggleMenu("parceiros")}
-              collapsed={collapsed}
-            />
-            {!collapsed && openMenus.parceiros && (
-              <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
-                <SubNavItem to="/parceiros/cadastro" label="Gerenciar Parceiros" icon={<UserPlus size={16} />} />
-                {/* Você pode adicionar mais itens aqui no futuro, como 'Relatório de Indicações' */}
-              </div>
-            )}
-          </div>
+            <div className="space-y-1">
+              <MenuHeader 
+                icon={<Handshake size={20} className="text-amber-500" />} 
+                label="Parceiros" 
+                isOpen={openMenus.parceiros} 
+                onClick={() => toggleMenu("parceiros")}
+                collapsed={collapsed}
+              />
+              {!collapsed && openMenus.parceiros && (
+                <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
+                  {/* NOVO ITEM: TRIAGEM */}
+                  <SubNavItem 
+                    to="/parceiros/triagem" 
+                    label="Triagem de Indicações" 
+                    icon={<Activity size={16} className="text-blue-500" />} 
+                  />
+                  
+                  <SubNavItem 
+                    to="/parceiros/cadastro" 
+                    label="Gerenciar Parceiros" 
+                    icon={<UserPlus size={16} />} 
+                  />
+                </div>
+              )}
+            </div>
 
           {/* GRUPO CLIENTES */}
           <div className="space-y-1">

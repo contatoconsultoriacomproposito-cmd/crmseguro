@@ -5,13 +5,15 @@ import { NotificationProvider } from "./contexts/NotificationContext"
 // Layouts
 import DashboardLayout from "./layouts/DashboardLayout"
 
-// Páginas Públicas
+// PÁGINAS PÚBLICAS
 import HomePage from "./pages/homepage/HomePage"
+import PortalParceiro from "./pages/portal/PortalParceiro" // <--- IMPORTAÇÃO ADICIONADA
 
 // Páginas Privadas - Corretores e parceiros
 import CorretoresCadastro from "./pages/corretores/CorretoresCadastro"
 import CorretoresLista from "./pages/corretores/CorretoresLista"
 import ParceirosCadastro from "./pages/parceiros/ParceirosCadastro"
+import ParceirosTriagem from "./pages/parceiros/ParceirosTriagem"
 
 // Páginas Privadas - Clientes
 import ClientesCadastro from "./pages/clientes/ClientesCadastro"
@@ -42,7 +44,7 @@ export default function App() {
 
   // Evita redirecionamentos enquanto verifica se o usuário está logado
   if (loading) {
-    return null // Aqui você pode colocar um componente de Loading se desejar
+    return null 
   }
 
   // --- ROTAS PARA USUÁRIOS NÃO LOGADOS (PÚBLICO) ---
@@ -50,28 +52,33 @@ export default function App() {
     return (
       <Routes>
         <Route path="/" element={<HomePage />} />
+        {/* Rota do Portal acessível sem login */}
+        <Route path="/portal/:slug" element={<PortalParceiro />} /> 
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     )
   }
 
   // --- ROTAS PARA USUÁRIOS LOGADOS (PRIVADO) ---
-  // Envolvemos com o NotificationProvider para que a Sidebar e os Modais funcionem globalmente
   return (
     <NotificationProvider>
       <Routes>
+        {/* Rota do Portal também acessível para usuários logados (fora do layout do dashboard) */}
+        <Route path="/portal/:slug" element={<PortalParceiro />} />
+
         <Route element={<DashboardLayout />}>
           
           {/* INÍCIO */}
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/" element={<Navigate to="/dashboard" />} />
 
-          {/* MÓDULO: CORRETORES */}
+          {/* MÓDULO: CORRETORES E PARCEIROS */}
           <Route path="/corretores/cadastro" element={<CorretoresCadastro />} />
           <Route path="/corretores/lista" element={<CorretoresLista />} />
           <Route path="/corretores/editar/:id" element={<CorretoresCadastro />} />
           <Route path="/parceiros/cadastro" element={<ParceirosCadastro />} />
           <Route path="/parceiros/editar/:id" element={<ParceirosCadastro />} />
+          <Route path="/parceiros/triagem" element={<ParceirosTriagem />} />
 
           {/* MÓDULO: CLIENTES */}
           <Route path="/clientes/cadastro" element={<ClientesCadastro />} />
@@ -84,7 +91,7 @@ export default function App() {
           <Route path="/propostas/editar/:id" element={<PropostasCadastro key="editar" />} />
           <Route path="/propostas/produtos" element={<ProdutosLista />} />
 
-          {/* MÓDULO: SEGURADORAS E CONFIGURAÇÕES */}
+          {/* MÓDULO: SEGURADORAS */}
           <Route path="/seguradoras" element={<SeguradorasLista />} />
 
           {/* MÓDULO: KANBAN */}

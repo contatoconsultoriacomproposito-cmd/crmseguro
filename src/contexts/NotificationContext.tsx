@@ -8,8 +8,9 @@ import { ModalGerenciamentoSinistro } from '../components/kanban/components_visu
 
 interface Notificacao {
   id: string;
-  tipo: 'COMERCIAL' | 'SINISTRO';
+  tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO';
   titulo: string;
+  subtitulo?: string;
   data: string;
   horario?: string;
   atrasado: boolean;
@@ -27,7 +28,7 @@ const NotificationContext = createContext<NotificationContextData>({} as Notific
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
-  const [modalAtivo, setModalAtivo] = useState<{ tipo: 'COMERCIAL' | 'SINISTRO', id: string } | null>(null);
+  const [modalAtivo, setModalAtivo] = useState<{ tipo: string, id: string } | null>(null);
 
   const carregarNotificacoes = useCallback(async () => {
     if (!user) return;
@@ -49,29 +50,61 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (errP) throw errP;
 
-      // Define se o usuário logado é o administrador da corretora
       const isAdmin = perfil?.tipo_usuario === 'CORRETORA';
-      const corretoraDonaId = perfil?.corretora_id;
+      const corretoraDonaId = perfil?.corretora_id || user.id;
 
-      // 2. BUSCAR PENDÊNCIAS COMERCIAIS (TAB_CLIENTES)
+      // --- 2. BUSCAR NOVAS INDICAÇÕES (TAB_INDICACOES) ---
+      // Status 'NOVO' conforme o seu Check Constraint
+      let queryInd = supabase
+        .from('tab_indicacoes')
+        .select(`
+          id, 
+          nome_cliente, 
+          created_at, 
+          corretor_id, 
+          corretora_id,
+          tab_parceiros ( nome_parceiro )
+        `)
+        .eq('status_indicacao', 'NOVO');
+
+      if (isAdmin) {
+        queryInd = queryInd.eq('corretora_id', corretoraDonaId);
+      } else {
+        queryInd = queryInd.eq('corretor_id', user.id);
+      }
+
+      const { data: indicacoes, error: errInd } = await queryInd;
+      if (errInd) console.error("Erro ao buscar indicações:", errInd);
+
+      indicacoes?.forEach((ind: any) => {
+        // Acesso seguro ao nome do parceiro tratando como objeto ou primeiro item do array
+        const parceiroObj = Array.isArray(ind.tab_parceiros) ? ind.tab_parceiros[0] : ind.tab_parceiros;
+        
+        listaGeral.push({
+          id: `ind-${ind.id}`,
+          tipo: 'INDICACAO',
+          titulo: `NOVA INDICAÇÃO: ${ind.nome_cliente}`,
+          subtitulo: `Parceiro: ${parceiroObj?.nome_parceiro || 'Link Direto'}`,
+          data: ind.created_at,
+          atrasado: false,
+          ref_id: ind.id
+        });
+      });
+
+      // --- 3. BUSCAR PENDÊNCIAS COMERCIAIS (TAB_CLIENTES) ---
       let queryClientes = supabase
         .from('tab_clientes')
         .select('id, nome, data_retorno, horario_retorno, corretor_id, corretora_id')
         .not('data_retorno', 'is', null);
 
       if (isAdmin) {
-        // Regra 1: Administrador vê tudo da sua corretora
-        queryClientes = queryClientes.eq('corretora_id', corretoraDonaId || user.id);
+        queryClientes = queryClientes.eq('corretora_id', corretoraDonaId);
       } else {
-        // Regra 2: Corretor vê apenas os seus próprios clientes
         queryClientes = queryClientes.eq('corretor_id', user.id);
       }
 
-      const { data: clientes, error: errC } = await queryClientes;
-      if (errC) throw errC;
-
+      const { data: clientes } = await queryClientes;
       clientes?.forEach(c => {
-        // Só adiciona se a data for hoje ou passada
         if (c.data_retorno <= hojeLocalStr) {
           listaGeral.push({
             id: `com-${c.id}`,
@@ -85,7 +118,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       });
 
-      // 3. BUSCAR PENDÊNCIAS DE SINISTROS (TAB_SINISTROS)
+      // --- 4. BUSCAR PENDÊNCIAS DE SINISTROS (TAB_SINISTROS) ---
       let querySinistros = supabase
         .from('tab_sinistros')
         .select(`
@@ -96,19 +129,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         .eq('status', 'Aberto');
 
       if (isAdmin) {
-        querySinistros = querySinistros.eq('corretora_id', corretoraDonaId || user.id);
+        querySinistros = querySinistros.eq('corretora_id', corretoraDonaId);
       } else {
         querySinistros = querySinistros.eq('corretor_id', user.id);
       }
 
-      const { data: sinistros, error: errS } = await querySinistros as any;
-      if (errS) throw errS;
-
+      const { data: sinistros } = await querySinistros as any;
       sinistros?.forEach((s: any) => {
         const item = Array.isArray(s.tab_proposta_itens) ? s.tab_proposta_itens[0] : s.tab_proposta_itens;
         const produto = Array.isArray(item?.base_produtos) ? item?.base_produtos[0] : item?.base_produtos;
-        
-        // Pega a ocorrência mais recente que já venceu
         const ocorrenciaVencida = s.tab_sinistros_ocorrencias
           ?.filter((o: any) => o.data_retorno && o.data_retorno <= hojeLocalStr)
           .sort((a: any, b: any) => b.data_retorno.localeCompare(a.data_retorno))[0];
@@ -125,29 +154,48 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       });
 
-      // Ordenação final: O que está mais atrasado aparece no topo
-      setNotificacoes(listaGeral.sort((a, b) => a.data.localeCompare(b.data)));
+      setNotificacoes(listaGeral.sort((a, b) => {
+        if (a.tipo === 'INDICACAO' && b.tipo !== 'INDICACAO') return -1;
+        if (a.tipo !== 'INDICACAO' && b.tipo === 'INDICACAO') return 1;
+        return a.data.localeCompare(b.data);
+      }));
       
     } catch (error) {
       console.error("Erro no processamento de notificações:", error);
     }
   }, [user]);
 
+  // REALTIME PARA INDICAÇÕES
+  useEffect(() => {
+    if (!user) return;
+    const subscription = supabase
+      .channel('pauta-indicacoes')
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'tab_indicacoes' }, 
+        () => carregarNotificacoes()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(subscription); };
+  }, [user, carregarNotificacoes]);
+
   useEffect(() => {
     carregarNotificacoes();
-    const interval = setInterval(carregarNotificacoes, 5 * 60 * 1000); // Atualiza a cada 5 min
+    const interval = setInterval(carregarNotificacoes, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [carregarNotificacoes]);
 
   const abrirNotificacao = (n: Notificacao) => {
-    setModalAtivo({ tipo: n.tipo, id: n.ref_id });
+    if (n.tipo === 'INDICACAO') {
+       // Rota que criaremos a seguir
+       window.location.href = `/parceiros/triagem?id=${n.ref_id}`;
+    } else {
+       setModalAtivo({ tipo: n.tipo, id: n.ref_id });
+    }
   };
 
   return (
     <NotificationContext.Provider value={{ notificacoes, refresh: carregarNotificacoes, abrirNotificacao }}>
       {children}
-
-      {/* Renderização condicional dos modais de ação */}
       {modalAtivo?.tipo === 'COMERCIAL' && (
         <ModalInclusaoAcao 
           clienteId={modalAtivo.id}
@@ -155,7 +203,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
         />
       )}
-
       {modalAtivo?.tipo === 'SINISTRO' && (
         <ModalGerenciamentoSinistro 
           sinistroId={modalAtivo.id}
