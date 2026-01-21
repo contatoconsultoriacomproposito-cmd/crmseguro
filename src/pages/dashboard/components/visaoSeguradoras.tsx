@@ -8,7 +8,7 @@ export default function VisaoSeguradoras({ data }: { data: any[] }) {
   return (
     <section className="space-y-4">
       <h2 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-        <ShieldCheck size={14}/> 7. Performance por Seguradora
+        <ShieldCheck size={14}/> 3. Performance por Seguradora
       </h2>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
