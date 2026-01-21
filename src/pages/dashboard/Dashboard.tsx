@@ -8,7 +8,7 @@ import VisaoPropostas from './components/visaoPropostas';
 import VisaoProdutividade from './components/visaoProdutividade';
 import VisaoComissoes from './components/visaoComissoes';
 import VisaoSinistros from './components/visaoSinistros';
-import VisaoSeguradoras from './components/visaoSeguradoras'; // ADICIONADO
+import VisaoSeguradoras from './components/visaoSeguradoras';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -70,9 +70,26 @@ export default function Dashboard() {
       let idsFiltro = corretorId === 'todos' ? corretores.map(c => c.id) : [corretorId];
       if (idsFiltro.length === 0 && userProfile.tipo_usuario === 'CORRETOR') idsFiltro = [userProfile.id];
 
+      // Queries
       let qCli = supabase.from('tab_clientes').select('*, tab_propostas(status, created_at)').eq('corretora_id', cid);
       let qInt = supabase.from('tab_interacoes').select('*, data_historico').eq('corretora_id', cid);
-      let qProp = supabase.from('tab_propostas').select('*').eq('corretora_id', cid);
+      
+      // AJUSTE NA QUERY DE PROPOSTAS: Buscando nomes via Joins das tabelas relacionadas
+      let qProp = supabase
+        .from('tab_propostas')
+        .select(`
+          *,
+          tab_proposta_opcoes (
+            valor_total_opcao,
+            base_seguradoras ( nome ),
+            tab_proposta_itens (
+              valor_premio,
+              base_produtos ( nome )
+            )
+          )
+        `)
+        .eq('corretora_id', cid);
+
       let qItens = supabase.from('tab_proposta_itens').select('*, base_produtos(nome)');
       let qCom = supabase.from('tab_comissoes').select('*, base_produtos(nome)');
       let qSin = supabase.from('tab_sinistros').select('*, item_id').eq('corretora_id', cid);
@@ -114,7 +131,7 @@ export default function Dashboard() {
       propostas: { total: 0, vendidas: 0, perdidas: 0, vlrCriado: 0, vlrVendido: 0, vlrPerdido: 0 },
       comissoes: { comissaoTotal: 0, comissaoRecebida: 0, comissaoPendente: 0, detalhe: [] as any[] },
       sinistros: { abertos: 0, finalizados: 0, detalheAbertos: [] as any[], detalheFinalizados: [] as any[] },
-      seguradoras: [] as any[] // ADICIONADO
+      seguradoras: [] as any[]
     };
 
     clientesRaw.forEach(c => {
@@ -139,7 +156,8 @@ export default function Dashboard() {
       }
     });
 
-    const resumoSeg: Record<string, any> = {}; // Auxiliar para seguradoras
+    // Lógica para Seguradoras e Produtos baseada na estrutura relacional SQL
+    const resumoSeg: Record<string, any> = {};
 
     propostasRaw.forEach(p => {
       const d = (p.created_at || '').split('T')[0];
@@ -152,25 +170,31 @@ export default function Dashboard() {
           s.propostas.vendidas++; 
           s.propostas.vlrVendido += v; 
 
-          // Lógica de Agrupamento por Seguradora (CORREÇÃO)
-          const nomeSeg = p.seguradora_nome || 'Não Informada';
-          if (!resumoSeg[nomeSeg]) {
-            resumoSeg[nomeSeg] = { nome: nomeSeg, vendidas: 0, valor: 0, prodStats: {} };
-          }
-          resumoSeg[nomeSeg].vendidas++;
-          resumoSeg[nomeSeg].valor += v;
+          // Navega pelas opções e itens para preencher a Performance por Seguradora
+          p.tab_proposta_opcoes?.forEach((opcao: any) => {
+            const nomeSeg = opcao.base_seguradoras?.nome || 'NÃO INFORMADA';
+            
+            if (!resumoSeg[nomeSeg]) {
+              resumoSeg[nomeSeg] = { nome: nomeSeg, vendidas: 0, valor: 0, prodStats: {} };
+            }
+            
+            resumoSeg[nomeSeg].vendidas++;
+            resumoSeg[nomeSeg].valor += Number(opcao.valor_total_opcao || 0);
 
-          const nomeProd = p.produto_nome || 'Outros';
-          if (!resumoSeg[nomeSeg].prodStats[nomeProd]) {
-            resumoSeg[nomeSeg].prodStats[nomeProd] = { nome: nomeProd, vendidas: 0 };
-          }
-          resumoSeg[nomeSeg].prodStats[nomeProd].vendidas++;
+            opcao.tab_proposta_itens?.forEach((item: any) => {
+              const nomeProd = item.base_produtos?.nome || 'OUTROS';
+              if (!resumoSeg[nomeSeg].prodStats[nomeProd]) {
+                resumoSeg[nomeSeg].prodStats[nomeProd] = { nome: nomeProd, vendidas: 0 };
+              }
+              resumoSeg[nomeSeg].prodStats[nomeProd].vendidas++;
+            });
+          });
         }
         else if (p.status === 'Perdido') { s.propostas.perdidas++; s.propostas.vlrPerdido += v; }
       }
     });
 
-    s.seguradoras = Object.values(resumoSeg); // Converte objeto em array para o componente
+    s.seguradoras = Object.values(resumoSeg);
 
     comissoesRaw.forEach(c => {
       if (c.data_venda >= dataInicio && c.data_venda <= dataFim) {
@@ -259,7 +283,7 @@ export default function Dashboard() {
       <VisaoProdutividade data={stats.produtividade} />
       <VisaoPropostas data={stats.propostas} />
       
-      {/* EXIBIÇÃO DA VISÃO DE SEGURADORAS */}
+      {/* Agora os dados fluirão corretamente para os cards e lista de produtos */}
       <VisaoSeguradoras data={stats.seguradoras} /> 
       
       <VisaoComissoes data={stats.comissoes} />
