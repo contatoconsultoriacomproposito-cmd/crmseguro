@@ -8,6 +8,7 @@ import VisaoPropostas from './components/visaoPropostas';
 import VisaoProdutividade from './components/visaoProdutividade';
 import VisaoComissoes from './components/visaoComissoes';
 import VisaoSinistros from './components/visaoSinistros';
+import VisaoSeguradoras from './components/visaoSeguradoras'; // ADICIONADO
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -17,7 +18,7 @@ export default function Dashboard() {
   const [clientesRaw, setClientesRaw] = useState<any[]>([]);
   const [interacoesRaw, setInteracoesRaw] = useState<any[]>([]);
   const [propostasRaw, setPropostasRaw] = useState<any[]>([]); 
-  const [itensRaw, setItensRaw] = useState<any[]>([]); // CORRIGIDO: Adicionado estado para itens
+  const [itensRaw, setItensRaw] = useState<any[]>([]);
   const [comissoesRaw, setComissoesRaw] = useState<any[]>([]);
   const [sinistrosRaw, setSinistrosRaw] = useState<any[]>([]);
 
@@ -31,7 +32,6 @@ export default function Dashboard() {
   const [dataFim, setDataFim] = useState(getDataHoje());
   const [corretorId, setCorretorId] = useState('todos');
 
-  // 1. Carregar Perfil e Dados Iniciais
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -62,32 +62,21 @@ export default function Dashboard() {
     init();
   }, []);
 
-  // 2. Busca de Dados Unificada
   const fetchAllData = async () => {
     if (!userProfile?.corretora_id) return;
     setLoading(true);
     try {
       const cid = userProfile.corretora_id;
-      
-      let idsFiltro = corretorId === 'todos' 
-        ? corretores.map(c => c.id) 
-        : [corretorId];
-      
+      let idsFiltro = corretorId === 'todos' ? corretores.map(c => c.id) : [corretorId];
       if (idsFiltro.length === 0 && userProfile.tipo_usuario === 'CORRETOR') idsFiltro = [userProfile.id];
 
-      // Queries
       let qCli = supabase.from('tab_clientes').select('*, tab_propostas(status, created_at)').eq('corretora_id', cid);
       let qInt = supabase.from('tab_interacoes').select('*, data_historico').eq('corretora_id', cid);
       let qProp = supabase.from('tab_propostas').select('*').eq('corretora_id', cid);
-      
-      // CORRIGIDO: Busca de itens com join no nome do produto para o "de-para" dos sinistros
       let qItens = supabase.from('tab_proposta_itens').select('*, base_produtos(nome)');
-
       let qCom = supabase.from('tab_comissoes').select('*, base_produtos(nome)');
-      
       let qSin = supabase.from('tab_sinistros').select('*, item_id').eq('corretora_id', cid);
 
-      // Aplicação de filtros
       if (idsFiltro.length > 0) {
         qCom = qCom.in('corretor_id', idsFiltro);
         qSin = qSin.in('corretor_id', idsFiltro);
@@ -106,7 +95,7 @@ export default function Dashboard() {
       setClientesRaw(rCli.data || []);
       setInteracoesRaw(rInt.data || []);
       setPropostasRaw(rProp.data || []);
-      setItensRaw(rItens.data || []); // Salvando itens para cruzamento
+      setItensRaw(rItens.data || []);
       setComissoesRaw(rCom.data || []);
       setSinistrosRaw(rSin.data || []);
     } finally {
@@ -118,14 +107,14 @@ export default function Dashboard() {
     if (userProfile?.corretora_id) fetchAllData();
   }, [userProfile, corretorId, dataInicio, dataFim]);
 
-  // 3. Processamento de Estatísticas (useMemo)
   const stats = useMemo(() => {
     const s = {
       clientes: { total: 0, pf: 0, pj: 0 },
       produtividade: { whatsapp: 0, ligacao: 0, email: 0, reuniaoOn: 0, reuniaoPres: 0, visita: 0, outros: 0 },
       propostas: { total: 0, vendidas: 0, perdidas: 0, vlrCriado: 0, vlrVendido: 0, vlrPerdido: 0 },
       comissoes: { comissaoTotal: 0, comissaoRecebida: 0, comissaoPendente: 0, detalhe: [] as any[] },
-      sinistros: { abertos: 0, finalizados: 0, detalheAbertos: [] as any[], detalheFinalizados: [] as any[] }
+      sinistros: { abertos: 0, finalizados: 0, detalheAbertos: [] as any[], detalheFinalizados: [] as any[] },
+      seguradoras: [] as any[] // ADICIONADO
     };
 
     clientesRaw.forEach(c => {
@@ -137,12 +126,9 @@ export default function Dashboard() {
     });
 
     interacoesRaw.forEach(i => {
-      // Usamos 'data_historico' que é o campo que seu modal salva
       const d = (i.data_historico || '').split('T')[0];
-      
       if (d >= dataInicio && d <= dataFim) {
-        const a = i.tipo_acao; // O valor exato vindo do modal
-
+        const a = i.tipo_acao;
         if (a === 'WhatsApp') s.produtividade.whatsapp++;
         else if (a === 'Ligação') s.produtividade.ligacao++;
         else if (a === 'E-mail') s.produtividade.email++;
@@ -153,16 +139,38 @@ export default function Dashboard() {
       }
     });
 
+    const resumoSeg: Record<string, any> = {}; // Auxiliar para seguradoras
+
     propostasRaw.forEach(p => {
       const d = (p.created_at || '').split('T')[0];
       if (d >= dataInicio && d <= dataFim) {
         const v = Number(p.valor_total_proposta || 0);
         s.propostas.total++;
         s.propostas.vlrCriado += v;
-        if (p.status === 'Vendido') { s.propostas.vendidas++; s.propostas.vlrVendido += v; }
+        
+        if (p.status === 'Vendido') { 
+          s.propostas.vendidas++; 
+          s.propostas.vlrVendido += v; 
+
+          // Lógica de Agrupamento por Seguradora (CORREÇÃO)
+          const nomeSeg = p.seguradora_nome || 'Não Informada';
+          if (!resumoSeg[nomeSeg]) {
+            resumoSeg[nomeSeg] = { nome: nomeSeg, vendidas: 0, valor: 0, prodStats: {} };
+          }
+          resumoSeg[nomeSeg].vendidas++;
+          resumoSeg[nomeSeg].valor += v;
+
+          const nomeProd = p.produto_nome || 'Outros';
+          if (!resumoSeg[nomeSeg].prodStats[nomeProd]) {
+            resumoSeg[nomeSeg].prodStats[nomeProd] = { nome: nomeProd, vendidas: 0 };
+          }
+          resumoSeg[nomeSeg].prodStats[nomeProd].vendidas++;
+        }
         else if (p.status === 'Perdido') { s.propostas.perdidas++; s.propostas.vlrPerdido += v; }
       }
     });
+
+    s.seguradoras = Object.values(resumoSeg); // Converte objeto em array para o componente
 
     comissoesRaw.forEach(c => {
       if (c.data_venda >= dataInicio && c.data_venda <= dataFim) {
@@ -174,15 +182,11 @@ export default function Dashboard() {
       }
     });
 
-    // Lógica para SINISTROS corrigida com cruzamento real
     sinistrosRaw.forEach((sin: any) => {
       const dataBruta = sin.data_abertura || sin.criado_em || '';
       const dataRef = dataBruta.split(/[ T]/)[0];
-
       if (dataRef >= dataInicio && dataRef <= dataFim) {
         const status = String(sin.status || '').toLowerCase().trim();
-
-        // Cruzamento usando o item_id do sinistro com o id do item
         const itemEncontrado = itensRaw?.find((i: any) => i.id === sin.item_id);
         const nomeProduto = itemEncontrado?.base_produtos?.nome || 'Produto não identificado';
 
@@ -254,6 +258,10 @@ export default function Dashboard() {
       <VisaoCliente dataRaw={clientesRaw} dataInicio={dataInicio} dataFim={dataFim} />
       <VisaoProdutividade data={stats.produtividade} />
       <VisaoPropostas data={stats.propostas} />
+      
+      {/* EXIBIÇÃO DA VISÃO DE SEGURADORAS */}
+      <VisaoSeguradoras data={stats.seguradoras} /> 
+      
       <VisaoComissoes data={stats.comissoes} />
       <VisaoSinistros data={stats.sinistros} />
     </div>
