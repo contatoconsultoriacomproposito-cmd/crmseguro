@@ -76,7 +76,7 @@ export const TabSinistros = ({ clienteId }: { clienteId: string }) => {
     <div className="space-y-4">
       {carregando ? (
         <div className="animate-pulse text-[10px] font-bold text-slate-400 text-center uppercase py-4">
-          Buscando sinistros...
+          Buscando sinistros e assistências...
         </div>
       ) : sinistros.length > 0 ? (
         <>
@@ -210,7 +210,7 @@ export const TabSinistros = ({ clienteId }: { clienteId: string }) => {
             <AlertCircle size={24} className="text-slate-200 dark:text-zinc-600" />
           </div>
           <p className="text-[10px] text-slate-400 font-bold uppercase max-w-[150px] mx-auto">
-            Nenhum sinistro em andamento.
+            Nenhum sinistro/Assistência em andamento.
           </p>
         </div>
       )}

@@ -130,7 +130,7 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
                     })}
                     className="flex items-center justify-center gap-1.5 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-[9px] font-black uppercase"
                   >
-                    <AlertCircle size={14} /> Sinistro
+                    <AlertCircle size={14} /> Sinistro/Assistência
                   </button>
                 )}
                 

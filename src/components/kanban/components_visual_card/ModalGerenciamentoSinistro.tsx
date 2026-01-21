@@ -127,7 +127,7 @@ export const ModalGerenciamentoSinistro = ({ sinistroId, onClose, onSuccess }: P
         <div className="px-8 py-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50">
           <div>
             <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">
-              Gerenciar Sinistro
+              Gerenciar Sinistro/Assistência
             </h2>
             <p className="text-[10px] font-bold text-red-500 uppercase">
               {sinistro?.tab_proposta_itens?.base_produtos?.nome || 'Produto não identificado'}

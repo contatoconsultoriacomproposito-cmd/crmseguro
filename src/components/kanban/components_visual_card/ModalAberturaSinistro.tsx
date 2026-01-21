@@ -87,7 +87,7 @@ export const ModalAberturaSinistro = ({ isOpen, onClose, onSuccess, dados }: Mod
               <AlertCircle size={20} />
             </div>
             <div>
-              <h3 className="text-sm font-black uppercase text-slate-800 dark:text-white leading-none">Abrir Sinistro</h3>
+              <h3 className="text-sm font-black uppercase text-slate-800 dark:text-white leading-none">Abrir Sinistro/Assistência</h3>
               <p className="text-[10px] font-bold text-red-500 uppercase mt-1">{dados.nomeProduto}</p>
             </div>
           </div>

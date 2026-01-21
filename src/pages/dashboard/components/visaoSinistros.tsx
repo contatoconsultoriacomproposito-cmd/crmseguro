@@ -11,12 +11,12 @@ export default function VisaoSinistros({ data }: { data: SinistroData }) {
   return (
     <section className="space-y-6">
       <h2 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-        <AlertTriangle size={14} className="text-amber-500" /> 5. Visão de Sinistros (Análise por Produto)
+        <AlertTriangle size={14} className="text-amber-500" /> 5. Visão de Sinistros/Assistências (Análise por Produto)
       </h2>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <SinistroCard 
-          title="Sinistros em Aberto"
+          title="Sinistros/Assistências em Aberto"
           icon={<Clock size={20} />}
           color="amber"
           total={data.abertos}
@@ -24,7 +24,7 @@ export default function VisaoSinistros({ data }: { data: SinistroData }) {
         />
 
         <SinistroCard 
-          title="Sinistros Finalizados"
+          title="Sinistros/Assistências Finalizadas"
           icon={<CheckCircle2 size={20} />}
           color="emerald"
           total={data.finalizados}

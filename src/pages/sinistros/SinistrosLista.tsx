@@ -102,7 +102,7 @@ export const RelatorioSinistros = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-black text-zinc-800 dark:text-white uppercase tracking-tighter">
-            Central de Sinistros
+            Central de Sinistros e Assistências
           </h1>
           <p className="text-sm text-zinc-500 font-medium italic">Acompanhamento e gestão global de ocorrências</p>
         </div>
