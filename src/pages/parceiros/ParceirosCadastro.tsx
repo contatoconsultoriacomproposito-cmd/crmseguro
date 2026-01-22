@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   Users, Save, Trash2, Edit3, Loader2, 
   Briefcase, UserCheck, Copy, User, ChevronDown, AlertCircle, 
-  Mail, CheckCircle2, Search, Phone,  ExternalLink
+  Mail, CheckCircle2, Search, Phone,  ExternalLink, FileText
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../auth/AuthContext";
@@ -285,6 +285,21 @@ export default function ParceirosCadastro() {
                   </select>
                   <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
+              </div>
+            </div>
+
+            {/* CAMPO DE OBSERVAÇÃO ADICIONADO */}
+            <div className="mt-6">
+              <label className="text-[9px] font-black text-slate-600 uppercase ml-2 mb-2 block tracking-wider">Observações do Parceiro</label>
+              <div className="relative group">
+                <FileText size={16} className="absolute left-4 top-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+                <textarea 
+                  rows={3}
+                  className="w-full pl-12 pr-4 py-3 rounded-xl bg-white border-2 border-slate-200 font-bold text-xs text-slate-700 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none transition-all placeholder:text-slate-300 resize-none" 
+                  value={form.observacao_parceiro || ''} 
+                  onChange={e => setForm({...form, observacao_parceiro: e.target.value})} 
+                  placeholder="NOTAS INTERNAS SOBRE O PARCEIRO, ACORDOS DE COMISSÃO, ETC..."
+                />
               </div>
             </div>
 
