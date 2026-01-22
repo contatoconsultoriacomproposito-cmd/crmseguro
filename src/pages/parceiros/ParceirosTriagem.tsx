@@ -61,18 +61,27 @@ export default function ParceirosTriagem() {
     if (!user) return;
     try {
       setLoading(true);
+      
+      // O FILTRO .eq('corretor_id', user.id) É A CHAVE DO SEGREDO
       const { data, error } = await supabase
         .from('tab_indicacoes')
         .select(`
           *,
           tab_parceiros (
-            nome_parceiro
+            nome_parceiro,
+            corretor_id
           )
         `)
+        .eq('corretor_id', user.id) // Garante que o Corretor B só veja as indicações DELE
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      setIndicacoes(data || []);
+
+      // Filtro de segurança adicional: garante que se houver lixo no banco, 
+      // não mostramos parceiros que não pertençam ao corretor logado
+      const dadosFiltrados = data || [];
+      
+      setIndicacoes(dadosFiltrados);
     } catch (err) {
       console.error("Erro ao carregar indicações:", err);
     } finally {

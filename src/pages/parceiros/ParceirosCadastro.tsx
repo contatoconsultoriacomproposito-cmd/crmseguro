@@ -58,16 +58,31 @@ export default function ParceirosCadastro() {
           const { data: listaCorretores } = await supabase.from("usuarios_perfis").select("id, nome").eq("corretora_id", perfil.corretora_id).eq("tipo_usuario", "CORRETOR");
           if (listaCorretores) setCorretores(listaCorretores);
           if (perfil.tipo_usuario === "CORRETOR") setForm(prev => ({ ...prev, corretor_id: perfil.id }));
-          await carregarParceiros(perfil.corretora_id);
+          await carregarParceiros(perfil);
         }
       } catch (err) { console.error(err); } finally { setFetching(false); }
     }
     inicializar();
   }, [user]);
 
-  async function carregarParceiros(corretoraId: string) {
-    const { data, error } = await supabase.from("tab_parceiros").select("*").eq("corretora_id", corretoraId).order("nome_parceiro", { ascending: true });
-    if (!error && data) setParceiros(data);
+  async function carregarParceiros(perfil: any) {
+      // Se o perfil for nulo ou não tiver o ID da corretora, cancela a busca para não dar erro 400
+      if (!perfil || !perfil.corretora_id) return;
+
+      let query = supabase
+        .from("tab_parceiros")
+        .select("*")
+        .eq("corretora_id", perfil.corretora_id);
+
+      if (perfil.tipo_usuario === "CORRETOR") {
+        query = query.eq("corretor_id", perfil.id);
+      }
+
+      const { data, error } = await query.order("nome_parceiro", { ascending: true });
+      
+      if (!error && data) {
+          setParceiros(data);
+      }
   }
 
   const handleNomeChange = (val: string) => {
@@ -117,11 +132,19 @@ export default function ParceirosCadastro() {
         if (error) throw error;
         mostrarAviso("Parceiro cadastrado com sucesso!");
       }
+
       resetForm();
-      await carregarParceiros(perfilLogado.corretora_id);
+      
+      // ✅ CORREÇÃO AQUI: Passamos o perfilLogado INTEIRO, não só o ID.
+      // Isso fará a lista atualizar instantaneamente sem F5.
+      await carregarParceiros(perfilLogado); 
+
     } catch (err: any) {
+      console.error("Erro ao salvar:", err);
       mostrarAviso(err.code === '23505' ? "Este link já está em uso." : "Erro ao salvar dados.", 'erro');
-    } finally { setLoading(false); }
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const copiarLink = (slug: string) => {
@@ -133,10 +156,21 @@ export default function ParceirosCadastro() {
 
   const handleExcluir = async (id: string) => {
     if (!confirm("Excluir parceiro permanentemente?")) return;
-    const { error } = await supabase.from("tab_parceiros").delete().eq("id", id);
+
+    // Adicionamos o filtro de corretora_id e, se necessário, corretor_id para segurança extra
+    let query = supabase.from("tab_parceiros").delete().eq("id", id);
+    
+    if (perfilLogado?.tipo_usuario === "CORRETOR") {
+      query = query.eq("corretor_id", perfilLogado.id);
+    }
+
+    const { error } = await query;
+    
     if (!error) { 
       mostrarAviso("Parceiro removido."); 
       setParceiros(prev => prev.filter(p => p.id !== id)); 
+    } else {
+      mostrarAviso("Erro ao excluir ou permissão negada.", "erro");
     }
   };
 

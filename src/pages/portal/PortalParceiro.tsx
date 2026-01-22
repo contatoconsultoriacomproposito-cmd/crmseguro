@@ -5,7 +5,7 @@ import {
   Send, Loader2, CheckCircle2, 
   ShieldCheck, History, ChevronRight, 
   X, DollarSign, Upload, User, Phone, Mail, MessageSquare,
-  Clock, Ban, Info, ThumbsUp, ThumbsDown, AlertCircle, PartyPopper
+  Clock, Ban, Info, ThumbsUp, ThumbsDown, AlertCircle, PartyPopper, RefreshCw
 } from "lucide-react";
 import { maskPhone } from "../../utils/masks";
 
@@ -36,15 +36,21 @@ export default function PortalParceiro() {
 
   const carregarHistorico = useCallback(async (parceiroId: string) => {
     try {
-        // Forçamos a query a ignorar filtros de usuário autenticado nas RLS
-        // usando apenas o parceiro_id como chave de acesso
+        // 1. Buscamos as indicações do parceiro
         const { data: indicacoes, error: errInd } = await supabase
         .from("tab_indicacoes")
-        .select(`*, tab_indicacoes_cotacoes (*)`)
+        .select(`
+            *,
+            tab_indicacoes_cotacoes!tab_indicacoes_cotacoes_indicacao_id_fkey (*)
+        `)
         .eq("parceiro_id", parceiroId)
         .order("created_at", { ascending: false });
 
-        if (errInd) throw errInd;
+        if (errInd) {
+        console.error("Erro Supabase:", errInd);
+        throw errInd;
+        }
+
         setHistorico(indicacoes || []);
     } catch (err) {
         console.error("Erro ao carregar histórico:", err);
@@ -52,26 +58,34 @@ export default function PortalParceiro() {
     }, []);
 
   useEffect(() => {
-    async function inicializarPortal() {
-      if (!slug) return;
-      try {
+  async function inicializarPortal() {
+    if (!slug) return;
+        try {
         const { data, error } = await supabase
-          .from("tab_parceiros")
-          .select("id, nome_parceiro, corretora_id, corretor_id")
-          .eq("slug_link", slug)
-          .single();
+            .from("tab_parceiros")
+            .select("id, nome_parceiro, corretora_id, corretor_id")
+            .eq("slug_link", slug)
+            .maybeSingle();
 
         if (error) throw error;
-        setParceiro(data);
-        await carregarHistorico(data.id);
-      } catch (err) {
-        console.error("Erro ao carregar portal");
-      } finally {
+
+        // VERIFICAÇÃO DE SEGURANÇA AQUI:
+        if (data) {
+            setParceiro(data);
+            await carregarHistorico(data.id);
+        } else {
+            console.warn("Parceiro não encontrado para o slug:", slug);
+            // Opcional: setParceiro(null) ou redirecionar para 404
+        }
+
+        } catch (err) {
+        console.error("Erro ao carregar portal:", err);
+        } finally {
         setLoading(false);
-      }
+        }
     }
     inicializarPortal();
-  }, [slug, carregarHistorico]);
+    }, [slug, carregarHistorico]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,6 +209,14 @@ export default function PortalParceiro() {
         }
     };
 
+const handleRefresh = async () => {
+    if (parceiro?.id) {
+        // Opcional: você pode criar um novo estado 'refreshing' 
+        // ou usar o 'setLoading' que já existe
+        await carregarHistorico(parceiro.id);
+    }
+};
+
   if (loading) return <div className="h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
 
   return (
@@ -205,7 +227,23 @@ export default function PortalParceiro() {
           <ShieldCheck size={40} />
         </div>
         <h1 className="text-3xl font-black uppercase italic tracking-tighter">Central do Parceiro</h1>
-        <p className="text-blue-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-2">{parceiro?.nome_parceiro}</p>
+
+        {/* NOME DO PARCEIRO COM O BOTÃO AO LADO */}
+        <div className="flex items-center justify-center gap-3 mt-2"></div>
+        <p className="text-blue-400 font-bold uppercase text-[10px] tracking-[0.3em]">
+            {parceiro?.nome_parceiro}
+          </p>
+
+        <button 
+            onClick={handleRefresh}
+            type="button"
+            className="p-2 bg-zinc-800 rounded-full text-blue-400 hover:bg-blue-600 hover:text-white transition-all active:rotate-180 duration-500 shadow-lg"
+          >
+            <RefreshCw size={12} />
+          </button>
+
+
+        
 
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex bg-zinc-800 p-1 rounded-t-2xl">
           <button onClick={() => setAbaAtiva('NOVA')} className={`px-6 py-3 rounded-t-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all ${abaAtiva === 'NOVA' ? 'bg-slate-50 text-blue-600' : 'text-slate-400'}`}>
