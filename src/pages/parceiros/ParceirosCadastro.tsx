@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   Users, Save, Trash2, Edit3, Loader2, 
   Briefcase, UserCheck, Copy, User, ChevronDown, AlertCircle, 
-  Mail, CheckCircle2, Search, Phone,  ExternalLink, FileText
+  Mail, CheckCircle2, Search, Phone, ExternalLink, FileText
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../auth/AuthContext";
@@ -28,6 +28,7 @@ export default function ParceirosCadastro() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [busca, setBusca] = useState("");
+  const [corretorFiltro, setCorretorFiltro] = useState<string>("TODOS");
   const [parceiros, setParceiros] = useState<Parceiro[]>([]);
   const [corretores, setCorretores] = useState<{ id: string; nome: string }[]>([]);
   const [perfilLogado, setPerfilLogado] = useState<any>(null);
@@ -60,29 +61,23 @@ export default function ParceirosCadastro() {
           if (perfil.tipo_usuario === "CORRETOR") setForm(prev => ({ ...prev, corretor_id: perfil.id }));
           await carregarParceiros(perfil);
         }
-      } catch (err) { console.error(err); } finally { setFetching(false); }
+      } catch (err) { 
+        console.error(err); 
+      } finally { 
+        setFetching(false); 
+      }
     }
     inicializar();
   }, [user]);
 
   async function carregarParceiros(perfil: any) {
-      // Se o perfil for nulo ou não tiver o ID da corretora, cancela a busca para não dar erro 400
       if (!perfil || !perfil.corretora_id) return;
-
-      let query = supabase
-        .from("tab_parceiros")
-        .select("*")
-        .eq("corretora_id", perfil.corretora_id);
-
+      let query = supabase.from("tab_parceiros").select("*").eq("corretora_id", perfil.corretora_id);
       if (perfil.tipo_usuario === "CORRETOR") {
         query = query.eq("corretor_id", perfil.id);
       }
-
       const { data, error } = await query.order("nome_parceiro", { ascending: true });
-      
-      if (!error && data) {
-          setParceiros(data);
-      }
+      if (!error && data) setParceiros(data);
   }
 
   const handleNomeChange = (val: string) => {
@@ -90,7 +85,9 @@ export default function ParceirosCadastro() {
     if (!editId && tipoAbas === 'EXTERNO') {
       const slug = val.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
       setForm({ ...form, nome_parceiro: nome, slug_link: slug });
-    } else { setForm({ ...form, nome_parceiro: nome }); }
+    } else { 
+      setForm({ ...form, nome_parceiro: nome }); 
+    }
   };
 
   const resetForm = () => {
@@ -132,13 +129,8 @@ export default function ParceirosCadastro() {
         if (error) throw error;
         mostrarAviso("Parceiro cadastrado com sucesso!");
       }
-
       resetForm();
-      
-      // ✅ CORREÇÃO AQUI: Passamos o perfilLogado INTEIRO, não só o ID.
-      // Isso fará a lista atualizar instantaneamente sem F5.
       await carregarParceiros(perfilLogado); 
-
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
       mostrarAviso(err.code === '23505' ? "Este link já está em uso." : "Erro ao salvar dados.", 'erro');
@@ -156,16 +148,11 @@ export default function ParceirosCadastro() {
 
   const handleExcluir = async (id: string) => {
     if (!confirm("Excluir parceiro permanentemente?")) return;
-
-    // Adicionamos o filtro de corretora_id e, se necessário, corretor_id para segurança extra
     let query = supabase.from("tab_parceiros").delete().eq("id", id);
-    
     if (perfilLogado?.tipo_usuario === "CORRETOR") {
       query = query.eq("corretor_id", perfilLogado.id);
     }
-
     const { error } = await query;
-    
     if (!error) { 
       mostrarAviso("Parceiro removido."); 
       setParceiros(prev => prev.filter(p => p.id !== id)); 
@@ -174,19 +161,23 @@ export default function ParceirosCadastro() {
     }
   };
 
-  // Filtro de Busca Global
-  const parceirosFiltrados = parceiros.filter(p => 
-    (p.tipo_parceiro || 'INTERNO') === tipoAbas &&
-    (p.nome_parceiro.toLowerCase().includes(busca.toLowerCase()) || 
-     p.setor_parceiro?.toLowerCase().includes(busca.toLowerCase()))
-  );
+  const parceirosFiltrados = parceiros.filter(p => {
+    const pertenceAba = (p.tipo_parceiro || 'INTERNO') === tipoAbas;
+    const atendeBuscaTexto = p.nome_parceiro.toLowerCase().includes(busca.toLowerCase()) || 
+                             p.setor_parceiro?.toLowerCase().includes(busca.toLowerCase());
+    const atendeFiltroCorretor = corretorFiltro === "TODOS" || p.corretor_id === corretorFiltro;
+    return pertenceAba && atendeBuscaTexto && atendeFiltroCorretor;
+  });
 
-  if (fetching) return (
-    <div className="h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
-      <Loader2 className="animate-spin text-blue-600" size={40} />
-      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Carregando Ecossistema...</span>
-    </div>
-  );
+  // TELA DE CARREGAMENTO INICIAL USANDO 'fetching'
+  if (fetching) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-slate-50">
+        <Loader2 className="animate-spin text-blue-600" size={40} />
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Carregando Ecossistema...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
@@ -199,7 +190,7 @@ export default function ParceirosCadastro() {
         </div>
       )}
 
-      {/* HEADER REDUZIDO E ELEGANTE */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -209,15 +200,33 @@ export default function ParceirosCadastro() {
           <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">Gestão centralizada de indicações {tipoAbas.toLowerCase()}s</p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          {perfilLogado?.tipo_usuario === 'CORRETORA' && (
+            <div className="relative group">
+              <select 
+                value={corretorFiltro}
+                onChange={(e) => setCorretorFiltro(e.target.value)}
+                className="bg-white border-2 border-blue-100 rounded-xl px-4 h-12 text-[10px] font-black uppercase text-blue-600 focus:border-blue-600 outline-none transition-all appearance-none pr-10 shadow-sm hover:border-blue-300 cursor-pointer"
+              >
+                <option value="TODOS">🔍 TODOS OS CORRETORES</option>
+                <option value="">🚫 SEM CORRETOR (DIRETO)</option>
+                {corretores.map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none" />
+            </div>
+          )}
+
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={16} />
             <input 
               value={busca} onChange={e => setBusca(e.target.value)}
               placeholder="PESQUISAR PARCEIRO..."
-              className="bg-white border-2 border-slate-200 rounded-xl pl-11 pr-4 h-12 w-full md:w-64 text-[11px] font-bold focus:ring-4 focus:ring-blue-600/5 focus:border-blue-600 outline-none transition-all"
+              className="bg-white border-2 border-slate-200 rounded-xl pl-11 pr-4 h-12 w-full md:w-48 text-[11px] font-bold focus:ring-4 focus:ring-blue-600/5 focus:border-blue-600 outline-none transition-all"
             />
           </div>
+
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
             {(['INTERNO', 'EXTERNO'] as const).map(aba => (
               <button key={aba} type="button" onClick={() => { setTipoAbas(aba); resetForm(); }}
@@ -230,14 +239,13 @@ export default function ParceirosCadastro() {
       </div>
 
       <div className="space-y-10">
-        {/* SEÇÃO DE CADASTRO (TOPO) */}
+        {/* SEÇÃO DE CADASTRO */}
         <div className="bg-white rounded-[2.5rem] p-6 md:p-10 shadow-sm border border-slate-200 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none text-blue-600">
             <Users size={120} />
           </div>
 
           <form onSubmit={handleSalvar} className="relative z-10">
-            {/* GRID PRINCIPAL - NOME, EMAIL, WHATS */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
               <div className="lg:col-span-2">
                 <label className="text-[9px] font-black text-slate-600 uppercase ml-2 mb-2 block tracking-wider">Nome do Parceiro</label>
@@ -270,7 +278,6 @@ export default function ParceirosCadastro() {
               </div>
             </div>
 
-            {/* ÁREA DE DADOS EXTERNOS (SE ATIVO) */}
             {tipoAbas === 'EXTERNO' && (
               <div className="mb-6 p-6 rounded-2xl bg-blue-50/40 border-2 border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2 duration-300">
                   <div>
@@ -296,7 +303,6 @@ export default function ParceirosCadastro() {
               </div>
             )}
 
-            {/* GRID FINAL - SETOR E CORRETOR */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="text-[9px] font-black text-slate-600 uppercase ml-2 mb-2 block tracking-wider">Setor/Ramo</label>
@@ -322,7 +328,6 @@ export default function ParceirosCadastro() {
               </div>
             </div>
 
-            {/* CAMPO DE OBSERVAÇÃO ADICIONADO */}
             <div className="mt-6">
               <label className="text-[9px] font-black text-slate-600 uppercase ml-2 mb-2 block tracking-wider">Observações do Parceiro</label>
               <div className="relative group">
@@ -337,7 +342,6 @@ export default function ParceirosCadastro() {
               </div>
             </div>
 
-            {/* RODAPÉ DO FORMULÁRIO */}
             <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 italic">
                   <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
@@ -356,7 +360,7 @@ export default function ParceirosCadastro() {
           </form>
         </div>
 
-        {/* LISTAGEM (BAIXO) */}
+        {/* LISTAGEM */}
         <div className="space-y-4">
           <div className="flex items-center justify-between px-4">
              <h3 className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em] flex items-center gap-2">
@@ -376,7 +380,10 @@ export default function ParceirosCadastro() {
                     <h4 className="font-black text-slate-800 uppercase text-sm tracking-tight mb-1">{p.nome_parceiro}</h4>
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                       <span className="text-[9px] font-black text-slate-500 flex items-center gap-1.5 uppercase tracking-tighter"><Briefcase size={12} className="text-blue-500"/> {p.setor_parceiro || 'GERAL'}</span>
-                      <span className="text-[9px] font-black text-slate-500 flex items-center gap-1.5 uppercase tracking-tighter"><UserCheck size={12} className="text-blue-500"/> {corretores.find(c => c.id === p.corretor_id)?.nome || 'GESTÃO DIRETA'}</span>
+                      <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded flex items-center gap-1.5 uppercase tracking-tighter border border-blue-100">
+                        <UserCheck size={12} className="text-blue-600"/> 
+                        {corretores.find(c => c.id === p.corretor_id)?.nome || 'GESTÃO DIRETA'}
+                      </span>
                       {p.telefone_parceiro && <span className="text-[9px] font-black text-slate-500 flex items-center gap-1.5 uppercase tracking-tighter"><Phone size={12} className="text-blue-500"/> {p.telefone_parceiro}</span>}
                     </div>
                   </div>
@@ -414,4 +421,4 @@ export default function ParceirosCadastro() {
       </div>
     </div>
   );
-  } 
+}

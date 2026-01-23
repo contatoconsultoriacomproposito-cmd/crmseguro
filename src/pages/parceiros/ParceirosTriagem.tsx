@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../auth/AuthContext';
+import { maskCurrency } from '../../utils/masks';
 import { 
   Search, User, Clock, XCircle, 
   CheckCircle2, UserPlus, DollarSign, Wallet,
-  Phone, Mail, FileText, Info, AlertTriangle
+  Phone, Mail, FileText, Info, AlertTriangle, RefreshCwIcon
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-// Interface completa para não perder dados
+// 1. Interface atualizada
 interface Indicacao {
   id: string;
   nome_cliente: string;
@@ -22,6 +23,23 @@ interface Indicacao {
   tab_parceiros: { 
     nome_parceiro: string 
   };
+  // Nova propriedade para os documentos
+  tab_indicacoes_documentos?: Array<{
+    id: string;
+    nome_arquivo: string;
+    url_arquivo: string;
+    tipo: string;
+  }>;
+
+  tab_indicacoes_cotacoes?: Array<{
+  valor_premio: number;
+  seguradora: string;
+  comissao_parceiro?: number;
+  data_previsao_comissao?: string; // Adicione este para o formulário de edição
+  coberturas_principais: string;
+}>;
+
+  
 }
 
 export default function ParceirosTriagem() {
@@ -30,6 +48,8 @@ export default function ParceirosTriagem() {
   const [indicacoes, setIndicacoes] = useState<Indicacao[]>([]);
   const [busca, setBusca] = useState('');
   const [selecionada, setSelecionada] = useState<Indicacao | null>(null);
+  const [seguradoras, setSeguradoras] = useState<{id: string, nome: string}[]>([]);
+  const [showSeguradoras, setShowSeguradoras] = useState(false);
   
   // Modais
   const [showRecusaModal, setShowRecusaModal] = useState(false);
@@ -41,7 +61,6 @@ export default function ParceirosTriagem() {
     valor_premio: '',
     seguradora: '',
     coberturas_principais: ''
-    
     
   });
 
@@ -57,39 +76,75 @@ export default function ParceirosTriagem() {
 
   const motivosRecusa = ["FORA DO PERFIL", "DADOS INCORRETOS", "CLIENTE JÁ POSSUI SEGURO", "INDICAÇÃO DUPLICADA", "PRODUTO NÃO TRABALHADO", "OUTROS"];
 
-  const carregarIndicacoes = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      
-      // O FILTRO .eq('corretor_id', user.id) É A CHAVE DO SEGREDO
-      const { data, error } = await supabase
-        .from('tab_indicacoes')
-        .select(`
-          *,
-          tab_parceiros (
-            nome_parceiro,
-            corretor_id
-          )
-        `)
-        .eq('corretor_id', user.id) // Garante que o Corretor B só veja as indicações DELE
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
+  const handleRefresh = async () => {
+    // Não precisamos de setLoading(true) aqui porque carregarIndicacoes() já faz isso internamente
+    await carregarIndicacoes();
+  };
 
-      // Filtro de segurança adicional: garante que se houver lixo no banco, 
-      // não mostramos parceiros que não pertençam ao corretor logado
-      const dadosFiltrados = data || [];
-      
-      setIndicacoes(dadosFiltrados);
-    } catch (err) {
-      console.error("Erro ao carregar indicações:", err);
-    } finally {
-      setLoading(false);
+// Função isolada para as seguradoras
+const carregarSeguradoras = useCallback(async () => {
+  try {
+    const { data, error } = await supabase
+      .from('base_seguradoras')
+      .select('id, nome')
+      .order('nome');
+    
+    if (error) throw error;
+    if (data) setSeguradoras(data);
+  } catch (err) {
+    console.error("Erro ao carregar base de seguradoras:", err);
+  }
+}, []);
+
+// Função principal de indicações (Limpa e sem a função interna)
+const carregarIndicacoes = useCallback(async () => {
+  if (!user) return;
+  try {
+    setLoading(true);
+
+    const { data: perfil, error: perfilError } = await supabase
+      .from('usuarios_perfis')
+      .select('tipo_usuario')
+      .eq('id', user.id)
+      .single();
+
+    if (perfilError) throw perfilError;
+
+    let query = supabase
+      .from('tab_indicacoes')
+      .select(`
+        *,
+        tab_parceiros (
+          nome_parceiro,
+          corretor_id,
+          usuarios_perfis:corretor_id (nome)
+        ),
+        tab_indicacoes_documentos (
+          id, nome_arquivo, url_arquivo, tipo
+        ),
+        tab_indicacoes_cotacoes (*)
+      `);
+
+    if (perfil.tipo_usuario === 'CORRETOR') {
+      query = query.eq('corretor_id', user.id);
     }
-  }, [user]);
 
-  useEffect(() => { carregarIndicacoes(); }, [carregarIndicacoes]);
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) throw error;
+    setIndicacoes(data || []);
+  } catch (err) {
+    console.error("Erro ao carregar indicações:", err);
+  } finally {
+    setLoading(false);
+  }
+}, [user]);
+
+// useEffect ÚNICO que dispara as duas cargas ao iniciar
+useEffect(() => {
+  carregarSeguradoras();
+  carregarIndicacoes();
+}, [carregarSeguradoras, carregarIndicacoes]);
 
   // Função para assumir o lead (Resolve Erro 400 ao garantir o ID correto)
   async function iniciarAtendimento(id: string) {
@@ -115,15 +170,18 @@ export default function ParceirosTriagem() {
   async function enviarCotacao() {
     if (!selecionada) return;
     try {
+      // TRATAMENTO DO VALOR: Remove tudo que não é número e divide por 100
+      // Isso garante que "R$ 1.500,00" vire exatamente 1500.00
+      const valorLimpo = Number(formCotacao.valor_premio.replace(/\D/g, "")) / 100;
+
       // 1. Insere na tabela de cotações
       const { error: errCot } = await supabase
         .from('tab_indicacoes_cotacoes')
         .insert([{
           indicacao_id: selecionada.id,
-          valor_premio: parseFloat(formCotacao.valor_premio),
+          valor_premio: valorLimpo || 0,
           seguradora: formCotacao.seguradora,
           coberturas_principais: formCotacao.coberturas_principais
-          
         }]);
 
       if (errCot) throw errCot;
@@ -143,11 +201,12 @@ export default function ParceirosTriagem() {
       
       // Limpa formulário
       setFormCotacao({ valor_premio: '', seguradora: '', coberturas_principais: '' });
+      setShowSeguradoras(false); // Fecha o dropdown se estiver aberto
     } catch (err: any) { 
       console.error("Erro na cotação:", err);
       alert(`Erro: ${err.message || "Falha na permissão do banco de dados."}`); 
     }
-  }
+}
 
   // Função para fechar venda e comissão
   async function finalizarVendaComissao() {
@@ -157,12 +216,16 @@ export default function ParceirosTriagem() {
     }
 
     try {
+      // TRATAMENTO DE VALOR "BLINDADO":
+      // Remove tudo que não é dígito e divide por 100 para converter centavos em float
+      // Ex: "R$ 1.250,50" -> "125050" -> 1250.50
+      const valorComissaoLimpo = Number(formComissao.valor_comissao.replace(/\D/g, "")) / 100;
+
       // 1. Atualiza os dados financeiros na cotação
-      // Conforme sua constraint: status_comissao_parceiro só aceita 'PENDENTE' ou 'PAGO'
       const { error: errCot } = await supabase
         .from('tab_indicacoes_cotacoes')
         .update({
-          comissao_parceiro: parseFloat(formComissao.valor_comissao),
+          comissao_parceiro: valorComissaoLimpo || 0,
           data_previsao_comissao: formComissao.data_previsao_pagamento,
           status_comissao_parceiro: 'PENDENTE' 
         })
@@ -179,16 +242,18 @@ export default function ParceirosTriagem() {
       if (errInd) throw errInd;
 
       setSuccessToast("PROPOSTA FINALIZADA E COMISSÃO REGISTRADA!");
+      
+      // Feedback visual e limpeza de estados
       setTimeout(() => setSuccessToast(null), 3000);
       setShowComissaoModal(false);
       setSelecionada(null);
       carregarIndicacoes();
+      
     } catch (err: any) {
       console.error("Erro ao finalizar:", err);
-      // Mensagem mais clara para ajudar no debug
       alert(`Erro ao salvar: ${err.message || "Verifique as permissões do banco."}`);
     }
-  }
+}
 
   // Função para processar a recusa do lead
   async function confirmarRecusa() {
@@ -252,18 +317,36 @@ export default function ParceirosTriagem() {
       <div className="max-w-7xl mx-auto">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div>
-            <h1 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic">Triagem <span className="text-blue-600">de Indicações</span></h1>
-            <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] mt-1">Central de Atendimento e Conversão</p>
+            <h1 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic">
+              Triagem <span className="text-blue-600">de Indicações</span>
+            </h1>
+            <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] mt-1">
+              Central de Atendimento e Conversão
+            </p>
           </div>
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="PESQUISAR CLIENTE OU PARCEIRO..." 
-              className="w-full h-12 pl-12 pr-4 bg-white border-2 border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:border-blue-500 transition-all shadow-sm" 
-              value={busca} 
-              onChange={(e) => setBusca(e.target.value)} 
-            />
+
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            {/* BOTÃO ATUALIZAR */}
+            <button 
+              onClick={handleRefresh} 
+              disabled={loading}
+              className="flex items-center gap-2 h-12 px-4 bg-white border-2 border-slate-200 rounded-2xl text-[10px] font-black uppercase text-slate-500 hover:text-blue-600 hover:border-blue-500 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCwIcon size={16} className={loading ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">Atualizar</span>
+            </button>
+
+            {/* BARRA DE BUSCA */}
+            <div className="relative flex-1 md:w-80">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="PESQUISAR CLIENTE OU PARCEIRO..." 
+                className="w-full h-12 pl-12 pr-4 bg-white border-2 border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:border-blue-500 transition-all shadow-sm" 
+                value={busca} 
+                onChange={(e) => setBusca(e.target.value)} 
+              />
+            </div>
           </div>
         </header>
 
@@ -349,26 +432,82 @@ export default function ParceirosTriagem() {
                   </div>
                 </div>
 
+                {/* SEÇÃO DE DOCUMENTOS ANEXADOS */}
+                {selecionada.tab_indicacoes_documentos && selecionada.tab_indicacoes_documentos.length > 0 && (
+                  <div className="mb-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                      <FileText size={14} className="text-blue-500" /> Documentos Enviados pelo Parceiro
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {selecionada.tab_indicacoes_documentos.map((doc) => (
+                        <a
+                          key={doc.id}
+                          href={doc.url_arquivo}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between p-4 bg-white border-2 border-slate-100 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                              <FileText size={18} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black text-slate-800 uppercase truncate max-w-[120px]">
+                                {doc.tipo}
+                              </p>
+                              <p className="text-[8px] font-bold text-slate-400 uppercase">Ver arquivo</p>
+                            </div>
+                          </div>
+                          <div className="text-slate-300 group-hover:text-blue-500">
+                            <Info size={16} />
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Fluxo de Status */}
                 <div className="space-y-6">
 
-                {/* EXIBIÇÃO DE DADOS DA COTAÇÃO (Para status avançados) */}
-                {['COTADO', 'APROVADA_PARCEIRO', 'VENDIDO'].includes(selecionada.status_indicacao) && (
-                  <div className="bg-slate-50 border-2 border-slate-200 rounded-[2rem] p-6 animate-in fade-in">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <FileText size={14} /> Resumo da Proposta Enviada
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
+               {/* EXIBIÇÃO DE DADOS DA COTAÇÃO (Para status avançados) */}
+                {(['COTADO', 'APROVADA_PARCEIRO', 'VENDIDO'].includes(selecionada.status_indicacao)) && (
+                  <div className="mt-8 p-6 bg-slate-50 border-2 border-slate-100 rounded-3xl space-y-4 animate-in fade-in zoom-in duration-300">
+                    <div className="flex items-center gap-2 text-slate-400 mb-2">
+                      <FileText size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Resumo da Proposta Enviada</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
                       <div>
-                        <p className="text-[8px] font-black text-slate-400 uppercase">Seguradora</p>
-                        <p className="text-sm font-black text-slate-700">{formCotacao.seguradora || "PORTO SEGURO"}</p>
+                        <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Seguradora escolhida</label>
+                        <span className="text-[13px] font-black text-slate-700 uppercase">
+                          {selecionada.tab_indicacoes_cotacoes?.[0]?.seguradora || '---'}
+                        </span>
                       </div>
+
                       <div>
-                        <p className="text-[8px] font-black text-slate-400 uppercase">Valor do Prêmio</p>
-                        <p className="text-sm font-black text-emerald-600">
-                          {formCotacao.valor_premio ? `R$ ${parseFloat(formCotacao.valor_premio).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : "R$ 0,00"}
-                        </p>
+                        <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Valor do Prêmio</label>
+                        <span className="text-[15px] font-black text-emerald-600">
+                          {/* AQUI A CORREÇÃO: Usamos Number() para garantir que o valor do banco seja lido corretamente */}
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                            Number(selecionada.tab_indicacoes_cotacoes?.[0]?.valor_premio || 0)
+                          )}
+                        </span>
                       </div>
+
+                      {/* Exibe Comissão apenas se houver valor registrado */}
+                      {selecionada.tab_indicacoes_cotacoes?.[0]?.comissao_parceiro !== undefined && (
+                        <div className="col-span-2 pt-4 border-t border-slate-200/60">
+                          <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Comissão do Parceiro</label>
+                          <span className="text-[15px] font-black text-blue-600">
+                            {/* AQUI A CORREÇÃO: Mesma lógica de conversão forçada */}
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                              Number(selecionada.tab_indicacoes_cotacoes?.[0]?.comissao_parceiro || 0)
+                            )}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -389,37 +528,78 @@ export default function ParceirosTriagem() {
                 {/* CASO: EM ATENDIMENTO */}
                 {selecionada.status_indicacao === 'EM_ATENDIMENTO' && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-                    <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-2"><FileText size={14} /> Detalhes da Cotação</h3>
+                    <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                      <FileText size={14} /> Detalhes da Cotação
+                    </h3>
+                    
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="col-span-2 md:col-span-1">
-                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Seguradora</label>
-                        <input
-                          className="w-full h-12 px-4 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold focus:border-blue-500 outline-none transition-all"
-                          placeholder="Ex: Porto Seguro"
-                          value={formCotacao.seguradora}
-                          onChange={e => setFormCotacao({ ...formCotacao, seguradora: e.target.value.toUpperCase() })}
-                        />
+                      {/* SELETOR DE SEGURADORA ELEGANTE */}
+                      <div className="col-span-2 md:col-span-1 relative">
+                        <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Seguradora (digite para pesquisar)</label>
+                        <div className="relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                            <Search size={16} />
+                          </div>
+                          <input
+                            type="text"
+                            className="w-full h-12 pl-12 pr-4 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold focus:border-blue-500 outline-none uppercase transition-all"
+                            placeholder="Pesquisar seguradora..."
+                            value={formCotacao.seguradora}
+                            onChange={e => {
+                              setFormCotacao({ ...formCotacao, seguradora: e.target.value.toUpperCase() });
+                              setShowSeguradoras(true); 
+                            }}
+                            onFocus={() => setShowSeguradoras(true)}
+                          />
+                          
+                          {/* Menu de Sugestões Flutuante */}
+                          {showSeguradoras && formCotacao.seguradora.length > 0 && (
+                            <div className="absolute z-[500] w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2">
+                              {seguradoras
+                                .filter(s => s.nome.toUpperCase().includes(formCotacao.seguradora.toUpperCase()))
+                                .map(s => (
+                                  <div
+                                    key={s.id}
+                                    onClick={() => {
+                                      setFormCotacao({ ...formCotacao, seguradora: s.nome.toUpperCase() });
+                                      setShowSeguradoras(false);
+                                    }}
+                                    className="px-5 py-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-center justify-between group"
+                                  >
+                                    <span className="text-[11px] font-black text-slate-700 uppercase">{s.nome}</span>
+                                    <CheckCircle2 size={14} className="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
+
                       <div className="col-span-2 md:col-span-1">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Valor Prêmio (R$)</label>
                         <input
                           className="w-full h-12 px-4 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold focus:border-blue-500 outline-none"
-                          placeholder="0.00"
+                          placeholder="R$ 0,00"
                           value={formCotacao.valor_premio}
-                          onChange={e => setFormCotacao({ ...formCotacao, valor_premio: e.target.value })}
+                          onChange={e => setFormCotacao({ ...formCotacao, valor_premio: maskCurrency(e.target.value) })}
                         />
                       </div>
+
                       <div className="col-span-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Coberturas Principais</label>
                         <textarea
-                          className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold focus:border-blue-500 outline-none h-24"
+                          className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold focus:border-blue-500 outline-none h-24 resize-none"
                           placeholder="Descreva as coberturas inclusas..."
                           value={formCotacao.coberturas_principais}
                           onChange={e => setFormCotacao({ ...formCotacao, coberturas_principais: e.target.value })}
                         />
                       </div>
                     </div>
-                    <button onClick={enviarCotacao} className="w-full h-16 bg-emerald-500 text-white rounded-2xl font-black uppercase text-[11px] hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-3">
+
+                    <button 
+                      onClick={enviarCotacao} 
+                      className="w-full h-16 bg-emerald-500 text-white rounded-2xl font-black uppercase text-[11px] hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-3 active:scale-[0.98]"
+                    >
                       <CheckCircle2 size={18} /> Enviar Cotação para o Parceiro
                     </button>
                   </div>
@@ -435,25 +615,47 @@ export default function ParceirosTriagem() {
                 )}
 
                 {/* CASO: APROVADA_PARCEIRO */}
-                {selecionada.status_indicacao === 'APROVADA_PARCEIRO' && (
+                {(selecionada.status_indicacao === 'APROVADA_PARCEIRO' || selecionada.status_indicacao === 'VENDIDO') && (
                   <div className="space-y-6 animate-in zoom-in duration-500">
-                    <div className="bg-emerald-50 p-8 rounded-[2.5rem] border-2 border-emerald-100 flex items-center gap-6">
-                      <div className="w-20 h-20 bg-emerald-500 rounded-[2rem] flex items-center justify-center text-white shadow-xl shadow-emerald-200">
-                        <CheckCircle2 size={40} />
-                      </div>
-                      <div>
-                        <h3 className="text-emerald-900 font-black uppercase text-lg italic leading-none mb-2">Venda Aprovada!</h3>
-                        <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest leading-relaxed">O parceiro deu o OK. Finalize o processo administrativo abaixo.</p>
-                      </div>
-                    </div>
+                    {/* ... Header de Sucesso ... */}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <button className="h-20 bg-white border-2 border-blue-600 text-blue-600 rounded-[1.8rem] font-black uppercase text-[10px] flex items-center justify-center gap-3 hover:bg-blue-50 transition-all">
-                        <UserPlus size={20} /> Vincular no CRM
+                      {/* Botão Vincular no CRM - REESTILIZADO */}
+                      <button className="group h-16 bg-blue-50/50 border-2 border-blue-200 text-blue-600 rounded-2xl font-black uppercase text-[11px] hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-300 flex items-center justify-center gap-3 shadow-sm active:scale-95">
+                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                          <UserPlus size={18} />
+                        </div>
+                        <span>Vincular no CRM</span>
                       </button>
-                      <button onClick={() => setShowComissaoModal(true)} className="h-20 bg-slate-900 text-white rounded-[1.8rem] font-black uppercase text-[10px] flex items-center justify-center gap-3 hover:bg-black shadow-2xl transition-all">
-                        <Wallet size={20} className="text-emerald-400" /> Registrar Comissão
-                      </button>
+
+                      {/* Lógica Condicional para o Botão de Comissão */}
+                      {selecionada.status_indicacao === 'APROVADA_PARCEIRO' ? (
+                        <button 
+                          onClick={() => setShowComissaoModal(true)} 
+                          className="h-16 bg-slate-900 text-white rounded-2xl font-black uppercase text-[11px] hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all flex items-center justify-center gap-3 active:scale-95"
+                        >
+                          <Wallet size={18} className="text-emerald-400" /> 
+                          Registrar Comissão
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => {
+                            const cotacao = selecionada.tab_indicacoes_cotacoes?.[0];
+                            setFormComissao({
+                              // CORREÇÃO AQUI: Multiplicamos por 100 e garantimos que é um Number
+                              valor_comissao: cotacao?.comissao_parceiro 
+                                ? maskCurrency((Number(cotacao.comissao_parceiro) * 100).toString()) 
+                                : '',
+                              data_previsao_pagamento: cotacao?.data_previsao_comissao || ''
+                            });
+                            setShowComissaoModal(true);
+                          }} 
+                          className="h-16 bg-amber-500 text-white rounded-2xl font-black uppercase text-[11px] hover:bg-amber-600 transition-all shadow-lg shadow-amber-100 flex items-center justify-center gap-3 active:scale-95"
+                        >
+                          <DollarSign size={18} /> 
+                          Editar Comissão
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -499,13 +701,13 @@ export default function ParceirosTriagem() {
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase mb-2 ml-2 block tracking-widest">Valor da Comissão (R$)</label>
                 <div className="relative">
-                  <div className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">R$</div>
+                  <div className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm"></div>
                   <input 
-                    type="number" 
+                    type="text" 
                     className="w-full h-16 pl-14 pr-6 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-xl text-slate-800 outline-none focus:border-emerald-500 transition-all" 
                     placeholder="0,00"
                     value={formComissao.valor_comissao} 
-                    onChange={e => setFormComissao({...formComissao, valor_comissao: e.target.value})} 
+                    onChange={e => setFormComissao({...formComissao, valor_comissao: maskCurrency(e.target.value)})}
                   />
                 </div>
               </div>
