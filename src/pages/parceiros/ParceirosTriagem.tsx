@@ -5,7 +5,7 @@ import { maskCurrency } from '../../utils/masks';
 import { 
   Search, User, Clock, XCircle, 
   CheckCircle2, UserPlus, DollarSign, Wallet,
-  Phone, Mail, FileText, Info, AlertTriangle, RefreshCwIcon
+  Phone, Mail, FileText, Info, AlertTriangle, RefreshCwIcon, RefreshCw, Link
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -20,6 +20,8 @@ interface Indicacao {
   status_indicacao: 'NOVO' | 'EM_ATENDIMENTO' | 'COTADO' | 'APROVADA_PARCEIRO' | 'VENDIDO' | 'PERDIDO';
   motivo_perda?: string;
   created_at: string;
+  cliente_fiel_id?: string;
+  tab_clientes?: { nome: string };
   tab_parceiros: { 
     nome_parceiro: string 
   };
@@ -37,6 +39,7 @@ interface Indicacao {
   comissao_parceiro?: number;
   data_previsao_comissao?: string; // Adicione este para o formulário de edição
   coberturas_principais: string;
+  status_comissao_parceiro?: 'PENDENTE' | 'PAGO';
 }>;
 
   
@@ -54,6 +57,11 @@ export default function ParceirosTriagem() {
   // Modais
   const [showRecusaModal, setShowRecusaModal] = useState(false);
   const [showComissaoModal, setShowComissaoModal] = useState(false);
+  // Estados para o Vínculo CRM
+  const [showVinculoModal, setShowVinculoModal] = useState(false);
+  const [buscaClienteCRM, setBuscaClienteCRM] = useState('');
+  const [clientesEncontrados, setClientesEncontrados] = useState<any[]>([]);
+  const [buscandoCRM, setBuscandoCRM] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   
   // Formulários
@@ -77,8 +85,11 @@ export default function ParceirosTriagem() {
   const motivosRecusa = ["FORA DO PERFIL", "DADOS INCORRETOS", "CLIENTE JÁ POSSUI SEGURO", "INDICAÇÃO DUPLICADA", "PRODUTO NÃO TRABALHADO", "OUTROS"];
 
   const handleRefresh = async () => {
-    // Não precisamos de setLoading(true) aqui porque carregarIndicacoes() já faz isso internamente
+    setLoading(true);
+    setIndicacoes([]); // O pulo do gato: limpa a lista para o usuário ver o "Sincronizando..."
+    setSelecionada(null); // Opcional: limpa a seleção para evitar dados fantasmas
     await carregarIndicacoes();
+    // O setLoading(false) já deve estar dentro do carregarIndicacoes final
   };
 
 // Função isolada para as seguradoras
@@ -301,6 +312,80 @@ useEffect(() => {
     i.nome_cliente.toLowerCase().includes(busca.toLowerCase()) ||
     i.tab_parceiros?.nome_parceiro?.toLowerCase().includes(busca.toLowerCase())
   );
+
+  async function buscarClientesCRM(termo: string) {
+    if (termo.length < 3) {
+      setClientesEncontrados([]);
+      return;
+    }
+    
+    setBuscandoCRM(true);
+    try {
+      // A query precisa buscar em TODOS os campos possíveis de identificação
+      const { data, error } = await supabase
+        .from('tab_clientes')
+        .select(`
+          id, tipo_cliente, nome, cpf, 
+          razao_social, nome_fantasia, cnpj, 
+          municipio, uf, telefone_whats
+        `)
+        .or(`nome.ilike.%${termo}%,cpf.ilike.%${termo}%,razao_social.ilike.%${termo}%,nome_fantasia.ilike.%${termo}%,cnpj.ilike.%${termo}%,telefone_whats.ilike.%${termo}%`)
+        .limit(10);
+
+      if (error) throw error;
+      
+      setClientesEncontrados(data || []);
+    } catch (err) {
+      console.error("Erro na busca CRM:", err);
+    } finally {
+      setBuscandoCRM(false);
+    }
+  }
+
+async function vincularCliente(clienteId: string) {
+  if (!selecionada) return;
+
+  try {
+    const { error } = await supabase
+      .from('tab_indicacoes')
+      .update({ cliente_fiel_id: clienteId })
+      .eq('id', selecionada.id);
+
+    if (error) throw error;
+
+    setSuccessToast("CLIENTE VINCULADO COM SUCESSO!");
+    setShowVinculoModal(false);
+    
+    // Atualiza o estado local para refletir o vínculo imediatamente
+    setSelecionada({ ...selecionada, cliente_fiel_id: clienteId });
+    carregarIndicacoes();
+    
+  } catch (err) {
+    console.error("Erro ao vincular:", err);
+    alert("Falha ao vincular cliente.");
+  }
+}
+
+async function darBaixaPagamento(indicacaoId: string) {
+  try {
+    setLoading(true);
+    const { error } = await supabase
+      .from('tab_indicacoes_cotacoes')
+      .update({ status_comissao_parceiro: 'PAGO' })
+      .eq('indicacao_id', indicacaoId);
+
+    if (error) throw error;
+
+    setSuccessToast("PAGAMENTO REGISTRADO COM SUCESSO!");
+    setTimeout(() => setSuccessToast(null), 3000);
+    carregarIndicacoes(); // Recarrega a lista para atualizar o painel
+  } catch (err) {
+    console.error(err);
+    alert("Erro ao dar baixa no pagamento.");
+  } finally {
+    setLoading(false);
+  }
+}
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
@@ -614,52 +699,102 @@ useEffect(() => {
                   </div>
                 )}
 
-                {/* CASO: APROVADA_PARCEIRO */}
+               {/* CASO: APROVADA_PARCEIRO OU VENDIDO */}
                 {(selecionada.status_indicacao === 'APROVADA_PARCEIRO' || selecionada.status_indicacao === 'VENDIDO') && (
                   <div className="space-y-6 animate-in zoom-in duration-500">
-                    {/* ... Header de Sucesso ... */}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Botão Vincular no CRM - REESTILIZADO */}
-                      <button className="group h-16 bg-blue-50/50 border-2 border-blue-200 text-blue-600 rounded-2xl font-black uppercase text-[11px] hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-300 flex items-center justify-center gap-3 shadow-sm active:scale-95">
-                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
-                          <UserPlus size={18} />
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                      
+                      {/* COLUNA 1: VÍNCULO CRM */}
+                      {selecionada.cliente_fiel_id ? (
+                        <div className="h-16 bg-emerald-50 border-2 border-emerald-200 text-emerald-600 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-3 shadow-sm italic">
+                          <CheckCircle2 size={18} className="text-emerald-500" />
+                          <div className="flex flex-col items-start">
+                            <span>Cliente no CRM</span>
+                            <span className="text-[7px] opacity-60 tracking-widest">Integração Ativa</span>
+                          </div>
                         </div>
-                        <span>Vincular no CRM</span>
-                      </button>
-
-                      {/* Lógica Condicional para o Botão de Comissão */}
-                      {selecionada.status_indicacao === 'APROVADA_PARCEIRO' ? (
-                        <button 
-                          onClick={() => setShowComissaoModal(true)} 
-                          className="h-16 bg-slate-900 text-white rounded-2xl font-black uppercase text-[11px] hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all flex items-center justify-center gap-3 active:scale-95"
-                        >
-                          <Wallet size={18} className="text-emerald-400" /> 
-                          Registrar Comissão
-                        </button>
                       ) : (
                         <button 
                           onClick={() => {
-                            const cotacao = selecionada.tab_indicacoes_cotacoes?.[0];
-                            setFormComissao({
-                              // CORREÇÃO AQUI: Multiplicamos por 100 e garantimos que é um Number
-                              valor_comissao: cotacao?.comissao_parceiro 
-                                ? maskCurrency((Number(cotacao.comissao_parceiro) * 100).toString()) 
-                                : '',
-                              data_previsao_pagamento: cotacao?.data_previsao_comissao || ''
-                            });
-                            setShowComissaoModal(true);
-                          }} 
-                          className="h-16 bg-amber-500 text-white rounded-2xl font-black uppercase text-[11px] hover:bg-amber-600 transition-all shadow-lg shadow-amber-100 flex items-center justify-center gap-3 active:scale-95"
+                            setBuscaClienteCRM(selecionada.nome_cliente);
+                            buscarClientesCRM(selecionada.nome_cliente);
+                            setShowVinculoModal(true);
+                          }}
+                          className="group h-16 bg-blue-50 border-2 border-blue-200 text-blue-600 rounded-2xl font-black uppercase text-[11px] hover:bg-blue-600 hover:text-white transition-all duration-300 flex items-center justify-center gap-3 active:scale-95"
                         >
-                          <DollarSign size={18} /> 
-                          Editar Comissão
+                          <UserPlus size={18} /> Vincular no CRM
                         </button>
+                      )}
+
+                      {/* COLUNA 2: FINANCEIRO (COMISSÃO E PAGAMENTO) */}
+                      <div className="flex flex-col gap-2">
+                        {selecionada.status_indicacao === 'APROVADA_PARCEIRO' ? (
+                          <button 
+                            onClick={() => setShowComissaoModal(true)} 
+                            className="h-16 bg-slate-900 text-white rounded-2xl font-black uppercase text-[11px] hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all flex items-center justify-center gap-3 active:scale-95"
+                          >
+                            <Wallet size={18} className="text-emerald-400" /> 
+                            Registrar Comissão
+                          </button>
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            {/* BOTÃO EDITAR: Sempre disponível para ajustes de valor/data */}
+                            <button 
+                              onClick={() => {
+                                const cotacao = selecionada.tab_indicacoes_cotacoes?.[0];
+                                setFormComissao({
+                                  valor_comissao: cotacao?.comissao_parceiro 
+                                    ? maskCurrency((Number(cotacao.comissao_parceiro) * 100).toString()) 
+                                    : '',
+                                  data_previsao_pagamento: cotacao?.data_previsao_comissao || ''
+                                });
+                                setShowComissaoModal(true);
+                              }} 
+                              className="h-10 bg-amber-500 text-white rounded-xl font-black uppercase text-[10px] hover:bg-amber-600 transition-all shadow-md flex items-center justify-center gap-2 active:scale-95"
+                            >
+                              <DollarSign size={16} /> Editar Comissão
+                            </button>
+
+                            {/* BOTÃO BAIXAR: Aparece apenas se ainda não foi pago */}
+                            {selecionada.tab_indicacoes_cotacoes?.[0]?.status_comissao_parceiro !== 'PAGO' ? (
+                              <button 
+                                onClick={() => darBaixaPagamento(selecionada.id)}
+                                className="h-10 bg-emerald-600 text-white rounded-xl font-black uppercase text-[10px] hover:bg-emerald-700 transition-all shadow-md flex items-center justify-center gap-2 active:scale-95 border-b-4 border-emerald-800"
+                              >
+                                <CheckCircle2 size={16} /> Baixar Pagamento
+                              </button>
+                            ) : (
+                              <div className="h-10 bg-slate-100 border-2 border-slate-200 text-slate-500 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 italic">
+                                <Wallet size={16} /> Comissão Paga
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* SEÇÃO DE STATUS FINAL */}
+                    <div className="mt-4">
+                      {selecionada.cliente_fiel_id && selecionada.tab_indicacoes_cotacoes?.[0]?.status_comissao_parceiro === 'PAGO' ? (
+                        <div className="p-6 bg-emerald-500 rounded-[2rem] text-white flex flex-col items-center justify-center gap-2 shadow-xl shadow-emerald-200 animate-in fade-in zoom-in duration-500">
+                          <CheckCircle2 size={32} />
+                          <div className="text-center">
+                            <h4 className="font-black uppercase text-xs italic tracking-widest">Venda 100% Finalizada</h4>
+                            <p className="text-[9px] font-bold opacity-80 uppercase tracking-tighter">CRM Vinculado & Parceiro Pago</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center gap-4 justify-center">
+                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-ping" />
+                          <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                            Aguardando: {!selecionada.cliente_fiel_id ? "Vínculo CRM" : "Baixa do Pagamento"}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
                 )}
-
                 {/* CASO: PERDIDO (Novo tratamento visual) */}
                 {selecionada.status_indicacao === 'PERDIDO' && (
                   <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-100 animate-in fade-in">
@@ -764,6 +899,121 @@ useEffect(() => {
               >
                 {loading ? "Processando..." : "Confirmar Recusa"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL VINCULAR NO CRM */}
+      {showVinculoModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-2xl p-10 shadow-2xl border border-slate-100 animate-in zoom-in duration-300">
+            <div className="flex justify-between items-start mb-8">
+              <div>
+                <h2 className="text-2xl font-black text-slate-800 uppercase italic">Vincular Cliente</h2>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Busque o cadastro oficial no seu CRM</p>
+              </div>
+              <button onClick={() => setShowVinculoModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <XCircle className="text-slate-300" size={24} />
+              </button>
+            </div>
+
+            <div className="relative mb-6">
+              {/* Ícone muda para um spinner se estiver buscando */}
+              {buscandoCRM ? (
+                <RefreshCw className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-500 animate-spin" size={20} />
+              ) : (
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              )}
+              
+              <input 
+                type="text"
+                className="w-full h-16 pl-14 pr-6 bg-slate-50 border-2 border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:border-blue-500 transition-all uppercase"
+                placeholder="PESQUISAR POR NOME OU CPF/CNPJ..."
+                value={buscaClienteCRM}
+                onChange={(e) => {
+                  setBuscaClienteCRM(e.target.value);
+                  buscarClientesCRM(e.target.value);
+                }}
+              />
+            </div>
+
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+              {/* LÓGICA DE EXIBIÇÃO: CARREGANDO -> RESULTADOS -> MENSAGEM VAZIA */}
+              {buscandoCRM ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 animate-pulse">
+                  <RefreshCw className="text-blue-500 animate-spin" size={32} />
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Consultando CRM...</span>
+                </div>
+              ) : clientesEncontrados.length > 0 ? (
+                clientesEncontrados.map(cliente => (
+                  <div 
+                    key={cliente.id} 
+                    className="group flex items-center justify-between p-4 bg-white border-2 border-slate-100 rounded-2xl hover:border-blue-500 transition-all shadow-sm active:scale-[0.99]"
+                  >
+                    <div className="flex flex-col gap-1 max-w-[70%]">
+                      {/* TÍTULO: Prioriza Nome Fantasia para PJ */}
+                      <p className="text-[11px] font-black text-slate-800 uppercase truncate leading-none">
+                        {cliente.tipo_cliente === 'PJ' 
+                          ? (cliente.nome_fantasia || cliente.razao_social || cliente.nome) 
+                          : cliente.nome}
+                      </p>
+
+                      {/* DOCUMENTO E TIPO */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                          {cliente.tipo_cliente === 'PJ' ? `CNPJ: ${cliente.cnpj}` : `CPF: ${cliente.cpf}`}
+                        </span>
+                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${
+                          cliente.tipo_cliente === 'PJ' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600'
+                        }`}>
+                          {cliente.tipo_cliente}
+                        </span>
+                      </div>
+
+                      {/* INFOS ADICIONAIS: Localização e Whats */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                        {cliente.telefone_whats && (
+                          <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-600">
+                            <Phone size={10} className="fill-emerald-600/10" /> {cliente.telefone_whats}
+                          </span>
+                        )}
+                        
+                        {(cliente.municipio || cliente.uf) && (
+                          <span className="flex items-center gap-1 text-[9px] text-slate-400 font-medium italic">
+                            <Search size={10} /> {cliente.municipio}{cliente.uf ? `/${cliente.uf}` : ''}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* RODAPÉ: Razão Social (apenas se for PJ e diferente do Fantasia) */}
+                      {cliente.tipo_cliente === 'PJ' && cliente.nome_fantasia && cliente.razao_social !== cliente.nome_fantasia && (
+                        <p className="text-[8px] text-slate-400 truncate mt-1">
+                          Razão: {cliente.razao_social}
+                        </p>
+                      )}
+                    </div>
+
+                    <button 
+                      onClick={() => vincularCliente(cliente.id)}
+                      className="px-4 h-10 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] hover:bg-blue-700 transition-all shadow-md shadow-blue-100 flex items-center gap-2 shrink-0"
+                    >
+                      <Link size={14} />
+                      Vincular
+                    </button>
+                  </div>
+                ))
+              ) : buscaClienteCRM.length > 2 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                  <AlertTriangle className="text-amber-400" size={24} />
+                  <span className="text-slate-400 font-bold text-[10px] uppercase italic tracking-tight">
+                    Nenhum cliente oficial encontrado com este termo.
+                  </span>
+                </div>
+              ) : (
+                <div className="text-center py-10 text-slate-300 font-bold text-[9px] uppercase tracking-widest animate-pulse">
+                  Aguardando termo de pesquisa...
+                </div>
+              )}
             </div>
           </div>
         </div>

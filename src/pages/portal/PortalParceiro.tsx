@@ -3,11 +3,12 @@ import { useParams } from "react-router-dom";
 import { supabasePublic as supabase } from "../../lib/supabaseClient";
 import { 
   Send, Loader2, CheckCircle2, ShieldCheck, History, ChevronRight, 
-  X, DollarSign, Upload, User, Phone, Mail, MessageSquare,
+  X, DollarSign, User, Phone, Mail, MessageSquare,
   Clock, Ban, Info, ThumbsUp, ThumbsDown, AlertCircle, PartyPopper, RefreshCw, 
-  FileText, MapPin, Briefcase, Car, Plus, Paperclip, Search, Calendar
+  Search, Calendar
 } from "lucide-react";
-import { maskPhone } from "../../utils/masks";
+import { maskPhone, maskCPF, maskCNPJ } from "../../utils/masks";
+import { UploadArea } from "./components/UploadArea";
 
 export default function PortalParceiro() {
   const { slug } = useParams();
@@ -32,6 +33,7 @@ export default function PortalParceiro() {
 
   const [form, setForm] = useState({
     nome_cliente: "",
+    documento_cliente: "",
     telefone_cliente: "",
     email_cliente: "",
     produto_interesse: "",
@@ -279,9 +281,49 @@ export default function PortalParceiro() {
                 <input required className="w-full h-14 pl-14 pr-5 rounded-xl bg-slate-50 font-bold text-xs outline-none border-2 border-transparent focus:border-blue-500 transition-all" placeholder="NOME DO CLIENTE" value={form.nome_cliente} onChange={e => setForm({...form, nome_cliente: e.target.value})} />
               </div>
 
+              {/* --- SUBSTITUA O BLOCO DE WHATSAPP/EMAIL POR ESTE ABAIXO --- */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="relative"><Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input required className="w-full h-14 pl-14 pr-5 rounded-xl bg-slate-50 font-bold text-xs outline-none border-2 border-transparent focus:border-blue-500 transition-all" placeholder="WHATSAPP" value={form.telefone_cliente} onChange={e => setForm({...form, telefone_cliente: maskPhone(e.target.value)})} /></div>
-                <div className="relative"><Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input type="email" required className="w-full h-14 pl-14 pr-5 rounded-xl bg-slate-50 font-bold text-xs outline-none border-2 border-transparent focus:border-blue-500 transition-all" placeholder="EMAIL" value={form.email_cliente} onChange={e => setForm({...form, email_cliente: e.target.value})} /></div>
+                {/* Novo campo: CPF/CNPJ com Inteligência de Máscara */}
+                <div className="relative">
+                  <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                  <input 
+                    required 
+                    className="w-full h-14 pl-14 pr-5 rounded-xl bg-slate-50 font-bold text-xs outline-none border-2 border-transparent focus:border-blue-500 transition-all" 
+                    placeholder="CPF OU CNPJ DO CLIENTE" 
+                    value={form.documento_cliente || ''} 
+                    onChange={e => {
+                      const rawValue = e.target.value.replace(/\D/g, "");
+                      const maskedValue = rawValue.length <= 11 ? maskCPF(rawValue) : maskCNPJ(rawValue);
+                      setForm({...form, documento_cliente: maskedValue});
+                    }} 
+                    maxLength={18}
+                  />
+                </div>
+                
+                {/* WhatsApp (Já existente) */}
+                <div className="relative">
+                  <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                  <input 
+                    required 
+                    className="w-full h-14 pl-14 pr-5 rounded-xl bg-slate-50 font-bold text-xs outline-none border-2 border-transparent focus:border-blue-500 transition-all" 
+                    placeholder="WHATSAPP" 
+                    value={form.telefone_cliente} 
+                    onChange={e => setForm({...form, telefone_cliente: maskPhone(e.target.value)})} 
+                  />
+                </div>
+              </div>
+
+              {/* Mova o Email para uma linha solo ou um novo grid para não quebrar o layout */}
+              <div className="relative">
+                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input 
+                  type="email" 
+                  required 
+                  className="w-full h-14 pl-14 pr-5 rounded-xl bg-slate-50 font-bold text-xs outline-none border-2 border-transparent focus:border-blue-500 transition-all" 
+                  placeholder="EMAIL DO CLIENTE" 
+                  value={form.email_cliente} 
+                  onChange={e => setForm({...form, email_cliente: e.target.value})} 
+                />
               </div>
 
               <div className="relative">
@@ -292,43 +334,11 @@ export default function PortalParceiro() {
                 <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 rotate-90" size={18} />
               </div>
 
-              {/* ÁREA DE DOCUMENTOS */}
-              <div className="bg-slate-50 p-6 rounded-2xl border-2 border-dashed border-slate-200">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><FileText size={14}/> Documentação do Cliente</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  {[
-                    { id: 'pessoal', label: 'Doc. Pessoal (RG/CNH)', icon: <User size={14}/> },
-                    { id: 'residencia', label: 'Comprovante Residência', icon: <MapPin size={14}/> },
-                    { id: 'veiculo', label: 'Documento do Veículo', icon: <Car size={14}/> },
-                    { id: 'apolice', label: 'Contrato de Apólice', icon: <FileText size={14}/> },
-                    { id: 'social', label: 'Contrato Social', icon: <Briefcase size={14}/> }
-                  ].map((doc) => (
-                    <label key={doc.id} className="group relative flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 hover:border-blue-400 cursor-pointer transition-all shadow-sm">
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="text-blue-500 group-hover:scale-110 transition-transform">{doc.icon}</div>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase truncate">
-                          {(documentos as any)[doc.id] ? (documentos as any)[doc.id].name : doc.label}
-                        </span>
-                      </div>
-                      <Upload size={14} className={(documentos as any)[doc.id] ? "text-green-500" : "text-slate-300"} />
-                      <input type="file" className="hidden" onChange={(e) => setDocumentos({...documentos, [doc.id]: e.target.files?.[0] || null})} />
-                    </label>
-                  ))}
-                </div>
-                <div className="space-y-2 border-t border-slate-200 pt-4">
-                  <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-1"><Paperclip size={12}/> Outros Documentos</p>
-                  {documentos.outros.map((file, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 bg-blue-50 rounded-lg text-[9px] font-bold text-blue-700">
-                      <span className="truncate">{file.name}</span>
-                      <button type="button" onClick={() => setDocumentos({...documentos, outros: documentos.outros.filter((_, i) => i !== idx)})} className="text-blue-400 hover:text-red-500"><X size={14}/></button>
-                    </div>
-                  ))}
-                  <label className="flex items-center justify-center gap-2 p-3 bg-white border-2 border-dashed border-slate-200 rounded-xl text-[9px] font-black text-blue-600 hover:bg-blue-50 transition-all cursor-pointer uppercase">
-                    <Plus size={14}/> Adicionar outro documento
-                    <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && setDocumentos({...documentos, outros: [...documentos.outros, e.target.files[0]]})} />
-                  </label>
-                </div>
-              </div>
+              {/* ÁREA DE DOCUMENTOS REUTILIZÁVEL */}
+              <UploadArea 
+                documentos={documentos} 
+                setDocumentos={setDocumentos} 
+              />
 
               <div className="relative">
                 <MessageSquare className="absolute left-5 top-4 text-slate-300" size={18} />
@@ -344,7 +354,7 @@ export default function PortalParceiro() {
               <CheckCircle2 size={48} className="text-green-500 mx-auto mb-6" />
               <h2 className="text-xl font-black uppercase mb-2">Sucesso!</h2>
               <p className="text-slate-400 text-[10px] font-bold uppercase mb-8 tracking-tighter">O corretor analisará sua indicação. Acompanhe o status na aba ao lado.</p>
-              <button onClick={() => { setSent(false); setForm({nome_cliente:"", telefone_cliente:"", email_cliente:"", produto_interesse:"", obs_indicacao:""}); setDocumentos({pessoal:null, residencia:null, veiculo:null, apolice:null, social:null, outros:[]}); }} className="h-14 w-full border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase text-blue-600 tracking-widest hover:bg-slate-50 transition-all">Nova indicação</button>
+              <button onClick={() => { setSent(false); setForm({nome_cliente:"", documento_cliente:"", telefone_cliente:"", email_cliente:"", produto_interesse:"", obs_indicacao:""}); setDocumentos({pessoal:null, residencia:null, veiculo:null, apolice:null, social:null, outros:[]}); }} className="h-14 w-full border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase text-blue-600 tracking-widest hover:bg-slate-50 transition-all">Nova indicação</button>
             </div>
           )
         ) : (
@@ -370,7 +380,8 @@ export default function PortalParceiro() {
             <div className="grid grid-cols-1 gap-4">
               {historicoFiltrado.length > 0 ? historicoFiltrado.map((item) => {
                 const status = getStatusInfo(item.status_indicacao);
-                const temAcao = ['COTADO', 'VENDIDO', 'PERDIDO', 'APROVADA_PARCEIRO', 'RECUSA_PARCEIRO', 'RECUSA_CORRETOR'].includes(item.status_indicacao);
+                // Altere para permitir o status 'NOVO' (que na interface aparece como RECEBIDO)
+                const temAcao = ['NOVO', 'COTADO', 'VENDIDO', 'PERDIDO', 'APROVADA_PARCEIRO', 'RECUSA_PARCEIRO', 'RECUSA_CORRETOR'].includes(item.status_indicacao);
                 return (
                   <div key={item.id} onClick={() => temAcao && setDetalheCotacao(item)} className={`bg-white p-5 rounded-[2rem] shadow-sm border-2 transition-all hover:shadow-md ${item.status_indicacao === 'COTADO' ? 'border-emerald-500 scale-[1.02]' : 'border-slate-100'} ${temAcao ? 'cursor-pointer' : 'opacity-80'}`}>
                     <div className="flex items-center justify-between">
@@ -432,15 +443,27 @@ export default function PortalParceiro() {
                 </div>
               ) : (
                 <div className="space-y-6">
+                  {/* 1. STATUS VENDIDO: Foco total na Comissão */}
                   {detalheCotacao.status_indicacao === 'VENDIDO' ? (
                     <div className="space-y-4">
                       <div className="p-5 bg-emerald-600 rounded-[2rem] text-white shadow-xl relative overflow-hidden">
                         <div className="relative z-10">
                           <p className="text-[9px] font-black uppercase opacity-70 mb-1">Sua Comissão</p>
-                          <p className="text-2xl font-black italic">R$ {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.comissao_parceiro?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                          <p className="text-2xl font-black italic">
+                            R$ {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.comissao_parceiro?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
                           <div className="mt-4 flex justify-between items-center border-t border-white/20 pt-4">
-                            <div><p className="text-[7px] font-black uppercase opacity-70">Previsão Pagamento</p><p className="text-[11px] font-black">{detalheCotacao.tab_indicacoes_cotacoes?.[0]?.data_previsao_comissao ? new Date(detalheCotacao.tab_indicacoes_cotacoes[0].data_previsao_comissao).toLocaleDateString() : 'A DEFINIR'}</p></div>
-                            <div className="bg-white text-emerald-600 px-3 py-1 rounded-full text-[8px] font-black uppercase">{detalheCotacao.tab_indicacoes_cotacoes?.[0]?.status_comissao_parceiro || 'PENDENTE'}</div>
+                            <div>
+                              <p className="text-[7px] font-black uppercase opacity-70">Previsão Pagamento</p>
+                              <p className="text-[11px] font-black">
+                                {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.data_previsao_comissao 
+                                  ? new Date(detalheCotacao.tab_indicacoes_cotacoes[0].data_previsao_comissao).toLocaleDateString() 
+                                  : 'A DEFINIR'}
+                              </p>
+                            </div>
+                            <div className="bg-white text-emerald-600 px-3 py-1 rounded-full text-[8px] font-black uppercase">
+                              {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.status_comissao_parceiro || 'PENDENTE'}
+                            </div>
                           </div>
                         </div>
                         <DollarSign size={80} className="absolute -right-4 -bottom-4 opacity-10 rotate-12" />
@@ -449,53 +472,105 @@ export default function PortalParceiro() {
                     </div>
                   ) : (
                     <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Seguradora</p>
-                          <p className="font-black text-slate-800 uppercase text-xs truncate">{detalheCotacao.tab_indicacoes_cotacoes?.[0]?.seguradora || '---'}</p>
-                        </div>
-                        <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                          <p className="text-[8px] font-black text-blue-400 uppercase mb-1">Investimento</p>
-                          <p className="font-black text-blue-600 text-sm">R$ {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.valor_premio?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                        </div>
-                      </div>
-                      <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                        <p className="text-[8px] font-black text-slate-400 uppercase mb-2">Coberturas</p>
-                        <p className="text-[10px] font-bold text-slate-600 italic leading-relaxed">"{detalheCotacao.tab_indicacoes_cotacoes?.[0]?.coberturas_principais || 'Nenhuma cobertura detalhada informada.'}"</p>
-                      </div>
+                      {/* 2. STATUS RECEBIDO (NOVO): Edição e Upload de Documentos */}
+                      {detalheCotacao.status_indicacao === 'NOVO' ? (
+                          <div className="space-y-5">
+                            <div className="bg-amber-50 p-5 rounded-[2rem] border border-amber-100">
+                              <p className="text-[10px] font-black text-amber-600 uppercase mb-2 flex items-center gap-2">
+                                <Clock size={14}/> Indicação em Análise
+                              </p>
+                              <p className="text-[9px] text-amber-700 font-bold leading-relaxed">
+                                O corretor recebeu sua indicação e está validando os dados. Você pode antecipar o envio de documentos aqui.
+                              </p>
+                            </div>
 
-                      {/* LÓGICA DE EXIBIÇÃO DE RODAPÉ DO MODAL CORRIGIDA */}
-                      {detalheCotacao.status_indicacao === 'COTADO' ? (
-                        <div className="grid grid-cols-2 gap-3 pt-2">
-                          <button onClick={() => setRecusando(true)} className="h-14 bg-red-50 text-red-500 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-1 transition-all hover:bg-red-100"><ThumbsDown size={14}/> Recusar</button>
-                          <button onClick={() => setConfirmandoAceite(true)} className="h-14 bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-1 shadow-lg shadow-emerald-100 transition-all hover:bg-emerald-600"><ThumbsUp size={14}/> Aceitar</button>
-                        </div>
-                      ) : (
-                        // Aqui tratamos os status finais (Não atendido, perdido, etc)
-                        ['PERDIDO', 'RECUSA_PARCEIRO', 'RECUSA_CORRETOR'].includes(detalheCotacao.status_indicacao) ? (
-                          <div className="p-4 bg-red-50 rounded-2xl border border-red-100 text-center">
-                            <p className="text-[8px] font-black text-red-400 uppercase mb-1">Motivo da Recusa/Perda</p>
-                            <p className="font-black text-red-600 text-[10px] uppercase">{detalheCotacao.motivo_perda || detalheCotacao.tab_indicacoes_cotacoes?.[0]?.motivo_recusa || 'INFORMAÇÃO NÃO DISPONÍVEL'}</p>
+                            {/* ITEM 1 e 2: Dados do Cliente + Modal de Documentos Reutilizado */}
+                            <UploadArea 
+                              clienteDados={{
+                                nome: detalheCotacao.nome_cliente || "NÃO INFORMADO",
+                                documento: detalheCotacao.documento_cliente 
+                                  ? (detalheCotacao.documento_cliente.length <= 11 
+                                      ? maskCPF(detalheCotacao.documento_cliente) 
+                                      : maskCNPJ(detalheCotacao.documento_cliente))
+                                  : "SEM DOCUMENTO",
+                                telefone: detalheCotacao.telefone_cliente || "SEM TELEFONE"
+                              }}
+                              documentos={documentos}
+                              setDocumentos={setDocumentos}
+                              onSingleUpload={async (tipo, arquivo) => {
+                                const novosDocumentos = tipo === 'OUTROS' 
+                                  ? { ...documentos, outros: [...(documentos.outros || []), arquivo] }
+                                  : { ...documentos, [tipo]: arquivo };
+                                
+                                setDocumentos(novosDocumentos);
+
+                                setEnviando(true);
+                                try {
+                                  await handleFileUpload(detalheCotacao.id);
+                                  alert("Documento anexado com sucesso!");
+                                } catch (err) {
+                                  console.error(err);
+                                  alert("Erro ao subir arquivo.");
+                                } finally {
+                                  setEnviando(false);
+                                }
+                              }}
+                            />
+
+                            <button 
+                              onClick={() => setDetalheCotacao(null)} 
+                              className="w-full h-14 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px]"
+                            >
+                              Fechar Detalhes
+                            </button>
                           </div>
                         ) : (
-                          // Aguardando finalização (Apenas para status intermediário após aceite do parceiro)
-                          detalheCotacao.status_indicacao === 'APROVADA_PARCEIRO' && (
+                        /* 3. DEMAIS STATUS (COTADO, PERDIDO, APROVADO) */
+                        <div className="space-y-6">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                              <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Seguradora</p>
+                              <p className="font-black text-slate-800 uppercase text-xs truncate">{detalheCotacao.tab_indicacoes_cotacoes?.[0]?.seguradora || '---'}</p>
+                            </div>
+                            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                              <p className="text-[8px] font-black text-blue-400 uppercase mb-1">Investimento</p>
+                              <p className="font-black text-blue-600 text-sm">
+                                R$ {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.valor_premio?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                            <p className="text-[8px] font-black text-slate-400 uppercase mb-2">Coberturas</p>
+                            <p className="text-[10px] font-bold text-slate-600 italic leading-relaxed">
+                              "{detalheCotacao.tab_indicacoes_cotacoes?.[0]?.coberturas_principais || 'Nenhuma cobertura detalhada informada.'}"
+                            </p>
+                          </div>
+
+                          {/* Rodapé Dinâmico conforme o status técnico */}
+                          {detalheCotacao.status_indicacao === 'COTADO' ? (
+                            <div className="grid grid-cols-2 gap-3 pt-2">
+                              <button onClick={() => setRecusando(true)} className="h-14 bg-red-50 text-red-500 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-1 transition-all hover:bg-red-100"><ThumbsDown size={14}/> Recusar</button>
+                              <button onClick={() => setConfirmandoAceite(true)} className="h-14 bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-1 shadow-lg shadow-emerald-100 transition-all hover:bg-emerald-600"><ThumbsUp size={14}/> Aceitar</button>
+                            </div>
+                          ) : ['PERDIDO', 'RECUSA_PARCEIRO', 'RECUSA_CORRETOR'].includes(detalheCotacao.status_indicacao) ? (
+                            <div className="p-4 bg-red-50 rounded-2xl border border-red-100 text-center">
+                              <p className="text-[8px] font-black text-red-400 uppercase mb-1">Motivo da Recusa/Perda</p>
+                              <p className="font-black text-red-600 text-[10px] uppercase">
+                                {detalheCotacao.motivo_perda || detalheCotacao.tab_indicacoes_cotacoes?.[0]?.motivo_recusa || 'INFORMAÇÃO NÃO DISPONÍVEL'}
+                              </p>
+                            </div>
+                          ) : detalheCotacao.status_indicacao === 'APROVADA_PARCEIRO' && (
                             <div className="p-6 bg-slate-900 rounded-[2.5rem] text-center space-y-4">
-                                <Loader2 size={32} className="text-blue-400 mx-auto animate-spin" />
-                                <div>
+                              <Loader2 size={32} className="text-blue-400 mx-auto animate-spin" />
+                              <div>
                                 <h4 className="text-white font-black uppercase text-[10px] italic">Aguardando Finalização</h4>
                                 <p className="text-slate-400 text-[8px] font-bold uppercase px-4">O corretor recebeu seu aceite e está emitindo a proposta.</p>
-                                </div>
-                                {/* Botão para fechar o modal após o sucesso */}
-                                <button 
-                                onClick={() => setDetalheCotacao(null)}
-                                className="w-full h-10 bg-white/10 text-white rounded-xl font-black uppercase text-[9px] hover:bg-white/20 transition-all"
-                                >
-                                Entendi, fechar
-                                </button>
+                              </div>
+                              <button onClick={() => setDetalheCotacao(null)} className="w-full h-10 bg-white/10 text-white rounded-xl font-black uppercase text-[9px]">Entendi, fechar</button>
                             </div>
-                            )
-                        )
+                          )}
+                        </div>
                       )}
                     </>
                   )}
