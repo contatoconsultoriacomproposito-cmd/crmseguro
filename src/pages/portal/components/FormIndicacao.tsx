@@ -29,11 +29,21 @@ export const FormIndicacao = ({ form, setForm, produtos, documentos, setDocument
           placeholder="CPF OU CNPJ DO CLIENTE" 
           value={form.documento_cliente || ''} 
           onChange={e => {
-            const rawValue = e.target.value.replace(/\D/g, "");
-            const maskedValue = rawValue.length <= 11 ? maskCPF(rawValue) : maskCNPJ(rawValue);
-            setForm({...form, documento_cliente: maskedValue});
+            // 1. Pegamos o valor bruto do input
+            const value = e.target.value;
+            
+            // 2. Removemos tudo que não é número para processar o tamanho
+            const rawValue = value.replace(/\D/g, "");
+            
+            // 3. Aplicamos a máscara baseada no tamanho do que foi digitado
+            // IMPORTANTE: O estado deve receber o valor MASCARADO
+            const maskedValue = rawValue.length <= 11 
+              ? maskCPF(rawValue) 
+              : maskCNPJ(rawValue);
+            
+            setForm({ ...form, documento_cliente: maskedValue });
           }} 
-          maxLength={18}
+          maxLength={18} // Limite de caracteres do CNPJ com máscara: 00.000.000/0000-00
         />
       </div>
       

@@ -1,11 +1,11 @@
+// src/pages/corretor/ParceirosTriagem.tsx
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../lib/supabaseClient'; // Ajuste o caminho conforme seu projeto
+import { supabase } from '../../lib/supabaseClient'; 
 import { toast } from 'sonner';
 import { FiltroBusca } from '../parceiros/components/FiltroBusca';
 import { IndicacaoCard } from '../parceiros/components/IndicacaoCard';
 import { PainelAcoes } from '../parceiros/components/PainelAcoes';
 import { ModalRecusa } from '../parceiros/components/ModalRecusa';
-import { ModalComissao } from '../parceiros/components/ModalComissao';
 import { ModalVinculoCRM } from '../parceiros/components/ModalVinculoCRM';
 
 export default function ParceirosTriagem() {
@@ -17,13 +17,10 @@ export default function ParceirosTriagem() {
 
   // --- ESTADOS DOS MODAIS/FORMS ---
   const [showRecusaModal, setShowRecusaModal] = useState(false);
-  const [showComissaoModal, setShowComissaoModal] = useState(false);
   const [showVinculoModal, setShowVinculoModal] = useState(false);
   const [modoCotacao, setModoCotacao] = useState(false);
 
   const [formRecusa, setFormRecusa] = useState({ motivo: '', observacao: '' });
-  const [formComissao, setFormComissao] = useState({ valor_comissao: '', data_previsao_pagamento: '' });
-  const [formCotacao, setFormCotacao] = useState({ valor: '', arquivo: null });
 
   // --- ESTADOS CRM ---
   const [buscaClienteCRM, setBuscaClienteCRM] = useState('');
@@ -35,23 +32,36 @@ export default function ParceirosTriagem() {
     "REPROVADO NA ANÁLISE TÉCNICA", "DESISTÊNCIA DO CLIENTE", "OUTROS"
   ];
 
-  // --- LÓGICA DE BUSCA E CARREGAMENTO ---
+  const [refreshKey, setRefreshKey] = useState(0); // Controle de versão para o PainelAcoes
+
+  // --- LÓGICA DE CARREGAMENTO ---
   const carregarIndicacoes = useCallback(async () => {
     try {
       setLoading(true);
+      // AJUSTE NA QUERY: Ordenamos a tabela filha (cotacoes) para que a mais recente (data_envio) seja a [0]
       const { data, error } = await supabase
         .from('tab_indicacoes')
-        .select('*, tab_parceiros(nome_parceiro), tab_indicacoes_cotacoes(*)')
-        .order('created_at', { ascending: false });
+        .select(`
+          *, 
+          tab_parceiros(nome_parceiro), 
+          tab_indicacoes_cotacoes(*)
+        `)
+        .order('created_at', { ascending: false })
+        .order('data_envio', { foreignTable: 'tab_indicacoes_cotacoes', ascending: false });
 
       if (error) throw error;
       setIndicacoes(data || []);
       
-      // Atualiza a selecionada se ela já existir na lista
+      // Sincroniza o painel de detalhes se algo mudar no banco
       if (selecionada) {
         const atualizada = data?.find(i => i.id === selecionada.id);
         if (atualizada) setSelecionada(atualizada);
       }
+    
+      // --- ADICIONE ISSO AQUI ---
+      setRefreshKey(prev => prev + 1); 
+      // --------------------------
+
     } catch (error: any) {
       toast.error("Erro ao carregar dados: " + error.message);
     } finally {
@@ -59,28 +69,82 @@ export default function ParceirosTriagem() {
     }
   }, [selecionada]);
 
-  useEffect(() => { carregarIndicacoes(); }, []);
+  useEffect(() => { 
+    carregarIndicacoes(); 
+  }, []);
 
-  // --- AUXILIARES ---
   const maskCurrency = (value: string) => {
     const n = value.replace(/\D/g, '');
     return (Number(n) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
   };
 
-  // --- AÇÕES DE BANCO DE DADOS ---
+  // --- AÇÕES DE BANCO ---
   const atualizarStatus = async (status: string, extraData = {}) => {
     try {
       setLoading(true);
+      const dadosParaAtualizar = { status_indicacao: status, ...extraData };
+      
       const { error } = await supabase
         .from('tab_indicacoes')
-        .update({ status_indicacao: status, ...extraData })
+        .update(dadosParaAtualizar)
         .eq('id', selecionada.id);
 
       if (error) throw error;
-      toast.success(`Status atualizado para ${status}`);
-      await carregarIndicacoes();
+
+      toast.success(`Operação realizada com sucesso!`);
+
+      // Atualiza localmente para feedback instantâneo
+      setSelecionada((prev: any) => ({
+        ...prev,
+        ...dadosParaAtualizar
+      }));
+
+      await carregarIndicacoes(); 
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const enviarDadosCotacao = async (dados: any) => {
+    try {
+      setLoading(true);
+
+      // Tratamento de valor para o formato do banco
+      const valorNumerico = parseFloat(
+        dados.valorPremio.replace(/\./g, '').replace(',', '.')
+      );
+
+      // 1. Insere a nova cotação
+      const { error: errorCotacao } = await supabase
+        .from('tab_indicacoes_cotacoes')
+        .insert({
+          indicacao_id: selecionada.id,
+          valor_premio: valorNumerico,
+          seguradora: dados.seguradora,
+          coberturas_principais: dados.cobertura,
+          status_feedback: 'PENDENTE'
+        });
+
+      if (errorCotacao) throw errorCotacao;
+
+      // 2. Atualiza status principal
+      const { error: errorIndicacao } = await supabase
+        .from('tab_indicacoes')
+        .update({ 
+          status_indicacao: 'COTADO' 
+        })
+        .eq('id', selecionada.id);
+
+      if (errorIndicacao) throw errorIndicacao;
+
+      setModoCotacao(false);
+      toast.success("Cotação enviada ao parceiro!");
+      await carregarIndicacoes();
+    } catch (error: any) {
+      console.error("Erro completo:", error);
+      toast.error("Erro ao salvar cotação.");
     } finally {
       setLoading(false);
     }
@@ -89,26 +153,40 @@ export default function ParceirosTriagem() {
   const iniciarAtendimento = () => atualizarStatus('EM_ATENDIMENTO');
 
   const confirmarRecusa = async () => {
-    await atualizarStatus('RECUSADO', { 
-      motivo_recusa: formRecusa.motivo, 
-      obs_recusa: formRecusa.observacao,
-      data_recusa: new Date().toISOString()
-    });
-    setShowRecusaModal(false);
-  };
+    try {
+      setLoading(true);
+      const dadosParaAtualizar = { 
+        status_indicacao: 'PERDIDO', 
+        motivo_perda: formRecusa.motivo 
+      };
+      
+      const { error } = await supabase
+        .from('tab_indicacoes')
+        .update(dadosParaAtualizar)
+        .eq('id', selecionada.id);
 
-  const finalizarVendaComissao = async () => {
-    // Lógica para salvar comissão e finalizar
-    await atualizarStatus('VENDIDO', {
-      valor_comissao_parceiro: parseFloat(formComissao.valor_comissao.replace('.','').replace(',','.')),
-      data_previsao_pagamento_comissao: formComissao.data_previsao_pagamento,
-      data_venda: new Date().toISOString()
-    });
-    setShowComissaoModal(false);
+      if (error) throw error;
+
+      toast.success(`Indicação movida para Perdidos`);
+
+      setSelecionada((prev: any) => ({
+        ...prev,
+        ...dadosParaAtualizar
+      }));
+
+      setShowRecusaModal(false);
+      setFormRecusa({ motivo: '', observacao: '' });
+      await carregarIndicacoes();
+
+    } catch (error: any) {
+      toast.error("Erro ao recusar: " + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const buscarClientesCRM = async (termo: string) => {
-    if (termo.length < 3) return;
+    if (!termo || termo.length < 3) return;
     setBuscandoCRM(true);
     const { data } = await supabase
       .from('tab_clientes')
@@ -128,7 +206,7 @@ export default function ParceirosTriagem() {
   // --- FILTRAGEM ---
   const indicacoesFiltradas = indicacoes.filter(i => 
     i.nome_cliente.toLowerCase().includes(busca.toLowerCase()) ||
-    i.tab_parceiros?.nome_parceiro.toLowerCase().includes(busca.toLowerCase())
+    i.tab_parceiros?.nome_parceiro?.toLowerCase().includes(busca.toLowerCase())
   );
 
   return (
@@ -149,42 +227,46 @@ export default function ParceirosTriagem() {
               key={ind.id} 
               ind={ind} 
               selecionadaId={selecionada?.id} 
-              onClick={setSelecionada} 
+              onClick={(item: any) => {
+                setSelecionada(item);
+                setBuscaClienteCRM('');
+                setClientesEncontrados([]);
+                setModoCotacao(false);
+              }} 
             />
           ))}
         </aside>
 
-        {/* PAINEL DE DETALHES */}
+        {/* ÁREA DE DETALHES / AÇÕES */}
         <main className="flex-1 flex flex-col min-w-0">
           {selecionada ? (
             <PainelAcoes 
+              key={`${selecionada.id}-${refreshKey}`} // <-- CHAVE DINÂMICA
               indicacao={selecionada}
               loading={loading}
               modoCotacao={modoCotacao}
-              formCotacao={formCotacao}
-              setFormCotacao={setFormCotacao}
               maskCurrency={maskCurrency}
               acoes={{
                 iniciarAtendimento,
                 abrirVinculo: () => setShowVinculoModal(true),
                 setModoCotacao,
                 setShowRecusaModal,
-                setShowComissaoModal,
-                finalizarVendaDireta: () => setShowComissaoModal(true)
+                setShowComissaoModal: () => {},
+                finalizarVendaDireta: () => {},
+                enviarDadosCotacao 
               }}
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-[3.5rem] border-2 border-dashed border-slate-200 text-slate-400">
-               <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                  <span className="text-4xl">👈</span>
-               </div>
-               <p className="font-black uppercase text-[10px] tracking-[0.3em]">Selecione uma indicação para gerenciar</p>
+                <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                   <span className="text-4xl">👈</span>
+                </div>
+                <p className="font-black uppercase text-[10px] tracking-[0.3em]">Selecione uma indicação para gerenciar</p>
             </div>
           )}
         </main>
       </div>
 
-      {/* MODAIS MODULARIZADOS */}
       <ModalRecusa 
         isOpen={showRecusaModal}
         onClose={() => setShowRecusaModal(false)}
@@ -193,15 +275,6 @@ export default function ParceirosTriagem() {
         setFormRecusa={setFormRecusa}
         motivosRecusa={motivosRecusa}
         loading={loading}
-      />
-
-      <ModalComissao 
-        isOpen={showComissaoModal}
-        onClose={() => setShowComissaoModal(false)}
-        onConfirm={finalizarVendaComissao}
-        formComissao={formComissao}
-        setFormComissao={setFormComissao}
-        maskCurrency={maskCurrency}
       />
 
       <ModalVinculoCRM 
@@ -213,8 +286,8 @@ export default function ParceirosTriagem() {
         buscandoCRM={buscandoCRM}
         clientesEncontrados={clientesEncontrados}
         vincularCliente={vincularCliente}
+        documentoReferencia={selecionada?.documento_cliente}
       />
-
     </div>
   );
 }
