@@ -254,7 +254,7 @@ export default function KanbanPerdas() {
   }
 
   return (
-    <div className="px-4 py-8 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen pb-40 w-full">
+    <div className="px-4 py-8 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen w-full">
       {/* HEADER */}
       <div className="mb-8 space-y-6">
         <div>
@@ -393,30 +393,7 @@ export default function KanbanPerdas() {
           ) : null}
         </DragOverlay>
 
-        {/* RODAPÉ FIXO E TRAVADO */}
-        <div className="fixed bottom-0 right-12 z-[10] h-24 
-            /* Largura dinâmica: tela cheia menos a sidebar */
-            left-0 md:left-64 lg:left-72
-            /* Estética */
-            bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md 
-            border-t border-slate-200 dark:border-zinc-800 
-            flex items-center justify-center shadow-[0_-10px_20px_-5px_rgba(0,0,0,0,0.05)]">
-            
-          <div className="flex gap-8 w-full max-w-2xl justify-center px-6">
-            <FooterDropZone 
-              id="vendido" 
-              label="Vendido" 
-              icon={<CheckCircle2 size={22} />} 
-              colorClass="border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400" 
-            />
-            <FooterDropZone 
-              id="perdido" 
-              label="Perdido" 
-              icon={<XCircle size={22} />} 
-              colorClass="border-red-200 bg-red-50 text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400" 
-            />
-          </div>
-        </div>
+        
       </DndContext>
       {/* MODAL DE FECHAMENTO */}
       {modalFechamento.isOpen && (
@@ -466,11 +443,3 @@ function KanbanColumn({ id, children }: { id: string; children: React.ReactNode 
   );
 }
 
-function FooterDropZone({ id, label, icon, colorClass }: { id: string; label: string; icon: React.ReactNode, colorClass: string }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <div ref={setNodeRef} className={`w-72 h-16 border-2 border-dashed rounded-2xl flex items-center justify-center font-black uppercase text-[10px] tracking-widest transition-all ${colorClass} ${isOver ? 'scale-110 shadow-lg border-solid ring-4 ring-offset-2 ring-blue-400' : ''}`}>
-      {icon} <span className="ml-2">{label}</span>
-    </div>
-  );
-}

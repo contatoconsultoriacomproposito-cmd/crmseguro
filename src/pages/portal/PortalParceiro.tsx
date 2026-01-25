@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { supabasePublic as supabase } from "../../lib/supabaseClient";
 import { Loader2, CheckCircle2, Search } from "lucide-react";
-import { Toaster, toast } from "sonner"; // Importação do componente de feedback
+import { Toaster, toast } from "sonner"; 
 
 // Componentes Modulares
 import { HeaderPortal } from "./components/HeaderPortal";
@@ -97,7 +97,6 @@ export default function PortalParceiro() {
         `)
         .eq("parceiro_id", parceiroId)
         .order("created_at", { ascending: false })
-        // Ordenação da tabela filha simplificada
         .order("data_envio", { 
           foreignTable: "tab_indicacoes_cotacoes", 
           ascending: false 
@@ -169,7 +168,6 @@ export default function PortalParceiro() {
     setEnviando(true);
     const toastId = toast.loading("Enviando indicação...");
     try {
-      //const documentoLimpo = form.documento_cliente.replace(/\D/g, "");
       const { data: novaIndicacao, error: errorIns } = await supabase
         .from("tab_indicacoes")
         .insert([{
@@ -203,17 +201,14 @@ export default function PortalParceiro() {
   const handleSaveEdits = async (dadosEditados: any) => {
     if (!parceiro) return;
     setRespondendo(true);
-    
-    // Feedback visual imediato com Sonner
     const toastId = toast.loading("Salvando alterações...");
 
     try {
-      //const documentoLimpo = dadosEditados.documento_cliente.replace(/\D/g, "");
       const { error } = await supabase
         .from("tab_indicacoes")
         .update({
           nome_cliente: dadosEditados.nome_cliente.toUpperCase(),
-          documento_cliente: form.documento_cliente,
+          documento_cliente: dadosEditados.documento_cliente,
           telefone_cliente: dadosEditados.telefone_cliente,
           email_cliente: dadosEditados.email_cliente.toLowerCase(),
           obs_indicacao: dadosEditados.obs_indicacao
@@ -222,20 +217,14 @@ export default function PortalParceiro() {
 
       if (error) throw error;
 
-      // 1. Atualiza o histórico ao fundo para refletir as mudanças na lista
       await carregarHistorico(parceiro.id);
-
-      // 2. Feedback de sucesso
       toast.success("Indicação atualizada!", { id: toastId });
-      
-      // 3. FECHA O MODAL: limpando o estado que controla a abertura dele
       setDetalheCotacao(null); 
       setRecusando(false);
       setConfirmandoAceite(false);
 
     } catch (err) {
       toast.error("Erro ao salvar alterações.", { id: toastId });
-      console.error(err);
     } finally {
       setRespondendo(false);
     }
@@ -250,7 +239,6 @@ export default function PortalParceiro() {
     try {
       const statusPrincipal = novoStatus === 'RECUSA_PARCEIRO' ? 'COTADO' : 'APROVADA_PARCEIRO';
       
-      // 1. Atualização na Tabela Principal
       const { error: errorInd } = await supabase.from("tab_indicacoes").update({ 
         status_indicacao: statusPrincipal,
         motivo_perda: null 
@@ -258,7 +246,6 @@ export default function PortalParceiro() {
 
       if (errorInd) throw errorInd;
 
-      // 2. Atualização na Tabela de Cotações
       const cotacaoId = detalheCotacao.tab_indicacoes_cotacoes?.[0]?.id;
       if (cotacaoId) {
         const { error: errorCot } = await supabase.from("tab_indicacoes_cotacoes").update({
@@ -270,15 +257,11 @@ export default function PortalParceiro() {
         if (errorCot) throw errorCot;
       }
 
-      // 3. RECOMENDAÇÃO: Limpar o motivo de recusa local para não "vazar" para a próxima indicação
       setMotivoRecusa(""); 
-      
-      // 4. Fechar modais ANTES de recarregar o histórico para uma transição suave
       setDetalheCotacao(null);
       setConfirmandoAceite(false);
       setRecusando(false);
 
-      // 5. Atualiza a lista geral
       await carregarHistorico(parceiro.id);
       
       toast.success(novoStatus === 'RECUSA_PARCEIRO' 
@@ -286,7 +269,6 @@ export default function PortalParceiro() {
         : "Indicação aprovada!", { id: toastId });
 
     } catch (err: any) {
-      console.error(err);
       toast.error("Erro ao processar resposta.", { id: toastId });
     } finally {
       setRespondendo(false);
@@ -306,7 +288,7 @@ export default function PortalParceiro() {
           .from("tab_indicacoes")
           .select(`
             *, 
-            tab_indicacoes_cotacoes!tab_indicacoes_cotacoes_indicacao_id_fkey (*),
+            tab_indicacoes_cotacoes (*),
             tab_indicacoes_documentos (*)
           `)
           .eq("id", detalheCotacao.id)
@@ -370,9 +352,20 @@ export default function PortalParceiro() {
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              {historicoFiltrado.map((item) => (
-                <CardHistorico key={item.id} item={item} onClick={() => setDetalheCotacao(item)} />
-              ))}
+              {historicoFiltrado.map((item) => {
+                // Lógica de Recusa: Se o status do banco for COTADO, mas o parceiro deu feedback RECUSADO
+                const isRecusada = item.status_indicacao === 'COTADO' && 
+                                  item.tab_indicacoes_cotacoes?.[0]?.status_feedback === 'RECUSADO';
+
+                return (
+                  <CardHistorico 
+                    key={item.id} 
+                    item={item} 
+                    onClick={() => setDetalheCotacao(item)} 
+                    isRecusada={isRecusada}
+                  />
+                );
+              })}
             </div>
           </div>
         )}
