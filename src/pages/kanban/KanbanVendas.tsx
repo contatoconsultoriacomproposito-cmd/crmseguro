@@ -23,8 +23,6 @@ import {
   MessageCircle, 
   FileText, 
   MoreVertical, 
-  CheckCircle2, 
-  XCircle, 
   Eraser, 
   UserSearch 
 } from 'lucide-react';

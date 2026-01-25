@@ -22,9 +22,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { 
   MessageCircle, 
   FileText, 
-  MoreVertical, 
-  CheckCircle2, 
-  XCircle, 
+  MoreVertical,  
   Eraser, 
   UserSearch 
 } from 'lucide-react';
