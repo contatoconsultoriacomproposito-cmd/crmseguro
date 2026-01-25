@@ -111,25 +111,29 @@ export default function ParceirosTriagem() {
     try {
       setLoading(true);
 
-      // Tratamento de valor para o formato do banco
-      const valorNumerico = parseFloat(
-        dados.valorPremio.replace(/\./g, '').replace(',', '.')
-      );
+      // 1. Tratamento do valor para o formato numérico do banco (PostgreSQL numeric)
+      // Aceita tanto o formato vindo do maskCurrency quanto o valor limpo
+      const valorLimpo = typeof dados.valor_premio === 'string' 
+        ? dados.valor_premio.replace(/\./g, '').replace(',', '.') 
+        : dados.valor_premio;
+      
+      const valorNumerico = parseFloat(valorLimpo);
 
-      // 1. Insere a nova cotação
+      // 2. Insere a nova cotação na tab_indicacoes_cotacoes
       const { error: errorCotacao } = await supabase
         .from('tab_indicacoes_cotacoes')
         .insert({
           indicacao_id: selecionada.id,
           valor_premio: valorNumerico,
           seguradora: dados.seguradora,
-          coberturas_principais: dados.cobertura,
+          coberturas_principais: dados.coberturas_principais, // Nome correto da coluna
+          url_documento: dados.url_documento,               // O CAMPO QUE FALTAVA!
           status_feedback: 'PENDENTE'
         });
 
       if (errorCotacao) throw errorCotacao;
 
-      // 2. Atualiza status principal
+      // 3. Atualiza o status da indicação principal para 'COTADO'
       const { error: errorIndicacao } = await supabase
         .from('tab_indicacoes')
         .update({ 
@@ -139,12 +143,16 @@ export default function ParceirosTriagem() {
 
       if (errorIndicacao) throw errorIndicacao;
 
+      // 4. Finalização e Feedback
       setModoCotacao(false);
-      toast.success("Cotação enviada ao parceiro!");
+      toast.success("Cotação enviada ao parceiro com sucesso!");
+      
+      // Recarrega os dados para atualizar a lista e o painel
       await carregarIndicacoes();
+
     } catch (error: any) {
-      console.error("Erro completo:", error);
-      toast.error("Erro ao salvar cotação.");
+      console.error("Erro detalhado ao salvar cotação:", error);
+      toast.error("Erro ao salvar cotação: " + (error.message || "Falha na conexão"));
     } finally {
       setLoading(false);
     }

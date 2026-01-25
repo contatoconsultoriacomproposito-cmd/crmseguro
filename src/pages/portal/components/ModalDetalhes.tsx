@@ -1,6 +1,7 @@
 // src/pages/portal/components/ModalDetalhes.tsx
 import { useState, useEffect } from "react";
-import { X, AlertCircle, Loader2, PartyPopper, CheckCircle2, DollarSign, Clock, ThumbsDown, ThumbsUp, Save, User, ShieldCheck, Phone, Mail, MessageSquare } from "lucide-react";
+// Importando ícones adicionais para o PDF
+import { X, AlertCircle, Loader2, PartyPopper, CheckCircle2, DollarSign, Clock, ThumbsDown, ThumbsUp, Save, User, ShieldCheck, Phone, Mail, MessageSquare, FileText, Download } from "lucide-react";
 import { UploadArea } from "./UploadArea";
 import { maskCPF, maskCNPJ, maskPhone } from "../../../utils/masks";
 
@@ -39,6 +40,9 @@ export const ModalDetalhes = ({
   if (!detalheCotacao || !editForm) return null;
 
   const isNovo = detalheCotacao.status_indicacao === 'NOVO';
+  
+  // Atalho para os dados da cotação vinculada
+  const cotacaoVinculada = detalheCotacao.tab_indicacoes_cotacoes?.[0];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/90 backdrop-blur-md p-4 overflow-y-auto font-sans">
@@ -121,19 +125,19 @@ export const ModalDetalhes = ({
                     <div className="relative z-10">
                       <p className="text-[9px] font-black uppercase opacity-70 mb-1">Sua Comissão</p>
                       <p className="text-2xl font-black italic">
-                        R$ {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.comissao_parceiro?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        R$ {cotacaoVinculada?.comissao_parceiro?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </p>
                       <div className="mt-4 flex justify-between items-center border-t border-white/20 pt-4">
                         <div>
                           <p className="text-[7px] font-black uppercase opacity-70">Previsão Pagamento</p>
                           <p className="text-[11px] font-black">
-                            {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.data_previsao_comissao 
-                              ? new Date(detalheCotacao.tab_indicacoes_cotacoes[0].data_previsao_comissao).toLocaleDateString() 
+                            {cotacaoVinculada?.data_previsao_comissao 
+                              ? new Date(cotacaoVinculada.data_previsao_comissao).toLocaleDateString() 
                               : 'A DEFINIR'}
                           </p>
                         </div>
                         <div className="bg-white text-emerald-600 px-3 py-1 rounded-full text-[8px] font-black uppercase">
-                          {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.status_comissao_parceiro || 'PENDENTE'}
+                          {cotacaoVinculada?.status_comissao_parceiro || 'PENDENTE'}
                         </div>
                       </div>
                     </div>
@@ -229,21 +233,44 @@ export const ModalDetalhes = ({
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                       <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Seguradora</p>
                       <p className="font-black text-slate-800 uppercase text-xs truncate">
-                        {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.seguradora || '---'}
+                        {cotacaoVinculada?.seguradora || '---'}
                       </p>
                     </div>
                     <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
                       <p className="text-[8px] font-black text-blue-400 uppercase mb-1">Investimento</p>
                       <p className="font-black text-blue-600 text-sm">
-                        R$ {detalheCotacao.tab_indicacoes_cotacoes?.[0]?.valor_premio?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        R$ {cotacaoVinculada?.valor_premio?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </p>
                     </div>
                   </div>
+
+                  {/* LÓGICA PARA BAIXAR O DOCUMENTO DA COTAÇÃO (INSERIDO AQUI) */}
+                  {cotacaoVinculada?.url_documento && (
+                    <div className="p-4 bg-indigo-50 border-2 border-dashed border-indigo-200 rounded-2xl flex items-center justify-between group transition-all hover:border-indigo-400">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-md shadow-indigo-100">
+                          <FileText size={18} />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black text-indigo-400 uppercase">Proposta Oficial</p>
+                          <p className="text-[10px] font-black text-indigo-900 uppercase italic">PDF Gerado</p>
+                        </div>
+                      </div>
+                      <a 
+                        href={cotacaoVinculada.url_documento} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 bg-indigo-600 text-white px-4 h-10 rounded-xl font-black text-[9px] uppercase hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-100"
+                      >
+                        <Download size={14} /> Download
+                      </a>
+                    </div>
+                  )}
                   
                   <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
                     <p className="text-[8px] font-black text-slate-400 uppercase mb-2">Coberturas</p>
                     <p className="text-[10px] font-bold text-slate-600 italic leading-relaxed">
-                      "{detalheCotacao.tab_indicacoes_cotacoes?.[0]?.coberturas_principais || 'Nenhuma cobertura detalhada informada.'}"
+                      "{cotacaoVinculada?.coberturas_principais || 'Nenhuma cobertura detalhada informada.'}"
                     </p>
                   </div>
 
@@ -256,7 +283,7 @@ export const ModalDetalhes = ({
                     <div className="p-4 bg-red-50 rounded-2xl border border-red-100 text-center">
                       <p className="text-[8px] font-black text-red-400 uppercase mb-1">Motivo da Recusa/Perda</p>
                       <p className="font-black text-red-600 text-[10px] uppercase">
-                        {detalheCotacao.motivo_perda || detalheCotacao.tab_indicacoes_cotacoes?.[0]?.motivo_recusa || 'INFORMAÇÃO NÃO DISPONÍVEL'}
+                        {detalheCotacao.motivo_perda || cotacaoVinculada?.motivo_recusa || 'INFORMAÇÃO NÃO DISPONÍVEL'}
                       </p>
                     </div>
                   ) : (
