@@ -789,22 +789,42 @@ useEffect(() => {
         </div>
       )}
 
-      {/* <<< COLE O NOVO MODAL AQUI (DENTRO DA DIV PRINCIPAL) >>> */}
+      {/* MODAL DE SUCESSO AJUSTADO: SEM DOWNLOAD AUTOMÁTICO */}
       {showSuccess && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-10 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-zinc-800 text-center animate-in zoom-in slide-in-from-bottom-4 duration-500">
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-10 max-w-md w-full shadow-2xl border border-slate-100 dark:border-zinc-800 text-center animate-in zoom-in slide-in-from-bottom-4 duration-500">
             <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 className="text-emerald-500" size={44} />
             </div>
-            <h2 className="text-2xl font-bold mb-2 text-slate-800 dark:text-white">Sucesso!</h2>
-            <p className="text-slate-500 dark:text-zinc-400">
-              A proposta foi {propostaId ? "atualizada" : "gravada"} com sucesso.
+            <h2 className="text-2xl font-bold mb-2 text-slate-800 dark:text-white">Proposta Salva!</h2>
+            <p className="text-slate-500 dark:text-zinc-400 mb-8">
+              A proposta **{numeroProposta}** foi {propostaId ? "atualizada" : "gravada"} com sucesso no banco de dados.
             </p>
+
+            <div className="grid grid-cols-1 gap-3">
+              <button 
+                onClick={() => {
+                  handleGerarPDF(); // Gera apenas se o usuário clicar
+                }}
+                className="flex items-center justify-center gap-2 w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100"
+              >
+                <FileText size={18} /> Baixar PDF Agora
+              </button>
+
+              <button 
+                onClick={() => {
+                  setShowSuccess(false);
+                  navigate('/propostas/lista');
+                }}
+                className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Ir para Listagem
+              </button>
+            </div>
           </div>
         </div>
       )}
     
-      
     </div>
   );
 }
