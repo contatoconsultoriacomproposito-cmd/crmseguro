@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Calendar,
   Users,
   Building2,
   ShieldCheck,
@@ -44,6 +45,7 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
     sinistros: false, 
     comissoes: false,
     seguradoras: false,
+    agenda: false, 
   })
 
   const toggleMenu = (menu: string) => {
@@ -121,7 +123,17 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
             <NotificationBell collapsed={collapsed} />
           </div>
 
+          {/* ITEM DASHBOARD */}
+
           <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Dashboard" collapsed={collapsed} />
+
+          {/* NOVO ITEM: AGENDA (Inserido aqui para acesso rápido) */}
+          <NavItem 
+            to="/agenda" 
+            icon={<Calendar size={20} className="text-blue-500" />} 
+            label="Agenda de Retornos" 
+            collapsed={collapsed} 
+          />
 
           {/* GRUPO CORRETORES */}
           <div className="space-y-1">

@@ -7,13 +7,16 @@ import DashboardLayout from "./layouts/DashboardLayout"
 
 // PÁGINAS PÚBLICAS
 import HomePage from "./pages/homepage/HomePage"
-import PortalParceiro from "./pages/portal/PortalParceiro" // <--- IMPORTAÇÃO ADICIONADA
+import PortalParceiro from "./pages/portal/PortalParceiro"
 
 // Páginas Privadas - Corretores e parceiros
 import CorretoresCadastro from "./pages/corretores/CorretoresCadastro"
 import CorretoresLista from "./pages/corretores/CorretoresLista"
 import ParceirosCadastro from "./pages/parceiros/ParceirosCadastro"
 import ParceirosTriagem from "./pages/parceiros/ParceirosTriagem"
+
+// Páginas Privadas - Agenda
+import AgendaCorretor from "./pages/agenda/AgendaCorretor"
 
 // Páginas Privadas - Clientes
 import ClientesCadastro from "./pages/clientes/ClientesCadastro"
@@ -72,6 +75,9 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/" element={<Navigate to="/dashboard" />} />
 
+          {/* MÓDULO: AGENDA */}
+          <Route path="/agenda" element={<AgendaCorretor />} />
+          
           {/* MÓDULO: CORRETORES E PARCEIROS */}
           <Route path="/corretores/cadastro" element={<CorretoresCadastro />} />
           <Route path="/corretores/lista" element={<CorretoresLista />} />
