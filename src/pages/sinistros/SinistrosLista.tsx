@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { formatarDataBR } from '../../utils/dateUtils';
-import { Search, ExternalLink, User, Briefcase, Hash } from 'lucide-react';
+import { Search, ExternalLink, User, Briefcase, Hash, Trash2, AlertTriangle } from 'lucide-react';
 import { ModalGerenciamentoSinistro } from '../../components/kanban/components_visual_card/ModalGerenciamentoSinistro';
 
 export const RelatorioSinistros = () => {
@@ -9,6 +9,10 @@ export const RelatorioSinistros = () => {
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [sinistroParaGerenciar, setSinistroParaGerenciar] = useState<string | null>(null);
+
+  // Estados para o Modal de Exclusão Customizado
+  const [confirmacaoExclusao, setConfirmacaoExclusao] = useState<{ id: string; nome: string } | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
 
   const fetchRelatorio = async () => {
     setCarregando(true);
@@ -60,7 +64,7 @@ export const RelatorioSinistros = () => {
 
       if (sinistroError) throw sinistroError;
 
-      // 4. Buscamos nomes dos corretores para o mapa (mantendo sua lógica)
+      // 4. Buscamos nomes dos corretores para o mapa
       const { data: perfisData } = await supabase
         .from('usuarios_perfis')
         .select('id, nome')
@@ -79,6 +83,30 @@ export const RelatorioSinistros = () => {
       console.error("Erro ao carregar relatório:", err.message);
     } finally {
       setCarregando(false);
+    }
+  };
+
+  // --- NOVA FUNÇÃO DE EXCLUSÃO (PROCESSAMENTO) ---
+  const executarExclusao = async () => {
+    if (!confirmacaoExclusao) return;
+    
+    setExcluindo(true);
+    try {
+      const { error } = await supabase
+        .from('tab_sinistros')
+        .delete()
+        .eq('id', confirmacaoExclusao.id);
+
+      if (error) throw error;
+
+      // Remove da lista local para feedback instantâneo
+      setSinistros(prev => prev.filter(s => s.id !== confirmacaoExclusao.id));
+      setConfirmacaoExclusao(null); // Fecha o modal
+    } catch (err: any) {
+      console.error("Erro ao excluir sinistro:", err.message);
+      alert("Erro ao excluir: " + err.message);
+    } finally {
+      setExcluindo(false);
     }
   };
 
@@ -119,7 +147,7 @@ export const RelatorioSinistros = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-zinc-900 rounded-[32px] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -128,7 +156,7 @@ export const RelatorioSinistros = () => {
                 <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Produto / Apólice</th>
                 <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-center">Status Operacional</th>
                 <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Cronologia</th>
-                <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">Ação</th>
+                <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -190,12 +218,24 @@ export const RelatorioSinistros = () => {
                     </div>
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <button 
-                      onClick={() => setSinistroParaGerenciar(s.id)}
-                      className="p-2.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-xl hover:scale-105 transition-all shadow-md group-hover:shadow-blue-500/10"
-                    >
-                      <ExternalLink size={16} />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {/* BOTÃO DE EXCLUIR QUE ABRE O MODAL */}
+                      <button 
+                        onClick={() => setConfirmacaoExclusao({ id: s.id, nome: s.tab_clientes?.nome })}
+                        className="p-2.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
+                        title="Excluir Sinistro"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+
+                      <button 
+                        onClick={() => setSinistroParaGerenciar(s.id)}
+                        className="p-2.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-xl hover:scale-105 transition-all shadow-md group-hover:shadow-blue-500/10"
+                        title="Gerenciar Sinistro"
+                      >
+                        <ExternalLink size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -204,6 +244,44 @@ export const RelatorioSinistros = () => {
         </div>
       </div>
 
+      {/* --- MODAL DE CONFIRMAÇÃO DE EXCLUSÃO CUSTOMIZADO --- */}
+      {confirmacaoExclusao && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in zoom-in-95 duration-300">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle size={32} />
+              </div>
+              <h3 className="text-xl font-black text-zinc-800 dark:text-white uppercase italic tracking-tighter mb-2">
+                Confirmar Exclusão
+              </h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed font-medium">
+                Deseja realmente remover o sinistro de <br/>
+                <strong className="text-zinc-800 dark:text-zinc-200 uppercase">{confirmacaoExclusao.nome}</strong>?<br/>
+                <span className="text-[10px] text-red-500 font-bold uppercase mt-2 block italic">* Esta ação é irreversível</span>
+              </p>
+            </div>
+            
+            <div className="p-6 bg-zinc-50 dark:bg-zinc-800/50 flex gap-3">
+              <button 
+                onClick={() => setConfirmacaoExclusao(null)}
+                className="flex-1 py-3 px-4 rounded-2xl text-sm font-bold text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={executarExclusao}
+                disabled={excluindo}
+                className="flex-1 py-3 px-4 bg-red-600 text-white rounded-2xl text-sm font-black uppercase tracking-wider shadow-lg shadow-red-200 dark:shadow-none hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {excluindo ? 'Excluindo...' : 'Sim, Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE GERENCIAMENTO (KANBAN) */}
       {sinistroParaGerenciar && (
         <ModalGerenciamentoSinistro
           sinistroId={sinistroParaGerenciar}
