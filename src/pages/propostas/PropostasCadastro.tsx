@@ -437,7 +437,7 @@ useEffect(() => {
 
       // --- SUCESSO ESTILIZADO ---
       setShowSuccess(true);
-      handleGerarPDF();
+      //handleGerarPDF();
 
       // Redireciona após 2.5 segundos
       setTimeout(() => {
@@ -446,7 +446,7 @@ useEffect(() => {
       }, 2500);
       // --------------------------
       
-      handleGerarPDF();
+      // handleGerarPDF();
 
     } catch (error: any) {
       console.error("Erro ao salvar:", error);
