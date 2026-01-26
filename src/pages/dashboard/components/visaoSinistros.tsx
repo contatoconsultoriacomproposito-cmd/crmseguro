@@ -1,17 +1,65 @@
+import { useMemo } from 'react';
 import { AlertTriangle, Clock, CheckCircle2, Shield } from 'lucide-react';
 
-type SinistroData = {
-  abertos: number;
-  finalizados: number;
-  detalheAbertos: { produto: string; quantidade: number }[];
-  detalheFinalizados: { produto: string; quantidade: number }[];
-};
+interface VisaoSinistrosProps {
+  sinistrosRaw: any[];
+  propostasRaw: any[];
+  dataInicio: string;
+  dataFim: string;
+  corretorId: string;
+}
 
-export default function VisaoSinistros({ data }: { data: SinistroData }) {
+export default function VisaoSinistros({ sinistrosRaw, dataInicio, dataFim, corretorId }: VisaoSinistrosProps) {
+  
+  const stats = useMemo(() => {
+    const s = {
+      abertos: 0,
+      finalizados: 0,
+      detalheAbertos: [] as { produto: string; quantidade: number }[],
+      detalheFinalizados: [] as { produto: string; quantidade: number }[]
+    };
+
+    sinistrosRaw.forEach((sin: any) => {
+      // 1. Filtro de Corretor
+      const pertenceAoCorretor = corretorId === 'todos' || sin.corretor_id === corretorId;
+      if (!pertenceAoCorretor) return;
+
+      // 2. Filtro de Data
+      const dataBruta = sin.data_abertura || sin.criado_em || '';
+      const dataRef = dataBruta.split(/[ T]/)[0];
+
+      if (dataRef >= dataInicio && dataRef <= dataFim) {
+        const status = String(sin.status || '').toLowerCase().trim();
+        
+        // --- AJUSTE AQUI: Acessando o nome via relação indireta ---
+        // A query agora traz: sin.tab_proposta_itens.base_produtos.nome
+        const nomeProduto = sin.tab_proposta_itens?.base_produtos?.nome || 'Seguro Geral';
+
+        // Lógica de Agrupamento por Status
+        if (['aberto', 'em andamento', 'cadastro', 'pendente'].includes(status)) {
+          s.abertos++;
+          updateDetalhe(s.detalheAbertos, nomeProduto);
+        } 
+        else if (['finalizado', 'concluído', 'concluido', 'encerrado', 'pago'].includes(status)) {
+          s.finalizados++;
+          updateDetalhe(s.detalheFinalizados, nomeProduto);
+        }
+      }
+    });
+
+    return s;
+  }, [sinistrosRaw, dataInicio, dataFim, corretorId]);
+
+  function updateDetalhe(arr: any[], produto: string) {
+    const exist = arr.find(d => d.produto === produto);
+    if (exist) exist.quantidade++;
+    else arr.push({ produto, quantidade: 1 });
+  }
+
   return (
     <section className="space-y-6">
       <h2 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-        <AlertTriangle size={14} className="text-amber-500" /> 5. Visão de Sinistros/Assistências (Análise por Produto)
+        <AlertTriangle size={14} className="text-amber-500" /> 8. Visão de Sinistros/Assistências (Análise por Produto)
       </h2>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -19,16 +67,16 @@ export default function VisaoSinistros({ data }: { data: SinistroData }) {
           title="Sinistros/Assistências em Aberto"
           icon={<Clock size={20} />}
           color="amber"
-          total={data.abertos}
-          detalhes={data.detalheAbertos}
+          total={stats.abertos}
+          detalhes={stats.detalheAbertos}
         />
 
         <SinistroCard 
           title="Sinistros/Assistências Finalizadas"
           icon={<CheckCircle2 size={20} />}
           color="emerald"
-          total={data.finalizados}
-          detalhes={data.detalheFinalizados}
+          total={stats.finalizados}
+          detalhes={stats.detalheFinalizados}
         />
       </div>
     </section>
@@ -57,7 +105,7 @@ function SinistroCard({ title, icon, color, total, detalhes }: any) {
       </div>
 
       <div className="space-y-2">
-        {detalhes.length > 0 ? detalhes.map((item: any, idx: number) => (
+        {detalhes.length > 0 ? detalhes.sort((a: any, b: any) => b.quantidade - a.quantidade).map((item: any, idx: number) => (
           <div key={idx} className="flex items-center justify-between bg-slate-50/50 p-4 rounded-2xl border border-transparent hover:border-slate-100 transition-all">
             <div className="flex items-center gap-3">
               <Shield size={14} className="text-slate-300" />
