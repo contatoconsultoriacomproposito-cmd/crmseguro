@@ -1,10 +1,13 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { 
-  Search, Edit3, Loader2, Calendar, Hash, ShieldCheck, ArrowRight, Users, Handshake, ShoppingCart 
+  Search, Edit3, Loader2, Calendar, Hash, ShieldCheck, ArrowRight, Users, Handshake, ShoppingCart , Download, FileSpreadsheet
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatarDataBR } from "../../utils/dateUtils";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface ItemRenovacaoFormatado {
   id_item: string;
@@ -80,6 +83,12 @@ export default function ProdutosLista() {
     getInitialData();
     fetchItensRenovacao();
   }, []);
+
+  useEffect(() => {
+    if (userProfile?.corretora_id) {
+      fetchItensRenovacao();
+    }
+  }, [userProfile]);
 
   async function fetchItensRenovacao() {
     try {
@@ -216,6 +225,51 @@ export default function ProdutosLista() {
     });
   }, [filter, dataInicio, dataFim, dataVendaInicio, dataVendaFim, selectedCorretores, selectedParceiros, itens]);
 
+  const exportarExcel = () => {
+    const dadosParaExportar = itensFiltrados.map(i => ({
+      "Proposta": i.numero_proposta,
+      "Cliente": i.cliente,
+      "Seguradora": i.seguradora,
+      "Produto": i.produto,
+      "Venda": i.data_venda ? formatarDataBR(i.data_venda) : "-",
+      "Início Vigência": formatarDataBR(i.data_inicio_vigencia),
+      "Fim Vigência (Renovação)": formatarDataBR(i.data_fim_vigencia),
+      "Valor Prêmio": i.valor, // Mantido como número
+      "Apólice": i.numero_apolice || "N/A"
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Produtos");
+    XLSX.writeFile(wb, `Relatorio_Produtos_${new Date().getTime()}.xlsx`);
+  };
+
+  const exportarPDF = () => {
+    const doc = new jsPDF('l', 'mm', 'a4'); // 'l' para modo paisagem (landscape) pois a tabela é larga
+    doc.text("Relatório de Produtos e Vigências", 14, 15);
+    
+    const tableData = itensFiltrados.map(i => [
+      i.numero_proposta,
+      i.cliente,
+      i.produto,
+      i.numero_apolice || "-",
+      formatarDataBR(i.data_venda),
+      formatarDataBR(i.data_fim_vigencia),
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(i.valor)
+    ]);
+
+    autoTable(doc, {
+      head: [['Proposta', 'Cliente', 'Produto', 'Apólice', 'Venda', 'Renovação', 'Valor']],
+      body: tableData,
+      startY: 20,
+      theme: 'grid',
+      styles: { fontSize: 7 }
+    });
+
+    doc.save(`Produtos_Vigencias_${new Date().getTime()}.pdf`);
+  };
+
+
   return (
     <div className="p-8 bg-[#F8FAFC] min-h-screen">
       <div className="max-w-[1600px] mx-auto">
@@ -230,6 +284,29 @@ export default function ProdutosLista() {
               </p>
             </div>
 
+            <div className="flex items-center gap-3 w-full lg:w-auto">
+              {/* ADICIONE ESTES BOTÕES */}
+              <button 
+                onClick={exportarExcel}
+                className="flex items-center gap-2 px-4 h-11 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-100 transition-all shadow-sm"
+              >
+                <FileSpreadsheet size={16} /> Excel
+              </button>
+              
+              <button 
+                onClick={exportarPDF}
+                className="flex items-center gap-2 px-4 h-11 bg-red-50 text-red-600 border border-red-100 rounded-xl text-[10px] font-black uppercase hover:bg-red-100 transition-all shadow-sm"
+              >
+                <Download size={16} /> PDF
+              </button>
+
+              <div className="w-[1px] h-8 bg-slate-200 mx-2 hidden lg:block" />
+
+              <div className="relative w-full lg:w-96">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                {/* ... seu input de busca ... */}
+              </div>
+            </div>
             <div className="relative w-full lg:w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 

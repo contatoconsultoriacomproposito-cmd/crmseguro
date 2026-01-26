@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { 
   Search, FileText, Edit3, Trash2, 
-  CheckCircle, XCircle, Loader2, Calendar, Users, Handshake
+  CheckCircle, XCircle, Loader2, Calendar, Users, Handshake,Download, FileSpreadsheet
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { gerarPDFProposta } from "../../utils/gerarPDF";
@@ -10,6 +10,9 @@ import { ModalFechamento } from '../../components/propostas/ModalFechamento';
 import { formatarDataBR } from "../../utils/dateUtils";
 import { ModalExclusaoSegura } from "./ModalExclusaoSegura";
 import { sincronizarStatusCliente } from "./sincronizarStatusCliente";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function PropostasLista() {
   const navigate = useNavigate();
@@ -41,6 +44,49 @@ export default function PropostasLista() {
     proposta: null as any,
     dadosCriticos: { sinistros: 0, comissoes: 0, isVendido: false }
   });
+
+  const exportarExcel = () => {
+    const dadosParaExportar = propostasFiltradas.map(p => ({
+      "Proposta": p.numero_proposta,
+      "Cliente": p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
+      "Corretor": p.usuarios_perfis?.nome,
+      "Status": p.status,
+      "Valor Total": p.valor_total_proposta, // Passando como número para o Excel permitir cálculos
+      "Vencimento": formatarDataBR(p.data_validade),
+      "Data Venda": p.data_venda ? formatarDataBR(p.data_venda) : "-"
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
+    
+    // Pequeno ajuste para garantir que o Excel entenda a coluna de valor como número
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Propostas");
+    XLSX.writeFile(wb, `Relatorio_Propostas_${new Date().getTime()}.xlsx`);
+  };
+
+  const exportarPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.text("Relatório de Propostas", 14, 15);
+    
+    const tableData = propostasFiltradas.map(p => [
+      p.numero_proposta,
+      p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
+      p.usuarios_perfis?.nome,
+      p.status,
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)
+    ]);
+
+    autoTable(doc, {
+      head: [['Nº Proposta', 'Cliente', 'Corretor', 'Status', 'Valor']],
+      body: tableData,
+      startY: 20,
+      theme: 'grid',
+      styles: { fontSize: 8 }
+    });
+
+    doc.save(`Relatorio_Propostas_${new Date().getTime()}.pdf`);
+  };
 
   useEffect(() => {
     async function getInitialData() {
@@ -260,17 +306,37 @@ export default function PropostasLista() {
             <h1 className="text-2xl font-black italic uppercase text-slate-800 tracking-tighter">
               Gestão de Propostas
             </h1>
-            <div className="relative w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Buscar cliente ou proposta..."
-                className="w-full h-11 pl-10 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm"
-                onChange={(e) => setFilter(e.target.value)}
-              />
+
+            <div className="flex items-center gap-3">
+              {/* BOTÕES DE EXPORTAÇÃO */}
+              <button 
+                onClick={exportarExcel}
+                className="flex items-center gap-2 px-4 h-11 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-100 transition-all shadow-sm"
+              >
+                <FileSpreadsheet size={16} /> Excel
+              </button>
+              
+              <button 
+                onClick={exportarPDF}
+                className="flex items-center gap-2 px-4 h-11 bg-red-50 text-red-600 border border-red-100 rounded-xl text-[10px] font-black uppercase hover:bg-red-100 transition-all shadow-sm"
+              >
+                <Download size={16} /> PDF
+              </button>
+
+              <div className="w-[1px] h-8 bg-slate-200 mx-2" />
+
+              <div className="relative w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Buscar cliente ou proposta..."
+                  className="w-full h-11 pl-10 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                  onChange={(e) => setFilter(e.target.value)}
+                />
+              </div>
             </div>
           </div>
-
+          
           <div className="flex flex-col gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               
