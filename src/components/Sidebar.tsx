@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type SetStateAction } from "react"
+import { useState, useEffect, type Dispatch, type SetStateAction } from "react"
 import {
   LayoutDashboard,
   UserPlus,
@@ -28,6 +28,7 @@ import { NavLink, useNavigate } from "react-router-dom"
 import { useNotifications } from "../contexts/NotificationContext"
 import { useAuth } from "../auth/AuthContext"
 import LogoutButton from "./LogoutButton"
+import { supabase } from "../lib/supabaseClient" // Garanta que o caminho está correto
 
 type Props = {
   collapsed: boolean
@@ -37,6 +38,9 @@ type Props = {
 export default function Sidebar({ collapsed, setCollapsed }: Props) {
   const { user, userProfile } = useAuth()
   const navigate = useNavigate()
+
+  // ESTADO PARA ARMAZENAR A LOGO DA CORRETORA
+  const [corretoraLogo, setCorretoraLogo] = useState<string | null>(null)
   
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     corretores: false,
@@ -49,6 +53,36 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
     seguradoras: false,
     agenda: false, 
   })
+
+  // BUSCAR LOGO NO BANCO DE DADOS
+  useEffect(() => {
+  async function loadLogo() {
+    if (!user?.id) return;
+    
+    try {
+      // Tente buscar onde o ID da corretora corresponda ao ID do usuário 
+      // ou use a coluna correta de relacionamento (ex: user_id)
+      const { data, error } = await supabase
+        .from('tab_corretora_config')
+        .select('logotipo_url')
+        .eq('id', user.id) // Verifique se a coluna é 'id' ou 'user_id'
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data?.logotipo_url) {
+        // Remove espaços em branco que podem quebrar a URL
+        const cleanUrl = data.logotipo_url.trim();
+        setCorretoraLogo(cleanUrl);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar logo:", error);
+      setCorretoraLogo(null);
+    }
+  }
+  loadLogo();
+}, [user?.id]);
+
 
   const toggleMenu = (menu: string) => {
     if (collapsed) {
@@ -78,81 +112,97 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
             CRM Seguro
           </span>
         )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-        >
+        <button onClick={() => setCollapsed(!collapsed)} className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
       </div>
 
       {/* ================= USER INFO E LOGOUT ================= */}
-      <div className="px-4 mb-6">
-        <div className={`
-          p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800
-          ${collapsed ? "flex flex-col items-center gap-4" : ""}
-        `}>
-          {!collapsed ? (
-            <>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  {/* AVATAR CIRCULAR */}
-                  <div className="w-10 h-10 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center text-white border-2 border-white shadow-sm overflow-hidden">
-                    {userProfile?.avatar_url ? (
-                      <img src={userProfile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-xs font-black">
-                        {userProfile?.nome_completo?.substring(0, 2).toUpperCase() || <User size={16} />}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="overflow-hidden">
-                    <p className="text-[10px] uppercase font-black text-zinc-400 leading-none mb-1">Usuário Logado</p>
-                    <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
-                      {userProfile?.nome_completo || user?.email?.split('@')[0]}
-                    </p>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => navigate('/configuracao/perfil')}
-                  className="p-2 rounded-xl bg-white dark:bg-zinc-800 text-zinc-400 hover:text-blue-600 hover:shadow-md transition-all border border-zinc-100 dark:border-zinc-700"
-                  title="Configurações"
-                >
-                  <Settings size={16} />
-                </button>
-              </div>
-              
-              <div className="h-[1px] bg-zinc-200/50 dark:bg-zinc-700/50 mb-3" />
-
-              <LogoutButton>
-                <div className="flex items-center gap-2 text-red-500 hover:text-red-600 transition-colors cursor-pointer group">
-                  <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 group-hover:bg-red-100 dark:group-hover:bg-red-500/20">
-                    <LogOut size={14} />
-                  </div>
-                  <span className="text-xs font-bold">Sair da conta</span>
-                </div>
-              </LogoutButton>
-            </>
-          ) : (
-            <div className="flex flex-col items-center gap-4">
-              <button 
-                onClick={() => navigate('/configuracao/perfil')}
-                className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center hover:scale-110 transition-transform"
-              >
-                <Settings size={20} />
-              </button>
-              
-              <LogoutButton>
-                <div className="text-red-500 hover:scale-110 transition-transform cursor-pointer">
-                  <LogOut size={20} />
-                </div>
-              </LogoutButton>
+<div className="px-4 mb-6">
+  <div className={`p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800 ${collapsed ? "flex flex-col items-center gap-4" : ""}`}>
+    {!collapsed ? (
+      <>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3 overflow-hidden">
+            
+            
+            {/* AVATAR CIRCULAR - VERSÃO CORRIGIDA */}
+            <div className="w-10 h-10 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center text-white border-2 border-white shadow-sm overflow-hidden bg-zinc-200 dark:bg-zinc-700">
+              {corretoraLogo && corretoraLogo.includes('http') ? (
+                <img 
+                  src={corretoraLogo} 
+                  alt="Logo" 
+                  className="w-full h-full object-contain bg-white p-1"
+                  onError={() => {
+                    console.warn("URL da imagem inválida ou inacessível:", corretoraLogo);
+                    setCorretoraLogo(null); // Remove a URL ruim para mostrar o fallback
+                  }} 
+                />
+              ) : userProfile?.avatar_url ? (
+                <img src={userProfile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xs font-black">
+                  {userProfile?.nome_completo?.substring(0, 2).toUpperCase() || <User size={16} />}
+                </span>
+              )}
             </div>
+            
+            <div className="min-w-0 overflow-hidden">
+              <p className="text-[10px] uppercase font-black text-zinc-400 leading-none mb-1">Usuário Logado</p>
+              <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                {userProfile?.nome_completo || user?.email?.split('@')[0]}
+              </p>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => navigate('/configuracao/perfil')}
+            className="p-2 rounded-xl bg-white dark:bg-zinc-800 text-zinc-400 hover:text-blue-600 hover:shadow-md transition-all border border-zinc-100 dark:border-zinc-700 flex-shrink-0"
+            title="Configurações"
+          >
+            <Settings size={16} />
+          </button>
+        </div>
+        
+        <div className="h-[1px] bg-zinc-200/50 dark:bg-zinc-700/50 mb-3" />
+
+        <LogoutButton>
+          <div className="flex items-center gap-2 text-red-500 hover:text-red-600 transition-colors cursor-pointer group">
+            <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 group-hover:bg-red-100 dark:group-hover:bg-red-500/20">
+              <LogOut size={14} />
+            </div>
+            <span className="text-xs font-bold">Sair da conta</span>
+          </div>
+        </LogoutButton>
+      </>
+    ) : (
+      <div className="flex flex-col items-center gap-4">
+        {/* AVATAR PARA MODO COLLAPSED - VERSÃO BLINDADA */}
+        <div 
+          className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center border-2 border-white dark:border-zinc-700 shadow-sm overflow-hidden cursor-pointer"
+          onClick={() => navigate('/configuracao/perfil')}
+        >
+          {corretoraLogo && corretoraLogo.length > 10 ? (
+            <img 
+              src={corretoraLogo} 
+              alt="Logo" 
+              className="w-full h-full object-contain bg-white p-1" 
+              onError={() => setCorretoraLogo(null)}
+            />
+          ) : (
+            <User size={20} className="text-white" />
           )}
         </div>
+        
+        <LogoutButton>
+          <div className="text-red-500 hover:scale-110 transition-transform cursor-pointer">
+            <LogOut size={20} />
+          </div>
+        </LogoutButton>
       </div>
+    )}
+  </div>
+</div>
 
       {/* ================= MIDDLE: MENU (SCROLLABLE) ================= */}
       <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
