@@ -95,7 +95,10 @@ export default function Dashboard() {
       const queries = {
         clientes: supabase.from('tab_clientes').select('*').eq('corretora_id', cid),
         interacoes: supabase.from('tab_interacoes').select('*').eq('corretora_id', cid),
-        propostas: supabase.from('tab_propostas').select('*, tab_proposta_opcoes (*, base_seguradoras(nome), tab_proposta_itens(*, base_produtos(nome)))').eq('corretora_id', cid),
+        propostas: supabase
+        .from('tab_propostas')
+        .select('*, tab_proposta_opcoes (*, base_seguradoras(nome), tab_proposta_itens(*, base_produtos(nome)))')
+        .eq('corretora_id', cid),
         comissoes: supabase.from('tab_comissoes').select('*, tab_clientes(nome), base_produtos(nome)').eq('corretora_id', cid),
         sinistros: supabase
         .from('tab_sinistros')

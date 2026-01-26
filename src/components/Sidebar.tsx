@@ -20,10 +20,11 @@ import {
   AlertCircle,
   Bell,
   Activity,
-  Handshake
-  
+  Handshake,
+  Settings,
+  User
 } from "lucide-react"
-import { NavLink } from "react-router-dom"
+import { NavLink, useNavigate } from "react-router-dom"
 import { useNotifications } from "../contexts/NotificationContext"
 import { useAuth } from "../auth/AuthContext"
 import LogoutButton from "./LogoutButton"
@@ -34,7 +35,8 @@ type Props = {
 }
 
 export default function Sidebar({ collapsed, setCollapsed }: Props) {
-  const { user } = useAuth()
+  const { user, userProfile } = useAuth()
+  const navigate = useNavigate()
   
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     corretores: false,
@@ -92,9 +94,38 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
         `}>
           {!collapsed ? (
             <>
-              <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Usuário Logado</p>
-              <p className="text-xs font-medium truncate opacity-80 mb-3">{user?.email}</p>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  {/* AVATAR CIRCULAR */}
+                  <div className="w-10 h-10 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center text-white border-2 border-white shadow-sm overflow-hidden">
+                    {userProfile?.avatar_url ? (
+                      <img src={userProfile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-xs font-black">
+                        {userProfile?.nome_completo?.substring(0, 2).toUpperCase() || <User size={16} />}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="overflow-hidden">
+                    <p className="text-[10px] uppercase font-black text-zinc-400 leading-none mb-1">Usuário Logado</p>
+                    <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                      {userProfile?.nome_completo || user?.email?.split('@')[0]}
+                    </p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => navigate('/configuracao/perfil')}
+                  className="p-2 rounded-xl bg-white dark:bg-zinc-800 text-zinc-400 hover:text-blue-600 hover:shadow-md transition-all border border-zinc-100 dark:border-zinc-700"
+                  title="Configurações"
+                >
+                  <Settings size={16} />
+                </button>
+              </div>
               
+              <div className="h-[1px] bg-zinc-200/50 dark:bg-zinc-700/50 mb-3" />
+
               <LogoutButton>
                 <div className="flex items-center gap-2 text-red-500 hover:text-red-600 transition-colors cursor-pointer group">
                   <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 group-hover:bg-red-100 dark:group-hover:bg-red-500/20">
@@ -105,11 +136,20 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               </LogoutButton>
             </>
           ) : (
-            <LogoutButton>
-              <div className="text-red-500 hover:scale-110 transition-transform cursor-pointer">
-                <LogOut size={20} />
-              </div>
-            </LogoutButton>
+            <div className="flex flex-col items-center gap-4">
+              <button 
+                onClick={() => navigate('/configuracao/perfil')}
+                className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center hover:scale-110 transition-transform"
+              >
+                <Settings size={20} />
+              </button>
+              
+              <LogoutButton>
+                <div className="text-red-500 hover:scale-110 transition-transform cursor-pointer">
+                  <LogOut size={20} />
+                </div>
+              </LogoutButton>
+            </div>
           )}
         </div>
       </div>
@@ -118,16 +158,12 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
       <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
         <nav className="px-3 space-y-1 flex-1 pb-10">
           
-          {/* NOTIFICAÇÕES (SINO) */}
           <div className="mb-2">
             <NotificationBell collapsed={collapsed} />
           </div>
 
-          {/* ITEM DASHBOARD */}
-
           <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Dashboard" collapsed={collapsed} />
 
-          {/* NOVO ITEM: AGENDA (Inserido aqui para acesso rápido) */}
           <NavItem 
             to="/agenda" 
             icon={<Calendar size={20} className="text-blue-500" />} 
@@ -153,31 +189,21 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
           </div>
 
           {/* GRUPO PARCEIROS */}
-            <div className="space-y-1">
-              <MenuHeader 
-                icon={<Handshake size={20} className="text-amber-500" />} 
-                label="Parceiros" 
-                isOpen={openMenus.parceiros} 
-                onClick={() => toggleMenu("parceiros")}
-                collapsed={collapsed}
-              />
-              {!collapsed && openMenus.parceiros && (
-                <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
-                  {/* NOVO ITEM: TRIAGEM */}
-                  <SubNavItem 
-                    to="/parceiros/triagem" 
-                    label="Triagem de Indicações" 
-                    icon={<Activity size={16} className="text-blue-500" />} 
-                  />
-                  
-                  <SubNavItem 
-                    to="/parceiros/cadastro" 
-                    label="Gerenciar Parceiros" 
-                    icon={<UserPlus size={16} />} 
-                  />
-                </div>
-              )}
-            </div>
+          <div className="space-y-1">
+            <MenuHeader 
+              icon={<Handshake size={20} className="text-amber-500" />} 
+              label="Parceiros" 
+              isOpen={openMenus.parceiros} 
+              onClick={() => toggleMenu("parceiros")}
+              collapsed={collapsed}
+            />
+            {!collapsed && openMenus.parceiros && (
+              <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
+                <SubNavItem to="/parceiros/triagem" label="Triagem de Indicações" icon={<Activity size={16} className="text-blue-500" />} />
+                <SubNavItem to="/parceiros/cadastro" label="Gerenciar Parceiros" icon={<UserPlus size={16} />} />
+              </div>
+            )}
+          </div>
 
           {/* GRUPO CLIENTES */}
           <div className="space-y-1">
@@ -236,7 +262,7 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
           <div className="space-y-1">
             <MenuHeader 
               icon={<AlertCircle size={20} className="text-red-500" />} 
-              label="Sinistros/Assistências" 
+              label="Sinistros" 
               isOpen={openMenus.sinistros} 
               onClick={() => toggleMenu("sinistros")}
               collapsed={collapsed}
@@ -292,7 +318,6 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
   const [open, setOpen] = useState(false)
   const count = notificacoes.length
 
-  // Função para lidar com o clique na notificação
   const handleAction = (n: any) => {
     abrirNotificacao(n);
     setOpen(false);
@@ -301,7 +326,6 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
   return (
     <div className="relative">
       <button 
-        id="btn-notificacoes"
         onClick={(e) => {
           e.stopPropagation();
           setOpen(!open);
@@ -325,16 +349,10 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
 
       {open && (
         <>
-          {/* Overlay invisível para fechar ao clicar fora */}
           <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-          
-          {/* Menu com posicionamento FIXED para ignorar o overflow da sidebar */}
           <div 
-            className={`
-              fixed z-[70] w-80 bg-white dark:bg-zinc-900 shadow-2xl rounded-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200
-            `}
+            className="fixed z-[70] w-80 bg-white dark:bg-zinc-900 shadow-2xl rounded-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200"
             style={{
-              // Calcula a posição exata ao lado ou abaixo do botão
               top: '80px', 
               left: collapsed ? '75px' : '250px' 
             }}
@@ -359,23 +377,12 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
                     className="p-3 rounded-xl border border-zinc-50 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 flex items-center gap-3 hover:border-blue-200 dark:hover:border-blue-500/30 transition-all cursor-pointer group"
                     onClick={() => handleAction(n)}
                   >
-                    <div className={`
-                      w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0
-                      ${n.tipo === 'COMERCIAL' 
-                        ? (n.atrasado ? 'bg-red-600 text-white' : 'bg-emerald-700 text-white')
-                        : (n.atrasado ? 'bg-purple-800 text-white' : 'bg-yellow-400 text-black')
-                      }
-                    `}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0 ${n.tipo === 'COMERCIAL' ? (n.atrasado ? 'bg-red-600 text-white' : 'bg-emerald-700 text-white') : (n.atrasado ? 'bg-purple-800 text-white' : 'bg-yellow-400 text-black')}`}>
                       {n.tipo === 'COMERCIAL' ? 'C' : 'S'}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold truncate dark:text-zinc-200 group-hover:text-blue-600 transition-colors">
-                        {n.titulo}
-                      </p>
-                      <p className="text-[10px] text-zinc-400 font-medium">
-                        {n.atrasado ? 'Atraso: ' : 'Hoje: '}
-                        {n.data}
-                      </p>
+                      <p className="text-xs font-bold truncate dark:text-zinc-200 group-hover:text-blue-600 transition-colors">{n.titulo}</p>
+                      <p className="text-[10px] text-zinc-400 font-medium">{n.atrasado ? 'Atraso: ' : 'Hoje: '}{n.data}</p>
                     </div>
                   </div>
                 ))
@@ -392,22 +399,13 @@ function MenuHeader({ icon, label, isOpen, onClick, collapsed }: any) {
   return (
     <button
       onClick={onClick}
-      className={`
-        w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200
-        text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 group
-        ${collapsed ? "justify-center" : ""}
-      `}
+      className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 group ${collapsed ? "justify-center" : ""}`}
     >
       <div className="flex items-center gap-3">
         <div className="flex-shrink-0">{icon}</div>
         {!collapsed && <span className="text-sm font-bold">{label}</span>}
       </div>
-      {!collapsed && (
-        <ChevronDown 
-          size={16} 
-          className={`transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`} 
-        />
-      )}
+      {!collapsed && <ChevronDown size={16} className={`transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`} />}
     </button>
   )
 }
@@ -417,12 +415,7 @@ function NavItem({ to, icon, label, collapsed }: any) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-3 p-3 rounded-xl transition-all duration-200
-        ${collapsed ? "justify-center" : ""}
-        ${isActive
-          ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20 font-bold"
-          : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        }`
+        `flex items-center gap-3 p-3 rounded-xl transition-all duration-200 ${collapsed ? "justify-center" : ""} ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20 font-bold" : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`
       }
     >
       <div className="flex-shrink-0">{icon}</div>
@@ -436,11 +429,7 @@ function SubNavItem({ to, label, icon }: any) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-3 py-2 px-4 transition-all duration-200
-        ${isActive
-          ? "text-blue-600 dark:text-blue-400 font-bold"
-          : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
-        }`
+        `flex items-center gap-3 py-2 px-4 transition-all duration-200 ${isActive ? "text-blue-600 dark:text-blue-400 font-bold" : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"}`
       }
     >
       <span className="opacity-70">{icon}</span>

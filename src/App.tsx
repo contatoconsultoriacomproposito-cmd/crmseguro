@@ -2,6 +2,9 @@ import { Routes, Route, Navigate } from "react-router-dom"
 import { useAuth } from "./auth/AuthContext"
 import { NotificationProvider } from "./contexts/NotificationContext"
 
+// Configuração
+import ConfigPerfil from "./pages/configuracao/configPerfil"
+
 // Layouts
 import DashboardLayout from "./layouts/DashboardLayout"
 
@@ -110,6 +113,9 @@ export default function App() {
 
           {/* MÓDULO: SINISTROS */}
           <Route path="/sinistros/lista" element={<RelatorioSinistros />} />
+
+          {/* MÓDULO: CONFIGURAÇÕES */}
+          <Route path="/configuracao/perfil" element={<ConfigPerfil />} />
 
           {/* CATCH-ALL LOGADO */}
           <Route path="*" element={<Navigate to="/dashboard" />} />

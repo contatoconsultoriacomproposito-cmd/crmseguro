@@ -1,4 +1,3 @@
-// src/pages/corretor/ParceirosTriagem.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient'; 
 import { toast } from 'sonner';
@@ -7,8 +6,11 @@ import { IndicacaoCard } from '../parceiros/components/IndicacaoCard';
 import { PainelAcoes } from '../parceiros/components/PainelAcoes';
 import { ModalRecusa } from '../parceiros/components/ModalRecusa';
 import { ModalVinculoCRM } from '../parceiros/components/ModalVinculoCRM';
+import { useAuth } from '../../auth/AuthContext';
 
 export default function ParceirosTriagem() {
+  const { userProfile } = useAuth();
+
   // --- ESTADOS PRINCIPAIS ---
   const [indicacoes, setIndicacoes] = useState<any[]>([]);
   const [selecionada, setSelecionada] = useState<any>(null);
@@ -19,7 +21,6 @@ export default function ParceirosTriagem() {
   const [showRecusaModal, setShowRecusaModal] = useState(false);
   const [showVinculoModal, setShowVinculoModal] = useState(false);
   const [modoCotacao, setModoCotacao] = useState(false);
-
   const [formRecusa, setFormRecusa] = useState({ motivo: '', observacao: '' });
 
   // --- ESTADOS CRM ---
@@ -32,13 +33,14 @@ export default function ParceirosTriagem() {
     "REPROVADO NA ANÁLISE TÉCNICA", "DESISTÊNCIA DO CLIENTE", "OUTROS"
   ];
 
-  const [refreshKey, setRefreshKey] = useState(0); // Controle de versão para o PainelAcoes
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // --- LÓGICA DE CARREGAMENTO ---
   const carregarIndicacoes = useCallback(async () => {
+    if (!userProfile?.corretora_id) return;
+
     try {
       setLoading(true);
-      // AJUSTE NA QUERY: Ordenamos a tabela filha (cotacoes) para que a mais recente (data_envio) seja a [0]
       const { data, error } = await supabase
         .from('tab_indicacoes')
         .select(`
@@ -46,32 +48,31 @@ export default function ParceirosTriagem() {
           tab_parceiros(nome_parceiro), 
           tab_indicacoes_cotacoes(*)
         `)
+        .eq('corretora_id', userProfile.corretora_id)
         .order('created_at', { ascending: false })
         .order('data_envio', { foreignTable: 'tab_indicacoes_cotacoes', ascending: false });
 
       if (error) throw error;
       setIndicacoes(data || []);
       
-      // Sincroniza o painel de detalhes se algo mudar no banco
       if (selecionada) {
         const atualizada = data?.find(i => i.id === selecionada.id);
         if (atualizada) setSelecionada(atualizada);
       }
     
-      // --- ADICIONE ISSO AQUI ---
       setRefreshKey(prev => prev + 1); 
-      // --------------------------
-
     } catch (error: any) {
       toast.error("Erro ao carregar dados: " + error.message);
     } finally {
       setLoading(false);
     }
-  }, [selecionada]);
+  }, [selecionada, userProfile?.corretora_id]);
 
   useEffect(() => { 
-    carregarIndicacoes(); 
-  }, []);
+    if (userProfile?.corretora_id) {
+      carregarIndicacoes(); 
+    }
+  }, [userProfile?.corretora_id, carregarIndicacoes]);
 
   const maskCurrency = (value: string) => {
     const n = value.replace(/\D/g, '');
@@ -87,13 +88,13 @@ export default function ParceirosTriagem() {
       const { error } = await supabase
         .from('tab_indicacoes')
         .update(dadosParaAtualizar)
-        .eq('id', selecionada.id);
+        .eq('id', selecionada.id)
+        .eq('corretora_id', userProfile?.corretora_id);
 
       if (error) throw error;
 
       toast.success(`Operação realizada com sucesso!`);
 
-      // Atualiza localmente para feedback instantâneo
       setSelecionada((prev: any) => ({
         ...prev,
         ...dadosParaAtualizar
@@ -110,46 +111,36 @@ export default function ParceirosTriagem() {
   const enviarDadosCotacao = async (dados: any) => {
     try {
       setLoading(true);
-
-      // 1. Tratamento do valor para o formato numérico do banco (PostgreSQL numeric)
-      // Aceita tanto o formato vindo do maskCurrency quanto o valor limpo
       const valorLimpo = typeof dados.valor_premio === 'string' 
         ? dados.valor_premio.replace(/\./g, '').replace(',', '.') 
         : dados.valor_premio;
       
       const valorNumerico = parseFloat(valorLimpo);
 
-      // 2. Insere a nova cotação na tab_indicacoes_cotacoes
       const { error: errorCotacao } = await supabase
         .from('tab_indicacoes_cotacoes')
         .insert({
           indicacao_id: selecionada.id,
           valor_premio: valorNumerico,
           seguradora: dados.seguradora,
-          coberturas_principais: dados.coberturas_principais, // Nome correto da coluna
-          url_documento: dados.url_documento,               // O CAMPO QUE FALTAVA!
+          coberturas_principais: dados.coberturas_principais,
+          url_documento: dados.url_documento,
           status_feedback: 'PENDENTE'
         });
 
       if (errorCotacao) throw errorCotacao;
 
-      // 3. Atualiza o status da indicação principal para 'COTADO'
       const { error: errorIndicacao } = await supabase
         .from('tab_indicacoes')
-        .update({ 
-          status_indicacao: 'COTADO' 
-        })
-        .eq('id', selecionada.id);
+        .update({ status_indicacao: 'COTADO' })
+        .eq('id', selecionada.id)
+        .eq('corretora_id', userProfile?.corretora_id);
 
       if (errorIndicacao) throw errorIndicacao;
 
-      // 4. Finalização e Feedback
       setModoCotacao(false);
       toast.success("Cotação enviada ao parceiro com sucesso!");
-      
-      // Recarrega os dados para atualizar a lista e o painel
       await carregarIndicacoes();
-
     } catch (error: any) {
       console.error("Erro detalhado ao salvar cotação:", error);
       toast.error("Erro ao salvar cotação: " + (error.message || "Falha na conexão"));
@@ -171,10 +162,10 @@ export default function ParceirosTriagem() {
       const { error } = await supabase
         .from('tab_indicacoes')
         .update(dadosParaAtualizar)
-        .eq('id', selecionada.id);
+        .eq('id', selecionada.id)
+        .eq('corretora_id', userProfile?.corretora_id);
 
       if (error) throw error;
-
       toast.success(`Indicação movida para Perdidos`);
 
       setSelecionada((prev: any) => ({
@@ -185,7 +176,6 @@ export default function ParceirosTriagem() {
       setShowRecusaModal(false);
       setFormRecusa({ motivo: '', observacao: '' });
       await carregarIndicacoes();
-
     } catch (error: any) {
       toast.error("Erro ao recusar: " + error.message);
     } finally {
@@ -194,11 +184,12 @@ export default function ParceirosTriagem() {
   };
 
   const buscarClientesCRM = async (termo: string) => {
-    if (!termo || termo.length < 3) return;
+    if (!termo || termo.length < 3 || !userProfile?.corretora_id) return;
     setBuscandoCRM(true);
     const { data } = await supabase
       .from('tab_clientes')
       .select('*')
+      .eq('corretora_id', userProfile.corretora_id)
       .or(`nome.ilike.*${termo}*,cnpj.ilike.*${termo}*,cpf.ilike.*${termo}*`)
       .limit(10);
     setClientesEncontrados(data || []);
@@ -211,7 +202,6 @@ export default function ParceirosTriagem() {
     toast.success("Cliente vinculado com sucesso!");
   };
 
-  // --- FILTRAGEM ---
   const indicacoesFiltradas = indicacoes.filter(i => 
     i.nome_cliente.toLowerCase().includes(busca.toLowerCase()) ||
     i.tab_parceiros?.nome_parceiro?.toLowerCase().includes(busca.toLowerCase())
@@ -219,7 +209,6 @@ export default function ParceirosTriagem() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] p-4 md:p-10 font-sans">
-      
       <FiltroBusca 
         busca={busca} 
         setBusca={setBusca} 
@@ -228,7 +217,6 @@ export default function ParceirosTriagem() {
       />
 
       <div className="flex flex-col lg:flex-row gap-8 h-[calc(100vh-200px)]">
-        {/* LISTA LATERAL */}
         <aside className="w-full lg:w-[400px] flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
           {indicacoesFiltradas.map(ind => (
             <IndicacaoCard 
@@ -245,11 +233,10 @@ export default function ParceirosTriagem() {
           ))}
         </aside>
 
-        {/* ÁREA DE DETALHES / AÇÕES */}
         <main className="flex-1 flex flex-col min-w-0">
           {selecionada ? (
             <PainelAcoes 
-              key={`${selecionada.id}-${refreshKey}`} // <-- CHAVE DINÂMICA
+              key={`${selecionada.id}-${refreshKey}`}
               indicacao={selecionada}
               loading={loading}
               modoCotacao={modoCotacao}
