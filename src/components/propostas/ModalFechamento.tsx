@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import { X, CheckCircle, XCircle, Loader2, Calendar, Hash } from "lucide-react";
+import { X, CheckCircle, XCircle, Loader2, Calendar, Hash, MousePointer2 } from "lucide-react";
 import { sincronizarStatusCliente } from "../../pages/propostas/sincronizarStatusCliente";
 
 interface ModalFechamentoProps {
@@ -16,7 +16,6 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
   const [propostaSelecionada, setPropostaSelecionada] = useState<any>(null);
   const [itensProposta, setItensProposta] = useState<any[]>([]);
   
-  // ESTADO DO FORMULÁRIO: Adicionada dataVenda iniciando com a data atual (formato YYYY-MM-DD)
   const [form, setForm] = useState({ 
     motivoPerda: "", 
     observacoes: "",
@@ -24,17 +23,53 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
   });
   
   const [dadosItens, setDadosItens] = useState<{ 
-    [key: string]: { apolice: string, inicioVigencia: string, fimVigencia: string } 
+    [key: string]: { 
+      apolice: string, 
+      inicioVigencia: string, 
+      fimVigencia: string,
+      periodicidade: 'ANUAL' | 'MENSAL' | 'PERSONALIZADO'
+    } 
   }>({});
   const [user, setUser] = useState<any>(null);
 
   const listaPropostas = Array.isArray(proposta) ? proposta : proposta ? [proposta] : [];
 
-  // FUNÇÃO PARA CORRIGIR O BUG DO ESPAÇO
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === ' ') {
       e.stopPropagation();
     }
+  };
+
+  // Função para calcular vigência baseada no botão clicado
+  const calcularVigencia = (idItem: string, tipo: 'ANUAL' | 'MENSAL' | 'PERSONALIZADO') => {
+    if (!form.dataVenda) {
+      alert("Por favor, informe a Data da Venda primeiro.");
+      return;
+    }
+
+    const dataInicio = form.dataVenda;
+    let dataFim = "";
+
+    if (tipo === 'ANUAL') {
+      const data = new Date(dataInicio);
+      data.setFullYear(data.getFullYear() + 1);
+      dataFim = data.toISOString().split('T')[0];
+    } else if (tipo === 'MENSAL') {
+      dataFim = ""; // Fica vazio e desabilitado
+    } else {
+      // PERSONALIZADO: Mantém início e deixa fim livre para o usuário
+      dataFim = dadosItens[idItem]?.fimVigencia || "";
+    }
+
+    setDadosItens(prev => ({
+      ...prev,
+      [idItem]: {
+        ...prev[idItem],
+        periodicidade: tipo,
+        inicioVigencia: dataInicio,
+        fimVigencia: dataFim
+      }
+    }));
   };
 
   useEffect(() => {
@@ -50,54 +85,105 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
   }, [isOpen, proposta, listaPropostas]);
 
   useEffect(() => {
-    async function carregarItens() {
-      if (!propostaSelecionada?.id || type !== 'VENDIDO') {
-        setItensProposta([]);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('tab_proposta_opcoes')
-        .select(`
-          tab_proposta_itens (
-            id,
-            numero_apolice,
-            data_inicio_vigencia,
-            data_fim_vigencia,
-            base_produtos ( nome )
-          )
-        `)
-        .eq('proposta_id', propostaSelecionada.id);
-
-      if (!error && data) {
-        const todosItens = data.flatMap(opt => opt.tab_proposta_itens || []);
-        setItensProposta(todosItens);
-        
-        const inicial: any = {};
-        todosItens.forEach(item => {
-          inicial[item.id] = { 
-            apolice: item.numero_apolice || "", 
-            inicioVigencia: item.data_inicio_vigencia || "",
-            fimVigencia: item.data_fim_vigencia || ""
-          };
-        });
-        setDadosItens(inicial);
-      }
+  async function carregarItens() {
+    if (!propostaSelecionada?.id || type !== 'VENDIDO') {
+      setItensProposta([]);
+      return;
     }
-    carregarItens();
-  }, [propostaSelecionada, type]);
+
+    const { data, error } = await supabase
+      .from('tab_proposta_opcoes')
+      .select(`
+        tab_proposta_itens (
+          id,
+          numero_apolice,
+          data_inicio_vigencia,
+          data_fim_vigencia,
+          periodicidade,
+          base_produtos ( nome )
+        )
+      `)
+      .eq('proposta_id', propostaSelecionada.id);
+
+    if (!error && data) {
+      const todosItens = data.flatMap(opt => opt.tab_proposta_itens || []);
+      setItensProposta(todosItens);
+      
+      const inicial: any = {};
+      
+      // Pegamos a data da venda atual do formulário como âncora
+      const dataBase = form.dataVenda; 
+      
+      // Cálculo padrão para +1 ano (Anual)
+      const dataFimPadrao = new Date(dataBase);
+      dataFimPadrao.setFullYear(dataFimPadrao.getFullYear() + 1);
+      const dataFimFormatada = dataFimPadrao.toISOString().split('T')[0];
+
+      todosItens.forEach(item => {
+        // Se o item já tem data no banco, usamos ela. 
+        // Caso contrário, forçamos a data da venda para evitar o "bug" visual.
+        const temDataNoBanco = item.data_inicio_vigencia && item.data_inicio_vigencia !== "";
+
+        inicial[item.id] = { 
+          apolice: item.numero_apolice || "", 
+          periodicidade: item.periodicidade || 'ANUAL',
+          inicioVigencia: temDataNoBanco ? item.data_inicio_vigencia : dataBase,
+          fimVigencia: temDataNoBanco ? item.data_fim_vigencia : dataFimFormatada
+        };
+      });
+      
+      setDadosItens(inicial);
+    }
+  }
+  carregarItens();
+}, [propostaSelecionada, type]); // Mantemos sem a dependência do form.dataVenda aqui para evitar loops
+
+  // SINCRONIZAÇÃO AUTOMÁTICA: 
+// Se o corretor alterar a "Data da Venda", atualizamos as vigências que não são "Personalizadas"
+useEffect(() => {
+  if (type === 'VENDIDO' && itensProposta.length > 0) {
+    setDadosItens(prev => {
+      const novoEstado = { ...prev };
+      let houveMudanca = false;
+
+      itensProposta.forEach(item => {
+        const dados = novoEstado[item.id];
+        // Só atualizamos se não for Personalizado e se a data for diferente da base
+        if (dados && dados.periodicidade !== 'PERSONALIZADO') {
+          const dataInicio = form.dataVenda;
+          let dataFim = "";
+
+          if (dados.periodicidade === 'ANUAL') {
+            const d = new Date(dataInicio);
+            d.setFullYear(d.getFullYear() + 1);
+            dataFim = d.toISOString().split('T')[0];
+          } else if (dados.periodicidade === 'MENSAL') {
+            dataFim = "";
+          }
+
+          if (dados.inicioVigencia !== dataInicio || dados.fimVigencia !== dataFim) {
+            novoEstado[item.id] = { ...dados, inicioVigencia: dataInicio, fimVigencia: dataFim };
+            houveMudanca = true;
+          }
+        }
+      });
+
+      return houveMudanca ? novoEstado : prev;
+    });
+  }
+}, [form.dataVenda, itensProposta]);
+
 
   const formValido = () => {
     if (type === 'PERDIDO') return form.motivoPerda !== "";
+    if (!form.dataVenda || itensProposta.length === 0) return false;
     
-    // Validação para venda: exige data da venda e vigências preenchidas
-    if (!form.dataVenda) return false;
-    if (itensProposta.length === 0) return false;
-    
-    return itensProposta.every(item => 
-      dadosItens[item.id]?.inicioVigencia && 
-      dadosItens[item.id]?.fimVigencia
-    );
+    return itensProposta.every(item => {
+      const dados = dadosItens[item.id];
+      if (!dados?.inicioVigencia) return false;
+      if (dados.periodicidade !== 'MENSAL' && !dados.fimVigencia) return false;
+      return true;
+    });
   };
 
   const handleConfirmar = async () => {
@@ -105,29 +191,30 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
       setLoading(true);
       const isVendido = type === 'VENDIDO';
 
-      // 1. Atualizar o Status da Proposta e a Data da Venda
       const { error: errorProposta } = await supabase
         .from('tab_propostas')
         .update({
           status: isVendido ? 'Vendido' : 'Perdido',
           motivo_perda: !isVendido ? form.motivoPerda : null,
           observacoes_fechamento: form.observacoes,
-          data_venda: isVendido ? form.dataVenda : null, // NOVA COLUNA SENDO ALIMENTADA
+          data_venda: isVendido ? form.dataVenda : null,
           updated_at: new Date().toISOString()
         })
         .eq('id', propostaSelecionada.id);
 
       if (errorProposta) throw errorProposta;
 
-      // 2. Se for Venda, atualizar os itens (Apólice e Vigências)
       if (isVendido && itensProposta.length > 0) {
         for (const item of itensProposta) {
+          const dados = dadosItens[item.id];
           const { error: errorItem } = await supabase
             .from('tab_proposta_itens')
             .update({ 
-              numero_apolice: dadosItens[item.id]?.apolice,
-              data_inicio_vigencia: dadosItens[item.id]?.inicioVigencia,
-              data_fim_vigencia: dadosItens[item.id]?.fimVigencia
+              numero_apolice: dados?.apolice,
+              data_inicio_vigencia: dados?.inicioVigencia,
+              data_fim_vigencia: dados?.periodicidade === 'MENSAL' ? null : dados?.fimVigencia,
+              periodicidade: dados?.periodicidade,
+              data_venda: form.dataVenda
             })
             .eq('id', item.id);
           
@@ -135,20 +222,18 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         }
       }
 
-      // 3. Registrar a Interação no Histórico do Cliente
       await supabase.from('tab_interacoes').insert({
         cliente_id: propostaSelecionada.cliente_id,
         corretor_id: propostaSelecionada.corretor_id,
         corretora_id: propostaSelecionada.corretora_id,
         tipo_acao: isVendido ? 'VENDA REALIZADA' : 'PROPOSTA PERDIDA',
         relato: isVendido 
-          ? `Venda finalizada. Data da Venda: ${new Date(form.dataVenda).toLocaleDateString('pt-BR')}. Vigências registradas.` 
+          ? `Venda finalizada. Data da Venda: ${new Date(form.dataVenda).toLocaleDateString('pt-BR')}.` 
           : `Perda: ${form.motivoPerda}. Obs: ${form.observacoes}`,
         data_historico: new Date().toLocaleDateString('en-CA'),
         horario_historico: new Date().toLocaleTimeString('pt-BR', { hour12: false })
       });
 
-      // 4. Sincronização automática do Status/Fase do Cliente
       if (propostaSelecionada.cliente_id) {
         await sincronizarStatusCliente(propostaSelecionada.cliente_id);
       }
@@ -184,7 +269,6 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         </div>
 
         <div className="space-y-6">
-          {/* CAMPO DATA DA VENDA - Exclusivo para Fechamento Positivo */}
           {type === 'VENDIDO' && (
             <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100">
               <label className="block text-[10px] font-black uppercase text-blue-600 mb-2">Data da Venda *</label>
@@ -203,14 +287,33 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
 
           {type === 'VENDIDO' && itensProposta.map((item) => (
             <div key={item.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-              <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-                <span className="text-xs font-black uppercase text-emerald-600">
-                  {item.base_produtos?.nome}
-                </span>
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b border-slate-200 pb-3">
+                <span className="text-xs font-black uppercase text-emerald-600">{item.base_produtos?.nome}</span>
+                
+                <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                  <MousePointer2 size={10} className="text-slate-400 ml-1" />
+                  {[
+                    { id: 'ANUAL', label: 'Anual', color: 'bg-blue-600' },
+                    { id: 'MENSAL', label: 'Mensal', color: 'bg-emerald-600' },
+                    { id: 'PERSONALIZADO', label: 'Pers.', color: 'bg-slate-600' }
+                  ].map((btn) => (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={() => calcularVigencia(item.id, btn.id as any)}
+                      className={`px-2 py-1 rounded text-[9px] font-black uppercase transition-all
+                        ${dadosItens[item.id]?.periodicidade === btn.id 
+                          ? `${btn.color} text-white shadow-sm` 
+                          : `text-slate-400 hover:bg-slate-50`}`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               
-              <div className="grid grid-cols-1 gap-4">
-                <div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
                   <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">Nº Apólice (Opcional)</label>
                   <div className="relative">
                     <Hash size={14} className="absolute left-3 top-3 text-slate-400" />
@@ -225,34 +328,32 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">Início Vigência *</label>
-                    <div className="relative">
-                      <Calendar size={14} className="absolute left-3 top-3 text-slate-400" />
-                      <input 
-                        type="date"
-                        onKeyDown={handleKeyDown}
-                        className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 text-sm outline-none"
-                        value={dadosItens[item.id]?.inicioVigencia || ""}
-                        onChange={(e) => setDadosItens({...dadosItens, [item.id]: { ...dadosItens[item.id], inicioVigencia: e.target.value }})}
-                      />
-                    </div>
-                  </div>
+                <div>
+                  <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">Início Vigência *</label>
+                  <input 
+                    type="date"
+                    onKeyDown={handleKeyDown}
+                    className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm outline-none font-bold"
+                    value={dadosItens[item.id]?.inicioVigencia || ""}
+                    onChange={(e) => setDadosItens({...dadosItens, [item.id]: { ...dadosItens[item.id], inicioVigencia: e.target.value }})}
+                  />
+                </div>
 
-                  <div>
-                    <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">Fim Vigência *</label>
-                    <div className="relative">
-                      <Calendar size={14} className="absolute left-3 top-3 text-emerald-500" />
-                      <input 
-                        type="date"
-                        onKeyDown={handleKeyDown}
-                        className="w-full h-10 pl-9 pr-3 rounded-lg border border-emerald-200 bg-emerald-50/30 text-sm outline-none font-bold"
-                        value={dadosItens[item.id]?.fimVigencia || ""}
-                        onChange={(e) => setDadosItens({...dadosItens, [item.id]: { ...dadosItens[item.id], fimVigencia: e.target.value }})}
-                      />
-                    </div>
-                  </div>
+                <div>
+                  <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">
+                    {dadosItens[item.id]?.periodicidade === 'MENSAL' ? 'Fim (Auto)' : 'Fim Vigência *'}
+                  </label>
+                  <input 
+                    type="date"
+                    disabled={dadosItens[item.id]?.periodicidade === 'MENSAL'}
+                    onKeyDown={handleKeyDown}
+                    className={`w-full h-10 px-3 rounded-lg border text-sm outline-none font-bold transition-all
+                      ${dadosItens[item.id]?.periodicidade === 'MENSAL' 
+                        ? 'bg-slate-100 border-slate-100 text-slate-400 cursor-not-allowed opacity-50' 
+                        : 'border-emerald-200 bg-emerald-50/30 text-slate-700'}`}
+                    value={dadosItens[item.id]?.fimVigencia || ""}
+                    onChange={(e) => setDadosItens({...dadosItens, [item.id]: { ...dadosItens[item.id], fimVigencia: e.target.value }})}
+                  />
                 </div>
               </div>
             </div>
@@ -290,16 +391,16 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         </div>
 
         <div className="flex gap-3 mt-8">
-          <button type="button" onClick={onClose} className="flex-1 h-12 font-bold text-slate-400 hover:bg-slate-50 rounded-xl transition-all">Cancelar</button>
+          <button type="button" onClick={onClose} className="flex-1 h-12 font-bold text-slate-400 hover:bg-slate-50 rounded-xl transition-all text-sm">Cancelar</button>
           <button 
             type="button"
             disabled={loading || !user || !formValido()}
             onClick={handleConfirmar} 
-            className={`flex-1 h-12 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2 transition-all 
+            className={`flex-1 h-12 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2 transition-all text-sm
               ${type === 'VENDIDO' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-500 hover:bg-red-600'} 
               ${(loading || !formValido()) && 'opacity-20 grayscale cursor-not-allowed'}`}
           >
-            {loading ? <Loader2 className="animate-spin" size={20} /> : 'Salvar Alterações'}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : 'Confirmar Fechamento'}
           </button>
         </div>
       </div>
