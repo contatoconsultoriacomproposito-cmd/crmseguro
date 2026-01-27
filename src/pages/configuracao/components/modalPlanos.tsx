@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, UserPlus, Minus, Plus, Globe, Check, Zap, ShoppingCart } from 'lucide-react';
+import { supabase } from '../../../lib/supabaseClient';
 
 interface ModalPlanosProps {
   isOpen: boolean;
@@ -7,14 +8,14 @@ interface ModalPlanosProps {
   planoAtual?: string;
 }
 
-// 1. NOVA LÓGICA DE PREÇOS: Site agora tem valor mensal variável por plano
+// 1. Configuração de Preços
 const PLANOS_CONFIG = {
   mensal: {
     nome: "Mensal",
     meses: 1,
     valorBase: 119.97,
     valorAdd: 69.97,
-    siteMensal: 300.00, // Valor do site proporcional ao mês
+    siteMensal: 300.00,
     siteRenovacao: 350.00
   },
   trimestral: {
@@ -44,18 +45,17 @@ const PLANOS_CONFIG = {
 };
 
 export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
+  // Estados
   const [planoSel, setPlanoSel] = useState<keyof typeof PLANOS_CONFIG>("mensal");
   const [usuariosAdd, setUsuariosAdd] = useState(0);
   const [querSite, setQuerSite] = useState(false);
+  const [loading, setLoading] = useState(false);
 
+  // Lógica de Cálculo
   const calculo = useMemo(() => {
     const config = PLANOS_CONFIG[planoSel];
-    
-    // 2. CÁLCULO MENSAL TOTAL (Plano + Usuários + Site)
     const valorSiteNoMes = querSite ? config.siteMensal : 0;
     const valorAssinaturaMes = config.valorBase + (usuariosAdd * config.valorAdd) + valorSiteNoMes;
-    
-    // 3. TOTAL A PAGAR NO CHECKOUT (Mensalidade total * número de meses do plano)
     const totalImediato = valorAssinaturaMes * config.meses;
 
     return {
@@ -65,6 +65,62 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
       config
     };
   }, [planoSel, usuariosAdd, querSite]);
+
+  // Função de Checkout (Agora dentro do componente para acessar o estado)
+ const handleCheckout = async () => {
+  setLoading(true);
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return alert("Sessão expirada.");
+
+    // 1. Salva no Banco (Isso já está funcionando!)
+    const { data: planoDb, error: dbError } = await supabase
+      .from('tab_planos')
+      .insert([{
+        corretora_id: user.id,
+        plano_nome: calculo.config.nome.toUpperCase(),
+        periodicidade: planoSel,
+        valor_total: calculo.totalImediato,
+        qtd_usuarios_adicionais: usuariosAdd,
+        possui_site: querSite,
+        data_fim: new Date(new Date().setMonth(new Date().getMonth() + calculo.config.meses)).toISOString(),
+        status_assinatura: 'PENDENTE'
+      }])
+      .select()
+      .single();
+
+    if (dbError) throw dbError;
+
+    console.log("✅ Registro salvo no banco:", planoDb);
+
+    // 2. Mock da API (Enquanto não criamos a rota real)
+    // Comente as linhas abaixo se quiser parar de ver o erro 404 no console
+    try {
+      const response = await fetch('/api/checkout/mercado-pago', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ external_reference: planoDb.id }),
+      });
+      
+      if (response.ok) {
+        const { init_point } = await response.json();
+        if (init_point) window.location.href = init_point;
+      } else {
+        // Apenas um log amigável já que sabemos que a API não existe
+        console.warn("⚠️ API de Checkout ainda não configurada. O registro foi salvo, mas o redirecionamento foi pulado.");
+        alert("Plano registrado! (Aguardando integração com Mercado Pago)");
+      }
+    } catch (apiErr) {
+      console.warn("Aguardando implementação da API...");
+    }
+
+  } catch (error: any) {
+    console.error('Erro no checkout:', error.message);
+    alert("Erro ao salvar intenção de compra.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (!isOpen) return null;
 
@@ -87,7 +143,6 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
         </div>
 
         <div className="p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
           <div className="lg:col-span-7 space-y-8">
             {/* 1. Periodicidade */}
             <section>
@@ -153,7 +208,7 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
               </p>
             </section>
 
-            {/* 3. Site Institucional (Lógica Mensalizada) */}
+            {/* 3. Site Institucional */}
             <section 
               onClick={() => setQuerSite(!querSite)}
               className={`p-6 rounded-[32px] border-2 cursor-pointer transition-all ${
@@ -174,7 +229,6 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
                     {querSite && <Check className="text-emerald-500" size={20} />}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">Criação, domínio e hospedagem integrados.</p>
-
                   <div className="mt-3 flex items-baseline gap-2">
                     <span className="text-lg font-black text-slate-900 dark:text-white">
                       R$ {calculo.config.siteMensal.toFixed(2)}/mês
@@ -188,24 +242,21 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
             </section>
           </div>
 
-          {/* Coluna Direita: Resumo Financeiro */}
+          {/* Resumo Financeiro */}
           <div className="lg:col-span-5">
             <div className="bg-slate-900 dark:bg-zinc-900 rounded-[32px] p-8 text-white sticky top-24">
               <h4 className="font-bold text-slate-400 uppercase text-[10px] tracking-widest mb-6">Resumo do Pedido</h4>
-              
               <div className="space-y-4 mb-8">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Plano {calculo.config.nome}</span>
                   <span className="font-bold">R$ {(calculo.config.valorBase * calculo.config.meses).toFixed(2)}</span>
                 </div>
-                
                 {usuariosAdd > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-400">{usuariosAdd}x Usuários Add.</span>
                     <span className="font-bold">R$ {(usuariosAdd * calculo.config.valorAdd * calculo.config.meses).toFixed(2)}</span>
                   </div>
                 )}
-
                 {querSite && (
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-400">Site Institucional</span>
@@ -220,7 +271,6 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
                   <span className="text-4xl font-black text-white">R$ {calculo.totalImediato.toFixed(2)}</span>
                   <span className="text-xs text-slate-400">/ {calculo.config.nome}</span>
                 </div>
-
                 <p className="text-[11px] text-blue-400 mt-2 font-medium italic">
                   * Equivalente a R$ {calculo.valorAssinaturaMes.toFixed(2)}/mês total
                 </p>
@@ -228,10 +278,18 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
 
               <button 
                 type="button"
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl shadow-blue-900/20 group"
+                onClick={handleCheckout}
+                disabled={loading}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl shadow-blue-900/20 group"
               >
-                <ShoppingCart size={20} className="group-hover:scale-110 transition-transform" />
-                Contratar Agora
+                {loading ? (
+                  <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <ShoppingCart size={20} className="group-hover:scale-110 transition-transform" />
+                    Contratar Agora
+                  </>
+                )}
               </button>
 
               <p className="text-[10px] text-slate-500 text-center mt-6">
