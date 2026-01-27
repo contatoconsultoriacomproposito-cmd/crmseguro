@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { 
   Building2, Save, MapPin, Phone, Mail, Loader2, 
-  CheckCircle2, Globe, ShieldCheck, CreditCard, Upload, X, ImageIcon, Instagram, Facebook, User, UserCheck
+  CheckCircle2, Globe, ShieldCheck, CreditCard, Upload, X, ImageIcon, Instagram, Facebook, User, UserCheck, ShieldAlert
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../auth/AuthContext";
 import { buscarCNPJ, buscarCEP } from "../../services/brasilApi";
 import { maskCNPJ, maskPhone } from "../../utils/masks";
 import { ModalPlanos } from './components/modalPlanos';
+import { useNavigate } from "react-router-dom";
 
 export default function ConfigCorretora() {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"perfil" | "plano" | "pessoal">("perfil");
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
@@ -20,6 +22,7 @@ export default function ConfigCorretora() {
   const [uploading, setUploading] = useState(false);
   const [isModalPlanosOpen, setIsModalPlanosOpen] = useState(false);
   const [assinaturaDb, setAssinaturaDb] = useState<any>(null);
+  const isAuthorized = userProfile?.tipo_usuario === "CORRETORA";
 
   const [form, setForm] = useState({
     razao_social: "",
@@ -219,6 +222,25 @@ export default function ConfigCorretora() {
     } catch (err: any) {
       alert(`Erro ao salvar: ${err.message || "Verifique o console"}`);
     } finally { setLoading(false); }
+  }
+
+  // Renderização do bloqueio
+  if (!isAuthorized && !loadingData) {
+    return (
+      <div className="max-w-md mx-auto mt-20 p-8 bg-white dark:bg-zinc-900 rounded-[32px] border border-red-100 dark:border-red-900/30 text-center shadow-xl">
+        <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="text-red-600" size={32} />
+        </div>
+        <h2 className="text-xl font-bold mb-2 text-slate-900 dark:text-white">Acesso Restrito</h2>
+        <p className="text-zinc-500 mb-6">Apenas administradores da corretora podem gerenciar as configurações e assinaturas.</p>
+        <button 
+          onClick={() => navigate(-1)} 
+          className="bg-slate-100 dark:bg-zinc-800 px-6 py-2 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 transition-all"
+        >
+          Voltar
+        </button>
+      </div>
+    );
   }
 
   if (loadingData) {

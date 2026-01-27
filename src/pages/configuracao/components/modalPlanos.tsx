@@ -92,6 +92,8 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
     if (dbError) throw dbError;
 
     console.log("✅ Registro salvo no banco:", planoDb);
+    alert("Plano registrado! O status aparecerá como Pendente até a confirmação do pagamento.");
+    onClose(); // Fecha o modal após o sucesso
 
     // 2. Mock da API (Enquanto não criamos a rota real)
     // Comente as linhas abaixo se quiser parar de ver o erro 404 no console

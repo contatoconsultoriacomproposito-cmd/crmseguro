@@ -33,10 +33,11 @@ export default function SeguradorasLista() {
         .single();
 
       // Agora permitimos CORRETORA e CORRETOR
-      if (perfilError || (perfil?.tipo_usuario !== "CORRETORA" && perfil?.tipo_usuario !== "CORRETOR")) {
+      if (perfilError || !perfil) {
         setIsAuthorized(false);
         return;
       }
+
       setIsAuthorized(true);
 
       // Define qual ID usar para o portfólio: 
@@ -124,17 +125,17 @@ export default function SeguradorasLista() {
     seg.nome.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Renderização (Manteve o seu padrão visual excelente)
+  // Renderização (Manteve o seu padrão visual excelente) APENAS PARA USUÁRIOS SEM PERFIL (SE CAIR AQUI HÁ ALGO ERRADO NO SISTEMA)
   if (isAuthorized === false) {
-    return (
-      <div className="flex flex-col items-center justify-center p-20 text-center min-h-screen">
-        <Shield size={60} className="text-red-500 mb-4" />
-        <h1 className="text-2xl font-bold font-black italic tracking-tighter uppercase">Acesso Restrito</h1>
-        <p className="text-slate-500 text-sm">Apenas usuários vinculados a uma corretora podem gerenciar o portfólio.</p>
-        <button onClick={() => navigate("/dashboard")} className="mt-6 px-8 py-3 bg-zinc-900 text-white rounded-2xl font-bold uppercase text-xs tracking-widest transition-all hover:scale-105">Voltar ao Dashboard</button>
-      </div>
-    );
-  }
+  return (
+    <div className="flex flex-col items-center justify-center p-20 text-center min-h-screen">
+      <Shield size={60} className="text-red-500 mb-4" />
+      <h1 className="text-2xl font-bold font-black italic tracking-tighter uppercase">Erro de Vínculo</h1>
+      <p className="text-slate-500 text-sm">Não encontramos uma corretora vinculada ao seu perfil. Entre em contato com o suporte.</p>
+      <button onClick={() => navigate("/dashboard")} className="mt-6 px-8 py-3 bg-zinc-900 text-white rounded-2xl font-bold uppercase text-xs tracking-widest transition-all hover:scale-105">Voltar ao Dashboard</button>
+    </div>
+  );
+}
 
   return (
     <div className="p-6 min-h-screen bg-[#F8FAFC] dark:bg-[#09090B] pb-20">
