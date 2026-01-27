@@ -56,31 +56,44 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
 
   // BUSCAR LOGO NO BANCO DE DADOS
   useEffect(() => {
+  // 1. Função para carregar a logo inicial do banco de dados
   async function loadLogo() {
     if (!user?.id) return;
-    
     try {
-      // Tente buscar onde o ID da corretora corresponda ao ID do usuário 
-      // ou use a coluna correta de relacionamento (ex: user_id)
       const { data, error } = await supabase
         .from('tab_corretora_config')
         .select('logotipo_url')
-        .eq('id', user.id) // Verifique se a coluna é 'id' ou 'user_id'
+        .eq('id', user.id)
         .maybeSingle();
 
       if (error) throw error;
 
       if (data?.logotipo_url) {
-        // Remove espaços em branco que podem quebrar a URL
-        const cleanUrl = data.logotipo_url.trim();
-        setCorretoraLogo(cleanUrl);
+        const absoluteUrl = data.logotipo_url.trim().toLowerCase();
+        setCorretoraLogo(absoluteUrl);
       }
     } catch (error) {
       console.error("Erro ao carregar logo:", error);
-      setCorretoraLogo(null);
     }
   }
+
   loadLogo();
+
+  // 2. OUVINTE DE EVENTO: Escuta a mudança em tempo real
+  const handleLogoUpdate = (event: any) => {
+    if (event.detail) {
+      // Atualiza o estado do Sidebar na hora com a nova URL
+      setCorretoraLogo(event.detail.toLowerCase());
+    }
+  };
+
+  // Registra o ouvinte no objeto window
+  window.addEventListener("logoUpdated", handleLogoUpdate);
+
+  // 3. LIMPEZA (Cleanup): Remove o ouvinte quando o componente for destruído
+  return () => {
+    window.removeEventListener("logoUpdated", handleLogoUpdate);
+  };
 }, [user?.id]);
 
 
@@ -126,24 +139,25 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
           <div className="flex items-center gap-3 overflow-hidden">
             
             
-            {/* AVATAR CIRCULAR - VERSÃO CORRIGIDA */}
-            <div className="w-10 h-10 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center text-white border-2 border-white shadow-sm overflow-hidden bg-zinc-200 dark:bg-zinc-700">
-              {corretoraLogo && corretoraLogo.includes('http') ? (
+            {/* AVATAR CIRCULAR - VERSÃO FINAL CORRIGIDA */}
+            <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 flex items-center justify-center border-2 border-zinc-200 dark:border-zinc-700 shadow-sm overflow-hidden">
+              {corretoraLogo ? (
                 <img 
+                  key={corretoraLogo}
                   src={corretoraLogo} 
-                  alt="Logo" 
-                  className="w-full h-full object-contain bg-white p-1"
-                  onError={() => {
-                    console.warn("URL da imagem inválida ou inacessível:", corretoraLogo);
-                    setCorretoraLogo(null); // Remove a URL ruim para mostrar o fallback
+                  alt="Logo Corretora" 
+                  className="w-full h-full object-contain p-1" // object-contain garante que a logo não corte
+                  onError={(_e) => {
+                    console.error("Falha ao renderizar imagem da URL:", corretoraLogo);
+                    setCorretoraLogo(null); // Se falhar, mostra o fallback abaixo
                   }} 
                 />
-              ) : userProfile?.avatar_url ? (
-                <img src={userProfile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
-                <span className="text-xs font-black">
-                  {userProfile?.nome_completo?.substring(0, 2).toUpperCase() || <User size={16} />}
-                </span>
+                <div className="w-full h-full bg-blue-600 flex items-center justify-center text-white">
+                  <span className="text-xs font-black uppercase">
+                    {userProfile?.nome_completo?.substring(0, 2) || <User size={16} />}
+                  </span>
+                </div>
               )}
             </div>
             
