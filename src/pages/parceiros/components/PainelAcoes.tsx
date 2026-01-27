@@ -52,28 +52,37 @@ export const PainelAcoes: React.FC<PainelAcoesProps> = ({
   }, [indicacao?.id]); // Apenas o ID é suficiente agora devido à key dinâmica
 
   const fetchNomesPerfis = async () => {
-    if (indicacao?.corretor_id) {
-      const { data: corr } = await supabase
-        .from('usuarios_perfis')
-        .select('nome')
-        .eq('id', indicacao.corretor_id)
-        .single();
-      if (corr) setNomeCorretor(corr.nome);
-    } else {
-      setNomeCorretor('NÃO ASSUMIDO');
-    }
+    try {
+      // Busca Corretor
+      if (indicacao?.corretor_id) {
+        const { data: corr } = await supabase
+          .from('usuarios_perfis')
+          .select('nome')
+          .eq('id', indicacao.corretor_id)
+          .maybeSingle(); // Use maybeSingle para evitar erro de '0 rows'
+        if (corr) setNomeCorretor(corr.nome);
+      } else {
+        setNomeCorretor('NÃO ASSUMIDO');
+      }
 
-    if (indicacao?.corretora_id) {
-      const { data: cort } = await supabase
-        .from('usuarios_perfis')
-        .select('nome')
-        .eq('id', indicacao.corretora_id)
-        .single();
-      if (cort) setNomeCorretora(cort.nome);
+      // Busca Corretora - Só tenta buscar se houver um ID válido
+      if (indicacao?.corretora_id && indicacao.corretora_id !== 'NÃO DEFINIDA') {
+        const { data: cort } = await supabase
+          .from('usuarios_perfis')
+          .select('nome')
+          .eq('id', indicacao.corretora_id)
+          .maybeSingle();
+        if (cort) setNomeCorretora(cort.nome);
+      } else {
+        setNomeCorretora('AGUARDANDO DEFINIÇÃO');
+      }
+    } catch (err) {
+      console.error("Erro silencioso nos perfis:", err);
     }
   };
 
   const fetchDocumentos = async () => {
+    if (!indicacao?.id) return;
     setLoadingDocs(true);
     try {
       const { data, error } = await supabase
@@ -81,10 +90,15 @@ export const PainelAcoes: React.FC<PainelAcoesProps> = ({
         .select('*')
         .eq('indicacao_id', indicacao.id);
       
-      if (error) throw error;
+      // Se o erro for de RLS, ele cairá aqui
+      if (error) {
+        console.warn("Acesso negado aos documentos por RLS");
+        setDocumentos([]);
+        return;
+      }
       setDocumentos(data || []);
     } catch (err) {
-      console.error("Erro ao carregar documentos:", err);
+      setDocumentos([]);
     } finally {
       setLoadingDocs(false);
     }

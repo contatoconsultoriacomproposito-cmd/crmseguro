@@ -33,40 +33,38 @@ export default function ParceirosTriagem() {
     "REPROVADO NA ANÁLISE TÉCNICA", "DESISTÊNCIA DO CLIENTE", "OUTROS"
   ];
 
-  const [refreshKey, setRefreshKey] = useState(0);
-
   // --- LÓGICA DE CARREGAMENTO ---
   const carregarIndicacoes = useCallback(async () => {
     if (!userProfile?.corretora_id) return;
 
     try {
-      setLoading(true);
+      // setLoading(true) removido do loop para evitar flickering visual
       const { data, error } = await supabase
         .from('tab_indicacoes')
         .select(`
-          *, 
-          tab_parceiros(nome_parceiro), 
+          *,
+          tab_parceiros(nome_parceiro),
           tab_indicacoes_cotacoes(*)
         `)
         .eq('corretora_id', userProfile.corretora_id)
-        .order('created_at', { ascending: false })
-        .order('data_envio', { foreignTable: 'tab_indicacoes_cotacoes', ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setIndicacoes(data || []);
       
+      // Atualização inteligente da selecionada sem disparar novo render infinito
       if (selecionada) {
         const atualizada = data?.find(i => i.id === selecionada.id);
-        if (atualizada) setSelecionada(atualizada);
+        if (atualizada && JSON.stringify(atualizada) !== JSON.stringify(selecionada)) {
+          setSelecionada(atualizada);
+        }
       }
-    
-      setRefreshKey(prev => prev + 1); 
     } catch (error: any) {
       toast.error("Erro ao carregar dados: " + error.message);
     } finally {
       setLoading(false);
     }
-  }, [selecionada, userProfile?.corretora_id]);
+  }, [userProfile?.corretora_id, selecionada]);
 
   useEffect(() => { 
     if (userProfile?.corretora_id) {
@@ -94,12 +92,9 @@ export default function ParceirosTriagem() {
       if (error) throw error;
 
       toast.success(`Operação realizada com sucesso!`);
-
-      setSelecionada((prev: any) => ({
-        ...prev,
-        ...dadosParaAtualizar
-      }));
-
+      
+      // Atualiza o estado local antes de recarregar para resposta imediata
+      setSelecionada((prev: any) => ({ ...prev, ...dadosParaAtualizar }));
       await carregarIndicacoes(); 
     } catch (error: any) {
       toast.error(error.message);
@@ -168,11 +163,7 @@ export default function ParceirosTriagem() {
       if (error) throw error;
       toast.success(`Indicação movida para Perdidos`);
 
-      setSelecionada((prev: any) => ({
-        ...prev,
-        ...dadosParaAtualizar
-      }));
-
+      setSelecionada((prev: any) => ({ ...prev, ...dadosParaAtualizar }));
       setShowRecusaModal(false);
       setFormRecusa({ motivo: '', observacao: '' });
       await carregarIndicacoes();
@@ -236,7 +227,7 @@ export default function ParceirosTriagem() {
         <main className="flex-1 flex flex-col min-w-0">
           {selecionada ? (
             <PainelAcoes 
-              key={`${selecionada.id}-${refreshKey}`}
+              key={selecionada.id}
               indicacao={selecionada}
               loading={loading}
               modoCotacao={modoCotacao}

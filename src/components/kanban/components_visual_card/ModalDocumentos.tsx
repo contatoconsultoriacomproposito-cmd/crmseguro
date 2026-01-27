@@ -72,7 +72,9 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
         nome_arquivo: file.name,
         url_arquivo: publicUrl,
         tipo: tipo,
-        storage_path: filePath // Agora com a coluna correta
+        storage_path: filePath, // Agora com a coluna correta
+        corretora_id: cliente.corretora_id,
+        corretor_id: cliente.corretor_id
       }]);
 
       if (dbError) throw dbError;

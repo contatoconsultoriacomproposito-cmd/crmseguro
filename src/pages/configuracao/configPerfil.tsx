@@ -96,17 +96,20 @@ export default function ConfigCorretora() {
 
   // 2. BUSCAR ASSINATURA DETALHADA
   const fetchAssinatura = useCallback(async () => {
-    if (!user) return;
-    const { data } = await supabase
+    // ALTERAÇÃO: Usar userProfile?.corretora_id em vez de user.id
+    if (!userProfile?.corretora_id) return;
+
+    const { data, error } = await supabase
       .from('tab_planos')
       .select('*')
-      .eq('corretora_id', user.id)
+      .eq('corretora_id', userProfile.corretora_id) // VILÃO ENCONTRADO AQUI
       .order('data_inicio', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle(); // Usamos maybeSingle para evitar erro caso não exista plano
 
     if (data) setAssinaturaDb(data);
-  }, [user]);
+    if (error) console.error("Erro ao buscar assinatura:", error.message);
+  }, [userProfile?.corretora_id]); // Dependência atualizada
 
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
 
@@ -210,7 +213,7 @@ export default function ConfigCorretora() {
       }
     });
 
-    payload.id = user.id;
+    payload.id = userProfile?.corretora_id || user.id;
 
     try {
       const { error } = await supabase.from("tab_corretora_config").upsert(payload);

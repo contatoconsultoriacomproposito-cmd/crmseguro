@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { X, UserPlus, Minus, Plus, Globe, Check, Zap, ShoppingCart } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import { toast } from 'sonner';
+import { useAuth } from '../../../auth/AuthContext';
 
 interface ModalPlanosProps {
   isOpen: boolean;
@@ -46,6 +48,7 @@ const PLANOS_CONFIG = {
 
 export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
   // Estados
+  const { userProfile } = useAuth();
   const [planoSel, setPlanoSel] = useState<keyof typeof PLANOS_CONFIG>("mensal");
   const [usuariosAdd, setUsuariosAdd] = useState(0);
   const [querSite, setQuerSite] = useState(false);
@@ -68,28 +71,30 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
 
   // Função de Checkout (Agora dentro do componente para acessar o estado)
  const handleCheckout = async () => {
-  setLoading(true);
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return alert("Sessão expirada.");
+    setLoading(true);
+    try {
+      // VALIDADO: Usamos o userProfile para garantir o vínculo correto
+      if (!userProfile?.corretora_id) {
+        toast.error("Erro: Perfil da corretora não identificado.");
+        return;
+      }
 
-    // 1. Salva no Banco (Isso já está funcionando!)
-    const { data: planoDb, error: dbError } = await supabase
-      .from('tab_planos')
-      .insert([{
-        corretora_id: user.id,
-        plano_nome: calculo.config.nome.toUpperCase(),
-        periodicidade: planoSel,
-        valor_total: calculo.totalImediato,
-        qtd_usuarios_adicionais: usuariosAdd,
-        possui_site: querSite,
-        data_fim: new Date(new Date().setMonth(new Date().getMonth() + calculo.config.meses)).toISOString(),
-        status_assinatura: 'PENDENTE'
-      }])
-      .select()
-      .single();
+      const { data: planoDb, error: dbError } = await supabase
+        .from('tab_planos')
+        .insert([{
+          corretora_id: userProfile.corretora_id, // CORRIGIDO: de user.id para userProfile.corretora_id
+          plano_nome: calculo.config.nome.toUpperCase(),
+          periodicidade: planoSel,
+          valor_total: calculo.totalImediato,
+          qtd_usuarios_adicionais: usuariosAdd,
+          possui_site: querSite,
+          data_fim: new Date(new Date().setMonth(new Date().getMonth() + calculo.config.meses)).toISOString(),
+          status_assinatura: 'PENDENTE'
+        }])
+        .select()
+        .single();
 
-    if (dbError) throw dbError;
+      if (dbError) throw dbError;
 
     console.log("✅ Registro salvo no banco:", planoDb);
     alert("Plano registrado! O status aparecerá como Pendente até a confirmação do pagamento.");
