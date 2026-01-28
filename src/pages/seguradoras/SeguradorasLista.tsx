@@ -200,9 +200,9 @@ export default function SeguradorasLista() {
 
                   <div className="px-8 pb-8">
                     <div className="bg-slate-50 dark:bg-zinc-950/50 rounded-[24px] p-6 border border-slate-100 dark:border-zinc-800/50">
-                      <p className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-[0.2em] flex items-center gap-2">
-                        <div className="w-4 h-[2px] bg-blue-500" /> Ramos Disponíveis
-                      </p>
+                      <div className="text-[10px] font-black text-slate-400 uppercase mb-5 tracking-[0.2em] flex items-center gap-2">
+                        <span className="w-4 h-[2px] bg-blue-500" /> Ramos Disponíveis
+                      </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                         {baseProdutos.map((prod) => {
                           const prodAtivo = isProdutoAtivo(seg.id, prod.id);
