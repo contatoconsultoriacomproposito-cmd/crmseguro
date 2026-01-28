@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { 
   Building2, Save, MapPin, Phone, Mail, Loader2, 
-  CheckCircle2, Globe, ShieldCheck, CreditCard, Upload, X, ImageIcon, Instagram, Facebook, User, UserCheck, ShieldAlert
+  CheckCircle2, Globe, ShieldCheck, CreditCard, Upload, X, ImageIcon, Instagram, Facebook, User, UserCheck, ShieldAlert, FileText
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../auth/AuthContext";
@@ -31,6 +31,7 @@ export default function ConfigCorretora() {
     website: "",
     instagram: "",
     facebook: "",
+    registro_susep:"",
     whatsapp_comercial: "",
     plano: "FREE",
     status_pagamento: "ATIVO",
@@ -336,6 +337,7 @@ export default function ConfigCorretora() {
               <Input label="Website" name="website" icon={<Globe size={14}/>} value={form.website} onChange={handleChange} />
               <Input label="Instagram" name="instagram" icon={<Instagram size={14}/>} value={form.instagram} onChange={handleChange} />
               <Input label="Facebook" name="facebook" icon={<Facebook size={14}/>} value={form.facebook} onChange={handleChange} />
+              <Input label="Registro SUSEP" name="registro_susep" required value={form.registro_susep} onChange={handleChange} placeholder="Obrigatório para PJ" icon={<FileText size={14}/>} />
             </div>
           </Section>
 

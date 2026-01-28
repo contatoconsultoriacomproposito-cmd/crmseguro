@@ -59,3 +59,10 @@ export const parseCurrencyToNumber = (value: string): number => {
     .replace(",", ".");
   return Number(cleanValue);
 };
+
+export function maskCEP(value: string) {
+  return value
+    .replace(/\D/g, "") // Remove tudo que não é dígito
+    .replace(/^(\d{5})(\d)/, "$1-$2") // Aplica a máscara 00000-000
+    .substring(0, 9); // Limita o tamanho máximo
+}
