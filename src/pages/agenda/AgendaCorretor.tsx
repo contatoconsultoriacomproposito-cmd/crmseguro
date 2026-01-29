@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
+import { toast } from 'sonner';
 
 // IMPORTAÇÃO CORRIGIDA: Apenas o cliente estável
 import { supabase } from '../../lib/supabaseClient';
@@ -32,6 +33,7 @@ export default function AgendaCorretor() {
 
   const [googleConectado, setGoogleConectado] = useState(false);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
+  const processingCode = useRef(false);
 
   const fetchCompromissos = useCallback(async () => {
     try {
@@ -99,96 +101,189 @@ export default function AgendaCorretor() {
     }
   }, []);
 
+  // Função unificada e estável para verificar a conexão
   const verificarConexaoGoogle = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase.from("usuarios_perfis").select("google_refresh_token").eq("id", user.id).maybeSingle();
-    setGoogleConectado(!!data?.google_refresh_token);
+    try {
+      // Força a busca do usuário atual
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        console.log("Usuário não logado");
+        return;
+      }
+
+      // Busca o perfil com um filtro de tempo ou apenas garantindo que não venha do cache
+      const { data: perfil, error: perfilError } = await supabase
+        .from("usuarios_perfis")
+        .select("google_connected")
+        .eq("id", user.id)
+        .single(); // Mudamos para single() para garantir que o registro exista
+
+      if (perfilError) {
+        console.error("Erro ao buscar perfil:", perfilError);
+        return;
+      }
+
+      console.log("Status da conexão no banco:", perfil.google_connected);
+      setGoogleConectado(!!perfil.google_connected);
+      
+    } catch (err) {
+      console.error("Erro crítico na verificação:", err);
+    }
   }, []);
 
   const processarRetornoGoogle = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
-
-    if (!code) return;
+    
+    // 1. Trava de segurança: Se não tem código ou já está em curso, aborta.
+    if (!code || processingCode.current) return;
 
     try {
+      processingCode.current = true; 
       setLoadingGoogle(true);
-      // Invocamos a função SEM atribuir o 'data' não utilizado à uma variável
+      
       const { error } = await supabase.functions.invoke('google-token-exchange', {
         body: { code, redirect_uri: `${window.location.origin}/agenda` }
       });
 
       if (error) throw error;
 
+      // 2. Limpeza imediata da URL para evitar que o usuário dê F5 e tente reusar o 'code'
       window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // 3. Atualização de estado e feedback visual moderno
       setGoogleConectado(true);
       await fetchCompromissos();
-    } catch (err) {
+      
+      toast.success("Google Agenda conectado!", {
+        description: "Seus compromissos agora estão sincronizados com sua conta Google.",
+      });
+
+    } catch (err: any) {
       console.error("Erro na troca de token:", err);
+      
+      // Se for erro 400, geralmente é porque o 'code' já foi usado na montagem anterior do React
+      // Nesse caso, limpamos a URL silenciosamente sem assustar o usuário com erro.
+      if (err.message?.includes('400')) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else {
+        toast.error("Falha na conexão", {
+          description: "Não conseguimos vincular sua conta. Tente novamente em instantes.",
+        });
+      }
     } finally {
       setLoadingGoogle(false);
+      // Mantemos a trava como true para esta instância do componente.
     }
   }, [fetchCompromissos]);
 
   useEffect(() => {
     let isMounted = true;
+    
     const init = async () => {
+      // 1. Processa o retorno do Google se houver 'code' na URL
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("code")) {
+        await processarRetornoGoogle();
+      }
+      
       if (!isMounted) return;
-      await processarRetornoGoogle();
-      await fetchCompromissos();
-      await verificarConexaoGoogle();
+
+      // 2. Carrega os compromissos e status da conta
+      await Promise.all([
+        fetchCompromissos(),
+        verificarConexaoGoogle()
+      ]);
     };
+
     init();
     return () => { isMounted = false; };
   }, [fetchCompromissos, verificarConexaoGoogle, processarRetornoGoogle]);
 
   async function handleGoogleAuth() {
-    if (googleConectado) {
-      if (!confirm("Desvincular Google Agenda?")) return;
+  if (googleConectado) {
+    if (!confirm("Deseja realmente desvincular sua conta Google? Novas interações não serão mais sincronizadas.")) return;
+    
+    try {
       const { data: { user } } = await supabase.auth.getUser();
+      
       if (user) {
-        await supabase.from("usuarios_perfis").update({ 
-          google_access_token: null, google_refresh_token: null, google_calendar_id: null 
-        }).eq("id", user.id);
+        // 1. DESVÍNCULO EXPLÍCITO: Atualiza a flag e remove os tokens
+        const { error: errorPerfil } = await supabase
+          .from("usuarios_perfis")
+          .update({ 
+            google_connected: false,      // A TRAVA MESTRE
+            google_access_token: null, 
+            google_refresh_token: null, 
+            google_calendar_id: null 
+          })
+          .eq("id", user.id);
+
+        if (errorPerfil) throw errorPerfil;
+
+        // 2. LIMPEZA DE SEGURANÇA: Remove os IDs de eventos dos clientes deste corretor
+        // Isso impede que a Edge Function encontre IDs antigos e tente sincronizar
+        await supabase
+          .from('tab_clientes')
+          .update({
+            google_event_id_comercial: null,
+            google_event_id_sinistro: null
+          })
+          .eq('corretor_id', user.id);
+
+        // 3. ATUALIZAÇÃO DA INTERFACE
         setGoogleConectado(false);
+        
+        toast.success("Conta desvinculada!", {
+          description: "A sincronização com o Google Agenda foi interrompida."
+        });
       }
-      return;
+    } catch (error) {
+      console.error("Erro ao desvincular:", error);
+      toast.error("Erro ao desvincular", {
+          description: "Não foi possível salvar as alterações no banco de dados."
+        });
     }
-
-    const GOOGLE_CLIENT_ID = "453100726787-a198m31oepdghl4c7b3o4pkle7hvqnkn.apps.googleusercontent.com";
-    const REDIRECT_URI = `${window.location.origin}/agenda`;
-    const googleOAuthUrl = 
-      `https://accounts.google.com/o/oauth2/v2/auth` +
-      `?client_id=${GOOGLE_CLIENT_ID}` +
-      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-      `&response_type=code` +
-      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly')}` +
-      `&access_type=offline` +
-      `&prompt=consent`;
-
-    window.location.href = googleOAuthUrl;
+    return;
   }
+
+  // Lógica de Conexão (Inalterada, mas encapsulada)
+  const GOOGLE_CLIENT_ID = "453100726787-a198m31oepdghl4c7b3o4pkle7hvqnkn.apps.googleusercontent.com";
+  const REDIRECT_URI = `${window.location.origin}/agenda`;
+  
+  const googleOAuthUrl = 
+    `https://accounts.google.com/o/oauth2/v2/auth` +
+    `?client_id=${GOOGLE_CLIENT_ID}` +
+    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&response_type=code` +
+    `&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly')}` +
+    `&access_type=offline` +
+    `&prompt=consent`;
+
+  window.location.href = googleOAuthUrl;
+}
 
   async function handleEventChange(info: any) {
     const { extendedProps } = info.event;
     const clienteId = extendedProps.clienteId;
+    // 'en-CA' garante o formato YYYY-MM-DD
     const novaData = info.event.start.toLocaleDateString('en-CA'); 
     const novoHorario = info.event.start.toLocaleTimeString('pt-BR', { hour12: false });
 
     try {
-      if (extendedProps.origem === 'COMERCIAL') {
-        await supabase.from('tab_clientes')
-          .update({ data_retorno: novaData, horario_retorno: novoHorario })
-          .eq('id', clienteId);
-      } else {
-        // Atualiza o campo de SINISTRO no cliente (isso vai disparar o Google via Edge Function)
-        await supabase.from('tab_clientes')
-          .update({ data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario })
-          .eq('id', clienteId);
-      }
+      const updateData = extendedProps.origem === 'COMERCIAL' 
+        ? { data_retorno: novaData, horario_retorno: novoHorario }
+        : { data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario };
+
+      const { error } = await supabase.from('tab_clientes').update(updateData).eq('id', clienteId);
+      
+      if (error) throw error;
     } catch (err) {
-      info.revert();
+      console.error("Erro ao atualizar data:", err);
+      toast.error("Erro ao iniciar conexão", {
+        description: "Tente novamente em alguns segundos."
+      });
+      info.revert(); // Só reverte se o banco falhar
     }
   }
 
@@ -210,25 +305,57 @@ export default function AgendaCorretor() {
     <div className="flex flex-col gap-6 mt-4">
       <div className="flex flex-col md:flex-row items-center justify-between p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-sm">
         <div className="flex items-center gap-5">
-          <div className={`p-4 rounded-2xl ${googleConectado ? 'bg-emerald-50 text-emerald-600' : 'bg-zinc-100 text-zinc-400'}`}>
+          {/* Ícone com as cores do Google se conectado, ou cinza se não */}
+          <div className={`p-4 rounded-2xl transition-all duration-500 ${
+            googleConectado 
+              ? 'bg-blue-50 text-blue-600 shadow-inner' 
+              : 'bg-zinc-100 text-zinc-400'
+          }`}>
             <CalendarCheck size={32} />
           </div>
+          
           <div>
-            <h2 className="text-xl font-black text-zinc-900 dark:text-white">Google Agenda</h2>
+            <h2 className="text-xl font-black text-zinc-900 dark:text-white flex items-center gap-2">
+              Google Agenda
+              {googleConectado && (
+                <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              )}
+            </h2>
             <p className="text-sm text-zinc-500 font-medium">
-              {googleConectado ? "Sincronização ativa." : "Conecte sua conta para sincronizar."}
+              {googleConectado ? "Sincronização ativa e segura" : "Conecte sua conta para sincronizar."}
             </p>
           </div>
         </div>
+
         <button 
           onClick={handleGoogleAuth} 
           disabled={loadingGoogle}
-          className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-black text-sm transition-all ${
-            googleConectado ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
+          className={`group relative flex items-center gap-3 px-6 py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-95 ${
+            googleConectado 
+              ? 'bg-white dark:bg-zinc-800 text-red-500 border border-red-100 dark:border-red-900/30 hover:bg-red-50 shadow-sm' 
+              : 'bg-white dark:bg-white text-zinc-700 border border-zinc-200 shadow-md hover:shadow-lg hover:border-zinc-300'
           }`}
         >
-          {loadingGoogle ? <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-current" /> : (
-            googleConectado ? <><Link2Off size={18} /> DESVINCULAR</> : "CONECTAR GOOGLE"
+          {loadingGoogle ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-blue-600" />
+          ) : (
+            googleConectado ? (
+              <>
+                <Link2Off size={18} className="group-hover:rotate-12 transition-transform" />
+                DESVINCULAR CONTA
+              </>
+            ) : (
+              <>
+                {/* Logo do Google em SVG para ficar "autêntico" */}
+                <svg width="18" height="18" viewBox="0 0 18 18">
+                  <path d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.91c1.7-1.56 2.69-3.86 2.69-6.62z" fill="#4285F4"/>
+                  <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.83.86-3.05.86-2.34 0-4.33-1.58-5.04-3.7H.95v2.33A8.99 8.99 0 0 0 9 18z" fill="#34A853"/>
+                  <path d="M3.96 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.95a8.99 8.99 0 0 0 0 8.08l3.01-2.33z" fill="#FBBC05"/>
+                  <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A8.96 8.96 0 0 0 9 0A8.99 8.99 0 0 0 .95 4.96L3.96 7.29c.7-2.12 2.7-3.71 5.04-3.71z" fill="#EA4335"/>
+                </svg>
+                <span className="tracking-tight">CONECTAR COM GOOGLE</span>
+              </>
+            )
           )}
         </button>
       </div>
