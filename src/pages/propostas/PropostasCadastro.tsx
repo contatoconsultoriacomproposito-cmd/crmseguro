@@ -56,8 +56,8 @@ export default function PropostasCadastro() {
   // Estado inicial com as 3 OPÇÕES AUTOMÁTICAS
   const [opcoes, setOpcoes] = useState<OpcaoSeguradora[]>([
     { seguradora_id: "", nome_seguradora: "", cotacoes: [] },
-    { seguradora_id: "", nome_seguradora: "", cotacoes: [] },
-    { seguradora_id: "", nome_seguradora: "", cotacoes: [] },
+    //{ seguradora_id: "", nome_seguradora: "", cotacoes: [] },
+    //{ seguradora_id: "", nome_seguradora: "", cotacoes: [] },
   ]);
 
   // NOVO: Herdar o corretor do cliente assim que o cliente for selecionado
@@ -217,9 +217,9 @@ useEffect(() => {
       }));
 
       // Garante que sempre existam pelo menos 3 colunas visualmente
-      while (opcoesMapeadas.length < 3) {
-        opcoesMapeadas.push({ seguradora_id: "", nome_seguradora: "", cotacoes: [] });
-      }
+      //while (opcoesMapeadas.length < 3) {
+        //opcoesMapeadas.push({ seguradora_id: "", nome_seguradora: "", cotacoes: [] });
+      //}
       setOpcoes(opcoesMapeadas);
 
     } catch (error) {
@@ -516,25 +516,33 @@ useEffect(() => {
         </div>
       </div>
 
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-black italic uppercase tracking-tighter">Cotações</h2>
+      {/* Container de Título e Botão Centralizado */}
+      <div className="flex flex-col items-center justify-center gap-4 mb-8">
+        <h2 className="text-2xl font-black italic uppercase tracking-tighter text-slate-800 dark:text-zinc-100">
+          Cotações
+        </h2>
+        
         <button 
-            onClick={adicionarNovaOpcao}
-            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95"
+          onClick={adicionarNovaOpcao}
+          className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-blue-700 shadow-xl shadow-blue-200 dark:shadow-none transition-all active:scale-95 group"
         >
-            + Adicionar Seguradora
+          <span className="group-hover:rotate-90 transition-transform duration-300 text-base">+</span>
+          Adicionar Nova Opção de Seguradora
         </button>
-    </div>
+        
+        {/* Linha decorativa opcional para dar profundidade */}
+        <div className="w-24 h-1 bg-blue-600 rounded-full opacity-20"></div>
+      </div>
 
-      <div className="max-w-[1600px] mx-auto flex flex-wrap justify-center gap-4">
-        {opcoes.map((opcao, opIdx) => (
-          <div 
+      <div className="max-w-[1600px] mx-auto flex flex-wrap justify-center gap-8 py-4">
+      {opcoes.map((opcao, opIdx) => (
+        <div 
           key={opIdx} 
-          className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col min-h-[600px] 
-                 w-full 
-                 md:w-[calc(48%-1rem)] 
-                 xl:w-[calc(32%-1rem)] 
-                 max-w-[480px]">
+          className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl flex flex-col min-h-[600px] 
+                    w-full 
+                    md:w-[420px] 
+                    transition-all duration-500 animate-in fade-in zoom-in slide-in-from-bottom-2"
+        >
             <div className="p-5 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50 rounded-t-[32px]">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center font-black text-xs italic">0{opIdx + 1}</span>
