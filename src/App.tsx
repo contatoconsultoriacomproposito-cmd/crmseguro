@@ -11,6 +11,8 @@ import DashboardLayout from "./layouts/DashboardLayout"
 // PÁGINAS PÚBLICAS
 import HomePage from "./pages/homepage/HomePage"
 import PortalParceiro from "./pages/portal/PortalParceiro"
+import TermosUso from "./pages/juridico/TermosUso"
+import PoliticaPrivacidade from "./pages/juridico/PoliticaPrivacidade"
 
 // Páginas Privadas - Corretores e parceiros
 import CorretoresCadastro from "./pages/corretores/CorretoresCadastro"
@@ -60,6 +62,8 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         {/* Rota do Portal acessível sem login */}
         <Route path="/portal/:slug" element={<PortalParceiro />} /> 
+        <Route path="/termos" element={<TermosUso />} />
+        <Route path="/privacidade" element={<PoliticaPrivacidade />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     )

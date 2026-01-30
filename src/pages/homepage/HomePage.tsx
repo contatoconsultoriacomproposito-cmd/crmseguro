@@ -10,6 +10,7 @@ import {
 
 import LoginModal from "../../components/homepage/LoginModal";
 import RegistroModal from "../../components/homepage/RegistroModal";
+import { Link } from "react-router-dom";
 
 export default function HomePage() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -572,12 +573,28 @@ export default function HomePage() {
             </div>
 
             <div>
-              <h4 className="font-black uppercase text-xs tracking-widest mb-8 text-blue-600">Mapa do Site</h4>
-              <ul className="space-y-4 text-sm text-zinc-500">
-                <li><a href="#beneficios" className="hover:text-white transition-all">Benefícios</a></li>
-                <li><a href="#precos" className="hover:text-white transition-all">Planos e Preços</a></li>
-                <li><a href="/termos" className="hover:text-white transition-all">Termos de Uso</a></li>
-                <li><a href="/privacidade" className="hover:text-white transition-all">Política de Privacidade</a></li>
+              <h4 className="font-black uppercase text-xs tracking-widest mb-8 text-blue-600">Jurídico</h4>
+              <ul className="space-y-4 text-sm text-zinc-500 font-medium">
+                <li>
+                  <a href="#beneficios" className="hover:text-zinc-900 dark:hover:text-white transition-all">
+                    Benefícios
+                  </a>
+                </li>
+                <li>
+                  <a href="#precos" className="hover:text-zinc-900 dark:hover:text-white transition-all">
+                    Planos e Preços
+                  </a>
+                </li>
+                <li>
+                  <Link to="/termos" className="hover:text-zinc-900 dark:hover:text-white transition-all">
+                    Termos de Uso
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/privacidade" className="hover:text-zinc-900 dark:hover:text-white transition-all">
+                    Política de Privacidade
+                  </Link>
+                </li>
               </ul>
             </div>
 

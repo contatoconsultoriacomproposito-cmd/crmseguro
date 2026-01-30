@@ -14,6 +14,7 @@ export default function RegistroModal({ onClose }: any) {
   const [loadingCEP, setLoadingCEP] = useState(false);
   const [sucesso, setSucesso] = useState(false);
   const [tipoPessoa, setTipoPessoa] = useState<"PJ" | "PF">("PJ");
+  const [aceiteTermos, setAceiteTermos] = useState(false);
 
   const [form, setForm] = useState({
     senha: "",
@@ -295,12 +296,31 @@ export default function RegistroModal({ onClose }: any) {
               </Section>
             </div>
 
-            <div className="p-8 bg-zinc-50 border-t border-zinc-100">
-              <button type="submit" disabled={loading || (tipoPessoa === "PJ" && !form.razao_social)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-3 disabled:opacity-50 uppercase text-sm tracking-widest">
-                {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-                Finalizar Cadastro {tipoPessoa}
-              </button>
+            <div className="p-8 bg-zinc-50 border-t border-zinc-100 space-y-6">
+            {/* Checkbox de Consentimento */}
+            <div className="flex items-start gap-3 px-2">
+              <input 
+                type="checkbox" 
+                id="termos"
+                checked={aceiteTermos}
+                onChange={(e) => setAceiteTermos(e.target.checked)}
+                className="mt-1 w-4 h-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="termos" className="text-xs text-zinc-600 leading-relaxed cursor-pointer select-none">
+                Li e concordo com os <a href="/termos" target="_blank" className="text-blue-600 font-bold hover:underline">Termos de Uso</a> e a <a href="/privacidade" target="_blank" className="text-blue-600 font-bold hover:underline">Política de Privacidade</a> da plataforma.
+              </label>
             </div>
+
+            {/* Botão de Submit Atualizado */}
+            <button 
+              type="submit" 
+              disabled={loading || (tipoPessoa === "PJ" && !form.razao_social) || !aceiteTermos} 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale uppercase text-sm tracking-widest"
+            >
+              {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+              Finalizar Cadastro {tipoPessoa}
+            </button>
+          </div>
           </form>
         )}
       </motion.div>

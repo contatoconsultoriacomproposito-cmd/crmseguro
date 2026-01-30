@@ -10,11 +10,34 @@ export default function LoginModal({ onClose, onSwitch }: any) {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resetSent, setResetSent] = useState(false); // Passo 1: Estado para feedback
+
+  // Passo 2: Função de recuperação
+  async function handleForgotPassword() {
+    if (!email) {
+      setError("Por favor, digite seu e-mail para recuperar a senha.");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setResetSent(true);
+      setError(null);
+    }
+    setLoading(false);
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setResetSent(false) // Limpa feedback de reset ao tentar logar
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -31,27 +54,23 @@ export default function LoginModal({ onClose, onSwitch }: any) {
       return
     }
 
-    // Sucesso - O AuthContext cuidará do redirecionamento
     navigate("/dashboard")
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      {/* Overlay com Blur */}
       <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}
         className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm"
       />
       
-      {/* Container do Modal */}
       <motion.div 
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.9, opacity: 0, y: 20 }}
         className="relative w-full max-w-md bg-white dark:bg-[#121212] rounded-[32px] shadow-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800"
       >
-        {/* Banner Superior Decorativo */}
         <div className="h-2 bg-gradient-to-r from-blue-600 to-indigo-600" />
 
         <div className="p-8">
@@ -69,6 +88,16 @@ export default function LoginModal({ onClose, onSwitch }: any) {
               <X size={20}/>
             </button>
           </div>
+
+          {/* PASSO 4: Mensagem de Sucesso (Feedback Visual) */}
+          {resetSent && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-2xl text-emerald-600 dark:text-emerald-400 text-xs font-medium text-center"
+            >
+              E-mail de recuperação enviado! Verifique sua caixa de entrada.
+            </motion.div>
+          )}
 
           {error && (
             <motion.div 
@@ -91,7 +120,7 @@ export default function LoginModal({ onClose, onSwitch }: any) {
                   type="email"
                   className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" 
                   placeholder="seu@email.com" 
-                  autoComplete="current-password" // Adicione esta linha
+                  autoComplete="email" 
                   value={email} 
                   onChange={e => setEmail(e.target.value)} 
                 />
@@ -103,7 +132,15 @@ export default function LoginModal({ onClose, onSwitch }: any) {
                 <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
                   Senha
                 </label>
-                <button type="button" className="text-[10px] font-bold text-blue-600 hover:underline">Esqueceu a senha?</button>
+                
+                {/* PASSO 3: Ação no botão de Esqueci a Senha */}
+                <button 
+                  type="button" 
+                  onClick={handleForgotPassword}
+                  className="text-[10px] font-bold text-blue-600 hover:underline"
+                >
+                  Esqueceu a senha?
+                </button>
               </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-blue-500 transition-colors" size={18} />
@@ -112,7 +149,7 @@ export default function LoginModal({ onClose, onSwitch }: any) {
                   type="password" 
                   className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" 
                   placeholder="••••••••" 
-                  autoComplete="current-password" // Adicione esta linha
+                  autoComplete="current-password" 
                   value={password} 
                   onChange={e => setPassword(e.target.value)} 
                 />
