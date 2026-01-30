@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   DndContext,
-  closestCorners,
+  rectIntersection,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -9,7 +9,6 @@ import {
   DragOverlay,
   useDroppable,
   type DragStartEvent,
-  type DragOverEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
@@ -21,15 +20,18 @@ import {
 import { supabase } from '../../lib/supabaseClient'; 
 import { 
   MessageCircle, 
-  FileText, 
-  MoreVertical,  
+  FileText,   
   Eraser, 
-  UserSearch 
+  UserSearch,
+  AlertOctagon 
 } from 'lucide-react';
 import { SortableCard } from '../../components/kanban/SortableCard'; 
 import { BuscaGlobal } from '../../components/BuscaGlobal';
-import { ModalFechamento } from '../../components/propostas/ModalFechamento'; // Certifique-se que o path está correto
+import { ModalFechamento } from '../../components/propostas/ModalFechamento'; 
 import { maskCurrency, parseCurrencyToNumber } from '../../utils/masks';
+import { toast } from 'react-hot-toast';
+import { useKanbanConfig } from './useKanbanConfig';
+import { MenuConfigColuna } from './MenuConfigColuna';
 
 interface Cliente {
   id: string;
@@ -44,19 +46,25 @@ interface Cliente {
   usuarios_perfis?: { nome: string };
 }
 
-const COLUNAS = [
-  { id: 'lead', title: 'Lead', color: 'bg-slate-100 text-slate-600' },
-  { id: 'contato', title: 'Contato', color: 'bg-blue-100 text-blue-600' },
-  { id: 'negociacao', title: 'Negociação', color: 'bg-amber-100 text-amber-600' }
-];
+function getFaseCliente(cliente: any): 'lead' | 'contato' | 'negociacao' {
+  const temInteracao = cliente.tab_interacoes && cliente.tab_interacoes.length > 0;
+  const temPropostaEmNegocicao = cliente.tab_propostas?.some(
+    (p: any) => p.status === 'Em Negociação'
+  );
+
+  if (temInteracao && temPropostaEmNegocicao) return 'negociacao';
+  if (temInteracao) return 'contato';
+  return 'lead';
+}
 
 export default function KanbanAtendimentos() {
-  
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeCliente, setActiveCliente] = useState<Cliente | null>(null);
   
-  // Estados de Filtro (Mantidos integralmente)
+  // Hook refinado utilizando o refresh para evitar o window.location.reload()
+  const { colunas, loading: loadingConfig, refresh } = useKanbanConfig('atendimento');
+  
   const [termoBusca, setTermoBusca] = useState('');
   const [corretorBusca, setCorretorBusca] = useState('');
   const [dataInicio, setDataInicio] = useState('');
@@ -64,15 +72,22 @@ export default function KanbanAtendimentos() {
   const [valorMin, setValorMin] = useState('');
   const [valorMax, setValorMax] = useState('');
 
-  // Estado do Modal de Fechamento
+  const [modalImpedimento, setModalImpedimento] = useState<{
+    isOpen: boolean;
+    mensagem: string;
+  }>({
+    isOpen: false,
+    mensagem: '',
+  });
+
   const [modalFechamento, setModalFechamento] = useState<{
     isOpen: boolean;
     tipo: 'VENDIDO' | 'PERDIDO' | null;
-    propostas: any[]; // <--- Garanta que tenha o '[]' aqui
+    propostas: any[];
   }>({
     isOpen: false,
     tipo: null,
-    propostas: [] // <--- Garanta que tenha o '[]' aqui
+    propostas: []
   });
 
   const sensors = useSensors(
@@ -89,7 +104,6 @@ export default function KanbanAtendimentos() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 1. Busca o perfil para saber QUEM é o usuário e a QUAL corretora ele pertence
       const { data: perfil } = await supabase
         .from("usuarios_perfis")
         .select("tipo_usuario, corretora_id")
@@ -98,96 +112,68 @@ export default function KanbanAtendimentos() {
 
       if (!perfil) return;
 
+      const camposProposta = 'id, status, valor_total_proposta';
       const relacaoPropostas = (valorMin || valorMax) 
-        ? 'tab_propostas!inner(*)' 
-        : 'tab_propostas(*)';
+        ? `tab_propostas!inner(${camposProposta})` 
+        : `tab_propostas(${camposProposta})`;
 
-      // 2. Inicia a query focando no status 'novo'
       let query = supabase
         .from('tab_clientes')
         .select(`
           *,
           corretor:usuarios_perfis!tab_clientes_corretor_id_fkey(nome),
+          tab_interacoes(id),
           ${relacaoPropostas}
         `)
-        .eq('status_kanban', 'novo');
+        .eq('status_kanban', 'novo')
+        .eq('corretora_id', perfil.corretora_id);
 
-      // 3. REGRA DE OURO DA HIERARQUIA:
-      // Filtramos SEMPRE pela corretora_id (segurança de dados entre empresas)
-      query = query.eq('corretora_id', perfil.corretora_id);
-
-      // Se NÃO for Master/ADM (ou seja, se for apenas um Corretor), restringimos ao ID dele
-      // Se você for a Corretora Master, o tipo_usuario deve ser 'CORRETORA' ou 'ADMIN'
       if (perfil.tipo_usuario === 'CORRETOR') {
         query = query.eq('corretor_id', user.id);
       }
 
-      // 4. Filtros de busca e filtros laterais
       if (termoBusca) {
         query = query.or(`nome.ilike.%${termoBusca}%,razao_social.ilike.%${termoBusca}%,cpf.ilike.%${termoBusca}%,cnpj.ilike.%${termoBusca}%,email.ilike.%${termoBusca}%,telefone_whats.ilike.%${termoBusca}%`);
       }
 
       if (corretorBusca) {
-        // Ajuste para filtrar corretamente pelo nome do corretor na junção
         query = query.filter('usuarios_perfis.nome', 'ilike', `%${corretorBusca}%`);
       }
 
       if (dataInicio) query = query.gte('data_retorno', dataInicio);
       if (dataFim) query = query.lte('data_retorno', dataFim);
-
       if (valorMin) query = query.gte('tab_propostas.valor_total_proposta', parseCurrencyToNumber(valorMin));
       if (valorMax) query = query.lte('tab_propostas.valor_total_proposta', parseCurrencyToNumber(valorMax));
 
       const { data, error } = await query.order('posicao_kanban', { ascending: true });
-
       if (error) throw error;
       setClientes(data as Cliente[] || []);
-
     } catch (error) {
-      console.error("Erro ao buscar clientes no Kanban Atendimentos:", error);
+      console.error("Erro ao buscar clientes:", error);
     }
   }
 
-  const getClientesDaColuna = (fase: string) =>
-    clientes.filter(c => c.fase_kanban === fase);
+  const getClientesDaColuna = (colunaId: string) => {
+    return clientes.filter(cliente => {
+      const clienteData = cliente as any;
+      const temInteracao = clienteData.tab_interacoes && clienteData.tab_interacoes.length > 0;
+      const temPropostaEmNegocicao = clienteData.tab_propostas?.some(
+        (p: any) => p.status === 'Em Negociação'
+      );
+
+      switch (colunaId) {
+        case 'lead': return !temInteracao;
+        case 'contato': return temInteracao && !temPropostaEmNegocicao;
+        case 'negociacao': return temInteracao && temPropostaEmNegocicao;
+        default: return false;
+      }
+    });
+  };
 
   function handleDragStart(event: DragStartEvent) {
     const { active } = event;
     setActiveId(active.id as string);
     setActiveCliente(clientes.find(c => c.id === active.id) || null);
-  }
-
-  function handleDragOver(event: DragOverEvent) {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    if (activeId === overId) return;
-
-    const activeItem = clientes.find(c => c.id === activeId);
-    if (!activeItem) return;
-
-    let newFase = '';
-    const isOverAColumn = COLUNAS.some(col => col.id === overId);
-    const isOverDropZone = ['vendido', 'perdido'].includes(overId);
-
-    if (isOverAColumn) {
-      newFase = overId;
-    } else if (isOverDropZone) {
-      // No DragOver apenas permitimos o feedback visual
-      return; 
-    } else {
-      const overItem = clientes.find(c => c.id === overId);
-      if (overItem) newFase = overItem.fase_kanban;
-    }
-
-    if (newFase && activeItem.fase_kanban !== newFase) {
-      setClientes(prev => prev.map(c => 
-        c.id === activeId ? { ...c, fase_kanban: newFase } : c
-      ));
-    }
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -197,87 +183,57 @@ export default function KanbanAtendimentos() {
 
     if (!over) return;
 
-    const activeId = active.id as string;
-    const overId = over.id as string;
+    const cliente = clientes.find(c => c.id === active.id) as any;
+    if (!cliente) return;
 
-    try {
-      const clienteMovidoOriginal = clientes.find(c => c.id === activeId);
-      if (!clienteMovidoOriginal) return;
+    const faseAtual = getFaseCliente(cliente);
+    const destino = (over.data.current?.sortable?.containerId as string) ?? (over.id as string);
 
-      // 🛑 DESAFIO: VALIDAR PROPOSTA PARA VENDIDO/PERDIDO
-      if (overId === 'vendido' || overId === 'perdido') {
-        const propostasAtivas = clienteMovidoOriginal.tab_propostas?.filter(
-          p => p.status === 'Em Negociação'
-        ) || [];
+    if (!destino || destino === faseAtual) return;
 
-        if (propostasAtivas.length === 0) {
-          alert("BLOQUEADO: Crie uma proposta 'Em Negociação' antes.");
-          fetchClientes();
-          return;
-        }
+    const temInteracao = cliente.tab_interacoes?.length > 0;
+    const temPropostaEmNegociacao = cliente.tab_propostas?.some(
+      (p: any) => p.status === 'Em Negociação'
+    );
 
-        setModalFechamento({
-          isOpen: true,
-          tipo: overId === 'vendido' ? 'VENDIDO' : 'PERDIDO',
-          propostas: propostasAtivas // Enviamos a lista TODA
-        });
+    if (faseAtual === 'lead') {
+      if (destino === 'contato' && !temInteracao) {
+        setModalImpedimento({ isOpen: true, mensagem: "Para mover para Contato, é obrigatório registrar uma interação com o cliente." });
         return;
       }
-
-      // LÓGICA DE MOVIMENTAÇÃO ENTRE COLUNAS (LEAD, CONTATO, NEGOCIACAO)
-      let novaFase = clienteMovidoOriginal.fase_kanban;
-      if (COLUNAS.some(col => col.id === overId)) {
-        novaFase = overId;
+      if (destino === 'negociacao' && (!temInteracao || !temPropostaEmNegociacao)) {
+        setModalImpedimento({ isOpen: true, mensagem: "Para avançar para Negociação, é necessário ter contato registrado e proposta em negociação." });
+        return;
       }
-
-      // Atualização Local
-      setClientes(prev => {
-        const listaSemOItem = prev.filter(c => c.id !== activeId);
-        const itemAtualizado = { ...clienteMovidoOriginal, fase_kanban: novaFase };
-        return [itemAtualizado, ...listaSemOItem];
-      });
-
-      // Persistência no Supabase
-      const { error: errorIndividual } = await supabase
-        .from('tab_clientes')
-        .update({ 
-          fase_kanban: novaFase,
-          posicao_kanban: 0 
-        })
-        .eq('id', activeId);
-
-      if (errorIndividual) throw errorIndividual;
-
-      // Reordenar demais cards da coluna
-      const { data: listaAtualizada } = await supabase
-        .from('tab_clientes')
-        .select('id')
-        .eq('fase_kanban', novaFase)
-        .eq('status_kanban', 'novo')
-        .order('id');
-
-      if (listaAtualizada) {
-        const updates = listaAtualizada.map((c, index) => 
-          supabase
-            .from('tab_clientes')
-            .update({ posicao_kanban: index + 1 })
-            .eq('id', c.id === activeId ? 'temp-id' : c.id) // Evita conflito com o que acabamos de mover
-        );
-        await Promise.all(updates);
-      }
-
-      console.log("Movimentação de coluna salva.");
-      fetchClientes(); // Sync final
-
-    } catch (err) {
-      console.error("Erro crítico no Kanban:", err);
-      fetchClientes();
     }
+
+    if (faseAtual === 'contato') {
+      if (destino === 'lead' && temInteracao) {
+        setModalImpedimento({ isOpen: true, mensagem: "Este cliente já possui interações, portanto não pode retornar para Lead." });
+        return;
+      }
+      if (destino === 'negociacao' && !temPropostaEmNegociacao) {
+        setModalImpedimento({ isOpen: true, mensagem: "Para mover para Negociação, é necessário cadastrar uma proposta com status 'Em Negociação'." });
+        return;
+      }
+    }
+
+    if (faseAtual === 'negociacao') {
+      if (destino === 'contato' && temPropostaEmNegociacao) {
+        setModalImpedimento({ isOpen: true, mensagem: "Existe uma negociação em aberto. Não é permitido retroceder para Contato." });
+        return;
+      }
+      if (destino === 'lead') {
+        setModalImpedimento({ isOpen: true, mensagem: "Este cliente já avançou no ciclo comercial e não pode retornar ao estado de Lead." });
+        return;
+      }
+    }
+
+    toast.success("Movimentação válida!");
   }
 
   return (
-    <div className="px-4 py-8 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen  w-full">
-      {/* HEADER */}
+    <div className="px-4 py-8 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen w-full">
       <div className="mb-8 space-y-6">
         <div>
           <h1 className="text-2xl font-black italic uppercase tracking-tighter text-slate-800 dark:text-white">
@@ -286,7 +242,6 @@ export default function KanbanAtendimentos() {
           <p className="text-slate-500 text-sm font-medium">Gerencie o progresso comercial em tempo real</p>
         </div>
 
-        {/* FILTROS (MANTIDOS INTEGRALMENTE) */}
         <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-zinc-900 p-6 rounded-[24px] border border-slate-200 dark:border-zinc-800 shadow-sm">
           <div className="flex-1 min-w-[250px]">
             <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Pesquisa Rápida</label>
@@ -307,94 +262,68 @@ export default function KanbanAtendimentos() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="block text-[10px] font-black uppercase text-slate-400 ml-1 text-center">Data Retorno</label>
+          <div className="flex flex-col gap-2 text-center">
+            <label className="block text-[10px] font-black uppercase text-slate-400 ml-1">Data Retorno</label>
             <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 h-12 px-4 rounded-2xl">
-              <input 
-                type="date" 
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className="bg-transparent border-none text-xs font-bold outline-none text-slate-600 dark:text-slate-300"
-              />
+              <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="bg-transparent border-none text-xs font-bold outline-none text-slate-600 dark:text-slate-300" />
               <span className="text-slate-300 text-[10px] font-black italic">ATÉ</span>
-              <input 
-                type="date" 
-                value={dataFim}
-                onChange={(e) => setDataFim(e.target.value)}
-                className="bg-transparent border-none text-xs font-bold outline-none text-slate-600 dark:text-slate-300"
-              />
+              <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="bg-transparent border-none text-xs font-bold outline-none text-slate-600 dark:text-slate-300" />
             </div>
           </div>     
 
-          <div className="flex flex-col gap-2">
-            <label className="block text-[10px] font-black uppercase text-slate-400 ml-1 text-center">Valor Proposta (R$)</label>
+          <div className="flex flex-col gap-2 text-center">
+            <label className="block text-[10px] font-black uppercase text-slate-400 ml-1">Valor Proposta (R$)</label>
             <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 h-12 px-4 rounded-2xl">
-              <input 
-                type="text" 
-                placeholder="Mín"
-                value={valorMin}
-                onChange={(e) => setValorMin(maskCurrency(e.target.value))}
-                className="w-24 bg-transparent border-none text-xs font-bold outline-none text-emerald-600 placeholder:text-slate-400"
-              />
+              <input type="text" placeholder="Mín" value={valorMin} onChange={(e) => setValorMin(maskCurrency(e.target.value))} className="w-24 bg-transparent border-none text-xs font-bold outline-none text-emerald-600" />
               <span className="text-slate-300 text-[10px] font-black italic">ATÉ</span>
-              <input 
-                type="text" 
-                placeholder="Máx"
-                value={valorMax}
-                onChange={(e) => setValorMax(maskCurrency(e.target.value))}
-                className="w-24 bg-transparent border-none text-xs font-bold outline-none text-emerald-600 placeholder:text-slate-400"
-              />
+              <input type="text" placeholder="Máx" value={valorMax} onChange={(e) => setValorMax(maskCurrency(e.target.value))} className="w-24 bg-transparent border-none text-xs font-bold outline-none text-emerald-600" />
             </div>
           </div>
 
           <button 
-            onClick={() => { 
-              setDataInicio(''); setDataFim('');
-              setValorMin(''); setValorMax('');
-              setTermoBusca(''); setCorretorBusca('');
-            }}  
+            onClick={() => { setDataInicio(''); setDataFim(''); setValorMin(''); setValorMax(''); setTermoBusca(''); setCorretorBusca(''); }}  
             className="h-12 w-12 flex items-center justify-center bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl transition-all shadow-sm group"
-            title="Limpar todos os filtros"
           >
             <Eraser size={18} className="group-hover:rotate-12 transition-transform" />
           </button>
         </div>
       </div>
       
-      {/* AREA DO KANBAN */}
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={rectIntersection}
         onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-6 overflow-x-auto pb-10">
-          {COLUNAS.map(col => (
+          {!loadingConfig && colunas.map(col => (
             <div key={col.id} className="flex-1 min-w-[380px] max-w-[480px]">
               <div className="flex items-center justify-between mb-4 px-2">
                 <div className="flex items-center gap-2">
-                  <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${col.color}`}>
+                  <span 
+                    className="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest text-white"
+                    style={{ backgroundColor: col.colorHex }}
+                  >
                     {col.title}
                   </span>
                   <span className="text-slate-400 text-sm font-bold bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-lg">
                     {getClientesDaColuna(col.id).length}
                   </span>
                 </div>
-                <button className="text-slate-400 hover:text-slate-600 transition-colors">
-                  <MoreVertical size={16} />
-                </button>
+                
+                <div className="relative">
+                  <MenuConfigColuna 
+                    fase={col} 
+                    grupo="atendimento" 
+                    onUpdate={refresh} 
+                  />
+                </div>
               </div>
 
               <KanbanColumn id={col.id}>
                 <SortableContext items={getClientesDaColuna(col.id).map(c => c.id)} strategy={verticalListSortingStrategy}>
                   {getClientesDaColuna(col.id).map(cliente => (
-                    <SortableCard 
-                      key={cliente.id} 
-                      id={cliente.id} 
-                      cliente={cliente} 
-                      onUpdate={fetchClientes} 
-                    />
+                    <SortableCard key={cliente.id} id={cliente.id} cliente={cliente} columnId={col.id} onUpdate={fetchClientes} />
                   ))}
                 </SortableContext>
               </KanbanColumn>
@@ -414,37 +343,44 @@ export default function KanbanAtendimentos() {
             </div>
           ) : null}
         </DragOverlay>
-
-        
       </DndContext>
 
-      {/* MODAL DE FECHAMENTO (CHAMADO NO FIM DO DRAG) */}
+      {modalImpedimento.isOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-zinc-900 p-8 rounded-[32px] max-w-md w-full shadow-2xl border border-red-100 dark:border-red-900/20 text-center animate-in fade-in zoom-in duration-200">
+            <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <AlertOctagon className="text-red-600" size={32} />
+            </div>
+            <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-2">Movimentação Bloqueada</h2>
+            <p className="text-slate-600 dark:text-slate-400 font-medium mb-6">{modalImpedimento.mensagem}</p>
+            <button
+              onClick={() => setModalImpedimento({ isOpen: false, mensagem: '' })}
+              className="w-full h-14 bg-slate-900 dark:bg-white dark:text-black text-white rounded-2xl font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"
+            >
+              Entendi e vou corrigir
+            </button>
+          </div>
+        </div>
+      )}
+
       {modalFechamento.isOpen && (
         <ModalFechamento
           isOpen={modalFechamento.isOpen}
           tipo={modalFechamento.tipo!} 
-          proposta={modalFechamento.propostas} // A propriedade se chama 'proposta' (singular), mas o valor enviado é a lista
-          onClose={() => {
-            setModalFechamento({ isOpen: false, tipo: null, propostas: [] });
-            fetchClientes();
-          }}
-          onSuccess={() => {
-            setModalFechamento({ isOpen: false, tipo: null, propostas: [] });
-            fetchClientes();
-          }}
+          proposta={modalFechamento.propostas}
+          onClose={() => setModalFechamento({ isOpen: false, tipo: null, propostas: [] })}
+          onSuccess={() => { setModalFechamento({ isOpen: false, tipo: null, propostas: [] }); fetchClientes(); }}
         />
       )}
     </div>
   );
 }
 
-// COMPONENTES AUXILIARES (INTERNOS)
 function KanbanColumn({ id, children }: { id: string; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} className="bg-slate-100/50 dark:bg-zinc-900/50 p-3 rounded-[24px] min-h-[70vh] max-h-[calc(100vh-280px)] overflow-y-auto border border-slate-200/50 dark:border-zinc-800/50 shadow-inner custom-scrollbar">
-      <div className="flex flex-col gap-3">{children}</div>
+    <div ref={setNodeRef} className="bg-slate-100/50 dark:bg-zinc-900/50 p-3 rounded-[24px] min-h-[70vh] flex flex-col">
+      <div className="flex flex-col gap-3 h-full">{children}</div>
     </div>
   );
 }
-

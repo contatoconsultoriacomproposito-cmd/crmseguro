@@ -1,10 +1,22 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
-import { VisualCardSlim } from './VisualCardSlim'; // Criaremos a seguir
-import { ModalDetalhesCliente } from './ModalDetalhesCliente'; // Criaremos a seguir
+import { VisualCardSlim } from './VisualCardSlim';
+import { ModalDetalhesCliente } from './ModalDetalhesCliente';
 
-export function SortableCard({ id, cliente, onUpdate }: any) {
+interface SortableCardProps {
+  id: string;
+  cliente: any;
+  columnId: string; // 👈 NOVO: coluna de origem
+  onUpdate: () => void;
+}
+
+export function SortableCard({
+  id,
+  cliente,
+  columnId,
+  onUpdate,
+}: SortableCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const {
@@ -13,43 +25,62 @@ export function SortableCard({ id, cliente, onUpdate }: any) {
     setNodeRef,
     transform,
     transition,
-    isDragging
-  } = useSortable({ id });
+    isDragging,
+  } = useSortable({
+    id,
+    data: {
+      columnId, // 🔥 ESSENCIAL para o Kanban funcionar
+    },
+  });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.3 : 1,
-    cursor: isDragging ? 'grabbing' : 'pointer', // Cursor de clique
+    cursor: isDragging ? 'grabbing' : 'pointer',
+    zIndex: isDragging ? 50 : 'auto',
   };
 
-  // Função para abrir o modal apenas se não estiver arrastando
+  // Abre modal apenas se NÃO estiver arrastando
   const handleCardClick = (e: React.MouseEvent) => {
-    // Evita abrir o modal se clicar nos botões de editar/excluir
-    if ((e.target as HTMLElement).closest('button')) {
+    if (isDragging) return;
+
+    // Evita clique ao interagir com botões internos
+    if (
+      (e.target as HTMLElement).closest('button') ||
+      (e.target as HTMLElement).closest('a')
+    ) {
       return;
     }
+
     setIsModalOpen(true);
   };
 
   return (
     <>
-      <div 
-        ref={setNodeRef} 
-        style={style} 
-        {...attributes} 
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
         {...listeners}
         onClick={handleCardClick}
-        className="outline-none mb-3 touch-none" 
+        className="outline-none mb-3 touch-none"
       >
-        <VisualCardSlim 
-          cliente={cliente} 
-          onUpdate={onUpdate} 
-        />
+        {/*
+          IMPORTANTE:
+          - pointer-events-none SOMENTE durante drag
+          - permite que o drop detecte a coluna corretamente
+        */}
+        <div className={isDragging ? 'pointer-events-none' : ''}>
+          <VisualCardSlim
+            cliente={cliente}
+            onUpdate={onUpdate}
+          />
+        </div>
       </div>
 
       {isModalOpen && (
-        <ModalDetalhesCliente 
+        <ModalDetalhesCliente
           cliente={cliente}
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}

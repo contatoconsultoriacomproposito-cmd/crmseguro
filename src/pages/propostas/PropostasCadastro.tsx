@@ -350,18 +350,19 @@ useEffect(() => {
   };
 
   const handleSalvarBanco = async () => {
+    // Definimos o corretor final: Prioriza o selecionado ou o herdado do cliente
     const corretorFinal = selectedCorretor || selectedClient?.corretor_id;
+
     if (!selectedClient || !corretorFinal || !validadeProposta) {
         return alert("Preencha todos os campos obrigatórios (Cliente, Corretor e Validade).");
     }
     setLoading(true);
 
     try {
-      // --- PASSO VITAL: Pegar o corretora_id do usuário atual ---
+      // 1. Identificação do Usuário e Corretora
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado.");
 
-      // Buscamos o corretora_id no perfil do usuário logado
       const { data: perfil } = await supabase
         .from("usuarios_perfis")
         .select("corretora_id")
@@ -374,34 +375,46 @@ useEffect(() => {
 
       let currentPropostaId = propostaId;  
 
-      // 1. Upsert na tab_propostas
+      // 2. Preparação dos dados da Proposta
       const dadosProposta = {
         numero_proposta: numeroProposta,
         cliente_id: selectedClient.id,
-        corretor_id: selectedCorretor,
-        parceiro_id: selectedParceiro || null, // <--- ADICIONE ESTA LINHA AQUI
+        corretor_id: corretorFinal, 
+        parceiro_id: selectedParceiro || null,
         corretora_id: perfil.corretora_id, 
         data_validade: validadeProposta,
         status: 'Em Negociação',
         valor_total_proposta: opcoes.reduce((acc, opt) => acc + calcularTotal(opt.cotacoes), 0)
       };
 
+      // 3. Upsert na tab_propostas
       if (propostaId) {
-        // Na edição, o corretora_id geralmente não muda, mas enviamos por segurança
         const { error: errorU } = await supabase
           .from("tab_propostas")
           .update(dadosProposta)
           .eq("id", propostaId);
         
         if (errorU) throw errorU;
+        // Limpa opções antigas para reinserir as novas (lógica de edição que você já usa)
         await supabase.from("tab_proposta_opcoes").delete().eq("proposta_id", propostaId);
       } else {
         const { data, error } = await supabase.from("tab_propostas").insert(dadosProposta).select().single();
         if (error) throw error;
         currentPropostaId = data.id;
+
+        // --- REGISTRO DE INTERAÇÃO (Apenas na criação da proposta) ---
+        await supabase.from('tab_interacoes').insert({
+          cliente_id: selectedClient.id,
+          corretor_id: corretorFinal,
+          corretora_id: perfil.corretora_id,
+          tipo_acao: 'PROPOSTA CRIADA',
+          relato: `Nova proposta gerada: ${numeroProposta}. Status: Em Negociação.`,
+          data_historico: new Date().toLocaleDateString('en-CA'),
+          horario_historico: new Date().toLocaleTimeString('pt-BR', { hour12: false })
+        });
       }
 
-      // 2. Inserir Opções e Itens
+      // 4. Inserir Opções e Itens
       for (const [idx, opcao] of opcoes.entries()) {
         if (!opcao.seguradora_id) continue;
 
@@ -426,27 +439,30 @@ useEffect(() => {
             parcelamento: cot.parcelamento,
             meio_pagamento: cot.meio,
             coberturas_franquias: cot.cobertura,
-            numero_cotacao: cot.numero_cotacao // <--- GRAVANDO NO BANCO
+            numero_cotacao: cot.numero_cotacao
           }));
           await supabase.from("tab_proposta_itens").insert(itensParaInserir);
         }
       }
 
+      // --- SINCRONIZAÇÃO DO STATUS DO CLIENTE NO KANBAN ---
+      // Move o cliente automaticamente para a fase de negociação
+      await supabase
+        .from('tab_clientes')
+        .update({ fase_kanban: 'negociacao' })
+        .eq('id', selectedClient.id);
       
       setShowFinalizeModal(false);
-
-      // --- SUCESSO ESTILIZADO ---
       setShowSuccess(true);
-      //handleGerarPDF();
 
-      // Redireciona após 2.5 segundos
+      // O redirecionamento agora é controlado pelo botão na modal de sucesso, 
+      // mas mantivemos o timer por segurança caso o usuário não clique.
       setTimeout(() => {
-        setShowSuccess(false);
-        navigate('/propostas/lista');
-      }, 2500);
-      // --------------------------
-      
-      // handleGerarPDF();
+        if (showSuccess) {
+           setShowSuccess(false);
+           navigate('/propostas/lista');
+        }
+      }, 5000);
 
     } catch (error: any) {
       console.error("Erro ao salvar:", error);
