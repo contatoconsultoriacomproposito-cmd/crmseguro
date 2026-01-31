@@ -165,9 +165,21 @@ export default function KanbanVendas() {
     if (!cliente) return;
 
     const faseAtual = cliente.fase_kanban;
-    const destino = (over.data.current?.sortable?.containerId as string) ?? (over.id as string);
 
-    if (!destino || destino === faseAtual) return;
+    // --- SOLUÇÃO PARA O "SORTABLE-0" E DROPS EM CIMA DE CARDS ---
+    // 1. Tenta pegar o ID da Coluna (containerId)
+    let destino = (over.data.current?.sortable?.containerId as string) ?? (over.id as string);
+
+    // 2. Double Check: Se o destino for o ID de outro cliente (UUID), 
+    // buscamos a qual coluna esse cliente pertence.
+    const clienteDestino = clientes.find(c => c.id === destino);
+    if (clienteDestino) {
+      destino = clienteDestino.fase_kanban;
+    }
+
+    // 3. Bloqueio de segurança contra IDs internos do dnd-kit
+    if (!destino || destino === faseAtual || String(destino).startsWith('Sortable')) return;
+    // -----------------------------------------------------------
 
     const temPropostaEmNegociacao = cliente.tab_propostas?.some(
       (p: any) => p.status === 'Em Negociação'
@@ -199,23 +211,28 @@ export default function KanbanVendas() {
     }
 
     try {
+      // Atualização Otimista (Interface rápida)
       setClientes(prev => {
         const listaSemOItem = prev.filter(c => c.id !== currentActiveId);
         const itemAtualizado = { ...cliente, fase_kanban: destino };
         return [itemAtualizado, ...listaSemOItem];
       });
 
-      await supabase
+      // Persistência no Supabase
+      const { error } = await supabase
         .from('tab_clientes')
         .update({ fase_kanban: destino, posicao_kanban: 0 })
         .eq('id', currentActiveId);
+
+      if (error) throw error;
 
       fetchClientes();
       toast.success("Movimentação atualizada!");
 
     } catch (err) {
       console.error("Erro crítico no Kanban:", err);
-      fetchClientes();
+      toast.error("Erro ao salvar no servidor");
+      fetchClientes(); // Reverte para o estado do banco
     }
   }
 

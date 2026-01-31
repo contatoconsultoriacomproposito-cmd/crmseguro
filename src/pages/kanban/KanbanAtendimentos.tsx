@@ -187,15 +187,26 @@ export default function KanbanAtendimentos() {
     if (!cliente) return;
 
     const faseAtual = getFaseCliente(cliente);
-    const destino = (over.data.current?.sortable?.containerId as string) ?? (over.id as string);
 
-    if (!destino || destino === faseAtual) return;
+    // --- CORREÇÃO PONTUAL E BLINDAGEM ---
+    let destino = (over.data.current?.sortable?.containerId as string) ?? (over.id as string);
+
+    // Double Check: Se o destino for o ID de um card (UUID), buscamos a coluna dele
+    const clienteDestino = clientes.find(c => c.id === destino);
+    if (clienteDestino) {
+      destino = getFaseCliente(clienteDestino);
+    }
+
+    // Bloqueio de segurança contra IDs internos ou nulos
+    if (!destino || destino === faseAtual || String(destino).startsWith('Sortable')) return;
+    // ------------------------------------
 
     const temInteracao = cliente.tab_interacoes?.length > 0;
     const temPropostaEmNegociacao = cliente.tab_propostas?.some(
       (p: any) => p.status === 'Em Negociação'
     );
 
+    // --- REGRAS DE NEGÓCIO ---
     if (faseAtual === 'lead') {
       if (destino === 'contato' && !temInteracao) {
         setModalImpedimento({ isOpen: true, mensagem: "Para mover para Contato, é obrigatório registrar uma interação com o cliente." });
@@ -229,8 +240,28 @@ export default function KanbanAtendimentos() {
       }
     }
 
-    toast.success("Movimentação válida!");
-  }
+    // --- PERSISTÊNCIA ---
+    try {
+      setClientes(prev => {
+        const filtrados = prev.filter(c => c.id !== active.id);
+        return [{ ...cliente, fase_kanban: destino }, ...filtrados];
+      });
+
+      const { error } = await supabase
+        .from('tab_clientes')
+        .update({ fase_kanban: destino, posicao_kanban: 0 })
+        .eq('id', active.id);
+
+      if (error) throw error;
+      
+      toast.success("Movimentação realizada!");
+      fetchClientes();
+    } catch (err) {
+      console.error("Erro no update do Kanban:", err);
+      toast.error("Erro ao salvar movimentação");
+      fetchClientes();
+    }
+}
 
   return (
     <div className="px-4 py-8 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen w-full">
