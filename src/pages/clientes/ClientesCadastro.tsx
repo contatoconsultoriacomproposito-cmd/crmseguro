@@ -209,6 +209,21 @@ useEffect(() => {
         return;
     }
 
+    // NOVA VALIDAÇÃO DE DUPLICIDADE
+    if (!isEditing && tipoCliente === "PF" && form.cpf) { 
+      const { data: existente } = await supabase
+        .from("tab_clientes")
+        .select("id")
+        .eq("cpf", form.cpf)
+        .maybeSingle();
+
+      if (existente) {
+        setLoading(false); // Importante para destravar o botão de salvar
+        alert("Atenção: Já existe um cliente cadastrado com este CPF.");
+        return;
+      }
+    }
+
     // VALIDAÇÃO: Se for perfil corretora, obriga a escolher um responsável
     if (perfilUsuarioLogado?.tipo_usuario === "CORRETORA" && !form.corretor_id) {
       alert("Por favor, selecione um Responsável pelo Cliente (pode ser a própria corretora ou um corretor).");
@@ -586,8 +601,8 @@ useEffect(() => {
                   onChange={handleChange} 
                   className="h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 outline-none transition-all cursor-pointer">
                   <option value="lead">Lead</option>
-                  <option value="contato">Contato</option>
-                  <option value="negociacao">Negociação</option>
+                  
+                  
                 </select>
               </div>
               

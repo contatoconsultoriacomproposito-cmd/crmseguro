@@ -445,11 +445,18 @@ useEffect(() => {
         }
       }
 
-      // --- SINCRONIZAÇÃO DO STATUS DO CLIENTE NO KANBAN ---
-      // Move o cliente automaticamente para a fase de negociação
+      // --- SINCRONIZAÇÃO INTELIGENTE DA FASE DO KANBAN ---
+      let faseAlvo = 'negociacao'; // Padrão para novos leads (status 'novo')
+
+      if (selectedClient.status_kanban === 'vendido') {
+        faseAlvo = 'negociacao_vendas';
+      } else if (selectedClient.status_kanban === 'perdido') {
+        faseAlvo = 'negociacao_perdas';
+      }
+
       await supabase
         .from('tab_clientes')
-        .update({ fase_kanban: 'negociacao' })
+        .update({ fase_kanban: faseAlvo })
         .eq('id', selectedClient.id);
       
       setShowFinalizeModal(false);
@@ -681,7 +688,7 @@ useEffect(() => {
                             >
                               <option value="Boleto">Boleto</option>
                               <option value="Cartão">Cartão</option>
-                              <option value="Pix">Pix</option>
+                              <option value="Pix">À vista</option>
                             </select>
                           </div>
                         </div>
