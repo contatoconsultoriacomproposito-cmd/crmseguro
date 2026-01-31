@@ -29,6 +29,13 @@ interface OpcaoSeguradora {
   cotacoes: CotacaoProduto[];
 }
 
+const gerarIDProposta = () => {
+  const ano = new Date().getFullYear();
+  const timePart = Date.now().toString().slice(-4);
+  const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `PR${ano}-${timePart}${randomPart}`;
+};
+
 export default function PropostasCadastro() {
   const { id: propostaId } = useParams();
   const navigate = useNavigate(); // Adicionado aqui
@@ -50,7 +57,7 @@ export default function PropostasCadastro() {
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
   const [selectedCorretor, setSelectedCorretor] = useState("");
   const [validadeProposta, setValidadeProposta] = useState("");
-  const [numeroProposta, setNumeroProposta] = useState(`PR${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [numeroProposta, setNumeroProposta] = useState("");
   const [portfolioRaw, setPortfolioRaw] = useState<any[]>([]);
 
   // Estado inicial com as 3 OPÇÕES AUTOMÁTICAS
@@ -73,6 +80,9 @@ useEffect(() => {
       await fetchDados();
       if (propostaId) {
         await carregarDadosEdicao(propostaId);
+      } else {
+        // SE FOR NOVA: Gera o número robusto aqui
+        setNumeroProposta(gerarIDProposta());
       }
     };
     carregarTudo();
