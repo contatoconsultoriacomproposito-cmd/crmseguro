@@ -119,7 +119,7 @@ useEffect(() => {
         } catch (err) {
           console.error("Erro ao carregar cliente:", err);
           alert("Erro ao carregar dados do cliente.");
-          navigate("/clientes/lista");
+          navigate("/kanban/atendimento");
         } finally {
           setLoadingData(false);
         }
@@ -303,7 +303,7 @@ useEffect(() => {
       if (error) throw error;
 
       setShowSuccess(true);
-      setTimeout(() => navigate("/clientes/lista"), 2300);
+      setTimeout(() => navigate("/kanban/atendimento"), 2300);
     } catch (err: any) {
       alert(`Erro ao salvar: ${err.message}`);
     } finally {

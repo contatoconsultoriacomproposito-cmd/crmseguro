@@ -255,7 +255,7 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
         <div className="grid grid-rows-2 gap-6">
           <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center">
             <div className="w-1/2">
-              <h3 className="text-xs font-black uppercase text-slate-500 mb-4 flex items-center gap-2">
+              <h3 className="text-[14px] font-black uppercase text-slate-500 mb-4 flex items-center gap-2">
                 <CreditCard size={16} className="text-indigo-500" /> Meios de Pagto
               </h3>
               <div className="h-40">
@@ -272,7 +272,7 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
             <div className="w-1/2 space-y-3 pl-6 border-l border-slate-100 overflow-y-auto max-h-40">
                {stats.graficoPagamentos.map((item) => (
                  <div key={item.name} className="flex justify-between items-center">
-                    <span className="text-[10px] font-black text-slate-600 uppercase truncate pr-2">{item.name}</span>
+                    <span className="text-[14px] font-black text-slate-600 uppercase truncate pr-2">{item.name}</span>
                     <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{item.value}</span>
                  </div>
                ))}
@@ -290,14 +290,14 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
                     className="w-full bg-indigo-200 group-hover:bg-indigo-500 rounded-t-xl transition-all duration-300 relative" 
                     style={{ height: `${(item.value / (Math.max(...stats.graficoCotacoes.map(g => g.value)) || 1)) * 100}%` }}
                    >
-                     <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-black text-indigo-600">
+                     <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[24px] font-black text-indigo-600">
                         {item.value}
                      </div>
                    </div>
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter mt-1">{item.name.split('-')[1]}/{item.name.split('-')[0].substring(2)}</span>
+                   <span className="text-[18px] font-black text-slate-500 uppercase tracking-tighter mt-1">{item.name.split('-')[1]}/{item.name.split('-')[0].substring(2)}</span>
                 </div>
               )) : (
-                <div className="w-full text-center text-[10px] font-bold text-slate-300 italic uppercase">Sem cotações registradas</div>
+                <div className="w-full text-center text-[18px] font-bold text-slate-300 italic uppercase">Sem cotações registradas</div>
               )}
             </div>
           </div>

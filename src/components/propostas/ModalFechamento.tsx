@@ -11,6 +11,11 @@ interface ModalFechamentoProps {
   tipo: 'VENDIDO' | 'PERDIDO';
 }
 
+const isValidDate = (dateString: string) => {
+  const d = new Date(dateString);
+  return d instanceof Date && !isNaN(d.getTime());
+};
+
 export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: type }: ModalFechamentoProps) {
   const [loading, setLoading] = useState(false);
   const [propostaSelecionada, setPropostaSelecionada] = useState<any>(null);
@@ -115,9 +120,12 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
       const dataBase = form.dataVenda; 
       
       // Cálculo padrão para +1 ano (Anual)
-      const dataFimPadrao = new Date(dataBase);
-      dataFimPadrao.setFullYear(dataFimPadrao.getFullYear() + 1);
-      const dataFimFormatada = dataFimPadrao.toISOString().split('T')[0];
+      let dataFimFormatada = "";
+      if (isValidDate(dataBase)) {
+        const dataFimPadrao = new Date(dataBase);
+        dataFimPadrao.setFullYear(dataFimPadrao.getFullYear() + 1);
+        dataFimFormatada = dataFimPadrao.toISOString().split('T')[0];
+      }
 
       todosItens.forEach(item => {
         // Se o item já tem data no banco, usamos ela. 
@@ -140,15 +148,16 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
 
   // SINCRONIZAÇÃO AUTOMÁTICA: 
 // Se o corretor alterar a "Data da Venda", atualizamos as vigências que não são "Personalizadas"
+// SINCRONIZAÇÃO AUTOMÁTICA: 
 useEffect(() => {
-  if (type === 'VENDIDO' && itensProposta.length > 0) {
+  // ADICIONADO: isValidDate(form.dataVenda) para evitar crash ao digitar
+  if (type === 'VENDIDO' && itensProposta.length > 0 && form.dataVenda && isValidDate(form.dataVenda)) {
     setDadosItens(prev => {
       const novoEstado = { ...prev };
       let houveMudanca = false;
 
       itensProposta.forEach(item => {
         const dados = novoEstado[item.id];
-        // Só atualizamos se não for Personalizado e se a data for diferente da base
         if (dados && dados.periodicidade !== 'PERSONALIZADO') {
           const dataInicio = form.dataVenda;
           let dataFim = "";
@@ -171,7 +180,7 @@ useEffect(() => {
       return houveMudanca ? novoEstado : prev;
     });
   }
-}, [form.dataVenda, itensProposta]);
+}, [form.dataVenda, itensProposta, type]);
 
 
   const formValido = () => {
@@ -228,7 +237,7 @@ useEffect(() => {
         corretora_id: propostaSelecionada.corretora_id,
         tipo_acao: isVendido ? 'VENDA REALIZADA' : 'PROPOSTA PERDIDA',
         relato: isVendido 
-          ? `Venda finalizada. Data da Venda: ${new Date(form.dataVenda).toLocaleDateString('pt-BR')}.` 
+          ? `Venda finalizada. Data da Venda: ${isValidDate(form.dataVenda) ? new Date(form.dataVenda).toLocaleDateString('pt-BR') : 'Data não informada'}.` 
           : `Perda: ${form.motivoPerda}. Obs: ${form.observacoes}`,
         data_historico: new Date().toLocaleDateString('en-CA'),
         horario_historico: new Date().toLocaleTimeString('pt-BR', { hour12: false })
