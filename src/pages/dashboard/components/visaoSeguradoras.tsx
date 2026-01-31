@@ -1,55 +1,99 @@
-import { useMemo } from 'react';
-import { ShieldCheck, TrendingUp, Award} from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip} from 'recharts';
+import { useMemo, useState, useEffect } from 'react';
+import { ShieldCheck, TrendingUp, Award, Filter, Loader2 } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+
+import { supabase } from '../../../lib/supabaseClient';
 
 interface VisaoSeguradorasProps {
-  propostasRaw: any[];
-  dataInicio: string;
-  dataFim: string;
-  corretorId: string;
+  corretoraId: string;
+  corretoresLista: { id: string; nome: string }[];
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', '#06b6d4'];
 
-export default function VisaoSeguradoras({ propostasRaw, dataInicio, dataFim, corretorId }: VisaoSeguradorasProps) {
+export default function VisaoSeguradoras({ corretoraId, corretoresLista }: VisaoSeguradorasProps) {
   
+  const [loading, setLoading] = useState(true);
+  const [propostasVendidas, setPropostasVendidas] = useState<any[]>([]);
+
+  // 1. ESTADOS DE FILTRO (Data inicial focada no mês atual)
+  const [dataInicio, setDataInicio] = useState(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+  );
+  const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
+  const [corretorLocal, setCorretorLocal] = useState('todos');
+
+  // 2. BUSCA DE DADOS AUTÔNOMA (Focada em Vendas e Joins de Seguradoras)
+  useEffect(() => {
+    async function fetchVendasSeguradoras() {
+      setLoading(true);
+      try {
+        let query = supabase
+          .from('tab_propostas')
+          .select(`
+            *,
+            tab_proposta_opcoes (
+              *,
+              base_seguradoras (nome),
+              tab_proposta_itens (
+                *,
+                base_produtos (nome)
+              )
+            )
+          `)
+          .eq('corretora_id', corretoraId)
+          .in('status', ['Vendido', 'vendido', 'Fechado', 'fechado'])
+          .gte('created_at', `${dataInicio}T00:00:00`)
+          .lte('created_at', `${dataFim}T23:59:59`);
+
+        if (corretorLocal !== 'todos') {
+          query = query.eq('corretor_id', corretorLocal);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        setPropostasVendidas(data || []);
+      } catch (err) {
+        console.error("Erro ao carregar Visão Seguradoras:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (corretoraId) fetchVendasSeguradoras();
+  }, [dataInicio, dataFim, corretorLocal, corretoraId]);
+
+  // 3. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
     const resumoSeg: Record<string, any> = {};
 
-    propostasRaw.forEach(p => {
-      const pertenceAoCorretor = corretorId === 'todos' || p.corretor_id === corretorId;
-      const status = String(p.status || '').toLowerCase().trim();
-      const dataRef = (p.data_venda || p.data_emissao || p.created_at || '').split(/[ T]/)[0];
+    propostasVendidas.forEach(p => {
+      p.tab_proposta_opcoes?.forEach((opcao: any) => {
+        const nomeSeg = opcao.base_seguradoras?.nome || 'NÃO INFORMADA';
+        const valorOpcao = Number(opcao.valor_total_opcao || 0);
 
-      if (pertenceAoCorretor && status === 'vendido' && dataRef >= dataInicio && dataRef <= dataFim) {
-        
-        p.tab_proposta_opcoes?.forEach((opcao: any) => {
-          const nomeSeg = opcao.base_seguradoras?.nome || 'NÃO INFORMADA';
-          const valorOpcao = Number(opcao.valor_total_opcao || 0);
+        if (!resumoSeg[nomeSeg]) {
+          resumoSeg[nomeSeg] = { 
+            nome: nomeSeg, 
+            qtd: 0, 
+            valor: 0, 
+            produtos: {} as Record<string, {qtd: number, valor: number}> 
+          };
+        }
+        resumoSeg[nomeSeg].qtd++;
+        resumoSeg[nomeSeg].valor += valorOpcao;
 
-          if (!resumoSeg[nomeSeg]) {
-            resumoSeg[nomeSeg] = { 
-              nome: nomeSeg, 
-              qtd: 0, 
-              valor: 0, 
-              produtos: {} as Record<string, {qtd: number, valor: number}> 
-            };
+        opcao.tab_proposta_itens?.forEach((item: any) => {
+          const nomeProd = item.base_produtos?.nome || 'OUTROS';
+          const valorPremio = Number(item.valor_premio || 0);
+
+          if (!resumoSeg[nomeSeg].produtos[nomeProd]) {
+            resumoSeg[nomeSeg].produtos[nomeProd] = { qtd: 0, valor: 0 };
           }
-          resumoSeg[nomeSeg].qtd++;
-          resumoSeg[nomeSeg].valor += valorOpcao;
-
-          opcao.tab_proposta_itens?.forEach((item: any) => {
-            const nomeProd = item.base_produtos?.nome || 'OUTROS';
-            const valorPremio = Number(item.valor_premio || 0);
-
-            if (!resumoSeg[nomeSeg].produtos[nomeProd]) {
-              resumoSeg[nomeSeg].produtos[nomeProd] = { qtd: 0, valor: 0 };
-            }
-            resumoSeg[nomeSeg].produtos[nomeProd].qtd++;
-            resumoSeg[nomeSeg].produtos[nomeProd].valor += valorPremio;
-          });
+          resumoSeg[nomeSeg].produtos[nomeProd].qtd++;
+          resumoSeg[nomeSeg].produtos[nomeProd].valor += valorPremio;
         });
-      }
+      });
     });
 
     const listaOrdenada = Object.values(resumoSeg).sort((a: any, b: any) => b.valor - a.valor);
@@ -60,11 +104,53 @@ export default function VisaoSeguradoras({ propostasRaw, dataInicio, dataFim, co
       totalGeral,
       chartData: listaOrdenada.map(s => ({ name: s.nome, value: s.valor }))
     };
-  }, [propostasRaw, dataInicio, dataFim, corretorId]);
+  }, [propostasVendidas]);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-10">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       
+      {/* BARRA DE FILTROS */}
+      <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
+          <Filter size={16} className="text-slate-400" />
+          <span className="text-[10px] font-black uppercase text-slate-500">Filtrar Vendas:</span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <input 
+            type="date" 
+            value={dataInicio} 
+            onChange={(e) => setDataInicio(e.target.value)}
+            className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2"
+          />
+          <span className="text-slate-300 font-bold text-[10px] uppercase">até</span>
+          <input 
+            type="date" 
+            value={dataFim} 
+            onChange={(e) => setDataFim(e.target.value)}
+            className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2"
+          />
+
+          {/* RÓTULO DE PRECISÃO PARA SEGURADORAS */}
+          <span className="ml-2 text-[9px] font-black text-emerald-500 uppercase bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
+            🛡️ Base: Data de Venda (Produção Efetiva)
+          </span>
+        </div>
+
+        <select 
+          value={corretorLocal} 
+          onChange={(e) => setCorretorLocal(e.target.value)}
+          className="ml-auto bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-600 p-2 min-w-[200px]"
+        >
+          <option value="todos">Todos os Corretores / Casa</option>
+          {(corretoresLista || []).map(c => (
+            <option key={c.id} value={c.id}>{c.nome}</option>
+          ))}
+        </select>
+
+        {loading && <Loader2 size={18} className="animate-spin text-indigo-500 ml-2" />}
+      </div>
+
       {/* HEADER E MARKET SHARE */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
@@ -121,7 +207,6 @@ export default function VisaoSeguradoras({ propostasRaw, dataInicio, dataFim, co
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {stats.seguradoras.map((seg: any, idx) => (
             <div key={idx} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-              {/* Header da Seguradora */}
               <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
                 <div>
                   <h3 className="text-sm font-black text-slate-800 uppercase italic tracking-tight">{seg.nome}</h3>
@@ -135,7 +220,6 @@ export default function VisaoSeguradoras({ propostasRaw, dataInicio, dataFim, co
                 </div>
               </div>
 
-              {/* Itens/Produtos vendidos por essa seguradora */}
               <div className="p-6 space-y-3 bg-white">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Mix de Produtos na Cia</p>
                 {Object.entries(seg.produtos).map(([prodNome, data]: any) => (
@@ -159,10 +243,10 @@ export default function VisaoSeguradoras({ propostasRaw, dataInicio, dataFim, co
       </section>
 
       {/* FEEDBACK VAZIO */}
-      {stats.seguradoras.length === 0 && (
+      {!loading && stats.seguradoras.length === 0 && (
         <div className="h-40 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-[32px] bg-slate-50/30">
           <ShieldCheck size={32} className="text-slate-200 mb-2" />
-          <p className="text-xs font-black uppercase text-slate-400 tracking-widest">
+          <p className="text-xs font-black uppercase text-slate-400 tracking-widest text-center px-4">
             Sem dados de seguradoras no período selecionado
           </p>
         </div>

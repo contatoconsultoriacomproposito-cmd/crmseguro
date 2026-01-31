@@ -1,13 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
-  FileText, ShieldCheck, XCircle, TrendingUp, 
-  Target, Users, 
-  CalendarDays, Wallet
+  FileText, ShieldCheck, XCircle, 
+  Target, Users, CalendarDays, Wallet, Filter, Loader2
 } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
   BarChart, Bar, XAxis, CartesianGrid, Legend
 } from 'recharts';
+
+import { supabase } from '../../../lib/supabaseClient';
 
 interface PropostaData {
   id: string;
@@ -21,20 +22,70 @@ interface PropostaData {
   data_venda?: string;
   updated_at?: string;
   parceiro_id?: string;
-  tab_parceiros?: { nome: string }; // Join vindo do Supabase/Backend
 }
 
 interface VisaoPropostasProps {
-  propostasRaw: PropostaData[];
-  dataInicio: string;
-  dataFim: string;
-  corretorId: string;
+  corretoraId: string;
+  corretoresLista: { id: string; nome: string }[]; 
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4'];
 
-export default function VisaoPropostas({ propostasRaw, dataInicio, dataFim, corretorId }: VisaoPropostasProps) {
+export default function VisaoPropostas({ 
+  corretoraId,
+  corretoresLista 
+}: VisaoPropostasProps) {
   
+  const [loading, setLoading] = useState(true);
+  const [propostasLocais, setPropostasLocais] = useState<PropostaData[]>([]);
+  const [parceirosLocais, setParceirosLocais] = useState<any[]>([]);
+
+  // 1. ESTADOS DE FILTRO
+  const [dataInicio, setDataInicio] = useState(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+  );
+  const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
+  const [corretorLocal, setCorretorLocal] = useState('todos');
+
+  // 2. BUSCA DE DADOS AUTÔNOMA
+  useEffect(() => {
+    async function fetchPropostas() {
+      setLoading(true);
+      try {
+        // Query de Propostas
+        let query = supabase
+          .from('tab_propostas')
+          .select('*')
+          .eq('corretora_id', corretoraId)
+          .gte('created_at', `${dataInicio}T00:00:00`)
+          .lte('created_at', `${dataFim}T23:59:59`);
+
+        if (corretorLocal !== 'todos') {
+          query = query.eq('corretor_id', corretorLocal);
+        }
+
+        const { data: propData, error: propError } = await query;
+        if (propError) throw propError;
+
+        // Query de Parceiros (para mapear nomes)
+        const { data: parcData } = await supabase
+          .from('tab_parceiros')
+          .select('*')
+          .eq('corretora_id', corretoraId);
+
+        setPropostasLocais(propData || []);
+        setParceirosLocais(parcData || []);
+      } catch (err) {
+        console.error("Erro ao carregar Visão Propostas:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (corretoraId) fetchPropostas();
+  }, [dataInicio, dataFim, corretorLocal, corretoraId]);
+
+  // 3. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
     const acc = {
       total: 0, vlrCriado: 0,
@@ -46,111 +97,136 @@ export default function VisaoPropostas({ propostasRaw, dataInicio, dataFim, corr
       vendasPorParceiro: {} as Record<string, { nome: string; qtd: number; valor: number }>
     };
 
-    const dataFiltrada = (propostasRaw || []).filter(p => 
-      corretorId === 'todos' || p.corretor_id === corretorId
-    );
-
-    dataFiltrada.forEach(p => {
-      const valor = Number(p.valor_total_proposta || 0);
-      const status = (p.status || 'Em Negociação');
-      const dEmissao = (p.data_emissao || p.created_at || '').split(/[ T]/)[0];
-      const dVenda = (p.data_venda || '').split(/[ T]/)[0];
-      const dUpdate = (p.updated_at || p.created_at || '').split(/[ T]/)[0];
-
-      // 1. GERAL (Baseado na Emissão dentro do período)
-      if (dEmissao >= dataInicio && dEmissao <= dataFim) {
-        acc.total++;
-        acc.vlrCriado += valor;
-        acc.statusCount[status] = (acc.statusCount[status] || 0) + 1;
-      }
-
-      // 2. VENDIDAS
-      if (status.toLowerCase() === 'vendido') {
-        const dataRefVenda = dVenda || dEmissao;
-        if (dataRefVenda >= dataInicio && dataRefVenda <= dataFim) {
-          acc.vendidas++;
-          acc.vlrVendido += valor;
-
-          // Agrupamento Mensal (Vendas)
-          const mesAno = dataRefVenda.substring(0, 7); // YYYY-MM
-          if (!acc.vendasPorMes[mesAno]) acc.vendasPorMes[mesAno] = { qtd: 0, valor: 0 };
-          acc.vendasPorMes[mesAno].qtd++;
-          acc.vendasPorMes[mesAno].valor += valor;
-
-          // Vendas por Parceiro
-          if (p.parceiro_id) {
-            const nomeParceiro = p.tab_parceiros?.nome || 'Parceiro não Identificado';
-            if (!acc.vendasPorParceiro[p.parceiro_id]) {
-              acc.vendasPorParceiro[p.parceiro_id] = { nome: nomeParceiro, qtd: 0, valor: 0 };
-            }
-            acc.vendasPorParceiro[p.parceiro_id].qtd++;
-            acc.vendasPorParceiro[p.parceiro_id].valor += valor;
-          }
-        }
-      }
-
-      // 3. PERDIDAS
-      if (status.toLowerCase() === 'perdido') {
-        if (dUpdate >= dataInicio && dUpdate <= dataFim) {
-          acc.perdidas++;
-          acc.vlrPerdido += valor;
-          const motivo = p.motivo_perda || 'Não informado';
-          acc.motivosPerda[motivo] = (acc.motivosPerda[motivo] || 0) + 1;
-        }
+    const mapaNomesParceiros: Record<string, string> = {};
+    (parceirosLocais || []).forEach(parc => {
+      if (parc.id) {
+        mapaNomesParceiros[String(parc.id).toLowerCase()] = parc.nome_parceiro;
       }
     });
 
-    const ticketMedio = acc.vendidas > 0 ? acc.vlrVendido / acc.vendidas : 0;
-    const conversao = acc.total > 0 ? (acc.vendidas / acc.total) * 100 : 0;
+    propostasLocais.forEach(p => {
+      const valor = Number(p.valor_total_proposta || 0);
+      const status = p.status || 'Em Negociação';
+      const statusLower = status.toLowerCase();
+      const pId = p.parceiro_id ? String(p.parceiro_id).toLowerCase() : null;
 
-    return { ...acc, ticketMedio, conversao };
-  }, [propostasRaw, dataInicio, dataFim, corretorId]);
+      acc.total++;
+      acc.vlrCriado += valor;
+      acc.statusCount[status] = (acc.statusCount[status] || 0) + 1;
 
-  // Formatação para Gráficos
+      if (statusLower === 'vendido' || statusLower === 'fechado') {
+        acc.vendidas++;
+        acc.vlrVendido += valor;
+
+        const dataRefVenda = (p.data_venda || p.created_at || '').split(/[ T]/)[0];
+        const mesAno = dataRefVenda.substring(0, 7);
+        if (!acc.vendasPorMes[mesAno]) acc.vendasPorMes[mesAno] = { qtd: 0, valor: 0 };
+        acc.vendasPorMes[mesAno].qtd++;
+        acc.vendasPorMes[mesAno].valor += valor;
+
+        if (pId) {
+          const nomeEncontrado = mapaNomesParceiros[pId] || 'Parceiro Não Localizado';
+          if (!acc.vendasPorParceiro[pId]) {
+            acc.vendasPorParceiro[pId] = { nome: nomeEncontrado, qtd: 0, valor: 0 };
+          }
+          acc.vendasPorParceiro[pId].qtd++;
+          acc.vendasPorParceiro[pId].valor += valor;
+        }
+      }
+
+      if (statusLower === 'perdido') {
+        acc.perdidas++;
+        acc.vlrPerdido += valor;
+        const motivo = p.motivo_perda || 'Não informado';
+        acc.motivosPerda[motivo] = (acc.motivosPerda[motivo] || 0) + 1;
+      }
+    });
+
+    return { 
+      ...acc, 
+      ticketMedio: acc.vendidas > 0 ? acc.vlrVendido / acc.vendidas : 0, 
+      conversao: acc.total > 0 ? (acc.vendidas / acc.total) * 100 : 0 
+    };
+  }, [propostasLocais, parceirosLocais]);
+
   const chartStatus = Object.entries(stats.statusCount).map(([name, value]) => ({ name, value }));
   const chartMeses = Object.entries(stats.vendasPorMes)
-    .sort()
+    .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([name, data]) => ({ name, valor: data.valor, qtd: data.qtd }));
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       
-      {/* 1. CARDS DE PERFORMANCE */}
+      {/* BARRA DE FILTROS */}
+      
+      <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
+          <Filter size={16} className="text-slate-400" />
+          <span className="text-[10px] font-black uppercase text-slate-500">Filtrar Período:</span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <input 
+            type="date" 
+            value={dataInicio} 
+            onChange={(e) => setDataInicio(e.target.value)}
+            className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2"
+          />
+          <span className="text-slate-300 font-bold text-[10px] uppercase">até</span>
+          <input 
+            type="date" 
+            value={dataFim} 
+            onChange={(e) => setDataFim(e.target.value)}
+            className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2"
+          />
+
+          {/* RÓTULO DE PRECISÃO ADICIONADO ABAIXO */}
+          <span className="ml-2 text-[9px] font-black text-indigo-400 uppercase bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
+            📑 Filtrando por: Data de Entrada da Proposta
+          </span>
+        </div>
+
+        <select 
+          value={corretorLocal} 
+          onChange={(e) => setCorretorLocal(e.target.value)}
+          className="ml-auto bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-600 p-2 min-w-[200px]"
+        >
+          <option value="todos">Todos os Corretores / Casa</option>
+          {(corretoresLista || []).map(c => (
+            <option key={c.id} value={c.id}>{c.nome}</option>
+          ))}
+        </select>
+
+        {loading && (
+          <div className="flex items-center gap-2 ml-2 animate-pulse">
+            <Loader2 size={16} className="text-indigo-500 animate-spin" />
+            <span className="text-[10px] font-bold text-indigo-500 uppercase">Buscando...</span>
+          </div>
+        )}
+      </div>
+
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          label="Propostas Criadas" 
-          val={stats.total} 
-          money={stats.vlrCriado} 
-          color="indigo" 
-          icon={<FileText size={20}/>}
-        />
-        <StatCard 
-          label="Vendas Realizadas" 
-          val={stats.vendidas} 
-          money={stats.vlrVendido} 
-          color="emerald" 
-          icon={<ShieldCheck size={20}/>}
-        />
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+        <StatCard label="Propostas Criadas" val={stats.total} money={stats.vlrCriado} color="indigo" icon={<FileText size={20}/>} />
+        <StatCard label="Vendas Realizadas" val={stats.vendidas} money={stats.vlrVendido} color="emerald" icon={<ShieldCheck size={20}/>} />
+        
+        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col justify-center">
           <p className="text-[12px] font-black uppercase text-slate-400 mb-1">Ticket Médio (Vendas)</p>
-          <p className="text-3xl font-black text-slate-800">
+          <p className="text-2xl font-black text-slate-800">
             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(stats.ticketMedio)}
           </p>
-          <div className="flex items-center gap-2 mt-2 text-emerald-600">
-            <TrendingUp size={14}/>
-            <span className="text-[11px] font-bold uppercase">Base: {stats.vendidas} vendas</span>
-          </div>
         </div>
+
         <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden">
           <p className="text-[12px] font-black uppercase text-slate-400 mb-1">Taxa de Conversão</p>
           <p className="text-4xl font-black text-slate-800">{stats.conversao.toFixed(1)}%</p>
           <div className="w-full h-1.5 bg-slate-100 mt-4 rounded-full overflow-hidden">
-            <div className="bg-indigo-500 h-full" style={{ width: `${Math.min(stats.conversao, 100)}%` }} />
+            <div className="bg-indigo-500 h-full transition-all duration-1000" style={{ width: `${Math.min(stats.conversao, 100)}%` }} />
           </div>
         </div>
       </div>
 
-      {/* 2. STATUS E MOTIVOS DE PERDA */}
+      {/* GRÁFICOS */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
           <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
@@ -163,7 +239,7 @@ export default function VisaoPropostas({ propostasRaw, dataInicio, dataFim, corr
                   {chartStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="none" />)}
                 </Pie>
                 <Tooltip />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '900' }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -176,18 +252,21 @@ export default function VisaoPropostas({ propostasRaw, dataInicio, dataFim, corr
           <div className="space-y-4">
             {Object.entries(stats.motivosPerda).length > 0 ? (
               Object.entries(stats.motivosPerda).sort((a,b)=>b[1]-a[1]).map(([motivo, qtd]) => (
-                <div key={motivo} className="group">
+                <div key={motivo}>
                   <div className="flex justify-between mb-1">
                     <span className="text-xs font-black text-slate-600 uppercase">{motivo}</span>
                     <span className="text-xs font-black text-rose-500">{qtd}</span>
                   </div>
                   <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-rose-400 h-full" style={{ width: `${(qtd / (stats.perdidas || 1)) * 100}%` }} />
+                    <div className="bg-rose-400 h-full transition-all duration-1000" style={{ width: `${(qtd / (stats.perdidas || 1)) * 100}%` }} />
                   </div>
                 </div>
               ))
             ) : (
-              <p className="text-center text-slate-400 text-xs py-20 font-bold uppercase italic">Sem perdas registradas</p>
+              <div className="flex flex-col items-center justify-center h-48 opacity-20">
+                <XCircle size={48} />
+                <p className="text-xs font-bold uppercase mt-2">Sem perdas registradas</p>
+              </div>
             )}
           </div>
         </div>
@@ -203,12 +282,7 @@ export default function VisaoPropostas({ propostasRaw, dataInicio, dataFim, corr
                 <XAxis dataKey="name" tick={{fontSize: 10, fontWeight: 900}} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                  formatter={(val: any) => 
-                    new Intl.NumberFormat('pt-BR', { 
-                      style: 'currency', 
-                      currency: 'BRL' 
-                    }).format(Number(val || 0))
-                  }
+                  formatter={(val: any) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val || 0))}
                 />
                 <Bar dataKey="valor" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={30} />
               </BarChart>
@@ -217,15 +291,15 @@ export default function VisaoPropostas({ propostasRaw, dataInicio, dataFim, corr
         </div>
       </div>
 
-      {/* 3. VENDAS POR PARCEIRO */}
+      {/* RANKING DE PARCEIROS */}
       <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 mb-8">
-          <div className="bg-indigo-50 p-2 rounded-xl border border-indigo-100">
-            <Users size={20} className="text-indigo-600" />
+          <div className="bg-indigo-50 p-2 rounded-xl border border-indigo-100 text-indigo-600">
+            <Users size={20} />
           </div>
           <div>
-            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Vendas por Parceiros</h3>
-            <p className="text-xs font-bold text-slate-400">Ranking de produção por origem de indicação</p>
+            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Produção por Parceiros</h3>
+            <p className="text-xs font-bold text-slate-400">Ranking baseado no volume financeiro vendido</p>
           </div>
         </div>
 
@@ -234,24 +308,22 @@ export default function VisaoPropostas({ propostasRaw, dataInicio, dataFim, corr
             Object.entries(stats.vendasPorParceiro)
               .sort((a,b) => b[1].valor - a[1].valor)
               .map(([id, data]) => (
-                <div key={id} className="bg-slate-50 p-5 rounded-2xl border border-slate-100 flex flex-col justify-between hover:border-indigo-200 transition-colors">
+                <div key={id} className="bg-slate-50 p-5 rounded-2xl border border-slate-100 hover:border-indigo-200 transition-all group">
                   <div className="flex justify-between items-start mb-4">
                     <span className="text-[10px] font-black bg-white px-2 py-1 rounded-lg border border-slate-200 text-slate-500 uppercase">
                       {data.qtd} Vendas
                     </span>
-                    <Wallet size={16} className="text-indigo-400" />
+                    <Wallet size={16} className="text-indigo-400 group-hover:scale-110 transition-transform" />
                   </div>
-                  <div>
-                    <p className="text-xs font-black text-slate-400 uppercase truncate mb-1">{data.nome}</p>
-                    <p className="text-xl font-black text-slate-800">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data.valor)}
-                    </p>
-                  </div>
+                  <p className="text-xs font-black text-slate-400 uppercase truncate mb-1">{data.nome}</p>
+                  <p className="text-xl font-black text-slate-800">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data.valor)}
+                  </p>
                 </div>
               ))
           ) : (
             <div className="col-span-full py-12 text-center bg-slate-50 rounded-[24px] border-2 border-dashed border-slate-200">
-              <p className="text-slate-400 font-bold uppercase text-xs italic">Nenhuma venda vinculada a parceiro no período</p>
+              <p className="text-slate-400 font-bold uppercase text-xs italic">Nenhuma produção vinculada a parceiros neste período.</p>
             </div>
           )}
         </div>
@@ -264,12 +336,11 @@ function StatCard({ label, val, money, color, icon }: any) {
   const colorMap: any = {
     indigo: 'bg-indigo-500 text-indigo-600 border-indigo-100',
     emerald: 'bg-emerald-500 text-emerald-600 border-emerald-100',
-    rose: 'bg-rose-500 text-rose-600 border-rose-100'
   };
 
   return (
     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden group">
-      <div className={`w-10 h-10 ${colorMap[color].split(' ')[0]} rounded-xl flex items-center justify-center text-white mb-4 shadow-lg shadow-${color}-200`}>
+      <div className={`w-10 h-10 ${colorMap[color].split(' ')[0]} rounded-xl flex items-center justify-center text-white mb-4 shadow-lg`}>
         {icon}
       </div>
       <p className="text-[12px] font-black uppercase text-slate-400 mb-1">{label}</p>
