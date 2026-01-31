@@ -74,7 +74,6 @@ export function SortableCard({
         <div className={isDragging ? 'pointer-events-none' : ''}>
           <VisualCardSlim
             cliente={cliente}
-            onUpdate={onUpdate}
           />
         </div>
       </div>
