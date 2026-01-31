@@ -64,18 +64,18 @@ export function useKanbanConfig(grupo: 'atendimento' | 'vendas' | 'perdas') {
       const padrao: Record<string, any[]> = {
         atendimento: [
           { id: 'lead', title: 'Novo Lead', colorHex: '#64748b' },
-          { id: 'contato', title: 'Contato Realizado', colorHex: '#2563eb' },
-          { id: 'negociacao', title: 'Em negociação', colorHex: '#d97706' }
+          { id: 'contato', title: 'Lead Contatado', colorHex: '#2563eb' },
+          { id: 'negociacao', title: 'Lead em Negociação', colorHex: '#d97706' }
         ],
         vendas: [
-          { id: 'pos', title: 'Contato pós-vendas', colorHex: '#64748b' },
-          { id: 'renovacao', title: 'Contato para renovação', colorHex: '#2563eb' },
-          { id: 'negociacao_vendas', title: 'Renovação em negociação', colorHex: '#d97706' }
+          { id: 'pos', title: 'Cliente em Pós-Vendas', colorHex: '#64748b' },
+          { id: 'renovacao', title: 'Renovação do Seguro', colorHex: '#2563eb' },
+          { id: 'negociacao_vendas', title: 'Cliente em negociação', colorHex: '#d97706' }
         ],
         perdas: [
-          { id: 'recuperacao', title: 'Cliente em recuperação', colorHex: '#64748b' },
-          { id: 'contato_perda', title: 'Contato para recuperação', colorHex: '#2563eb' },
-          { id: 'negociacao_perdas', title: 'Negociação', colorHex: '#d97706' }
+          { id: 'recuperacao', title: 'Em recuperação', colorHex: '#64748b' },
+          { id: 'contato_perda', title: 'Contato em recuperação', colorHex: '#2563eb' },
+          { id: 'negociacao_perdas', title: 'Renegociação', colorHex: '#d97706' }
         ]
       };
 

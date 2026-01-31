@@ -315,7 +315,7 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
             />
             {!collapsed && openMenus.kanban && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
-                <SubNavItem to="/kanban/atendimento" label="Atendimentos" icon={<MessageCircle size={16} />} />
+                <SubNavItem to="/kanban/atendimento" label="Leads / Novos" icon={<MessageCircle size={16} />} />
                 <SubNavItem to="/kanban/venda" label="Vendas / Clientes" icon={<ShieldCheck size={16} />} />
                 <SubNavItem to="/kanban/perda" label="Perdas / Recuperação" icon={<History size={16} />} />
               </div>
