@@ -1,213 +1,206 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { 
-  Users, 
-  ArrowUpRight, 
-  ShieldCheck,
-  TrendingUp
+  Crown, 
+  Handshake, 
+  PieChart as PieIcon,
+  BarChart3
 } from 'lucide-react';
 import { 
-  PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip,
-  BarChart, Bar, XAxis, YAxis, LabelList 
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
+interface Parceiro {
+  id: string;
+  nome_parceiro: string;
+  tipo_parceiro: 'INTERNO' | 'EXTERNO';
+  setor_parceiro: string;
+  status_parceiro: string;
+}
+
 interface VisaoParceirosProps {
-  parceirosRaw: any[];
+  parceirosRaw: Parceiro[];
   indicacoesRaw: any[];
   cotacoesRaw: any[];
 }
 
-const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
-export default function VisaoParceiros({ parceirosRaw, indicacoesRaw, cotacoesRaw }: VisaoParceirosProps) {
-  const [filtroFeedback, setFiltroFeedback] = useState<string>('TODOS');
+export default function VisaoParceiros({ 
+  parceirosRaw = [], 
+  indicacoesRaw = [], 
+  cotacoesRaw = [] 
+}: VisaoParceirosProps) {
 
   const stats = useMemo(() => {
-    // --- 1. PROCESSAMENTO PARCEIROS (Proteção contra nulos) ---
-    const baseParceiros = parceirosRaw || [];
-    const setores: Record<string, number> = {};
-    const tipos: Record<string, number> = {};
-    
-    baseParceiros.forEach(p => {
-      const s = p.setor_parceiro || 'NÃO INFORMADO';
-      setores[s] = (setores[s] || 0) + 1;
-      
-      const t = p.tipo_parceiro || 'OUTROS';
-      tipos[t] = (tipos[t] || 0) + 1;
+    // 1. Contagem de Tipos (Interno vs Externo)
+    const tipos = { INTERNO: 0, EXTERNO: 0 };
+    parceirosRaw.forEach(p => {
+      const t = (p.tipo_parceiro || 'EXTERNO').toUpperCase();
+      if (t === 'INTERNO') tipos.INTERNO++;
+      else tipos.EXTERNO++;
     });
 
-    const dataTipos = Object.entries(tipos).map(([name, value]) => ({ 
-      name, 
-      value,
-      percentage: ((value / (baseParceiros.length || 1)) * 100).toFixed(1)
-    }));
+    const dataTipos = [
+      { name: 'Internos', value: tipos.INTERNO },
+      { name: 'Externos', value: tipos.EXTERNO }
+    ];
 
-    // --- 2. PROCESSAMENTO INDICAÇÕES ---
-    const baseIndicacoes = indicacoesRaw || [];
-    const statusInd: Record<string, number> = {};
-    const motivosPerda: Record<string, number> = {};
+    // 2. Performance por Parceiro (Baseado em cotacoesRaw)
+    const performance: Record<string, { nome: string, total: number, vendido: number, qtd: number }> = {};
     
-    baseIndicacoes.forEach(i => {
-      const st = (i.status_indicacao || 'NOVO').toUpperCase();
-      statusInd[st] = (statusInd[st] || 0) + 1;
+    // Inicializa com os parceiros da base
+    parceirosRaw.forEach(p => {
+      performance[p.id] = { nome: p.nome_parceiro, total: 0, vendido: 0, qtd: 0 };
+    });
 
-      if (st === 'PERDIDO' && i.motivo_perda) {
-        motivosPerda[i.motivo_perda] = (motivosPerda[i.motivo_perda] || 0) + 1;
+    // Processa as cotações/propostas para medir o valor financeiro
+    cotacoesRaw.forEach(cot => {
+      if (cot.parceiro_id && performance[cot.parceiro_id]) {
+        const valor = Number(cot.valor_total_proposta || cot.valor_premio || 0);
+        performance[cot.parceiro_id].total += valor;
+        performance[cot.parceiro_id].qtd++;
+        
+        const status = (cot.status || '').toLowerCase();
+        if (status.includes('vendido') || status.includes('fechado') || status.includes('emitido')) {
+          performance[cot.parceiro_id].vendido += valor;
+        }
       }
     });
 
-    const dataStatus = Object.entries(statusInd).map(([name, value]) => ({ name, value }));
-    const dataMotivos = Object.entries(motivosPerda).map(([name, value]) => ({ 
-      name, 
-      value,
-      percentage: ((value / (statusInd['PERDIDO'] || 1)) * 100).toFixed(1)
-    }));
+    const ranking = Object.values(performance)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6);
 
-    // --- 3. PROCESSAMENTO COTAÇÕES (Com filtro dinâmico) ---
-    const baseCotacoes = cotacoesRaw || [];
-    const filteredCotacoes = filtroFeedback === 'TODOS' 
-      ? baseCotacoes 
-      : baseCotacoes.filter(c => String(c.status_feedback).toUpperCase() === filtroFeedback);
-
-    const seguradoras: Record<string, { nome: string, valor: number, qtd: number }> = {};
-    filteredCotacoes.forEach(c => {
-      const seg = c.seguradora || 'NÃO INFORMADA';
-      if (!seguradoras[seg]) seguradoras[seg] = { nome: seg, valor: 0, qtd: 0 };
-      seguradoras[seg].valor += Number(c.valor_premio || 0);
-      seguradoras[seg].qtd++;
+    // 3. Distribuição por Setor
+    const setoresMap: Record<string, number> = {};
+    parceirosRaw.forEach(p => {
+      const s = p.setor_parceiro || 'Não Informado';
+      setoresMap[s] = (setoresMap[s] || 0) + 1;
     });
 
-    return { 
-      dataTipos, 
-      setores, 
-      dataStatus, 
-      dataMotivos, 
-      dataSeguradoras: Object.values(seguradoras).sort((a, b) => b.valor - a.valor) 
-    };
-  }, [parceirosRaw, indicacoesRaw, cotacoesRaw, filtroFeedback]);
+    const dataSetores = Object.entries(setoresMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    return { dataTipos, ranking, dataSetores, totalParceiros: parceirosRaw.length };
+  }, [parceirosRaw, indicacoesRaw, cotacoesRaw]);
 
   return (
-    <section className="space-y-4">
-      <h2 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-        <Users size={14}/> 2. Inteligência de Parceiros
-      </h2>
+    <section className="space-y-6 animate-in fade-in duration-700 pb-10">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-100">
+            <Handshake size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Ecosystem de Parceiros</h2>
+            <p className="text-xs font-bold text-slate-400">Gestão de indicações e origens de negócio</p>
+          </div>
+        </div>
+        <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm">
+          <span className="text-[10px] font-black text-slate-400 uppercase block leading-none">Total na Base</span>
+          <span className="text-xl font-black text-indigo-600">{stats.totalParceiros}</span>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
-        {/* CONTAINER 1: BASE DE PARCEIROS */}
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600"><Users size={20} /></div>
-            <h3 className="font-black uppercase italic text-slate-800 text-sm">Parceiros Ativos</h3>
+        {/* CARD 1: PERFIL DA REDE */}
+        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center gap-2 mb-6">
+            <PieIcon size={18} className="text-indigo-500" />
+            <h3 className="text-sm font-black uppercase text-slate-600 tracking-wider">Perfil da Rede</h3>
           </div>
-
-          <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-            {Object.entries(stats.setores).map(([setor, qtd]) => (
-              <div key={setor} className="bg-slate-50 p-3 rounded-2xl border border-slate-100/50">
-                <span className="block text-xl font-black text-indigo-600 leading-none">{qtd}</span>
-                <span className="text-[9px] font-black text-slate-500 uppercase truncate mt-1 block">{setor}</span>
-              </div>
-            ))}
-          </div>
-
+          
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={stats.dataTipos} innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value">
-                  {stats.dataTipos.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
+                <Pie data={stats.dataTipos} innerRadius={60} outerRadius={80} paddingAngle={8} dataKey="value">
+                  {stats.dataTipos.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} stroke="none" />)}
                 </Pie>
                 <Tooltip />
-                <Legend content={({ payload }: any) => (
-                  <ul className="text-[9px] font-black uppercase flex flex-wrap justify-center gap-x-4 gap-y-1 mt-2">
-                    {payload.map((entry: any, index: number) => (
-                      <li key={index} style={{ color: entry.color }}>{entry.value}</li>
-                    ))}
-                  </ul>
-                )} />
               </PieChart>
             </ResponsiveContainer>
           </div>
-        </div>
 
-        {/* CONTAINER 2: FUNIL DE INDICAÇÕES */}
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600"><TrendingUp size={20} /></div>
-            <h3 className="font-black uppercase italic text-slate-800 text-sm">Funil de Indicações</h3>
-          </div>
-
-          <div className="h-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart layout="vertical" data={stats.dataStatus} margin={{ left: -10, right: 20 }}>
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 9, fontWeight: 900 }} />
-                <Tooltip cursor={{fill: '#f8fafc'}} />
-                <Bar dataKey="value" fill="#10b981" radius={[0, 8, 8, 0]} barSize={16}>
-                  <LabelList dataKey="value" position="right" style={{ fontSize: 10, fontWeight: 900, fill: '#64748b' }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="h-48 pt-4 border-t border-slate-50">
-            <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Análise de Perdas</p>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={stats.dataMotivos} innerRadius={40} outerRadius={60} dataKey="value">
-                  {stats.dataMotivos.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend iconSize={6} wrapperStyle={{ fontSize: '8px', fontWeight: 900, textTransform: 'uppercase' }} />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            {stats.dataTipos.map((item, idx) => (
+              <div key={idx} className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100/50">
+                <p className="text-[10px] font-black text-slate-400 uppercase">{item.name}</p>
+                <p className="text-lg font-black text-slate-800">{item.value}</p>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* CONTAINER 3: PERFORMANCE SEGURADORAS */}
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-50 rounded-lg text-amber-600"><ShieldCheck size={20} /></div>
-              <h3 className="font-black uppercase italic text-slate-800 text-sm">Performance</h3>
+        {/* CARD 2: RANKING DE PERFORMANCE */}
+        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm xl:col-span-2">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2">
+              <Crown size={18} className="text-amber-500" />
+              <h3 className="text-sm font-black uppercase text-slate-600 tracking-wider">Top Parceiros (Volume Financeiro)</h3>
             </div>
-            
-            <select 
-              className="text-[9px] font-black uppercase border-none bg-slate-100 rounded-xl p-2 outline-none cursor-pointer hover:bg-slate-200 transition-colors"
-              value={filtroFeedback}
-              onChange={(e) => setFiltroFeedback(e.target.value)}
-            >
-              <option value="TODOS">TODOS</option>
-              <option value="PENDENTE">PENDENTES</option>
-              <option value="APROVADO">APROVADOS</option>
-              <option value="RECUSADO">RECUSADOS</option>
-            </select>
           </div>
 
-          <div className="space-y-3 overflow-y-auto flex-1 pr-2 custom-scrollbar">
-            {stats.dataSeguradoras.length > 0 ? stats.dataSeguradoras.map((seg, idx) => (
-              <div key={idx} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-[24px] border border-slate-100 hover:border-amber-200 transition-colors">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">{seg.nome}</span>
-                  <span className="text-xs font-bold text-slate-600">{seg.qtd} Cotações</span>
-                </div>
-                <div className="text-right">
-                  <span className="block text-sm font-black text-slate-800">
-                    {seg.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
-                  </span>
-                  <div className="flex items-center justify-end gap-1 text-[9px] font-black text-emerald-500 uppercase">
-                    <ArrowUpRight size={10} /> Em Prêmios
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {stats.ranking.length > 0 ? stats.ranking.map((p, idx) => (
+              <div key={idx} className="relative group p-4 rounded-3xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition-all">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center shadow-md shadow-indigo-100">
+                      {idx + 1}º
+                    </span>
+                    <span className="text-[11px] font-black text-slate-700 uppercase italic truncate max-w-[140px]">{p.nome}</span>
                   </div>
+                  <div className="text-right">
+                    <span className="text-[9px] font-black text-slate-400 uppercase">Qtd</span>
+                    <p className="text-xs font-black text-slate-800 leading-none">{p.qtd}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                   <div className="flex justify-between items-end">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase">Vendas: <span className="text-emerald-600 font-black">
+                        {p.vendido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                      </span></span>
+                   </div>
+                   <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-indigo-500 transition-all duration-1000" 
+                        style={{ width: `${(p.vendido / (p.total || 1)) * 100}%` }}
+                      />
+                   </div>
+                   <p className="text-[9px] font-black text-slate-400 text-right uppercase">Total: {p.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
                 </div>
               </div>
             )) : (
-              <div className="flex flex-col items-center justify-center h-full opacity-30 py-10">
-                <ShieldCheck size={40} className="text-slate-200 mb-2" />
-                <p className="text-[10px] uppercase font-black">Nenhum dado</p>
-              </div>
+              <div className="col-span-2 h-48 flex items-center justify-center text-slate-300 uppercase text-[10px] font-black tracking-widest">Aguardando dados...</div>
             )}
+          </div>
+        </div>
+
+        {/* CARD 3: SETORES QUE MAIS INDICAM */}
+        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm xl:col-span-3">
+          <div className="flex items-center gap-2 mb-8">
+            <BarChart3 size={18} className="text-emerald-500" />
+            <h3 className="text-sm font-black uppercase text-slate-600 tracking-wider">Origem por Setor de Atuação</h3>
+          </div>
+          
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.dataSetores} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 900, fill: '#64748b' }} />
+                <YAxis hide />
+                <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                <Bar dataKey="value" fill="#6366f1" radius={[10, 10, 0, 0]} barSize={40}>
+                   {stats.dataSetores.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>

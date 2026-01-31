@@ -14,6 +14,7 @@ import VisaoProdutos from './components/visaoProdutos';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
+  const [abaAtiva, setAbaAtiva] = useState('clientes');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [corretores, setCorretores] = useState<any[]>([]);
   
@@ -25,6 +26,17 @@ export default function Dashboard() {
   const [parceirosRaw, setParceirosRaw] = useState<any[]>([]);
   const [indicacoesRaw, setIndicacoesRaw] = useState<any[]>([]);
   const [cotacoesRaw, setCotacoesRaw] = useState<any[]>([]);
+
+  const listaAbas = [
+  { id: 'clientes', label: 'Clientes' },
+  { id: 'propostas', label: 'Propostas' },
+  { id: 'produtos', label: 'Produtos' },
+  { id: 'seguradoras', label: 'Seguradoras' },
+  { id: 'produtividade', label: 'Produtividade' },
+  { id: 'parceiros', label: 'Parceiros' },
+  { id: 'comissoes', label: 'Comissões' },
+  { id: 'sinistros', label: 'Sinistros' },
+];
 
   const getPrimeiroDiaMes = () => {
     const d = new Date();
@@ -211,16 +223,49 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* RENDERIZAÇÃO DAS VISÕES */}
-      <div className="space-y-16">
-        <VisaoCliente dataRaw={clientesRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
-        <VisaoParceiros parceirosRaw={parceirosRaw} indicacoesRaw={indicacoesRaw} cotacoesRaw={cotacoesRaw} />
-        <VisaoProdutividade interacoesRaw={interacoesRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
-        <VisaoPropostas propostasRaw={propostasRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
-        <VisaoProdutos propostasRaw={propostasRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
-        <VisaoSeguradoras propostasRaw={propostasRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
-        <VisaoComissoes comissoesRaw={comissoesRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
-        <VisaoSinistros sinistrosRaw={sinistrosRaw} propostasRaw={propostasRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
+      {/* NAVEGAÇÃO POR ABAS */}
+<div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2 overflow-x-auto scrollbar-hide">
+  {listaAbas.map((aba) => (
+    <button
+      key={aba.id}
+      onClick={() => setAbaAtiva(aba.id)}
+      className={`px-6 py-3 rounded-t-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-200 ${
+        abaAtiva === aba.id
+          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 -translate-y-1'
+          : 'bg-white text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+      }`}
+    >
+      {aba.label}
+    </button>
+  ))}
+</div>
+
+      {/* CONTEÚDO DINÂMICO DA ABA */}
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {abaAtiva === 'clientes' && (
+          <VisaoCliente dataRaw={clientesRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
+        )}
+        {abaAtiva === 'propostas' && (
+          <VisaoPropostas propostasRaw={propostasRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
+        )}
+        {abaAtiva === 'produtos' && (
+          <VisaoProdutos propostasRaw={propostasRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
+        )}
+        {abaAtiva === 'seguradoras' && (
+          <VisaoSeguradoras propostasRaw={propostasRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
+        )}
+        {abaAtiva === 'produtividade' && (
+          <VisaoProdutividade interacoesRaw={interacoesRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
+        )}
+        {abaAtiva === 'parceiros' && (
+          <VisaoParceiros parceirosRaw={parceirosRaw} indicacoesRaw={indicacoesRaw} cotacoesRaw={cotacoesRaw} />
+        )}
+        {abaAtiva === 'comissoes' && (
+          <VisaoComissoes comissoesRaw={comissoesRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
+        )}
+        {abaAtiva === 'sinistros' && (
+          <VisaoSinistros sinistrosRaw={sinistrosRaw} propostasRaw={propostasRaw} dataInicio={dataInicio} dataFim={dataFim} corretorId={corretorId} />
+        )}
       </div>
     </div>
   );

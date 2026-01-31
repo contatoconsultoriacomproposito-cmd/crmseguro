@@ -1,225 +1,317 @@
-import { useState, useMemo } from 'react';
-import { Users, User, Building2, PieChart as PieIcon, BarChart as BarIcon } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis } from 'recharts';
+import { useMemo } from 'react';
+import { 
+  Globe, Clock,
+  Building2, PieChart as PieIcon, BarChart as BarIcon,
+  Navigation, Hash
+} from 'lucide-react';
+import { 
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
+  BarChart, Bar, XAxis, CartesianGrid, Legend
+} from 'recharts';
 
 interface ClienteData {
   id: string;
-  corretor_id: string | null; // Corrigido para aceitar null (padrão SQL)
+  corretor_id: string | null;
   tipo_cliente: string;
   origem_cliente?: string;
   status_kanban?: string;
   motivo_perda?: string;
   fase_kanban?: string;
   created_at: string;
+  sexo?: string;
+  data_nascimento?: string;
+  data_retorno?: string;
+  porte?: string;
+  capital_social?: number;
+  opcao_pelo_mei?: boolean;
+  opcao_pelo_simples?: boolean;
+  natureza_juridica?: string;
+  descricao_identificador_matriz_filial?: string;
+  uf?: string;
+  uf_pf?: string;
+  municipio?: string;
+  municipio_pf?: string;
+  bairro?: string;
+  bairro_pf?: string;
 }
 
 interface VisaoClienteProps {
   dataRaw: ClienteData[];
   dataInicio: string;
   dataFim: string;
-  corretorId: string; 
+  corretorId: string;
 }
 
+const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
+
 export default function VisaoCliente({ dataRaw, dataInicio, dataFim, corretorId }: VisaoClienteProps) {
-  const [showPerdaModal, setShowPerdaModal] = useState(false);
+  
+  const { stats, filteredByPeriodCount } = useMemo(() => {
+    const dataPorCorretor = (dataRaw || []).filter(c => 
+      corretorId === 'todos' || c.corretor_id === corretorId
+    );
 
-  const stats = useMemo(() => {
-    // 1. FILTRAGEM SEGURA
-    const filtered = (dataRaw || []).filter(c => {
-      // Filtro de Data
+    const filteredByPeriod = dataPorCorretor.filter((c) => {
       const dataCriacao = (c.created_at || '').split(/[ T]/)[0];
-      const dentroDoPeriodo = dataCriacao >= dataInicio && dataCriacao <= dataFim;
-
-      // Filtro de Corretor: 
-      // Se 'todos', permitimos tudo que veio (pois o Dashboard.tsx já filtrou por idsFiltro no banco)
-      // Se for um ID específico, comparamos.
-      const filtroCorretor = corretorId === 'todos' || c.corretor_id === corretorId;
-
-      return dentroDoPeriodo && filtroCorretor;
+      return dataCriacao >= dataInicio && dataCriacao <= dataFim;
     });
 
-    const counts = { pf: 0, pj: 0, total: filtered.length };
-    const origens: Record<string, number> = {};
-    const status: Record<string, number> = {};
-    const fases: Record<string, number> = {};
-    const motivosPerda: Record<string, number> = {};
+    const acc = {
+      tipo: { pf: 0, pj: 0 },
+      origem: {} as Record<string, number>,
+      porte: {} as Record<string, number>,
+      capital: { total: 0, count: 0 },
+      mei: { sim: 0, nao: 0 },
+      simples: { sim: 0, nao: 0 },
+      natureza: {} as Record<string, number>,
+      matriz: {} as Record<string, number>,
+      uf: {} as Record<string, number>,
+      municipio: {} as Record<string, number>,
+      bairro: {} as Record<string, number>,
+      idades: { '0-18': 0, '19-30': 0, '31-45': 0, '46-60': 0, '60+': 0 },
+      status: {} as Record<string, number>,
+      motivosPerda: {} as Record<string, number>,
+      fases: {} as Record<string, number>,
+      sexo: { M: 0, F: 0, Outro: 0 },
+      retorno: { 
+        atrasado: 0,
+        semana: 0,
+        quinzena: 0,
+        mes: 0,
+        trimestre: 0,
+        longoPrazo: 0
+      }
+    };
 
-    filtered.forEach(c => {
-      // Normalização exata baseada no enum do banco (tipo_cliente_enum)
-      const tipo = String(c.tipo_cliente || '').toUpperCase();
-      if (tipo === 'PJ') counts.pj++; else counts.pf++;
-      
-      const ori = c.origem_cliente || 'Não Informado';
-      origens[ori] = (origens[ori] || 0) + 1;
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
 
-      // Normalização baseada no check constraint do banco (novo, vendido, perdido)
-      const st = (c.status_kanban || 'novo').toLowerCase();
-      status[st] = (status[st] || 0) + 1;
-      
-      if (st === 'perdido' && c.motivo_perda) {
-        motivosPerda[c.motivo_perda] = (motivosPerda[c.motivo_perda] || 0) + 1;
+    dataPorCorretor.forEach(c => {
+      if (c.data_retorno) {
+        const dataRet = new Date(c.data_retorno);
+        dataRet.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((dataRet.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 0) acc.retorno.atrasado++;
+        else if (diffDays <= 7) acc.retorno.semana++;
+        else if (diffDays <= 15) acc.retorno.quinzena++;
+        else if (diffDays <= 30) acc.retorno.mes++;
+        else if (diffDays <= 90) acc.retorno.trimestre++;
+        else acc.retorno.longoPrazo++;
+      }
+    });
+
+    filteredByPeriod.forEach((c) => {
+      const t = String(c.tipo_cliente || '').toUpperCase();
+      t === 'PJ' ? acc.tipo.pj++ : acc.tipo.pf++;
+
+      const s = (c.sexo || 'Outro').toUpperCase()[0];
+      if (s === 'M') acc.sexo.M++;
+      else if (s === 'F') acc.sexo.F++;
+      else acc.sexo.Outro++;
+
+      acc.origem[c.origem_cliente || 'Não Informado'] = (acc.origem[c.origem_cliente || 'Não Informado'] || 0) + 1;
+      acc.fases[c.fase_kanban || 'Sem Fase'] = (acc.fases[c.fase_kanban || 'Sem Fase'] || 0) + 1;
+
+      if (t === 'PJ') {
+        if (c.opcao_pelo_mei) acc.mei.sim++;
+        if (c.opcao_pelo_simples) acc.simples.sim++;
+        if (c.capital_social) {
+          acc.capital.total += Number(c.capital_social);
+          acc.capital.count++;
+        }
+        const mKey = (c.descricao_identificador_matriz_filial || 'Matriz').toUpperCase();
+        acc.matriz[mKey] = (acc.matriz[mKey] || 0) + 1;
       }
 
-      const fase = c.fase_kanban || 'Sem Fase';
-      fases[fase] = (fases[fase] || 0) + 1;
+      const muni = t === 'PJ' ? c.municipio : c.municipio_pf;
+      const bair = t === 'PJ' ? c.bairro : c.bairro_pf;
+      if (muni) acc.municipio[muni.toUpperCase()] = (acc.municipio[muni.toUpperCase()] || 0) + 1;
+      if (bair) acc.bairro[bair.toUpperCase()] = (acc.bairro[bair.toUpperCase()] || 0) + 1;
+
+      if (c.data_nascimento) {
+        const idade = hoje.getFullYear() - new Date(c.data_nascimento).getFullYear();
+        if (idade <= 18) acc.idades['0-18']++;
+        else if (idade <= 30) acc.idades['19-30']++;
+        else if (idade <= 45) acc.idades['31-45']++;
+        else if (idade <= 60) acc.idades['46-60']++;
+        else acc.idades['60+']++;
+      }
     });
 
-    return { 
-      counts, 
-      origens, 
-      status, 
-      fases, 
-      motivosPerda, 
-      total: filtered.length,
-      chartOrigens: Object.entries(origens).map(([name, value]) => ({ name, value })),
-      chartStatus: Object.entries(status).map(([name, value]) => ({ name, value })),
-      chartFases: Object.entries(fases).map(([name, value]) => ({ name, value }))
-    };
+    return { stats: acc, filteredByPeriodCount: filteredByPeriod.length };
   }, [dataRaw, dataInicio, dataFim, corretorId]);
 
-  const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#8b5cf6', '#64748b'];
+  const chartData = {
+    sexo: Object.entries(stats.sexo).map(([name, value]) => ({ name, value })),
+    fases: Object.entries(stats.fases).map(([name, value]) => ({ name, value })),
+    municipios: Object.entries(stats.municipio).map(([name, value]) => ({ name, value })).sort((a,b)=>b.value-a.value).slice(0, 5),
+    idades: Object.entries(stats.idades).map(([name, value]) => ({ name, value }))
+  };
 
   return (
-    <section className="space-y-4">
-      <h2 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-        <Users size={14}/> 1. Inteligência de Carteira 
-      </h2>
+    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+      
+      {/* 1. RETORNOS */}
+      <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[32px] shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Clock className="text-indigo-600" size={24} />
+            <h3 className="text-lg font-black text-indigo-900 uppercase tracking-tight">Cronograma de Retornos</h3>
+          </div>
+          {stats.retorno.atrasado > 0 && (
+            <span className="px-4 py-1 bg-rose-500 text-white text-[11px] font-black rounded-full animate-pulse">
+              {stats.retorno.atrasado} AGENDAMENTOS ATRASADOS
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="bg-rose-50 p-4 rounded-2xl border border-rose-200 shadow-sm text-center">
+            <p className="text-3xl font-black text-rose-600 leading-none">{stats.retorno.atrasado}</p>
+            <p className="text-[10px] font-black text-rose-400 uppercase mt-2 italic">Atrasados</p>
+          </div>
+          {[
+            { label: '0 a 7 dias', val: stats.retorno.semana },
+            { label: '8 a 15 dias', val: stats.retorno.quinzena },
+            { label: '16 a 30 dias', val: stats.retorno.mes },
+            { label: '31 a 90 dias', val: stats.retorno.trimestre },
+            { label: '+ 90 dias', val: stats.retorno.longoPrazo }
+          ].map((item, idx) => (
+            <div key={idx} className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-sm text-center">
+              <p className="text-3xl font-black text-indigo-600 leading-none">{item.val}</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase mt-2 italic">{item.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        
-        {/* COLUNA 1: PERFIL */}
-        <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm flex flex-col justify-center">
-          <p className="text-[10px] font-black text-slate-400 uppercase mb-4 text-center italic">Perfil de Clientes</p>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
-              <div className="flex items-center gap-2 text-indigo-700 font-bold"><User size={16}/> PF</div>
-              <span className="text-xl font-black text-indigo-900">{stats.counts.pf}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-amber-50/50 rounded-2xl border border-amber-100/50">
-              <div className="flex items-center gap-2 text-amber-700 font-bold"><Building2 size={16}/> PJ</div>
-              <span className="text-xl font-black text-amber-900">{stats.counts.pj}</span>
-            </div>
+      {/* 2. CARDS DE PERFIL E TRIBUTAÇÃO */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-amber-50 border border-amber-100 p-6 rounded-[24px] flex items-center justify-between">
+           <div>
+              <p className="text-[12px] font-black text-amber-600 uppercase mb-2">Perfil Carteira</p>
+              <p className="text-lg font-black text-slate-700 leading-none">PF: {stats.tipo.pf}</p>
+              <p className="text-lg font-black text-slate-700 mt-1">PJ: {stats.tipo.pj}</p>
+           </div>
+           <PieChart width={80} height={80}>
+              <Pie data={[{v: stats.tipo.pf}, {v: stats.tipo.pj}]} innerRadius={20} outerRadius={35} dataKey="v">
+                <Cell fill="#6366f1" /><Cell fill="#f59e0b" />
+              </Pie>
+           </PieChart>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[24px]">
+          <p className="text-[12px] font-black text-emerald-600 uppercase mb-3">Tributação PJ</p>
+          <div className="flex gap-6">
+            <div><p className="text-2xl font-black text-emerald-900">{stats.simples.sim}</p><p className="text-[10px] font-black uppercase text-emerald-500">Simples</p></div>
+            <div className="border-l border-emerald-200 pl-6"><p className="text-2xl font-black text-emerald-900">{stats.mei.sim}</p><p className="text-[10px] font-black uppercase text-emerald-500">MEI</p></div>
           </div>
         </div>
-
-        {/* COLUNA 2: ORIGENS */}
-        <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-2 italic">
-            <PieIcon size={12}/> Origens
+        <div className="bg-slate-50 border border-slate-200 p-6 rounded-[24px]">
+          <p className="text-[12px] font-black text-slate-400 uppercase mb-2">Cap. Social Médio</p>
+          <p className="text-xl font-black text-slate-800">
+            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.capital.total / (stats.capital.count || 1))}
           </p>
-          <div className="h-48 w-full"> 
+          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase italic">Base: {stats.capital.count} PJs</p>
+        </div>
+      </div>
+
+      {/* 3. GRÁFICOS INTERMEDIÁRIOS */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><PieIcon size={18} className="text-indigo-500" /> Gênero e Idades</h3>
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={stats.chartOrigens} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
-                  {stats.chartOrigens.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                <Pie data={chartData.sexo} innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
+                  {chartData.sexo.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
-                <Legend verticalAlign="bottom" content={({ payload }: any) => (
-                  <ul className="text-[8px] font-black uppercase flex flex-wrap justify-center gap-2 mt-2">
-                    {payload.map((entry: any, index: number) => (
-                      <li key={index} style={{ color: entry.color }}>
-                        {entry.value}: {stats.chartOrigens[index]?.value}
-                      </li>
-                    ))}
-                  </ul>
-                )} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: '900', textTransform: 'uppercase' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
-        </div>
-
-        {/* COLUNA 3: STATUS KANBAN */}
-        <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm">
-          <div className="flex justify-between items-start mb-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2 italic">
-              <BarIcon size={12}/> Status
-            </p>
-            {stats.status['perdido'] > 0 && (
-              <button 
-                onClick={() => setShowPerdaModal(true)}
-                className="text-[8px] bg-rose-100 text-rose-700 font-black px-2 py-0.5 rounded-full hover:bg-rose-200 transition-colors"
-              >
-                MOTIVOS PERDA
-              </button>
-            )}
+          <div className="grid grid-cols-5 gap-1 mt-4">
+             {chartData.idades.map(id => (
+               <div key={id.name} className="text-center bg-slate-50 p-2 rounded-xl">
+                 <p className="text-xs font-black text-indigo-600">{id.value}</p>
+                 <p className="text-[9px] font-black text-slate-400 uppercase">{id.name}</p>
+               </div>
+             ))}
           </div>
-          <div className="h-48 w-full">
+        </div>
+        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><BarIcon size={18} className="text-emerald-500" /> Fase no Kanban</h3>
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.chartStatus} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#94a3b8', fontSize: 9, fontWeight: '900' }}
-                  tickFormatter={(val) => val.toUpperCase()}
-                />
-                <Tooltip cursor={{ fill: '#f1f5f9', radius: 8 }} />
-                <Bar dataKey="value" radius={[4, 4, 4, 4]} barSize={32}>
-                  {stats.chartStatus.map((entry, index) => (
-                    <Cell 
-                      key={`cell-bar-${index}`} 
-                      fill={
-                        entry.name === 'perdido' ? '#f43f5e' : 
-                        entry.name === 'vendido' ? '#10b981' : '#6366f1'
-                      } 
-                    />
-                  ))}
-                </Bar>
+              <BarChart data={chartData.fases}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" tick={{fontSize: 10, fontWeight: 900, fill: '#64748b'}} axisLine={false} tickLine={false} />
+                <Bar dataKey="value" fill="#10b981" radius={[8, 8, 0, 0]} barSize={35} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
-
-        {/* COLUNA 4: FASES */}
-        <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-2 italic">
-            <Building2 size={12}/> Fases
-          </p>
-          <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={stats.chartFases} outerRadius={60} dataKey="value">
-                  {stats.chartFases.map((_, index) => <Cell key={`cell-fase-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-                <Legend verticalAlign="bottom" content={({ payload }: any) => (
-                  <ul className="text-[8px] font-black uppercase flex flex-wrap justify-center gap-2 mt-2">
-                    {payload.map((entry: any, index: number) => (
-                      <li key={index} style={{ color: entry.color }}>{entry.value}</li>
-                    ))}
-                  </ul>
-                )} />
-              </PieChart>
-            </ResponsiveContainer>
+        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><Globe size={18} className="text-amber-500" /> Top Origens</h3>
+          <div className="space-y-4">
+            {Object.entries(stats.origem).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([label, val]) => (
+              <div key={label}>
+                <div className="flex justify-between mb-1"><span className="text-xs font-black text-slate-600 uppercase">{label}</span><span className="text-xs font-black text-indigo-600">{val}</span></div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div className="bg-indigo-500 h-full" style={{ width: `${(val / (filteredByPeriodCount || 1)) * 100}%` }} /></div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* MODAL REVISADO */}
-      {showPerdaModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[40px] p-10 w-full max-w-md shadow-2xl border border-slate-100">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl"><BarIcon size={24}/></div>
-              <h3 className="text-xl font-black text-slate-800 uppercase italic">Por que perdemos?</h3>
-            </div>
+      {/* 4. GEOLOCALIZAÇÃO E NOVA ESTRUTURA DE UNIDADES */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-8 flex items-center gap-2"><Navigation size={18} className="text-rose-500" /> Geolocalização</h3>
+          <div className="grid grid-cols-2 gap-8">
             <div className="space-y-3">
-              {Object.entries(stats.motivosPerda).map(([motivo, qtd]) => (
-                <div key={motivo} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <span className="font-black text-slate-500 text-[10px] uppercase tracking-tighter">{motivo}</span>
-                  <span className="text-lg font-black text-rose-600">{qtd}</span>
-                </div>
+              <p className="text-[11px] font-black text-rose-500 uppercase tracking-widest mb-2 border-b border-rose-100 pb-1">Municípios</p>
+              {chartData.municipios.map((m) => (
+                <div key={m.name} className="flex justify-between p-3 bg-rose-50/30 border border-rose-100 rounded-xl"><span className="text-xs font-black text-slate-700 uppercase truncate">{m.name}</span><span className="text-xs font-black text-rose-600">{m.value}</span></div>
               ))}
             </div>
-            <button 
-              onClick={() => setShowPerdaModal(false)}
-              className="w-full mt-8 bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs hover:bg-slate-800 transition-all shadow-lg"
-            >
-              Fechar Análise
-            </button>
+            <div className="space-y-3">
+              <p className="text-[11px] font-black text-indigo-500 uppercase tracking-widest mb-2 border-b border-indigo-100 pb-1">Bairros</p>
+              {Object.entries(stats.bairro).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([name, val]) => (
+                <div key={name} className="flex justify-between p-3 bg-indigo-50/30 border border-indigo-100 rounded-xl"><span className="text-xs font-black text-slate-700 uppercase truncate">{name}</span><span className="text-xs font-black text-indigo-600">{val}</span></div>
+              ))}
+            </div>
           </div>
         </div>
-      )}
-    </section>
+
+        {/* AJUSTE SOLICITADO: Estrutura de Unidades Clean */}
+        <div className="bg-slate-50 border border-slate-200 p-8 rounded-[32px] shadow-inner flex flex-col justify-center">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+              <Building2 size={20} className="text-slate-600" />
+            </div>
+            <h3 className="text-sm font-black uppercase text-slate-500 tracking-tight">Estrutura de Unidades</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {Object.entries(stats.matriz).length > 0 ? Object.entries(stats.matriz).map(([name, val]) => (
+              <div key={name} className="bg-white p-5 rounded-[24px] border border-slate-200 shadow-sm flex items-center gap-4">
+                <div className="h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center border border-indigo-100">
+                  <Hash size={16} className="text-indigo-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-black text-slate-800 leading-none">{val}</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{name}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="col-span-2 py-10 text-center border-2 border-dashed border-slate-200 rounded-[24px]">
+                <p className="text-slate-400 font-bold text-sm">Nenhum dado de unidade cadastrado</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
