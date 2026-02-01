@@ -26,6 +26,7 @@ export default function PropostasLista() {
   // Estados de Filtro
   const [selectedCorretores, setSelectedCorretores] = useState<string[]>([]);
   const [selectedParceiros, setSelectedParceiros] = useState<string[]>([]);
+  const [selectedPeriodicidade, setSelectedPeriodicidade] = useState<string[]>([]);
   
   // Intervalos de Data
   const [vencimentoInicio, setVencimentoInicio] = useState("");
@@ -50,6 +51,9 @@ export default function PropostasLista() {
       "Proposta": p.numero_proposta,
       "Cliente": p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
       "Corretor": p.usuarios_perfis?.nome,
+      "Periodicidade": Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+        opt.tab_proposta_itens?.map((i: any) => i.periodicidade)
+      ))).join(' / '), 
       "Status": p.status,
       "Valor Total": p.valor_total_proposta, // Passando como número para o Excel permitir cálculos
       "Vencimento": formatarDataBR(p.data_validade),
@@ -137,7 +141,10 @@ export default function PropostasLista() {
         .select(`
           *,
           tab_clientes (id, nome, razao_social, tipo_cliente, cpf, cnpj, telefone_whats),
-          usuarios_perfis!tab_propostas_corretor_id_fkey(nome)
+          usuarios_perfis!tab_propostas_corretor_id_fkey(nome),
+          tab_proposta_opcoes (
+            tab_proposta_itens (periodicidade)
+          )
         `)
         .eq("corretora_id", userProfile.corretora_id)
         .order("created_at", { ascending: false });
@@ -183,9 +190,13 @@ export default function PropostasLista() {
       const matchVenda = (!vendaInicio || (p.data_venda && p.data_venda >= vendaInicio)) &&
                          (!vendaFim || (p.data_venda && p.data_venda <= vendaFim));
 
-      return matchTerm && matchCorretor && matchParceiro && matchVencimento && matchVenda;
+      const matchPeriodicidade = selectedPeriodicidade.length === 0 || p.tab_proposta_opcoes?.some((opt: any) => 
+        opt.tab_proposta_itens?.some((item: any) => selectedPeriodicidade.includes(item.periodicidade))
+      );                   
+
+      return matchTerm && matchCorretor && matchParceiro && matchVencimento && matchVenda && matchPeriodicidade;
     });
-  }, [filter, propostas, selectedCorretores, selectedParceiros, vencimentoInicio, vencimentoFim, vendaInicio, vendaFim]);
+  }, [filter, propostas, selectedCorretores, selectedParceiros, vencimentoInicio, vencimentoFim, vendaInicio, vendaFim, selectedPeriodicidade]);
 
   const handleRegerarPDF = async (proposta: any) => {
     try {
@@ -337,8 +348,9 @@ export default function PropostasLista() {
             </div>
           </div>
           
+          {/* Campos de filtros */}
           <div className="flex flex-col gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
               
               {/* Filtro Corretor */}
               <div>
@@ -413,24 +425,62 @@ export default function PropostasLista() {
                   />
                 </div>
               </div>
+
+              {/* Filtro periodicidade */}
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                  <Calendar size={12}/> Periodicidade
+                </label>
+                <select 
+                  multiple
+                  className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                  value={selectedPeriodicidade}
+                  onChange={(e) => setSelectedPeriodicidade(Array.from(e.target.selectedOptions, opt => opt.value))}
+                >
+                  <option value="ANUAL">ANUAL</option>
+                  <option value="MENSAL">MENSAL</option>
+                  <option value="ÚNICO">ÚNICO</option>
+                  <option value="PERSONALIZADO">PERSONALIZADO</option>
+                </select>
+              </div>
+
             </div>
 
             {/* Ações de Filtro */}
-            <div className="flex justify-end pt-2 border-t border-slate-50">
-              {(selectedCorretores.length > 0 || selectedParceiros.length > 0 || vencimentoInicio || vencimentoFim || vendaInicio || vendaFim) && (
+            <div className="flex justify-end pt-4 mt-2 border-t border-slate-100">
+              {(
+                selectedCorretores.length > (userProfile?.tipo_usuario === 'CORRETOR' ? 1 : 0) || 
+                selectedParceiros.length > 0 || 
+                selectedPeriodicidade.length > 0 ||
+                vencimentoInicio !== "" || 
+                vencimentoFim !== "" || // Adicionado para garantir que o fim também ative o botão
+                vendaInicio !== "" || 
+                vendaFim !== "" // Adicionado para garantir que o fim também ative o botão
+              ) ? (
                 <button 
                   onClick={() => {
-                      if(userProfile?.tipo_usuario !== 'CORRETOR') setSelectedCorretores([]);
+                      // 2. Lógica de limpeza precisa e completa
+                      if(userProfile?.tipo_usuario !== 'CORRETOR') {
+                        setSelectedCorretores([]);
+                      } else {
+                        setSelectedCorretores([userProfile?.id]);
+                      }
                       setSelectedParceiros([]);
                       setVencimentoInicio("");
                       setVencimentoFim("");
                       setVendaInicio("");
                       setVendaFim("");
+                      setSelectedPeriodicidade([]); // Limpa o estado correto: selectedPeriodicidade
                   }}
-                  className="text-[10px] font-black text-red-500 uppercase hover:bg-red-50 px-3 py-1 rounded-lg transition-colors"
+                  className="flex items-center gap-2 text-[10px] font-black text-red-600 uppercase bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl transition-all border border-red-100 shadow-sm"
                 >
-                  × Limpar Todos os Filtros
+                  <XCircle size={14} /> × Limpar Filtros Ativos
                 </button>
+              ) : (
+                <span className="text-[10px] font-bold text-slate-300 uppercase italic">
+                  Nenhum filtro aplicado
+                </span>
               )}
             </div>
           </div>
@@ -465,12 +515,20 @@ export default function PropostasLista() {
                     </div>
                   </td>
                   <td className="p-5 border-b border-slate-50">
-                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border shadow-sm
-                      ${p.status === 'Vendido' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                        p.status === 'Perdido' ? 'bg-red-50 text-red-600 border-red-100' : 
-                        'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                      {p.status}
+                    <div className="flex flex-col gap-1">
+                      <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border shadow-sm w-fit
+                        ${p.status === 'Vendido' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                          p.status === 'Perdido' ? 'bg-red-50 text-red-600 border-red-100' : 
+                          'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                        {p.status}
                     </span>
+                    {/* EXIBIÇÃO DA PERIODICIDADE */}
+                      <span className="text-[10px] font-bold text-slate-500 italic ml-1">
+                        {Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+                          opt.tab_proposta_itens?.map((i: any) => i.periodicidade)
+                        ))).join(' / ')}
+                      </span>
+                    </div>
                   </td>
                   <td className="p-5 border-b border-slate-50">
                     <div className="text-sm font-black text-slate-700">

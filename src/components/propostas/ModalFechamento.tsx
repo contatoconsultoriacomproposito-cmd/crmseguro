@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import { X, CheckCircle, XCircle, Loader2, Calendar, Hash, MousePointer2 } from "lucide-react";
+import { X, CheckCircle, XCircle, Loader2, Calendar, Hash } from "lucide-react";
 import { sincronizarStatusCliente } from "../../pages/propostas/sincronizarStatusCliente";
 
 interface ModalFechamentoProps {
@@ -16,11 +16,15 @@ const isValidDate = (dateString: string) => {
   return d instanceof Date && !isNaN(d.getTime());
 };
 
+// Nova tipagem para refletir a realidade do negócio
+type Periodicidade = 'ANUAL' | 'MENSAL' | 'PERSONALIZADO' | 'ÚNICO';
+
 export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: type }: ModalFechamentoProps) {
   const [loading, setLoading] = useState(false);
   const [propostaSelecionada, setPropostaSelecionada] = useState<any>(null);
   const [itensProposta, setItensProposta] = useState<any[]>([]);
-  
+  const [user, setUser] = useState<any>(null);
+
   const [form, setForm] = useState({ 
     motivoPerda: "", 
     observacoes: "",
@@ -32,38 +36,41 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
       apolice: string, 
       inicioVigencia: string, 
       fimVigencia: string,
-      periodicidade: 'ANUAL' | 'MENSAL' | 'PERSONALIZADO'
+      periodicidade: Periodicidade
     } 
   }>({});
-  const [user, setUser] = useState<any>(null);
 
   const listaPropostas = Array.isArray(proposta) ? proposta : proposta ? [proposta] : [];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === ' ') {
-      e.stopPropagation();
-    }
+    if (e.key === ' ') e.stopPropagation();
   };
 
-  // Função para calcular vigência baseada no botão clicado
-  const calcularVigencia = (idItem: string, tipo: 'ANUAL' | 'MENSAL' | 'PERSONALIZADO') => {
-    if (!form.dataVenda) {
-      alert("Por favor, informe a Data da Venda primeiro.");
-      return;
-    }
+  // Lógica Centralizada de Cálculo de Datas
+  const calcularDatasVigencia = (idItem: string, tipo: Periodicidade, dataVendaBase: string) => {
+    if (!isValidDate(dataVendaBase)) return;
 
-    const dataInicio = form.dataVenda;
+    let dataInicio = dataVendaBase;
     let dataFim = "";
 
-    if (tipo === 'ANUAL') {
-      const data = new Date(dataInicio);
-      data.setFullYear(data.getFullYear() + 1);
-      dataFim = data.toISOString().split('T')[0];
-    } else if (tipo === 'MENSAL') {
-      dataFim = ""; // Fica vazio e desabilitado
-    } else {
-      // PERSONALIZADO: Mantém início e deixa fim livre para o usuário
-      dataFim = dadosItens[idItem]?.fimVigencia || "";
+    const d = new Date(dataVendaBase);
+
+    switch (tipo) {
+      case 'ANUAL':
+        d.setFullYear(d.getFullYear() + 1);
+        dataFim = d.toISOString().split('T')[0];
+        break;
+      case 'MENSAL':
+        d.setDate(d.getDate() + 30); // Mercado de seguros: Renovação automática/30 dias
+        dataFim = d.toISOString().split('T')[0];
+        break;
+      case 'ÚNICO':
+        dataFim = ""; // Sem data de fim (vitalício/único)
+        break;
+      case 'PERSONALIZADO':
+        // Mantém o que já existe ou deixa vazio para o usuário preencher
+        dataFim = dadosItens[idItem]?.fimVigencia || "";
+        break;
     }
 
     setDadosItens(prev => ({
@@ -77,6 +84,42 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
     }));
   };
 
+  // Melhoria: Sincroniza todos os itens quando a Data da Venda principal muda
+  const handleDataVendaChange = (novaData: string) => {
+    setForm(prev => ({ ...prev, dataVenda: novaData }));
+    
+    if (type === 'VENDIDO') {
+      setDadosItens(prev => {
+        const novoEstado = { ...prev };
+        itensProposta.forEach(item => {
+          const configAtual = prev[item.id];
+          if (configAtual && configAtual.periodicidade !== 'PERSONALIZADO') {
+            // Recalcula datas para todos que não são manuais
+            const d = new Date(novaData);
+            let fim = "";
+            
+            if (configAtual.periodicidade === 'ANUAL') {
+              d.setFullYear(d.getFullYear() + 1);
+              fim = d.toISOString().split('T')[0];
+            } else if (configAtual.periodicidade === 'MENSAL') {
+              d.setDate(d.getDate() + 30);
+              fim = d.toISOString().split('T')[0];
+            } else if (configAtual.periodicidade === 'ÚNICO') {
+              fim = "";
+            }
+
+            novoEstado[item.id] = {
+              ...configAtual,
+              inicioVigencia: novaData,
+              fimVigencia: fim
+            };
+          }
+        });
+        return novoEstado;
+      });
+    }
+  };
+
   useEffect(() => {
     if (!user) {
       supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -87,101 +130,68 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
     if (isOpen && listaPropostas.length > 0) {
       setPropostaSelecionada(listaPropostas[0]);
     }
-  }, [isOpen, proposta, listaPropostas]);
+  }, [isOpen]);
 
   useEffect(() => {
-  async function carregarItens() {
-    if (!propostaSelecionada?.id || type !== 'VENDIDO') {
-      setItensProposta([]);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('tab_proposta_opcoes')
-      .select(`
-        tab_proposta_itens (
-          id,
-          numero_apolice,
-          data_inicio_vigencia,
-          data_fim_vigencia,
-          periodicidade,
-          base_produtos ( nome )
-        )
-      `)
-      .eq('proposta_id', propostaSelecionada.id);
-
-    if (!error && data) {
-      const todosItens = data.flatMap(opt => opt.tab_proposta_itens || []);
-      setItensProposta(todosItens);
-      
-      const inicial: any = {};
-      
-      // Pegamos a data da venda atual do formulário como âncora
-      const dataBase = form.dataVenda; 
-      
-      // Cálculo padrão para +1 ano (Anual)
-      let dataFimFormatada = "";
-      if (isValidDate(dataBase)) {
-        const dataFimPadrao = new Date(dataBase);
-        dataFimPadrao.setFullYear(dataFimPadrao.getFullYear() + 1);
-        dataFimFormatada = dataFimPadrao.toISOString().split('T')[0];
+    async function carregarItens() {
+      if (!propostaSelecionada?.id || type !== 'VENDIDO') {
+        setItensProposta([]);
+        return;
       }
 
-      todosItens.forEach(item => {
-        // Se o item já tem data no banco, usamos ela. 
-        // Caso contrário, forçamos a data da venda para evitar o "bug" visual.
-        const temDataNoBanco = item.data_inicio_vigencia && item.data_inicio_vigencia !== "";
+      const { data, error } = await supabase
+        .from('tab_proposta_opcoes')
+        .select(`
+          tab_proposta_itens (
+            id,
+            numero_apolice,
+            data_inicio_vigencia,
+            data_fim_vigencia,
+            periodicidade,
+            base_produtos ( nome )
+          )
+        `)
+        .eq('proposta_id', propostaSelecionada.id);
 
-        inicial[item.id] = { 
-          apolice: item.numero_apolice || "", 
-          periodicidade: item.periodicidade || 'ANUAL',
-          inicioVigencia: temDataNoBanco ? item.data_inicio_vigencia : dataBase,
-          fimVigencia: temDataNoBanco ? item.data_fim_vigencia : dataFimFormatada
-        };
-      });
-      
-      setDadosItens(inicial);
+      if (!error && data) {
+        const todosItens = data.flatMap(opt => opt.tab_proposta_itens || []);
+        setItensProposta(todosItens);
+        
+        const inicial: any = {};
+        const dataBase = form.dataVenda; 
+
+        todosItens.forEach(item => {
+          const pDefault: Periodicidade = (item.periodicidade as Periodicidade) || 'ANUAL';
+          
+          // Se já tem no banco, respeita. Se não, calcula com base na data da venda atual.
+          if (item.data_inicio_vigencia) {
+            inicial[item.id] = { 
+              apolice: item.numero_apolice || "", 
+              periodicidade: pDefault,
+              inicioVigencia: item.data_inicio_vigencia,
+              fimVigencia: item.data_fim_vigencia || ""
+            };
+          } else {
+            // Lógica de cálculo inicial para itens novos
+            let fim = "";
+            const d = new Date(dataBase);
+            if (pDefault === 'ANUAL') { d.setFullYear(d.getFullYear() + 1); fim = d.toISOString().split('T')[0]; }
+            else if (pDefault === 'MENSAL') { d.setDate(d.getDate() + 30); fim = d.toISOString().split('T')[0]; }
+            else if (pDefault === 'ÚNICO') { fim = ""; }
+
+            inicial[item.id] = { 
+              apolice: "", 
+              periodicidade: pDefault,
+              inicioVigencia: dataBase,
+              fimVigencia: fim
+            };
+          }
+        });
+        setDadosItens(inicial);
+      }
     }
-  }
-  carregarItens();
-}, [propostaSelecionada, type]); // Mantemos sem a dependência do form.dataVenda aqui para evitar loops
-
-  // SINCRONIZAÇÃO AUTOMÁTICA: 
-// Se o corretor alterar a "Data da Venda", atualizamos as vigências que não são "Personalizadas"
-// SINCRONIZAÇÃO AUTOMÁTICA: 
-useEffect(() => {
-  // ADICIONADO: isValidDate(form.dataVenda) para evitar crash ao digitar
-  if (type === 'VENDIDO' && itensProposta.length > 0 && form.dataVenda && isValidDate(form.dataVenda)) {
-    setDadosItens(prev => {
-      const novoEstado = { ...prev };
-      let houveMudanca = false;
-
-      itensProposta.forEach(item => {
-        const dados = novoEstado[item.id];
-        if (dados && dados.periodicidade !== 'PERSONALIZADO') {
-          const dataInicio = form.dataVenda;
-          let dataFim = "";
-
-          if (dados.periodicidade === 'ANUAL') {
-            const d = new Date(dataInicio);
-            d.setFullYear(d.getFullYear() + 1);
-            dataFim = d.toISOString().split('T')[0];
-          } else if (dados.periodicidade === 'MENSAL') {
-            dataFim = "";
-          }
-
-          if (dados.inicioVigencia !== dataInicio || dados.fimVigencia !== dataFim) {
-            novoEstado[item.id] = { ...dados, inicioVigencia: dataInicio, fimVigencia: dataFim };
-            houveMudanca = true;
-          }
-        }
-      });
-
-      return houveMudanca ? novoEstado : prev;
-    });
-  }
-}, [form.dataVenda, itensProposta, type]);
-
+    carregarItens();
+  }, [propostaSelecionada, type]);
 
   const formValido = () => {
     if (type === 'PERDIDO') return form.motivoPerda !== "";
@@ -190,7 +200,8 @@ useEffect(() => {
     return itensProposta.every(item => {
       const dados = dadosItens[item.id];
       if (!dados?.inicioVigencia) return false;
-      if (dados.periodicidade !== 'MENSAL' && !dados.fimVigencia) return false;
+      // ÚNICO não exige fim da vigência
+      if (dados.periodicidade !== 'ÚNICO' && !dados.fimVigencia) return false;
       return true;
     });
   };
@@ -200,6 +211,7 @@ useEffect(() => {
       setLoading(true);
       const isVendido = type === 'VENDIDO';
 
+      // 1. Atualizar a Proposta Principal
       const { error: errorProposta } = await supabase
         .from('tab_propostas')
         .update({
@@ -213,16 +225,24 @@ useEffect(() => {
 
       if (errorProposta) throw errorProposta;
 
+      // 2. Atualizar Itens se for Vendido
       if (isVendido && itensProposta.length > 0) {
         for (const item of itensProposta) {
           const dados = dadosItens[item.id];
+          
+          // Normalização para o Banco de Dados (Postgres exige 'ÚNICO' com acento)
+          // Usamos 'as any' ou uma verificação simples para o TS permitir a atribuição
+          let periodicidadeParaBanco: string = dados?.periodicidade || 'ANUAL';
+          if (periodicidadeParaBanco === 'ÚNICO') periodicidadeParaBanco = 'ÚNICO';
+
           const { error: errorItem } = await supabase
             .from('tab_proposta_itens')
             .update({ 
-              numero_apolice: dados?.apolice,
-              data_inicio_vigencia: dados?.inicioVigencia,
-              data_fim_vigencia: dados?.periodicidade === 'MENSAL' ? null : dados?.fimVigencia,
-              periodicidade: dados?.periodicidade,
+              numero_apolice: dados?.apolice || null,
+              data_inicio_vigencia: dados?.inicioVigencia || null,
+              // Se for ÚNICO (com ou sem acento), fim de vigência é null
+              data_fim_vigencia: (periodicidadeParaBanco === 'ÚNICO') ? null : (dados?.fimVigencia || null),
+              periodicidade: periodicidadeParaBanco,
               data_venda: form.dataVenda
             })
             .eq('id', item.id);
@@ -231,13 +251,14 @@ useEffect(() => {
         }
       }
 
+      // 3. Registrar Interação
       await supabase.from('tab_interacoes').insert({
         cliente_id: propostaSelecionada.cliente_id,
         corretor_id: propostaSelecionada.corretor_id,
         corretora_id: propostaSelecionada.corretora_id,
         tipo_acao: isVendido ? 'VENDA REALIZADA' : 'PROPOSTA PERDIDA',
         relato: isVendido 
-          ? `Venda finalizada. Data da Venda: ${isValidDate(form.dataVenda) ? new Date(form.dataVenda).toLocaleDateString('pt-BR') : 'Data não informada'}.` 
+          ? `Venda finalizada. Data: ${new Date(form.dataVenda).toLocaleDateString('pt-BR')}.` 
           : `Perda: ${form.motivoPerda}. Obs: ${form.observacoes}`,
         data_historico: new Date().toLocaleDateString('en-CA'),
         horario_historico: new Date().toLocaleTimeString('pt-BR', { hour12: false })
@@ -249,9 +270,9 @@ useEffect(() => {
 
       onSuccess();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao fechar venda/perda:", error);
-      alert("Erro ao salvar dados.");
+      alert(`Erro ao salvar: ${error.message || "Verifique o console"}`);
     } finally {
       setLoading(false);
     }
@@ -288,7 +309,7 @@ useEffect(() => {
                   onKeyDown={handleKeyDown}
                   className="w-full h-11 pl-12 pr-4 rounded-xl border border-blue-200 outline-none font-bold text-slate-700"
                   value={form.dataVenda}
-                  onChange={(e) => setForm({...form, dataVenda: e.target.value})}
+                  onChange={(e) => handleDataVendaChange(e.target.value)}
                 />
               </div>
             </div>
@@ -296,21 +317,21 @@ useEffect(() => {
 
           {type === 'VENDIDO' && itensProposta.map((item) => (
             <div key={item.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b border-slate-200 pb-3">
+              <div className="flex flex-col gap-3 border-b border-slate-200 pb-3">
                 <span className="text-xs font-black uppercase text-emerald-600">{item.base_produtos?.nome}</span>
                 
-                <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
-                  <MousePointer2 size={10} className="text-slate-400 ml-1" />
+                <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
                   {[
                     { id: 'ANUAL', label: 'Anual', color: 'bg-blue-600' },
                     { id: 'MENSAL', label: 'Mensal', color: 'bg-emerald-600' },
+                    { id: 'ÚNICO', label: 'Único', color: 'bg-purple-600' },
                     { id: 'PERSONALIZADO', label: 'Pers.', color: 'bg-slate-600' }
                   ].map((btn) => (
                     <button
                       key={btn.id}
                       type="button"
-                      onClick={() => calcularVigencia(item.id, btn.id as any)}
-                      className={`px-2 py-1 rounded text-[9px] font-black uppercase transition-all
+                      onClick={() => calcularDatasVigencia(item.id, btn.id as Periodicidade, form.dataVenda)}
+                      className={`flex-1 px-2 py-1.5 rounded text-[9px] font-black uppercase transition-all
                         ${dadosItens[item.id]?.periodicidade === btn.id 
                           ? `${btn.color} text-white shadow-sm` 
                           : `text-slate-400 hover:bg-slate-50`}`}
@@ -350,18 +371,23 @@ useEffect(() => {
 
                 <div>
                   <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">
-                    {dadosItens[item.id]?.periodicidade === 'MENSAL' ? 'Fim (Auto)' : 'Fim Vigência *'}
+                    {dadosItens[item.id]?.periodicidade === 'ÚNICO' ? 'Fim (N/A)' : 'Fim Vigência *'}
                   </label>
                   <input 
                     type="date"
-                    disabled={dadosItens[item.id]?.periodicidade === 'MENSAL'}
+                    // Força o disabled se for ÚNICO
+                    disabled={dadosItens[item.id]?.periodicidade === 'ÚNICO'}
                     onKeyDown={handleKeyDown}
                     className={`w-full h-10 px-3 rounded-lg border text-sm outline-none font-bold transition-all
-                      ${dadosItens[item.id]?.periodicidade === 'MENSAL' 
+                      ${dadosItens[item.id]?.periodicidade === 'ÚNICO' 
                         ? 'bg-slate-100 border-slate-100 text-slate-400 cursor-not-allowed opacity-50' 
                         : 'border-emerald-200 bg-emerald-50/30 text-slate-700'}`}
-                    value={dadosItens[item.id]?.fimVigencia || ""}
-                    onChange={(e) => setDadosItens({...dadosItens, [item.id]: { ...dadosItens[item.id], fimVigencia: e.target.value }})}
+                    // Se for ÚNICO, o valor deve ser vazio para não travar o formValido
+                    value={dadosItens[item.id]?.periodicidade === 'ÚNICO' ? "" : (dadosItens[item.id]?.fimVigencia || "")}
+                    onChange={(e) => setDadosItens({
+                      ...dadosItens, 
+                      [item.id]: { ...dadosItens[item.id], fimVigencia: e.target.value }
+                    })}
                   />
                 </div>
               </div>

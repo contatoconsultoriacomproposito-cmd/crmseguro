@@ -4,7 +4,7 @@ import {
   X, Building2, Save, Phone, Mail, Loader2, 
   CheckCircle2, Globe, Search, Lock, User, Instagram, Facebook, FileText, Hash, MapPin
 } from "lucide-react";
-import { supabase } from "../../lib/supabaseClient";
+import { supabasePublic } from "../../lib/supabaseClient";
 import { buscarCNPJ, buscarCEP } from "../../services/brasilApi";
 import { maskCNPJ, maskPhone, maskCPF, maskCEP } from "../../utils/masks";
 
@@ -119,7 +119,7 @@ export default function RegistroModal({ onClose }: any) {
 
     setLoading(true);
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const { data: authData, error: authError } = await supabasePublic.auth.signUp({
         email: emailLogin.trim().toLowerCase(),
         password: form.senha,
       });
@@ -129,7 +129,7 @@ export default function RegistroModal({ onClose }: any) {
       if (!userId) throw new Error("Falha ao gerar ID de usuário.");
 
       // 1. usuarios_perfis
-      const { error: perfilError } = await supabase.from("usuarios_perfis").upsert({
+      const { error: perfilError } = await supabasePublic.from("usuarios_perfis").upsert({
         id: userId,
         tipo_usuario: "CORRETORA",
         nome: form.nome_responsavel.toUpperCase(),
@@ -148,7 +148,7 @@ export default function RegistroModal({ onClose }: any) {
       const dataExpira = new Date();
       dataExpira.setDate(dataExpira.getDate() + 7);
 
-      const { error: configError } = await supabase.from("tab_corretora_config").upsert({
+      const { error: configError } = await supabasePublic.from("tab_corretora_config").upsert({
         id: userId,
         // Campos exclusivos de Pessoa Jurídica (nulos se for PF)
         razao_social: tipoPessoa === "PJ" ? form.razao_social : null,
@@ -234,7 +234,7 @@ export default function RegistroModal({ onClose }: any) {
                 ) : (
                   <Input label="NOME COMPLETO DO CORRETOR" name="nome_responsavel" required value={form.nome_responsavel} onChange={handleChange} placeholder="Nome do titular" icon={<User size={14}/>} />
                 )}
-                <Input label="DEFINA UMA SENHA" name="senha" type="password" required value={form.senha} onChange={handleChange} placeholder="Mínimo 6 caracteres" icon={<Lock size={14}/>} />
+                
               </div>
 
               {/* CONTEÚDO DINÂMICO BASEADO NO TIPO */}
@@ -248,13 +248,20 @@ export default function RegistroModal({ onClose }: any) {
                       <Input label="Natureza Jurídica" name="natureza_juridica" value={form.natureza_juridica} readOnly className="bg-zinc-50" />
                       <Input label="Porte" name="porte" value={form.porte} readOnly className="bg-zinc-50" />
                       <Input label="Capital Social" name="capital_social" value={form.capital_social} readOnly className="bg-zinc-50" icon={<Hash size={14}/>} />
-                      <Input label="E-mail Corporativo (Login)" name="email_corporativo" required value={form.email_corporativo} onChange={handleChange} icon={<Mail size={14}/>} />
+                      
                       <Input label="Telefone (Receita)" name="ddd_telefone_1" value={form.ddd_telefone_1} onChange={handleChange} icon={<Phone size={14}/>} />
                     </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                       <Input label="CEP" name="cep" value={form.cep} readOnly className="bg-zinc-50" />
                       <div className="md:col-span-2"><Input label="Logradouro" name="logradouro" value={form.logradouro} readOnly className="bg-zinc-50" /></div>
                       <Input label="Número" name="numero" value={form.numero} readOnly className="bg-zinc-50" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                      <Input label="Bairro" name="bairro" value={form.bairro} readOnly className="bg-zinc-50" />
+                      <Input label="Município" name="municipio" value={form.municipio} readOnly className="bg-zinc-50" />
+                      <Input label="UF" name="uf" value={form.uf} readOnly className="bg-zinc-50" />
+                      <div className="md:col-span-3"><Input label="Complemento" name="complemento" value={form.complemento} readOnly className="bg-zinc-50" /></div>
                     </div>
                     <div className="flex gap-6 mt-4 ml-1">
                       <Checkbox label="Optante MEI" checked={form.opcao_pelo_mei} />
@@ -289,11 +296,39 @@ export default function RegistroModal({ onClose }: any) {
                     <div className="md:col-span-2"><Input label="Nome do Responsável" name="nome_responsavel" required value={form.nome_responsavel} onChange={handleChange} icon={<User size={14}/>} /></div>
                   )}
                   <Input label={tipoPessoa === "PJ" ? "CPF do Responsável" : "Seu CPF"} name="cpf_responsavel" required value={form.cpf_responsavel} onChange={handleChange} icon={<Hash size={14}/>} />
-                  <Input label={tipoPessoa === "PJ" ? "E-mail do Responsável" : "E-mail Principal (Login)"} name="email_responsavel" required value={form.email_responsavel} onChange={handleChange} icon={<Mail size={14}/>} />
                   <Input label="Telefone Responsável" name="telefone_responsavel" required value={form.telefone_responsavel} onChange={handleChange} icon={<Phone size={14}/>} />
                   <Input label="Registro SUSEP" name="registro_susep" required value={form.registro_susep} onChange={handleChange} placeholder="Obrigatório" icon={<FileText size={14}/>} />
+                  <Input label="E-mail Pessoal" name="email_responsavel" required value={form.email_responsavel} onChange={handleChange} icon={<Mail size={14}/>} />
                 </div>
               </Section>
+
+              {/* 4. NOVA SEÇÃO: CREDENCIAIS DE ACESSO (Onde estavam os erros) */}
+              <Section title="Configuração de Acesso ao Sistema" icon={<Lock size={16} className="text-amber-500"/>}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-zinc-50 p-4 rounded-2xl border border-dashed border-zinc-200">
+                  <Input 
+                    label={tipoPessoa === "PJ" ? "E-mail Corporativo (Login do Sistema)" : "E-mail de Acesso (Login)"} 
+                    name={tipoPessoa === "PJ" ? "email_corporativo" : "email_responsavel"} 
+                    required 
+                    value={tipoPessoa === "PJ" ? form.email_corporativo : form.email_responsavel} 
+                    onChange={handleChange} 
+                    icon={<Mail size={14} className="text-blue-500"/>}
+                    placeholder="este será seu login"
+                  />
+                  <Input 
+                    label="DEFINA UMA SENHA DE ACESSO" 
+                    name="senha" 
+                    type="password" 
+                    required 
+                    value={form.senha} 
+                    onChange={handleChange} 
+                    placeholder="Mínimo 6 caracteres" 
+                    icon={<Lock size={14} className="text-amber-500"/>} 
+                  />
+                </div>
+                <p className="text-[9px] text-zinc-400 mt-2 px-2 italic">
+                  * Estes dados serão utilizados para acessar sua conta após o cadastro.
+                </p>
+              </Section>         
             </div>
 
             <div className="p-8 bg-zinc-50 border-t border-zinc-100 space-y-6">

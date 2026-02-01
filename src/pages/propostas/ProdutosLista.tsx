@@ -26,6 +26,7 @@ interface ItemRenovacaoFormatado {
   corretor: string;
   corretor_id: string;
   parceiro_id: string | null;
+  periodicidade: string; // Adicione este
 }
 
 export default function ProdutosLista() {
@@ -46,6 +47,7 @@ export default function ProdutosLista() {
   const [dataFim, setDataFim] = useState("");
   const [dataVendaInicio, setDataVendaInicio] = useState(""); // Novo
   const [dataVendaFim, setDataVendaFim] = useState("");       // Novo
+  const [selectedPeriodicidades, setSelectedPeriodicidades] = useState<string[]>([]); //novo
   
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -113,6 +115,7 @@ export default function ProdutosLista() {
           data_fim_vigencia,
           numero_cotacao,
           numero_apolice,
+          periodicidade,
           base_produtos (nome),
           tab_proposta_opcoes!inner (
             base_seguradoras (nome),
@@ -161,6 +164,7 @@ export default function ProdutosLista() {
           proposta_id: propostaObj?.id,
           numero_proposta: propostaObj?.numero_proposta,
           status: propostaObj?.status,
+          periodicidade: item.periodicidade || "ANUAL",
           cliente: propostaObj?.tab_clientes?.tipo_cliente === 'PJ' 
             ? propostaObj?.tab_clientes?.razao_social 
             : propostaObj?.tab_clientes?.nome,
@@ -214,16 +218,21 @@ export default function ProdutosLista() {
         (i.parceiro_id && selectedParceiros.includes(i.parceiro_id));
 
       // Filtro Renovação
-      const matchDataRenovacao = (!dataInicio || i.data_fim_vigencia >= dataInicio) &&
-                                 (!dataFim || i.data_fim_vigencia <= dataFim);
+      const matchDataRenovacao = i.periodicidade === 'ÚNICO' || (
+        (!dataInicio || i.data_fim_vigencia >= dataInicio) &&
+        (!dataFim || i.data_fim_vigencia <= dataFim)
+      );
 
       // Filtro Data da Venda
       const matchDataVenda = (!dataVendaInicio || i.data_venda >= dataVendaInicio) &&
                              (!dataVendaFim || i.data_venda <= dataVendaFim);
 
-      return matchTexto && matchCorretor && matchParceiro && matchDataRenovacao && matchDataVenda;
+      const matchPeriodicidade = selectedPeriodicidades.length === 0 || 
+                          selectedPeriodicidades.includes(i.periodicidade);
+
+      return matchTexto && matchCorretor && matchParceiro && matchDataRenovacao && matchDataVenda && matchPeriodicidade;
     });
-  }, [filter, dataInicio, dataFim, dataVendaInicio, dataVendaFim, selectedCorretores, selectedParceiros, itens]);
+  }, [filter, dataInicio, dataFim, dataVendaInicio, dataVendaFim, selectedCorretores, selectedParceiros, selectedPeriodicidades, itens]);
 
   const exportarExcel = () => {
     const dadosParaExportar = itensFiltrados.map(i => ({
@@ -233,7 +242,7 @@ export default function ProdutosLista() {
       "Produto": i.produto,
       "Venda": i.data_venda ? formatarDataBR(i.data_venda) : "-",
       "Início Vigência": formatarDataBR(i.data_inicio_vigencia),
-      "Fim Vigência (Renovação)": formatarDataBR(i.data_fim_vigencia),
+      "Fim Vigência (Renovação)": i.periodicidade === 'ÚNICO' ? "N/A (ÚNICO)" : (i.data_fim_vigencia ? formatarDataBR(i.data_fim_vigencia) : "-"),
       "Valor Prêmio": i.valor, // Mantido como número
       "Apólice": i.numero_apolice || "N/A"
     }));
@@ -253,6 +262,7 @@ export default function ProdutosLista() {
       i.cliente,
       i.produto,
       i.numero_apolice || "-",
+      i.periodicidade === 'ÚNICO' ? "ÚNICO" : formatarDataBR(i.data_fim_vigencia),
       formatarDataBR(i.data_venda),
       formatarDataBR(i.data_fim_vigencia),
       new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(i.valor)
@@ -320,15 +330,16 @@ export default function ProdutosLista() {
 
           {/* BARRA DE FILTROS AVANÇADOS */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               
-              <div className="flex flex-col gap-1 lg:col-span-1">
+              {/* Coluna 1: Corretores */}
+              <div className="flex flex-col gap-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
                   <Users size={12}/> Corretores
                 </label>
                 <select 
                   multiple
-                  className="w-full h-20 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
+                  className="w-full h-24 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
                   value={selectedCorretores}
                   onChange={(e) => setSelectedCorretores(Array.from(e.target.selectedOptions, opt => opt.value))}
                   disabled={userProfile?.tipo_usuario === 'CORRETOR'}
@@ -337,13 +348,14 @@ export default function ProdutosLista() {
                 </select>
               </div>
 
-              <div className="flex flex-col gap-1 lg:col-span-1">
+              {/* Coluna 2: Parceiros */}
+              <div className="flex flex-col gap-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
                   <Handshake size={12}/> Parceiros
                 </label>
                 <select 
                   multiple
-                  className="w-full h-20 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
+                  className="w-full h-24 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
                   value={selectedParceiros}
                   onChange={(e) => setSelectedParceiros(Array.from(e.target.selectedOptions, opt => opt.value))}
                 >
@@ -352,73 +364,96 @@ export default function ProdutosLista() {
                 </select>
               </div>
 
-              {/* Filtros de Renovação */}
+              {/* Coluna 3: Periodicidade (Mesma linha/altura dos outros selects) */}
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
-                  <Calendar size={12}/> Renovação (De)
+                <label className="text-[10px] font-black text-blue-500 uppercase flex items-center gap-1">
+                  <Calendar size={12}/> Periodicidade
                 </label>
-                <input 
-                  type="date"
-                  className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
-                  value={dataInicio}
-                  onChange={(e) => setDataInicio(e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
-                  <Calendar size={12}/> Renovação (Até)
-                </label>
-                <input 
-                  type="date"
-                  className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
-                  value={dataFim}
-                  onChange={(e) => setDataFim(e.target.value)}
-                />
-              </div>
-
-              {/* Filtros de Data da Venda (Novos) */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1">
-                  <ShoppingCart size={12}/> Venda (De)
-                </label>
-                <input 
-                  type="date"
-                  className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
-                  value={dataVendaInicio}
-                  onChange={(e) => setDataVendaInicio(e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1">
-                  <ShoppingCart size={12}/> Venda (Até)
-                </label>
-                <input 
-                  type="date"
-                  className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
-                  value={dataVendaFim}
-                  onChange={(e) => setDataVendaFim(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {(selectedCorretores.length > 0 || selectedParceiros.length > 0 || dataInicio || dataFim || dataVendaInicio || dataVendaFim) && (
-              <div className="flex justify-end border-t border-slate-50 pt-3">
-                <button 
-                  onClick={() => {
-                      if(userProfile?.tipo_usuario !== 'CORRETOR') setSelectedCorretores([]);
-                      setSelectedParceiros([]);
-                      setDataInicio("");
-                      setDataFim("");
-                      setDataVendaInicio("");
-                      setDataVendaFim("");
-                  }}
-                  className="text-[10px] font-black text-red-500 uppercase hover:underline"
+                <select 
+                  multiple
+                  className="w-full h-24 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
+                  value={selectedPeriodicidades}
+                  onChange={(e) => setSelectedPeriodicidades(Array.from(e.target.selectedOptions, opt => opt.value))}
                 >
-                  × Limpar Todos os Filtros
-                </button>
+                  <option value="ANUAL">ANUAL</option>
+                  <option value="MENSAL">MENSAL</option>
+                  <option value="ÚNICO">ÚNICO</option>
+                  <option value="PERSONALIZADO">PERSONALIZADO</option>
+                </select>
               </div>
+
+              {/* Coluna 4: Datas Empilhadas */}
+              <div className="flex flex-col gap-4">
+                {/* Grupo Renovação */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-1">
+                    <Calendar size={11}/> Renovação (De / Até)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="date"
+                      className="w-full h-9 text-[11px] font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                      value={dataInicio}
+                      onChange={(e) => setDataInicio(e.target.value)}
+                    />
+                    <input 
+                      type="date"
+                      className="w-full h-9 text-[11px] font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                      value={dataFim}
+                      onChange={(e) => setDataFim(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Grupo Venda */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-black text-emerald-500 uppercase flex items-center gap-1">
+                    <ShoppingCart size={11}/> Venda (De / Até)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="date"
+                      className="w-full h-9 text-[11px] font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                      value={dataVendaInicio}
+                      onChange={(e) => setDataVendaInicio(e.target.value)}
+                    />
+                    <input 
+                      type="date"
+                      className="w-full h-9 text-[11px] font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                      value={dataVendaFim}
+                      onChange={(e) => setDataVendaFim(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+  
+
+
+            {(selectedCorretores.length > 0 || 
+              selectedParceiros.length > 0 || 
+              selectedPeriodicidades.length > 0 || // Substituímos a repetição por esta linha
+              dataInicio || 
+              dataFim || 
+              dataVendaInicio || 
+              dataVendaFim) && (
+                <div className="flex justify-end border-t border-slate-50 pt-3">
+                  <button 
+                    onClick={() => {
+                        if(userProfile?.tipo_usuario !== 'CORRETOR') setSelectedCorretores([]);
+                        setSelectedParceiros([]);
+                        setDataInicio("");
+                        setDataFim("");
+                        setDataVendaInicio("");
+                        setDataVendaFim("");
+                        setSelectedPeriodicidades([]); // Este já estava certo no seu
+                    }}
+                    className="text-[10px] font-black text-red-500 uppercase hover:underline"
+                  >
+                    × Limpar Todos os Filtros
+                  </button>
+                </div>
             )}
           </div>
         </header>
@@ -444,86 +479,139 @@ export default function ProdutosLista() {
                 <tr><td colSpan={8} className="p-10 text-center text-slate-400 font-bold uppercase text-xs">Nenhum item encontrado</td></tr>
               ) : itensFiltrados.map((item) => (
                 <tr key={item.id_item} className="group hover:bg-slate-50/50 transition-all">
-                  <td className="p-5 border-b border-slate-50 font-black text-blue-600 italic text-sm">{item.numero_proposta}</td>
-                  
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="text-sm font-bold text-slate-700 uppercase leading-none truncate max-w-[220px]">{item.cliente}</div>
-                    <div className="text-[12px] text-blue-500 mt-1 font-black uppercase italic tracking-tighter">{item.seguradora}</div>
-                    <div className="text-[10px] text-slate-400 font-bold uppercase mt-1">Ref: {item.corretor}</div>
-                  </td>
+                {/* Proposta */}
+                <td className="p-5 border-b border-slate-50 font-black text-blue-600 italic text-sm">
+                  {item.numero_proposta}
+                </td>
+                
+                {/* Cliente / Seguradora */}
+                <td className="p-5 border-b border-slate-50">
+                  <div className="text-sm font-bold text-slate-700 uppercase leading-none truncate max-w-[220px]">
+                    {item.cliente}
+                  </div>
+                  <div className="text-[12px] text-blue-500 mt-1 font-black uppercase italic tracking-tighter">
+                    {item.seguradora}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                    Ref: {item.corretor}
+                  </div>
+                </td>
 
-                  <td className="p-5 border-b border-slate-50">
-                    <span className="text-xs font-black text-slate-600 uppercase tracking-tight">{item.produto}</span>
-                    <div className="text-[10px] font-bold text-slate-400 mt-1">
+                {/* Produto & Periodicidade (UNIFICADOS) */}
+                <td className="p-5 border-b border-slate-50">
+                  <span className="text-xs font-black text-slate-600 uppercase tracking-tight block mb-1">
+                    {item.produto}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] font-bold text-slate-400">
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor)}
                     </div>
-                  </td>
-
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="relative group/field">
-                      <Hash size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" />
-                      <input 
-                        defaultValue={item.numero_cotacao}
-                        onBlur={(e) => handleUpdateItem(item.id_item, "numero_cotacao", e.target.value)}
-                        className={`w-full bg-slate-100/50 border-transparent border focus:border-blue-500 focus:bg-white rounded-lg py-1.5 pl-7 pr-2 text-xs font-bold text-slate-600 outline-none
-                          ${savingId === `${item.id_item}-numero_cotacao` ? 'border-blue-500 ring-2 ring-blue-500/10' : ''}`}
-                      />
-                    </div>
-                  </td>
-
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="relative">
-                      <ShieldCheck size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" />
-                      <input 
-                        defaultValue={item.numero_apolice}
-                        placeholder="Sem Apólice"
-                        onBlur={(e) => handleUpdateItem(item.id_item, "numero_apolice", e.target.value)}
-                        className={`w-full bg-slate-100/50 border-transparent border focus:border-emerald-500 focus:bg-white rounded-lg py-1.5 pl-7 pr-2 text-xs font-bold text-slate-600 outline-none
-                          ${savingId === `${item.id_item}-numero_apolice` ? 'border-emerald-500 ring-2 ring-emerald-500/10' : ''}`}
-                      />
-                    </div>
-                  </td>
-
-                  {/* Nova coluna Data Venda */}
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="flex flex-col">
-                      <span className="text-[13px] font-bold text-slate-600">
-                        {item.data_venda ? formatarDataBR(item.data_venda) : '---'}
-                      </span>
-                      <span className="text-[9px] font-black text-emerald-500 uppercase">Confirmada</span>
-                    </div>
-                  </td>
-
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="flex items-center gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Início</span>
-                        <span className="text-[13px] font-bold text-slate-600">
-                          {item.data_inicio_vigencia ? formatarDataBR(item.data_inicio_vigencia) : '---'}
-                        </span>
-                      </div>
-                      <ArrowRight size={12} className="text-slate-300 mt-3" />
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-emerald-500 uppercase">Renovação</span>
-                        <span className="text-[13px] font-black text-slate-800">
-                          {item.data_fim_vigencia ? formatarDataBR(item.data_fim_vigencia) : '---'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className={`text-[9px] font-black uppercase mt-2 inline-block px-2 py-0.5 rounded ${item.status === 'Vendido' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                      {item.status}
-                    </div>
-                  </td>
-
-                  <td className="p-5 border-b border-slate-50 text-center">
-                    <button 
-                      onClick={() => navigate(`/propostas/editar/${item.proposta_id}`)}
-                      className="p-2.5 bg-white border border-slate-200 hover:border-blue-500 hover:text-blue-500 text-slate-400 rounded-xl transition-all shadow-sm group"
+                    
+                    {/* Seletor de Periodicidade Editável */}
+                    <select
+                      value={item.periodicidade}
+                      onChange={(e) => handleUpdateItem(item.id_item, "periodicidade", e.target.value)}
+                      className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border border-transparent focus:border-blue-500 outline-none cursor-pointer transition-all
+                        ${item.periodicidade === 'ANUAL' ? 'bg-blue-50 text-blue-600' : 
+                          item.periodicidade === 'MENSAL' ? 'bg-purple-50 text-purple-600' : 
+                          'bg-slate-100 text-slate-500'}`}
                     >
-                      <Edit3 size={16} className="group-hover:scale-110 transition-transform" />
-                    </button>
-                  </td>
-                </tr>
+                      <option value="ANUAL">ANUAL</option>
+                      <option value="MENSAL">MENSAL</option>
+                      <option value="ÚNICO">ÚNICO</option>
+                      <option value="PERSONALIZADO">PERS.</option>
+                    </select>
+                  </div>
+                </td>
+
+                {/* Nº Cotação */}
+                <td className="p-5 border-b border-slate-50">
+                  <div className="relative group/field">
+                    <Hash size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" />
+                    <input 
+                      defaultValue={item.numero_cotacao}
+                      onBlur={(e) => handleUpdateItem(item.id_item, "numero_cotacao", e.target.value)}
+                      className={`w-full bg-slate-100/50 border-transparent border focus:border-blue-500 focus:bg-white rounded-lg py-1.5 pl-7 pr-2 text-xs font-bold text-slate-600 outline-none
+                        ${savingId === `${item.id_item}-numero_cotacao` ? 'border-blue-500 ring-2 ring-blue-500/10' : ''}`}
+                    />
+                  </div>
+                </td>
+
+                {/* Nº Apólice */}
+                <td className="p-5 border-b border-slate-50">
+                  <div className="relative">
+                    <ShieldCheck size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" />
+                    <input 
+                      defaultValue={item.numero_apolice}
+                      placeholder="Sem Apólice"
+                      onBlur={(e) => handleUpdateItem(item.id_item, "numero_apolice", e.target.value)}
+                      className={`w-full bg-slate-100/50 border-transparent border focus:border-emerald-500 focus:bg-white rounded-lg py-1.5 pl-7 pr-2 text-xs font-bold text-slate-600 outline-none
+                        ${savingId === `${item.id_item}-numero_apolice` ? 'border-emerald-500 ring-2 ring-emerald-500/10' : ''}`}
+                    />
+                  </div>
+                </td>
+
+                {/* Data Venda */}
+                <td className="p-5 border-b border-slate-50">
+                  <div className="flex flex-col">
+                    <span className="text-[13px] font-bold text-slate-600">
+                      {item.data_venda ? formatarDataBR(item.data_venda) : '---'}
+                    </span>
+                    <span className="text-[9px] font-black text-emerald-500 uppercase">Confirmada</span>
+                  </div>
+                </td>
+
+                {/* Período de Vigência */}
+                <td className="p-5 border-b border-slate-50">
+                  <div className="flex items-center gap-2">
+                    {/* Bloco de Início - Sempre visível */}
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Início</span>
+                      <span className="text-[13px] font-bold text-slate-600">
+                        {item.data_inicio_vigencia ? formatarDataBR(item.data_inicio_vigencia) : '---'}
+                      </span>
+                    </div>
+
+                    {/* Lógica Condicional para Renovação vs Único */}
+                    {item.periodicidade === 'ÚNICO' ? (
+                      <div className="flex items-center gap-2 ml-2">
+                        <div className="h-8 w-[1px] bg-slate-200 mx-1" /> {/* Divisor sutil */}
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black text-purple-500 uppercase">Tipo</span>
+                          <span className="text-[11px] font-black text-purple-600 bg-purple-50 px-2 py-0.5 rounded italic">
+                            PAGAMENTO ÚNICO
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <ArrowRight size={12} className="text-slate-300 mt-3" />
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black text-emerald-500 uppercase">Renovação</span>
+                          <span className="text-[13px] font-black text-slate-800">
+                            {item.data_fim_vigencia ? formatarDataBR(item.data_fim_vigencia) : '---'}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Status da Proposta */}
+                  <div className={`text-[9px] font-black uppercase mt-2 inline-block px-2 py-0.5 rounded ${item.status === 'Vendido' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                    {item.status}
+                  </div>
+                </td>
+
+                {/* Ações */}
+                <td className="p-5 border-b border-slate-50 text-center">
+                  <button 
+                    onClick={() => navigate(`/propostas/editar/${item.proposta_id}`)}
+                    className="p-2.5 bg-white border border-slate-200 hover:border-blue-500 hover:text-blue-500 text-slate-400 rounded-xl transition-all shadow-sm group"
+                  >
+                    <Edit3 size={16} className="group-hover:scale-110 transition-transform" />
+                  </button>
+                </td>
+              </tr>
               ))}
             </tbody>
           </table>

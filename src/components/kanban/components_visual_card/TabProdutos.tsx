@@ -26,8 +26,11 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
           data_fim_vigencia,
           numero_apolice,
           produto_id,
+          periodicidade,
           base_produtos ( nome ),
           tab_proposta_opcoes!inner (
+            seguradora_id,
+            base_seguradoras ( nome ),
             tab_propostas!inner ( status, cliente_id )
           ),
           tab_sinistros ( id, status ),
@@ -86,15 +89,31 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
             <div key={item.id} className="p-3 bg-white dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700 shadow-sm">
               <div className="flex justify-between items-start mb-2">
                 <div className="flex flex-col">
-                  <span className="font-black text-[11px] text-blue-600 uppercase tracking-tight">
-                    {item.base_produtos?.nome}
-                  </span>
+                  {/* NOME DO PRODUTO E SEGURADORA NA MESMA LINHA */}
+                  <div className="flex items-center gap-1.5 leading-none mb-1">
+                    <span className="font-black text-[11px] text-blue-600 uppercase tracking-tight">
+                      {item.base_produtos?.nome}
+                    </span>
+                    <span className="text-[10px] text-slate-300 font-light">|</span>
+                    <span className="font-bold text-[10px] text-slate-500 uppercase">
+                      {item.tab_proposta_opcoes?.base_seguradoras?.nome || 'Seguradora N/D'}
+                    </span>
+                  </div>
+
                   <div className="flex items-center gap-1 mt-0.5">
                     <Calendar size={10} className="text-slate-400" />
                     <span className="text-[9px] font-bold text-slate-500 uppercase">
                       Fim Vigência: {item.data_fim_vigencia ? formatarDataBR(item.data_fim_vigencia) : 'N/D'}
                     </span>
                   </div>
+                  {/* EXIBIÇÃO DA PERIODICIDADE */}
+                  <div className="flex items-center gap-1">
+                    <Clock size={10} className="text-slate-400" />
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">
+                      Pagamento: {item.periodicidade || 'Não definido'}
+                    </span>
+                  </div>
+
                   <div className="flex items-center gap-1">
                     <ShieldCheck size={10} className="text-slate-400" />
                     <span className="text-[9px] font-bold text-slate-400 uppercase">

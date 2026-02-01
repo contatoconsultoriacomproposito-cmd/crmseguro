@@ -1,25 +1,24 @@
+// src/lib/supabaseClient.ts
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("⚠️ ATENÇÃO: Variáveis do Supabase não encontradas!");
-}
-
-// 1. Cliente para o Dashboard (Mantém o login do corretor)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// 2. Cliente para o Portal do Parceiro (IGNORA o login do corretor)
-// Este cliente nunca envia o token de autenticação, sendo sempre "anon".
-export const supabasePublic = createClient(
-  supabaseUrl, 
-  supabaseAnonKey,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false
-    }
+// Cliente para o Dashboard (Onde o login do corretor fica salvo)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storageKey: 'sb-corretor-auth', // Chave exclusiva
+    persistSession: true,
+    detectSessionInUrl: true
   }
-);
+});
+
+// Cliente Público / Cadastro (Não olha para a sessão do dashboard)
+export const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storageKey: 'sb-public-temp', // Chave diferente para não conflitar com o login ativo
+    persistSession: false, 
+    autoRefreshToken: false,
+    detectSessionInUrl: false
+  }
+});
