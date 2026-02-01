@@ -112,16 +112,19 @@ export const ModalGerenciamentoSinistro = ({ sinistroId, onClose, onSuccess }: P
 
       // 3. Atualização da etapa mestre do Sinistro
       const isFinalizando = novaEtapa === 'Conclusão';
-      const { error: errSin } = await supabase
-        .from('tab_sinistros')
-        .update({
-          etapa_atual: novaEtapa,
-          status: isFinalizando ? 'Encerrado' : 'Aberto',
-          data_conclusao: isFinalizando ? dataRetorno : null
-        })
-        .eq('id', sinistroId);
-
-      if (errSin) throw errSin;
+        if (sinistro?.cliente_id) {
+            const { error: errCli } = await supabase
+              .from('tab_clientes')
+              .update({
+                // Se estiver concluindo, limpamos a agenda para a notificação sumir
+                // Se não, enviamos a nova data de retorno
+                data_retorno_sinistro: isFinalizando ? null : (dataRetorno || null),
+                horario_retorno_sinistro: isFinalizando ? null : (horarioRetorno || null)
+              })
+              .eq('id', sinistro.cliente_id);
+            
+            if (errCli) throw new Error(`Erro ao atualizar cliente: ${errCli.message}`);
+          }
 
       setSalvo(true);
       setTimeout(() => {

@@ -87,6 +87,9 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
   // Melhoria: Sincroniza todos os itens quando a Data da Venda principal muda
   const handleDataVendaChange = (novaData: string) => {
     setForm(prev => ({ ...prev, dataVenda: novaData }));
+
+    // Se a data estiver incompleta (ex: o usuário está digitando), não tenta calcular
+    if (!novaData || novaData.length < 10) return;
     
     if (type === 'VENDIDO') {
       setDadosItens(prev => {
@@ -95,7 +98,9 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
           const configAtual = prev[item.id];
           if (configAtual && configAtual.periodicidade !== 'PERSONALIZADO') {
             // Recalcula datas para todos que não são manuais
-            const d = new Date(novaData);
+            const d = new Date(novaData + 'T12:00:00'); // T12:00 evita problemas de fuso
+            if (isNaN(d.getTime())) return;
+
             let fim = "";
             
             if (configAtual.periodicidade === 'ANUAL') {

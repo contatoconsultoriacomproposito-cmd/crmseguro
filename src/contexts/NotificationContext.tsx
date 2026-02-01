@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../auth/AuthContext';
 
-// Importação dos modais para abertura via notificação
+// Importação dos modais
 import { ModalInclusaoAcao } from '../components/kanban/ModalInclusaoAcao';
 import { ModalGerenciamentoSinistro } from '../components/kanban/components_visual_card/ModalGerenciamentoSinistro';
 
@@ -14,7 +14,7 @@ interface Notificacao {
   data: string;
   horario?: string;
   atrasado: boolean;
-  ref_id: string;
+  ref_id: string; // ID do Cliente ou ID da Indicação
 }
 
 interface NotificationContextData {
@@ -42,169 +42,136 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       
       const listaGeral: Notificacao[] = [];
 
-      // 1. BUSCAR PERFIL DO USUÁRIO PARA DEFINIR HIERARQUIA E CORRETORA
-      const { data: perfil, error: errP } = await supabase
+      // 1. BUSCAR PERFIL PARA FILTRO DE PERMISSÃO
+      const { data: perfil } = await supabase
         .from('usuarios_perfis')
         .select('tipo_usuario, corretora_id')
         .eq('id', user.id)
         .single();
 
-      if (errP) throw errP;
-
       const isAdmin = perfil?.tipo_usuario === 'CORRETORA';
       const corretoraDonaId = perfil?.corretora_id || user.id;
 
-      // --- 2. BUSCAR INDICAÇÕES COM STATUS 'NOVO' ---
-      // CORREÇÃO CRÍTICA: Se o status for 'NOVO', o corretor_id pode ser NULL.
-      // Precisamos buscar leads da corretora que estejam sem corretor OU vinculados ao usuário logado.
+      // --- 2. BUSCAR INDICAÇÕES (MANTIDO CONFORME LÓGICA ANTERIOR) ---
       let queryInd = supabase
         .from('tab_indicacoes')
-        .select(`
-          id, 
-          nome_cliente, 
-          created_at, 
-          status_indicacao,
-          corretor_id, 
-          corretora_id,
-          tab_parceiros ( nome_parceiro )
-        `)
+        .select(`id, nome_cliente, created_at, status_indicacao, tab_parceiros(nome_parceiro)`)
         .eq('status_indicacao', 'NOVO')
-        .eq('corretora_id', corretoraDonaId); // FILTRO MÃE: Se é da corretora, a Raquel vê.
-
-      // Se NÃO for admin (corretora mãe), aí sim filtramos apenas para o que for dele ou fila
-      if (!isAdmin) {
-        queryInd = queryInd.or(`corretor_id.eq.${user.id},corretor_id.is.null`);
-      }
-
-      // O segredo para a Raquel ver TUDO é NÃO aplicar mais filtros se ela for Admin.
-      // Como ela é 'CORRETORA', a query para ela será apenas: STATUS=NOVO + CORRETORA_ID=Dela.
-
-      const { data: indicacoes, error: errInd } = await queryInd;
-      
-      if (!errInd && indicacoes) {
-        indicacoes.forEach((ind: any) => {
-          const parceiroObj = Array.isArray(ind.tab_parceiros) ? ind.tab_parceiros[0] : ind.tab_parceiros;
-          
-          listaGeral.push({
-            id: `ind-${ind.id}`,
-            tipo: 'INDICACAO',
-            titulo: `NOVA INDICAÇÃO: ${ind.nome_cliente}`,
-            subtitulo: `Parceiro: ${parceiroObj?.nome_parceiro || 'Link Direto'}`,
-            data: ind.created_at,
-            atrasado: false,
-            ref_id: ind.id
-          });
-        });
-      }
-
-      // --- 3. BUSCAR PENDÊNCIAS COMERCIAIS (TAB_CLIENTES) ---
-      let queryClientes = supabase
-        .from('tab_clientes')
-        .select('id, nome, data_retorno, horario_retorno, corretor_id, corretora_id')
-        .not('data_retorno', 'is', null)
         .eq('corretora_id', corretoraDonaId);
 
-      if (!isAdmin) {
-        queryClientes = queryClientes.eq('corretor_id', user.id);
-      }
+      if (!isAdmin) queryInd = queryInd.or(`corretor_id.eq.${user.id},corretor_id.is.null`);
+
+      const { data: indicacoes } = await queryInd;
+      indicacoes?.forEach((ind: any) => {
+        const parceiro = Array.isArray(ind.tab_parceiros) ? ind.tab_parceiros[0] : ind.tab_parceiros;
+        listaGeral.push({
+          id: `ind-${ind.id}`,
+          tipo: 'INDICACAO',
+          titulo: `INDICAÇÃO: ${ind.nome_cliente}`,
+          subtitulo: parceiro?.nome_parceiro || 'Link Direto',
+          data: ind.created_at,
+          atrasado: false,
+          ref_id: ind.id
+        });
+      });
+
+      // --- 3. BUSCA EXCLUSIVA NA TAB_CLIENTES (COMERCIAL E SINISTRO) ---
+      // Eliminamos a busca na tab_sinistros/ocorrências para evitar duplicidade e nomes errados
+      let queryClientes = supabase
+        .from('tab_clientes')
+        .select('id, nome, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro')
+        .eq('corretora_id', corretoraDonaId)
+        .or(`data_retorno.lte.${hojeLocalStr},data_retorno_sinistro.lte.${hojeLocalStr}`);
+
+      if (!isAdmin) queryClientes = queryClientes.eq('corretor_id', user.id);
 
       const { data: clientes } = await queryClientes;
+      
       clientes?.forEach(c => {
-        if (c.data_retorno <= hojeLocalStr) {
+        const nomeExibicao = c.nome || 'Cliente sem nome';
+
+        // A. Processa Retorno Comercial
+        if (c.data_retorno && c.data_retorno <= hojeLocalStr) {
           listaGeral.push({
             id: `com-${c.id}`,
             tipo: 'COMERCIAL',
-            titulo: c.nome || 'Sem Nome',
+            titulo: `RETORNO COMERCIAL: ${nomeExibicao}`,
             data: c.data_retorno,
             horario: c.horario_retorno,
             atrasado: c.data_retorno < hojeLocalStr,
             ref_id: c.id
           });
         }
-      });
 
-      // --- 4. BUSCAR PENDÊNCIAS DE SINISTROS (TAB_SINISTROS) ---
-      let querySinistros = supabase
-        .from('tab_sinistros')
-        .select(`
-          id, status, corretor_id, corretora_id,
-          tab_proposta_itens(base_produtos(nome)),
-          tab_sinistros_ocorrencias(data_retorno)
-        `)
-        .eq('status', 'Aberto')
-        .eq('corretora_id', corretoraDonaId);
-
-      if (!isAdmin) {
-        querySinistros = querySinistros.eq('corretor_id', user.id);
-      }
-
-      const { data: sinistros } = await querySinistros as any;
-      sinistros?.forEach((s: any) => {
-        const item = Array.isArray(s.tab_proposta_itens) ? s.tab_proposta_itens[0] : s.tab_proposta_itens;
-        const produto = Array.isArray(item?.base_produtos) ? item?.base_produtos[0] : item?.base_produtos;
-        const ocorrenciaVencida = s.tab_sinistros_ocorrencias
-          ?.filter((o: any) => o.data_retorno && o.data_retorno <= hojeLocalStr)
-          .sort((a: any, b: any) => b.data_retorno.localeCompare(a.data_retorno))[0];
-
-        if (ocorrenciaVencida) {
+        // B. Processa Retorno de Sinistro (Baseado nos campos de data do cliente)
+        if (c.data_retorno_sinistro && c.data_retorno_sinistro <= hojeLocalStr) {
           listaGeral.push({
-            id: `sin-${s.id}`,
+            id: `sin-${c.id}`,
             tipo: 'SINISTRO',
-            titulo: produto?.nome || 'Sinistro em Andamento',
-            data: ocorrenciaVencida.data_retorno,
-            atrasado: ocorrenciaVencida.data_retorno < hojeLocalStr,
-            ref_id: s.id
+            titulo: `SINISTRO (RETORNO): ${nomeExibicao}`,
+            data: c.data_retorno_sinistro,
+            horario: c.horario_retorno_sinistro,
+            atrasado: c.data_retorno_sinistro < hojeLocalStr,
+            ref_id: c.id
           });
         }
       });
 
-      // Ordenar: Indicações primeiro (top priority), depois as outras por data decrescente
+      // Ordenação: Indicações primeiro, depois por data (mais antigas/atrasadas no topo)
       setNotificacoes(listaGeral.sort((a, b) => {
         if (a.tipo === 'INDICACAO' && b.tipo !== 'INDICACAO') return -1;
         if (a.tipo !== 'INDICACAO' && b.tipo === 'INDICACAO') return 1;
-        return b.data.localeCompare(a.data);
+        return a.data.localeCompare(b.data);
       }));
       
     } catch (error) {
-      console.error("Erro crítico no NotificationProvider:", error);
+      console.error("Erro ao carregar notificações:", error);
     }
   }, [user]);
 
-  // Função para marcar como lido localmente (remove da lista instantaneamente)
+  // Função para abrir o modal correto baseado no tipo e ID do cliente
+  const abrirNotificacao = async (n: Notificacao) => {
+    if (n.tipo === 'INDICACAO') {
+      window.location.href = `/parceiros/triagem?id=${n.ref_id}`;
+      return;
+    }
+
+    if (n.tipo === 'SINISTRO') {
+      // Como a notificação vem da tab_clientes, o ref_id é o cliente_id.
+      // Precisamos buscar o ID do sinistro aberto deste cliente para o modal.
+      const { data } = await supabase
+        .from('tab_sinistros')
+        .select('id')
+        .eq('cliente_id', n.ref_id)
+        .eq('status', 'Aberto')
+        .maybeSingle();
+
+      if (data) {
+        setModalAtivo({ tipo: 'SINISTRO', id: data.id });
+      } else {
+        alert("Sinistro não encontrado ou já encerrado.");
+        carregarNotificacoes();
+      }
+    } else {
+      setModalAtivo({ tipo: 'COMERCIAL', id: n.ref_id });
+    }
+  };
+
   const markAsReadByIndicacao = async (indicacaoId: string) => {
     setNotificacoes(prev => prev.filter(n => n.ref_id !== indicacaoId));
   };
 
-  // REALTIME ATIVO PARA ATUALIZAÇÃO INSTANTÂNEA
   useEffect(() => {
     if (!user) return;
     const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
+      .channel('notificacoes-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_sinistros' }, () => carregarNotificacoes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, carregarNotificacoes]);
-
-  useEffect(() => {
     carregarNotificacoes();
-    // Intervalo de segurança para casos onde o Realtime possa falhar
-    const interval = setInterval(carregarNotificacoes, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [carregarNotificacoes]);
-
-  const abrirNotificacao = (n: Notificacao) => {
-    if (n.tipo === 'INDICACAO') {
-      // Ao clicar, redireciona para a triagem com o ID
-      window.location.href = `/parceiros/triagem?id=${n.ref_id}`;
-    } else {
-      setModalAtivo({ tipo: n.tipo, id: n.ref_id });
-    }
-  };
+    return () => { supabase.removeChannel(channel); };
+  }, [user, carregarNotificacoes]);
 
   return (
     <NotificationContext.Provider value={{ 
