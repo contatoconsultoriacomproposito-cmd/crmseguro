@@ -40,19 +40,41 @@ export default function VisaoPropostas({
   const [propostasLocais, setPropostasLocais] = useState<PropostaData[]>([]);
   const [parceirosLocais, setParceirosLocais] = useState<any[]>([]);
 
-  // 1. ESTADOS DE FILTRO
-  const [dataInicio, setDataInicio] = useState(
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
-  );
+  // 1. ESTADOS DE FILTRO (Data de início começa vazia para ser preenchida pelo useEffect)
+  const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
   const [corretorLocal, setCorretorLocal] = useState('todos');
 
-  // 2. BUSCA DE DADOS AUTÔNOMA
+  // 2. BUSCAR A DATA DA PROPOSTA MAIS ANTIGA
+  useEffect(() => {
+    async function buscarPrimeiraData() {
+      if (!corretoraId) return;
+      
+      const { data, error } = await supabase
+        .from('tab_propostas')
+        .select('created_at')
+        .eq('corretora_id', corretoraId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (!error && data) {
+        setDataInicio(data.created_at.split('T')[0]);
+      } else {
+        // Fallback: Primeiro dia do mês atual caso não haja propostas
+        setDataInicio(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
+      }
+    }
+    buscarPrimeiraData();
+  }, [corretoraId]);
+
+  // 3. BUSCA DE DADOS
   useEffect(() => {
     async function fetchPropostas() {
+      if (!dataInicio) return; // Aguarda a definição da data de início
+      
       setLoading(true);
       try {
-        // Query de Propostas
         let query = supabase
           .from('tab_propostas')
           .select('*')
@@ -67,7 +89,6 @@ export default function VisaoPropostas({
         const { data: propData, error: propError } = await query;
         if (propError) throw propError;
 
-        // Query de Parceiros (para mapear nomes)
         const { data: parcData } = await supabase
           .from('tab_parceiros')
           .select('*')
@@ -85,7 +106,7 @@ export default function VisaoPropostas({
     if (corretoraId) fetchPropostas();
   }, [dataInicio, dataFim, corretorLocal, corretoraId]);
 
-  // 3. PROCESSAMENTO DE ESTATÍSTICAS
+  // 4. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
     const acc = {
       total: 0, vlrCriado: 0,
@@ -114,7 +135,7 @@ export default function VisaoPropostas({
       acc.vlrCriado += valor;
       acc.statusCount[status] = (acc.statusCount[status] || 0) + 1;
 
-      if (statusLower === 'vendido' || statusLower === 'fechado') {
+      if (statusLower === 'vendido' || statusLower === 'fechado' || statusLower === 'concluído') {
         acc.vendidas++;
         acc.vlrVendido += valor;
 
@@ -134,7 +155,7 @@ export default function VisaoPropostas({
         }
       }
 
-      if (statusLower === 'perdido') {
+      if (statusLower === 'perdido' || statusLower === 'cancelado') {
         acc.perdidas++;
         acc.vlrPerdido += valor;
         const motivo = p.motivo_perda || 'Não informado';
@@ -158,11 +179,10 @@ export default function VisaoPropostas({
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       
       {/* BARRA DE FILTROS */}
-      
       <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
           <Filter size={16} className="text-slate-400" />
-          <span className="text-[10px] font-black uppercase text-slate-500">Filtrar Período:</span>
+          <span className="text-[10px] font-black uppercase text-slate-500">Analítico de Propostas:</span>
         </div>
         
         <div className="flex items-center gap-2">
@@ -180,9 +200,8 @@ export default function VisaoPropostas({
             className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2"
           />
 
-          {/* RÓTULO DE PRECISÃO ADICIONADO ABAIXO */}
           <span className="ml-2 text-[9px] font-black text-indigo-400 uppercase bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
-            📑 Filtrando por: Data de Entrada da Proposta
+            📑 Período: Data de Entrada
           </span>
         </div>
 
@@ -200,7 +219,7 @@ export default function VisaoPropostas({
         {loading && (
           <div className="flex items-center gap-2 ml-2 animate-pulse">
             <Loader2 size={16} className="text-indigo-500 animate-spin" />
-            <span className="text-[10px] font-bold text-indigo-500 uppercase">Buscando...</span>
+            <span className="text-[10px] font-bold text-indigo-500 uppercase">Sincronizando...</span>
           </div>
         )}
       </div>

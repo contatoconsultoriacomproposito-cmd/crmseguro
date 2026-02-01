@@ -16,16 +16,39 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
   const [loading, setLoading] = useState(true);
   const [propostasVendidas, setPropostasVendidas] = useState<any[]>([]);
 
-  // 1. ESTADOS DE FILTRO (Data inicial focada no mês atual)
-  const [dataInicio, setDataInicio] = useState(
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
-  );
+  // 1. ESTADOS DE FILTRO
+  const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
   const [corretorLocal, setCorretorLocal] = useState('todos');
 
-  // 2. BUSCA DE DADOS AUTÔNOMA (Focada em Vendas e Joins de Seguradoras)
+  // 2. BUSCAR A DATA DA PROPOSTA MAIS ANTIGA DA CORRETORA (ID)
+  useEffect(() => {
+    async function buscarPrimeiraData() {
+      if (!corretoraId) return;
+      
+      const { data, error } = await supabase
+        .from('tab_propostas')
+        .select('created_at')
+        .eq('corretora_id', corretoraId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (!error && data) {
+        setDataInicio(data.created_at.split('T')[0]);
+      } else {
+        // Fallback para o início do ano caso não encontre propostas
+        setDataInicio(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
+      }
+    }
+    buscarPrimeiraData();
+  }, [corretoraId]);
+
+  // 3. BUSCA DE DADOS (Focada em Vendas e Joins de Seguradoras)
   useEffect(() => {
     async function fetchVendasSeguradoras() {
+      if (!dataInicio || !corretoraId) return;
+
       setLoading(true);
       try {
         let query = supabase
@@ -42,7 +65,7 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
             )
           `)
           .eq('corretora_id', corretoraId)
-          .in('status', ['Vendido', 'vendido', 'Fechado', 'fechado'])
+          .in('status', ['Vendido', 'vendido', 'Fechado', 'fechado', 'concluído', 'Concluído'])
           .gte('created_at', `${dataInicio}T00:00:00`)
           .lte('created_at', `${dataFim}T23:59:59`);
 
@@ -60,10 +83,10 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
       }
     }
 
-    if (corretoraId) fetchVendasSeguradoras();
+    fetchVendasSeguradoras();
   }, [dataInicio, dataFim, corretorLocal, corretoraId]);
 
-  // 3. PROCESSAMENTO DE ESTATÍSTICAS
+  // 4. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
     const resumoSeg: Record<string, any> = {};
 
@@ -131,9 +154,8 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
             className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2"
           />
 
-          {/* RÓTULO DE PRECISÃO PARA SEGURADORAS */}
           <span className="ml-2 text-[9px] font-black text-emerald-500 uppercase bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
-            🛡️ Base: Data de Venda (Produção Efetiva)
+            🛡️ Base: Histórico desde o Início
           </span>
         </div>
 
@@ -151,7 +173,7 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
         {loading && <Loader2 size={18} className="animate-spin text-indigo-500 ml-2" />}
       </div>
 
-      {/* HEADER E MARKET SHARE */}
+      {/* MARKET SHARE E TOTAL */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
           <h2 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
@@ -177,10 +199,10 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
           </div>
         </div>
 
-        <div className="lg:col-span-2 bg-indigo-600 p-8 rounded-[32px] text-white flex flex-col justify-center relative overflow-hidden shadow-xl shadow-indigo-200">
+        <div className="lg:col-span-2 bg-indigo-600 p-8 rounded-[32px] text-white flex flex-col justify-center relative overflow-hidden shadow-xl shadow-indigo-100">
           <Award size={180} className="absolute -right-10 -bottom-10 opacity-10 rotate-12" />
           <div className="relative z-10">
-            <p className="text-indigo-200 text-xs font-black uppercase tracking-[0.2em] mb-2">Produção Total Seguradoras</p>
+            <p className="text-indigo-200 text-xs font-black uppercase tracking-[0.2em] mb-2">Produção Acumulada Parceiros</p>
             <h1 className="text-5xl font-black mb-4">
               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.totalGeral)}
             </h1>
@@ -198,16 +220,16 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
         </div>
       </div>
 
-      {/* LISTA DETALHADA POR SEGURADORA */}
+      {/* LISTA DETALHADA */}
       <section className="space-y-4">
         <h2 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-          <ShieldCheck size={14} className="text-indigo-500"/> Detalhamento por Companhia
+          <ShieldCheck size={14} className="text-indigo-500"/> Performance por Companhia
         </h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {stats.seguradoras.map((seg: any, idx) => (
-            <div key={idx} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-              <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
+            <div key={idx} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col hover:border-indigo-100 transition-colors group">
+              <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center group-hover:bg-indigo-50/30 transition-colors">
                 <div>
                   <h3 className="text-sm font-black text-slate-800 uppercase italic tracking-tight">{seg.nome}</h3>
                   <p className="text-[10px] font-bold text-slate-400 uppercase">{seg.qtd} Propostas Vendidas</p>
@@ -216,16 +238,16 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
                   <p className="text-lg font-black text-indigo-600">
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(seg.valor)}
                   </p>
-                  <p className="text-[9px] font-black text-slate-400">TOTAL EM PRÊMIO</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Total Premiação</p>
                 </div>
               </div>
 
               <div className="p-6 space-y-3 bg-white">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Mix de Produtos na Cia</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Mix de Produtos</p>
                 {Object.entries(seg.produtos).map(([prodNome, data]: any) => (
-                  <div key={prodNome} className="flex items-center justify-between group">
+                  <div key={prodNome} className="flex items-center justify-between group/line">
                     <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
                       <span className="text-xs font-bold text-slate-600 uppercase">{prodNome}</span>
                     </div>
                     <div className="flex items-center gap-4">
@@ -247,7 +269,7 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
         <div className="h-40 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-[32px] bg-slate-50/30">
           <ShieldCheck size={32} className="text-slate-200 mb-2" />
           <p className="text-xs font-black uppercase text-slate-400 tracking-widest text-center px-4">
-            Sem dados de seguradoras no período selecionado
+            Nenhuma venda registrada no período para este corretor.
           </p>
         </div>
       )}

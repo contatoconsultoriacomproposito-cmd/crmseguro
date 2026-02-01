@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { 
   MessageCircle, Phone, Mail, Monitor, 
-  MapPin, TrendingUp, UserCheck, Users, Calendar, Filter, Loader2
+  MapPin, TrendingUp, UserCheck, Users, Calendar, Filter, Loader2, User
 } from 'lucide-react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -11,7 +11,7 @@ import {
 import { supabase } from '../../../lib/supabaseClient';
 
 interface VisaoProdutividadeProps {
-  corretoraId: string;
+  corretoraId: string; 
   corretoresLista: { id: string; nome: string }[];
 }
 
@@ -23,40 +23,36 @@ export default function VisaoProdutividade({
   const [loading, setLoading] = useState(true);
   const [interacoesLocais, setInteracoesLocais] = useState<any[]>([]);
   
-  // Estados para limites de data do banco
-  const [limitesData, setLimitesData] = useState({ min: '', max: '' });
-
-  // 1. FILTROS
-  const [dataInicio, setDataInicio] = useState(
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
+  const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
   const [corretorLocal, setCorretorLocal] = useState('todos');
 
-  // 2. BUSCA LIMITES DE DATAS (Padrão das outras visões)
+  // 1. BUSCA DATA INICIAL (Executa apenas uma vez ao montar ou mudar a corretora)
   useEffect(() => {
-    async function fetchLimites() {
+    async function buscarPrimeiraInteracao() {
       if (!corretoraId) return;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('tab_interacoes')
         .select('data_historico')
         .eq('corretora_id', corretoraId)
-        .order('data_historico', { ascending: true });
+        .order('data_historico', { ascending: true })
+        .limit(1)
+        .single();
 
-      if (data && data.length > 0) {
-        setLimitesData({
-          min: data[0].data_historico,
-          max: data[data.length - 1].data_historico
-        });
+      if (!error && data) {
+        setDataInicio(data.data_historico);
+      } else {
+        setDataInicio(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
       }
     }
-    fetchLimites();
+    buscarPrimeiraInteracao();
   }, [corretoraId]);
 
-  // 3. BUSCA DE DADOS PRINCIPAL
+  // 2. BUSCA DE DADOS PRINCIPAL (UNIFICADO PARA EVITAR LOOPING)
   useEffect(() => {
     async function fetchProdutividade() {
-      if (!corretoraId) return;
+      if (!dataInicio || !corretoraId) return;
+      
       setLoading(true);
       try {
         let query = supabase
@@ -69,9 +65,10 @@ export default function VisaoProdutividade({
           .gte('data_historico', dataInicio)
           .lte('data_historico', dataFim);
 
+        // REGRA DE NEGÓCIO: Atendimento Direto (Casa)
         if (corretorLocal !== 'todos') {
           if (corretorLocal === 'casa') {
-            query = query.is('corretor_id', null);
+            query = query.eq('corretor_id', corretoraId);
           } else {
             query = query.eq('corretor_id', corretorLocal);
           }
@@ -90,7 +87,7 @@ export default function VisaoProdutividade({
     fetchProdutividade();
   }, [dataInicio, dataFim, corretorLocal, corretoraId]);
 
-  // 4. PROCESSAMENTO
+  // 3. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
     const counts = { whatsapp: 0, ligacao: 0, email: 0, reuniaoOn: 0, reuniaoPres: 0, visita: 0, outros: 0 };
     const rankingClientes: Record<string, { nome: string; qtd: number }> = {};
@@ -109,7 +106,7 @@ export default function VisaoProdutividade({
       else counts.outros++;
 
       const nomeCliente = inter.tab_clientes?.nome || "Cliente não Identificado";
-      const cId = inter.cliente_id;
+      const cId = inter.cliente_id || 'sem-id';
       if (!rankingClientes[cId]) rankingClientes[cId] = { nome: nomeCliente, qtd: 0 };
       rankingClientes[cId].qtd += 1;
 
@@ -127,11 +124,11 @@ export default function VisaoProdutividade({
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10 w-full">
       
-      {/* BARRA DE FILTROS PADRONIZADA */}
+      {/* BARRA DE FILTROS */}
       <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl">
           <Filter size={16} className="text-slate-400" />
-          <span className="text-[10px] font-black uppercase text-slate-500">Filtros:</span>
+          <span className="text-[10px] font-black uppercase text-slate-500">Produtividade:</span>
         </div>
         
         <div className="flex items-center gap-3">
@@ -139,47 +136,37 @@ export default function VisaoProdutividade({
             <input 
               type="date" 
               value={dataInicio} 
-              min={limitesData.min}
-              max={limitesData.max}
               onChange={(e) => setDataInicio(e.target.value)} 
-              className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2 focus:ring-2 focus:ring-indigo-500" 
+              className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2 focus:ring-2 focus:ring-indigo-500 outline-none" 
             />
-            <span className="text-slate-300 font-bold text-[10px]">ATÉ</span>
+            <span className="text-slate-300 font-bold text-[10px] uppercase">até</span>
             <input 
               type="date" 
               value={dataFim} 
-              min={limitesData.min}
-              max={limitesData.max}
               onChange={(e) => setDataFim(e.target.value)} 
-              className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2 focus:ring-2 focus:ring-indigo-500" 
+              className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2 focus:ring-2 focus:ring-indigo-500 outline-none" 
             />
-          </div>
-
-          {/* INDICADOR DE CONTEXTO AO LADO DAS DATAS */}
-          <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-xl border border-indigo-100">
-            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-            <span className="text-[10px] font-black text-indigo-700 uppercase tracking-tighter">
-              Filtrando Histórico de Interações
-            </span>
           </div>
         </div>
 
-        <select 
-          value={corretorLocal} 
-          onChange={(e) => setCorretorLocal(e.target.value)}
-          className="bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-600 p-2 min-w-[200px] outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="todos">Todos os Corretores</option>
-          <option value="casa">🏠 Somente a Casa</option>
-          {(corretoresLista || []).map(c => (
-            <option key={c.id} value={c.id}>👤 {c.nome}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2 px-4 border-l border-slate-100 ml-auto">
+          <User size={14} className="text-slate-400" />
+          <select 
+            value={corretorLocal} 
+            onChange={(e) => setCorretorLocal(e.target.value)} 
+            className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
+          >
+            <option value="todos">Todos os Corretores</option>
+            {(corretoresLista || []).map(c => (
+              <option key={c.id} value={c.id}>{c.nome}</option>
+            ))}
+          </select>
+        </div>
 
-        {loading && <Loader2 size={18} className="animate-spin text-indigo-500 ml-auto" />}
+        {loading && <Loader2 size={18} className="animate-spin text-indigo-500 ml-2" />}
       </div>
 
-      {/* CARDS */}
+      {/* CARDS DE AÇÕES */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         <ActionCard icon={<MessageCircle size={20}/>} label="WhatsApp" val={stats.counts.whatsapp} color="text-emerald-600" bg="bg-emerald-50" />
         <ActionCard icon={<Phone size={20}/>} label="Ligação" val={stats.counts.ligacao} color="text-blue-600" bg="bg-blue-50" />
@@ -190,13 +177,13 @@ export default function VisaoProdutividade({
         <ActionCard icon={<TrendingUp size={20}/>} label="Outros" val={stats.counts.outros} color="text-slate-600" bg="bg-slate-50" />
       </div>
 
-      {/* CONTEÚDO GRÁFICO E RANKING */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 min-h-[400px]">
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
+      {/* GRÁFICO E RANKING */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm flex flex-col min-h-[450px]">
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-8 flex items-center gap-2">
             <Calendar size={18} className="text-indigo-500"/> Volume de Atendimento Diário
           </h3>
-          <div className="flex-1 w-full min-h-[250px]">
+          <div className="flex-1 w-full min-h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats.timeline}>
                 <defs>
@@ -217,32 +204,34 @@ export default function VisaoProdutividade({
                   contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}}
                   labelFormatter={(lbl) => `Data: ${lbl.split('-').reverse().join('/')}`}
                 />
-                <Area type="monotone" dataKey="total" name="Ações" stroke="#6366f1" strokeWidth={4} fill="url(#colorIndigo)" />
+                <Area type="monotone" dataKey="total" name="Ações" stroke="#6366f1" strokeWidth={4} fill="url(#colorIndigo)" animationDuration={1500} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
-            <Users size={18} className="text-indigo-500"/> Clientes com mais Interações
+        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-8 flex items-center gap-2">
+            <Users size={18} className="text-indigo-500"/> Clientes mais Atendidos
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {stats.topClientes.length > 0 ? stats.topClientes.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition-colors group">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-slate-200 group-hover:bg-indigo-100 group-hover:text-indigo-600 text-slate-600 flex items-center justify-center text-[10px] font-black transition-colors">{idx + 1}º</div>
+              <div key={idx} className="flex items-center justify-between p-5 rounded-3xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition-all group">
+                <div className="flex items-center gap-4">
+                  <div className="w-8 h-8 rounded-full bg-white shadow-sm group-hover:bg-indigo-600 group-hover:text-white text-slate-600 flex items-center justify-center text-[11px] font-black transition-colors border border-slate-100 uppercase italic">
+                    {idx + 1}º
+                  </div>
                   <span className="text-xs font-black text-slate-700 uppercase tracking-tight">{item.nome}</span>
                 </div>
-                <div className="bg-white px-3 py-1 rounded-lg border border-slate-200 shadow-sm group-hover:border-indigo-100 transition-colors">
-                   <span className="text-sm font-black text-indigo-600">{item.qtd}</span>
-                   <span className="ml-1 text-[9px] font-bold text-slate-400 uppercase">Ações</span>
+                <div className="bg-white px-4 py-1.5 rounded-xl border border-slate-200 shadow-sm group-hover:border-indigo-200 transition-colors">
+                    <span className="text-sm font-black text-indigo-600">{item.qtd}</span>
+                    <span className="ml-1 text-[9px] font-bold text-slate-400 uppercase">Ações</span>
                 </div>
               </div>
             )) : (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                <TrendingUp size={40} className="mb-4 opacity-20" />
-                <p className="text-xs font-bold uppercase italic">Nenhuma interação no período</p>
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400 opacity-50">
+                <TrendingUp size={40} className="mb-4" />
+                <p className="text-xs font-black uppercase italic tracking-widest">Aguardando dados...</p>
               </div>
             )}
           </div>
@@ -254,8 +243,8 @@ export default function VisaoProdutividade({
 
 function ActionCard({ icon, label, val, color, bg }: any) {
   return (
-    <div className="bg-white p-5 rounded-[24px] border border-slate-100 text-center space-y-2 hover:shadow-md transition-all duration-300 hover:-translate-y-1 group">
-      <div className={`inline-flex p-2 rounded-xl ${bg} ${color} shadow-sm group-hover:scale-110 transition-transform`}>{icon}</div>
+    <div className="bg-white p-5 rounded-[32px] border border-slate-100 text-center space-y-2 hover:shadow-xl hover:shadow-slate-100 transition-all duration-300 hover:-translate-y-1 group">
+      <div className={`inline-flex p-3 rounded-2xl ${bg} ${color} shadow-sm group-hover:scale-110 transition-transform`}>{icon}</div>
       <div>
         <p className="text-2xl font-black text-slate-800 tracking-tight">{val}</p>
         <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{label}</p>
