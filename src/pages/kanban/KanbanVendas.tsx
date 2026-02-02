@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   DndContext,
-  rectIntersection,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -15,6 +15,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  arrayMove
 } from '@dnd-kit/sortable';
 
 import { supabase } from '../../lib/supabaseClient'; 
@@ -30,8 +31,8 @@ import { BuscaGlobal } from '../../components/BuscaGlobal';
 import { ModalFechamento } from '../../components/propostas/ModalFechamento'; 
 import { maskCurrency, parseCurrencyToNumber } from '../../utils/masks';
 import { toast } from 'react-hot-toast';
-import { useKanbanConfig } from './useKanbanConfig'; // Importando o hook
-import { MenuConfigColuna } from './MenuConfigColuna'; // Importando o menu
+import { useKanbanConfig } from './useKanbanConfig';
+import { MenuConfigColuna } from './MenuConfigColuna';
 
 interface Cliente {
   id: string;
@@ -40,13 +41,12 @@ interface Cliente {
   tipo_cliente: 'PF' | 'PJ';
   status_kanban: 'novo' | 'vendido' | 'perdido';
   fase_kanban: string;
+  posicao_kanban: number;
   data_retorno?: string;
   horario_retorno?: string;
   tab_propostas?: any[];
   usuarios_perfis?: { nome: string };
 }
-
-// Removida a constante estática COLUNAS para usar a do banco de dados
 
 export default function KanbanVendas() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -54,7 +54,6 @@ export default function KanbanVendas() {
   const [activeCliente, setActiveCliente] = useState<Cliente | null>(null);
   const [clienteSendoEditado, setClienteSendoEditado] = useState<string | null>(null);
   
-  // Integração do Hook dinâmico para o grupo 'vendas'
   const { colunas, loading: loadingConfig, refresh } = useKanbanConfig('vendas');
 
   const [termoBusca, setTermoBusca] = useState('');
@@ -64,7 +63,6 @@ export default function KanbanVendas() {
   const [valorMin, setValorMin] = useState('');
   const [valorMax, setValorMax] = useState('');
 
-  // Estados de Modais
   const [modalImpedimento, setModalImpedimento] = useState<{
     isOpen: boolean;
     mensagem: string;
@@ -138,14 +136,30 @@ export default function KanbanVendas() {
 
       const { data, error } = await query.order('posicao_kanban', { ascending: true });
       if (error) throw error;
-      setClientes(data as Cliente[] || []);
+
+      // --- LÓGICA DE ELEVAÇÃO AUTOMÁTICA (AUTO-FIX) ---
+      const rawClientes = data as Cliente[] || [];
+      const clientesTratados = rawClientes.map(cliente => {
+        const temNegociacao = cliente.tab_propostas?.some(p => p.status === 'Em Negociação');
+        
+        // Se tem proposta em negociação mas não está na coluna correta, move automaticamente
+        if (temNegociacao && cliente.fase_kanban !== 'negociacao_vendas') {
+          supabase.from('tab_clientes').update({ fase_kanban: 'negociacao_vendas' }).eq('id', cliente.id);
+          return { ...cliente, fase_kanban: 'negociacao_vendas' };
+        }
+        return cliente;
+      });
+
+      setClientes(clientesTratados);
     } catch (error) {
       console.error("Erro ao buscar clientes no Kanban Vendas:", error);
     }
   }
 
   const getClientesDaColuna = (fase: string) =>
-    clientes.filter(c => c.fase_kanban === fase);
+    clientes
+      .filter(c => c.fase_kanban === fase)
+      .sort((a, b) => (a.posicao_kanban || 0) - (b.posicao_kanban || 0));
 
   function handleDragStart(event: DragStartEvent) {
     const { active } = event;
@@ -155,89 +169,81 @@ export default function KanbanVendas() {
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    const currentActiveId = active.id as string;
     setActiveId(null);
     setActiveCliente(null);
 
     if (!over) return;
 
-    const cliente = clientes.find(c => c.id === currentActiveId) as any;
-    if (!cliente) return;
+    const activeIdStr = active.id as string;
+    const overIdStr = over.id as string;
+    const clienteAtivo = clientes.find(c => c.id === activeIdStr);
 
-    const faseAtual = cliente.fase_kanban;
+    if (!clienteAtivo) return;
 
-    // --- SOLUÇÃO PARA O "SORTABLE-0" E DROPS EM CIMA DE CARDS ---
-    // 1. Tenta pegar o ID da Coluna (containerId)
-    let destino = (over.data.current?.sortable?.containerId as string) ?? (over.id as string);
-
-    // 2. Double Check: Se o destino for o ID de outro cliente (UUID), 
-    // buscamos a qual coluna esse cliente pertence.
-    const clienteDestino = clientes.find(c => c.id === destino);
-    if (clienteDestino) {
-      destino = clienteDestino.fase_kanban;
+    // 1. Identificar Destino (Coluna ou Card)
+    let colDestino = overIdStr;
+    const colunasValidas = ['pos', 'renovacao', 'negociacao_vendas'];
+    if (!colunasValidas.includes(overIdStr)) {
+      const clienteOver = clientes.find(c => c.id === overIdStr);
+      colDestino = clienteOver?.fase_kanban || clienteAtivo.fase_kanban;
     }
 
-    // 3. Bloqueio de segurança contra IDs internos do dnd-kit
-    if (!destino || destino === faseAtual || String(destino).startsWith('Sortable')) return;
-    // -----------------------------------------------------------
+    const colOrigem = clienteAtivo.fase_kanban;
 
-    const temPropostaEmNegociacao = cliente.tab_propostas?.some(
-      (p: any) => p.status === 'Em Negociação'
-    );
+    // --- CASO 1: REORDENAÇÃO NA MESMA COLUNA ---
+    if (colOrigem === colDestino) {
+      if (activeIdStr === overIdStr) return;
 
-    // --- REGRAS LÓGICAS DE TRAVA ---
-    if (faseAtual === 'pos' && destino === 'negociacao_vendas' && !temPropostaEmNegociacao) {
-      setModalImpedimento({ 
-        isOpen: true, 
-        mensagem: "Para iniciar uma Negociação a partir do Pós-Venda, é obrigatório cadastrar uma proposta com status 'Em Negociação'." 
-      });
+      const itemsDaColuna = getClientesDaColuna(colOrigem);
+      const oldIndex = itemsDaColuna.findIndex(c => c.id === activeIdStr);
+      const newIndex = itemsDaColuna.findIndex(c => c.id === overIdStr);
+
+      const novaListaOrdenada = arrayMove(itemsDaColuna, oldIndex, newIndex);
+
+      setClientes(prev => prev.map(c => {
+        const itemNovo = novaListaOrdenada.find(ni => ni.id === c.id);
+        return itemNovo ? { ...c, posicao_kanban: novaListaOrdenada.indexOf(itemNovo) } : c;
+      }));
+
+      const updates = novaListaOrdenada.map((item, index) => 
+        supabase.from('tab_clientes').update({ posicao_kanban: index }).eq('id', item.id)
+      );
+      await Promise.all(updates);
       return;
     }
 
-    if (faseAtual === 'renovacao' && destino === 'negociacao_vendas' && !temPropostaEmNegociacao) {
-      setModalImpedimento({ 
-        isOpen: true, 
-        mensagem: "Para avançar para Negociação, é necessário ter pelo menos uma proposta com status 'Em Negociação'." 
-      });
-      return;
-    }
+    // --- CASO 2: MUDANÇA DE COLUNA (REGRAS) ---
+    const temNegociacao = clienteAtivo.tab_propostas?.some((p: any) => p.status === 'Em Negociação');
 
-    if (faseAtual === 'negociacao_vendas' && (destino === 'pos' || destino === 'renovacao') && temPropostaEmNegociacao) {
+    if (colDestino === 'negociacao_vendas' && !temNegociacao) {
       setModalImpedimento({ 
         isOpen: true, 
-        mensagem: "Não é permitido retornar para Pós-Venda ou Renovação enquanto houver uma proposta 'Em Negociação' ativa." 
+        mensagem: "Não existe proposta em aberto para este cliente. Cadastre uma proposta 'Em Negociação' primeiro." 
       });
       return;
     }
 
     try {
-      // Atualização Otimista (Interface rápida)
-      setClientes(prev => {
-        const listaSemOItem = prev.filter(c => c.id !== currentActiveId);
-        const itemAtualizado = { ...cliente, fase_kanban: destino };
-        return [itemAtualizado, ...listaSemOItem];
-      });
-
-      // Persistência no Supabase
+      // Atualização Otimista
+      setClientes(prev => prev.map(c => c.id === activeIdStr ? { ...c, fase_kanban: colDestino, posicao_kanban: 0 } : c));
+      
       const { error } = await supabase
         .from('tab_clientes')
-        .update({ fase_kanban: destino, posicao_kanban: 0 })
-        .eq('id', currentActiveId);
+        .update({ fase_kanban: colDestino, posicao_kanban: 0 })
+        .eq('id', activeIdStr);
 
       if (error) throw error;
-
-      fetchClientes();
-      toast.success("Movimentação atualizada!");
-
+      toast.success("Movimentação realizada!");
     } catch (err) {
-      console.error("Erro crítico no Kanban:", err);
-      toast.error("Erro ao salvar no servidor");
-      fetchClientes(); // Reverte para o estado do banco
+      console.error(err);
+      toast.error("Erro ao salvar");
+      fetchClientes();
     }
   }
 
   return (
     <div className="px-4 py-8 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen w-full">
+      {/* HEADER E FILTROS */}
       <div className="mb-8 space-y-6">
         <div>
           <h1 className="text-2xl font-black italic uppercase tracking-tighter text-slate-800 dark:text-white">
@@ -285,7 +291,7 @@ export default function KanbanVendas() {
           </div>
 
           <button 
-            onClick={() => { setDataInicio(''); setDataFim(''); setValorMin(''); setValorMax(''); setTermoBusca(''); setCorretorBusca(''); }}  
+            onClick={() => { setDataInicio(''); setDataFim(''); setValorMin(''); setValorMax(''); setTermoBusca(''); setCorretorBusca(''); }} 
             className="h-12 w-12 flex items-center justify-center bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl transition-all shadow-sm group"
           >
             <Eraser size={18} className="group-hover:rotate-12 transition-transform" />
@@ -295,13 +301,15 @@ export default function KanbanVendas() {
       
       <DndContext
         sensors={sensors}
-        collisionDetection={rectIntersection}
+        collisionDetection={pointerWithin} // Alterado de rectIntersection
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-6 overflow-x-auto pb-10">
+        {/* ANTES: items-start | DEPOIS: items-stretch */}
+        <div className="flex gap-6 overflow-x-auto pb-10 items-stretch">
           {!loadingConfig && colunas.map(col => (
-            <div key={col.id} className="flex-1 min-w-[380px] max-w-[480px]">
+            <div key={col.id} className="flex-1 min-w-[380px] max-w-[480px] flex flex-col">
+              {/* Cabeçalho da Coluna */}
               <div className="flex items-center justify-between mb-4 px-2">
                 <div className="flex items-center gap-2">
                   <span 
@@ -324,11 +332,24 @@ export default function KanbanVendas() {
                 </div>
               </div>
 
+              {/* Coluna Droppable: Agora ocupa o espaço total e estica o container interno */}
               <KanbanColumn id={col.id}>
-                <SortableContext items={getClientesDaColuna(col.id).map(c => c.id)} strategy={verticalListSortingStrategy}>
-                  {getClientesDaColuna(col.id).map(cliente => (
-                    <SortableCard key={cliente.id} id={cliente.id} cliente={cliente} columnId={col.id} onUpdate={fetchClientes} />
-                  ))}
+                <SortableContext 
+                  items={getClientesDaColuna(col.id).map(c => c.id)} 
+                  strategy={verticalListSortingStrategy}
+                >
+                  {/* Este container interno agora expande para aceitar drops em qualquer lugar da área cinza */}
+                  <div className="flex flex-col gap-3 min-h-[500px] h-full">
+                    {getClientesDaColuna(col.id).map(cliente => (
+                      <SortableCard 
+                        key={cliente.id} 
+                        id={cliente.id} 
+                        cliente={cliente} 
+                        columnId={col.id} 
+                        onUpdate={fetchClientes} 
+                      />
+                    ))}
+                  </div>
                 </SortableContext>
               </KanbanColumn>
             </div>
@@ -400,10 +421,22 @@ export default function KanbanVendas() {
 }
 
 function KanbanColumn({ id, children }: { id: string; children: React.ReactNode }) {
-  const { setNodeRef } = useDroppable({ id });
+  const { setNodeRef, isOver } = useDroppable({ id });
+  
   return (
-    <div ref={setNodeRef} className="bg-slate-100/50 dark:bg-zinc-900/50 p-3 rounded-[24px] min-h-[70vh] flex flex-col border border-slate-200/50 dark:border-zinc-800/50">
-      <div className="flex flex-col gap-3 h-full">{children}</div>
+    <div 
+      ref={setNodeRef} 
+      className={`
+        p-3 rounded-[24px] min-h-[75vh] flex-1 flex flex-col border transition-all duration-200
+        ${isOver 
+          ? 'bg-slate-300/70 dark:bg-zinc-900 border-blue-400/50' 
+          : 'bg-slate-200/60 dark:bg-zinc-950 border-slate-300/50 dark:border-zinc-800/80'
+        }
+      `}
+    >
+      <div className="flex flex-col gap-3 flex-1 h-full">
+        {children}
+      </div>
     </div>
   );
 }

@@ -56,9 +56,20 @@ export default function ParceirosCadastro() {
         const { data: perfil } = await supabase.from("usuarios_perfis").select("*").eq("id", user.id).single();
         if (perfil) {
           setPerfilLogado(perfil);
-          const { data: listaCorretores } = await supabase.from("usuarios_perfis").select("id, nome").eq("corretora_id", perfil.corretora_id).eq("tipo_usuario", "CORRETOR");
+          const { data: listaCorretores } = await supabase.from("usuarios_perfis")
+            .select("id, nome")
+            .eq("corretora_id", perfil.corretora_id)
+            .eq("tipo_usuario", "CORRETOR");
+          
           if (listaCorretores) setCorretores(listaCorretores);
-          if (perfil.tipo_usuario === "CORRETOR") setForm(prev => ({ ...prev, corretor_id: perfil.id }));
+          
+          // Se for corretor, trava no ID dele. Se for corretora, por padrão pode ser Atendimento Direto.
+          if (perfil.tipo_usuario === "CORRETOR") {
+            setForm(prev => ({ ...prev, corretor_id: perfil.id }));
+          } else {
+            setForm(prev => ({ ...prev, corretor_id: perfil.corretora_id }));
+          }
+
           await carregarParceiros(perfil);
         }
       } catch (err) { 
@@ -73,9 +84,11 @@ export default function ParceirosCadastro() {
   async function carregarParceiros(perfil: any) {
       if (!perfil || !perfil.corretora_id) return;
       let query = supabase.from("tab_parceiros").select("*").eq("corretora_id", perfil.corretora_id);
+      
       if (perfil.tipo_usuario === "CORRETOR") {
         query = query.eq("corretor_id", perfil.id);
       }
+      
       const { data, error } = await query.order("nome_parceiro", { ascending: true });
       if (!error && data) setParceiros(data);
   }
@@ -93,7 +106,7 @@ export default function ParceirosCadastro() {
   const resetForm = () => {
     setForm({
       nome_parceiro: "", setor_parceiro: "", observacao_parceiro: "",
-      corretor_id: perfilLogado?.tipo_usuario === "CORRETOR" ? perfilLogado.id : "",
+      corretor_id: perfilLogado?.tipo_usuario === "CORRETOR" ? perfilLogado.id : perfilLogado?.corretora_id || "",
       telefone_parceiro: "", email_parceiro: "", slug_link: "", tipo_chave_pix: "", chave_pix: ""
     });
     setEditId(null);
@@ -108,7 +121,7 @@ export default function ParceirosCadastro() {
       nome_parceiro: form.nome_parceiro.toUpperCase(),
       setor_parceiro: form.setor_parceiro.toUpperCase(),
       observacao_parceiro: form.observacao_parceiro,
-      corretor_id: form.corretor_id || null,
+      corretor_id: form.corretor_id, 
       corretora_id: perfilLogado.corretora_id,
       tipo_parceiro: tipoAbas,
       telefone_parceiro: form.telefone_parceiro,
@@ -169,7 +182,6 @@ export default function ParceirosCadastro() {
     return pertenceAba && atendeBuscaTexto && atendeFiltroCorretor;
   });
 
-  // TELA DE CARREGAMENTO INICIAL USANDO 'fetching'
   if (fetching) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-slate-50">
@@ -182,7 +194,6 @@ export default function ParceirosCadastro() {
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
       
-      {/* NOTIFICAÇÃO FLOATING */}
       {aviso && (
         <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-4 px-6 py-3 rounded-2xl shadow-2xl animate-in slide-in-from-top duration-300 border backdrop-blur-md ${aviso.tipo === 'sucesso' ? 'bg-zinc-900 text-white border-zinc-700' : 'bg-red-600 text-white border-red-400'}`}>
           {aviso.tipo === 'sucesso' ? <CheckCircle2 size={18} className="text-blue-400"/> : <AlertCircle size={18}/>}
@@ -190,7 +201,6 @@ export default function ParceirosCadastro() {
         </div>
       )}
 
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -208,8 +218,8 @@ export default function ParceirosCadastro() {
                 onChange={(e) => setCorretorFiltro(e.target.value)}
                 className="bg-white border-2 border-blue-100 rounded-xl px-4 h-12 text-[10px] font-black uppercase text-blue-600 focus:border-blue-600 outline-none transition-all appearance-none pr-10 shadow-sm hover:border-blue-300 cursor-pointer"
               >
-                <option value="TODOS">🔍 TODOS OS CORRETORES</option>
-                <option value="">🚫 SEM CORRETOR (DIRETO)</option>
+                <option value="TODOS">🔍 TODOS OS RESPONSÁVEIS</option>
+                <option value={perfilLogado?.corretora_id}>🏢 ATENDIMENTO DIRETO</option>
                 {corretores.map(c => (
                   <option key={c.id} value={c.id}>{c.nome}</option>
                 ))}
@@ -239,7 +249,6 @@ export default function ParceirosCadastro() {
       </div>
 
       <div className="space-y-10">
-        {/* SEÇÃO DE CADASTRO */}
         <div className="bg-white rounded-[2.5rem] p-6 md:p-10 shadow-sm border border-slate-200 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none text-blue-600">
             <Users size={120} />
@@ -320,7 +329,8 @@ export default function ParceirosCadastro() {
                   <select required disabled={perfilLogado?.tipo_usuario === "CORRETOR"} 
                     className="w-full h-12 pl-12 pr-10 rounded-xl bg-white border-2 border-slate-200 font-bold text-xs text-slate-700 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none appearance-none cursor-pointer disabled:opacity-60 transition-all"
                     value={form.corretor_id} onChange={e => setForm({...form, corretor_id: e.target.value})}>
-                    <option value="">SELECIONE UM CORRETOR</option>
+                    <option value="">SELECIONE O RESPONSÁVEL</option>
+                    <option value={perfilLogado?.corretora_id} className="text-blue-600 font-bold">🏢 ATENDIMENTO DIRETO (CASA)</option>
                     {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
                   <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -360,7 +370,6 @@ export default function ParceirosCadastro() {
           </form>
         </div>
 
-        {/* LISTAGEM */}
         <div className="space-y-4">
           <div className="flex items-center justify-between px-4">
              <h3 className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em] flex items-center gap-2">
@@ -382,7 +391,9 @@ export default function ParceirosCadastro() {
                       <span className="text-[9px] font-black text-slate-500 flex items-center gap-1.5 uppercase tracking-tighter"><Briefcase size={12} className="text-blue-500"/> {p.setor_parceiro || 'GERAL'}</span>
                       <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded flex items-center gap-1.5 uppercase tracking-tighter border border-blue-100">
                         <UserCheck size={12} className="text-blue-600"/> 
-                        {corretores.find(c => c.id === p.corretor_id)?.nome || 'GESTÃO DIRETA'}
+                        {p.corretor_id === p.corretora_id 
+                          ? 'ATENDIMENTO DIRETO' 
+                          : (corretores.find(c => c.id === p.corretor_id)?.nome || 'NÃO ATRIBUÍDO')}
                       </span>
                       {p.telefone_parceiro && <span className="text-[9px] font-black text-slate-500 flex items-center gap-1.5 uppercase tracking-tighter"><Phone size={12} className="text-blue-500"/> {p.telefone_parceiro}</span>}
                     </div>

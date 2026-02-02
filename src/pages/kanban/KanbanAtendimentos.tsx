@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   DndContext,
-  rectIntersection,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -15,6 +15,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  arrayMove
 } from '@dnd-kit/sortable';
 
 import { supabase } from '../../lib/supabaseClient'; 
@@ -40,29 +41,21 @@ interface Cliente {
   tipo_cliente: 'PF' | 'PJ';
   status_kanban: 'novo' | 'vendido' | 'perdido';
   fase_kanban: string;
+  posicao_kanban: number; 
   data_retorno?: string;
   horario_retorno?: string;
   tab_propostas?: any[];
+  tab_interacoes?: any[]; 
   usuarios_perfis?: { nome: string };
 }
 
-function getFaseCliente(cliente: any): 'lead' | 'contato' | 'negociacao' {
-  const temInteracao = cliente.tab_interacoes && cliente.tab_interacoes.length > 0;
-  const temPropostaEmNegocicao = cliente.tab_propostas?.some(
-    (p: any) => p.status === 'Em Negociação'
-  );
-
-  if (temInteracao && temPropostaEmNegocicao) return 'negociacao';
-  if (temInteracao) return 'contato';
-  return 'lead';
-}
+// Removida a função getFaseCliente que não estava sendo utilizada para sanar o erro de compilação.
 
 export default function KanbanAtendimentos() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeCliente, setActiveCliente] = useState<Cliente | null>(null);
   
-  // Hook refinado utilizando o refresh para evitar o window.location.reload()
   const { colunas, loading: loadingConfig, refresh } = useKanbanConfig('atendimento');
   
   const [termoBusca, setTermoBusca] = useState('');
@@ -100,74 +93,102 @@ export default function KanbanAtendimentos() {
   }, [termoBusca, dataInicio, dataFim, valorMin, valorMax, corretorBusca]);
 
   async function fetchClientes() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      const { data: perfil } = await supabase
-        .from("usuarios_perfis")
-        .select("tipo_usuario, corretora_id")
-        .eq("id", user.id)
-        .single();
+    const { data: perfil } = await supabase
+      .from("usuarios_perfis")
+      .select("tipo_usuario, corretora_id")
+      .eq("id", user.id)
+      .single();
 
-      if (!perfil) return;
+    if (!perfil) return;
 
-      const camposProposta = 'id, status, valor_total_proposta';
-      const relacaoPropostas = (valorMin || valorMax) 
-        ? `tab_propostas!inner(${camposProposta})` 
-        : `tab_propostas(${camposProposta})`;
+    const camposProposta = 'id, status, valor_total_proposta';
+    const relacaoPropostas = (valorMin || valorMax) 
+      ? `tab_propostas!inner(${camposProposta})` 
+      : `tab_propostas(${camposProposta})`;
 
-      let query = supabase
-        .from('tab_clientes')
-        .select(`
-          *,
-          corretor:usuarios_perfis!tab_clientes_corretor_id_fkey(nome),
-          tab_interacoes(id),
-          ${relacaoPropostas}
-        `)
-        .eq('status_kanban', 'novo')
-        .eq('corretora_id', perfil.corretora_id);
+    let query = supabase
+      .from('tab_clientes')
+      .select(`
+        *,
+        corretor:usuarios_perfis!tab_clientes_corretor_id_fkey(nome),
+        tab_interacoes(id),
+        ${relacaoPropostas}
+      `)
+      .eq('status_kanban', 'novo')
+      .eq('corretora_id', perfil.corretora_id);
 
-      if (perfil.tipo_usuario === 'CORRETOR') {
-        query = query.eq('corretor_id', user.id);
-      }
-
-      if (termoBusca) {
-        query = query.or(`nome.ilike.%${termoBusca}%,razao_social.ilike.%${termoBusca}%,cpf.ilike.%${termoBusca}%,cnpj.ilike.%${termoBusca}%,email.ilike.%${termoBusca}%,telefone_whats.ilike.%${termoBusca}%`);
-      }
-
-      if (corretorBusca) {
-        query = query.filter('usuarios_perfis.nome', 'ilike', `%${corretorBusca}%`);
-      }
-
-      if (dataInicio) query = query.gte('data_retorno', dataInicio);
-      if (dataFim) query = query.lte('data_retorno', dataFim);
-      if (valorMin) query = query.gte('tab_propostas.valor_total_proposta', parseCurrencyToNumber(valorMin));
-      if (valorMax) query = query.lte('tab_propostas.valor_total_proposta', parseCurrencyToNumber(valorMax));
-
-      const { data, error } = await query.order('posicao_kanban', { ascending: true });
-      if (error) throw error;
-      setClientes(data as Cliente[] || []);
-    } catch (error) {
-      console.error("Erro ao buscar clientes:", error);
+    if (perfil.tipo_usuario === 'CORRETOR') {
+      query = query.eq('corretor_id', user.id);
     }
+
+    if (termoBusca) {
+      query = query.or(`nome.ilike.%${termoBusca}%,razao_social.ilike.%${termoBusca}%,cpf.ilike.%${termoBusca}%,cnpj.ilike.%${termoBusca}%,email.ilike.%${termoBusca}%,telefone_whats.ilike.%${termoBusca}%`);
+    }
+
+    if (corretorBusca) {
+      query = query.filter('usuarios_perfis.nome', 'ilike', `%${corretorBusca}%`);
+    }
+
+    if (dataInicio) query = query.gte('data_retorno', dataInicio);
+    if (dataFim) query = query.lte('data_retorno', dataFim);
+    if (valorMin) query = query.gte('tab_propostas.valor_total_proposta', parseCurrencyToNumber(valorMin));
+    if (valorMax) query = query.lte('tab_propostas.valor_total_proposta', parseCurrencyToNumber(valorMax));
+
+    const { data, error } = await query.order('posicao_kanban', { ascending: true });
+    if (error) throw error;
+
+    // --- LÓGICA DE ELEVAÇÃO AUTOMÁTICA (AUTO-FIX) ---
+    const rawClientes = data as Cliente[] || [];
+    
+    const clientesTratados = rawClientes.map(cliente => {
+      const interacoes = cliente.tab_interacoes || [];
+      const propostas = cliente.tab_propostas || [];
+      const temInteracao = interacoes.length > 0;
+      const temNegociacao = propostas.some(p => p.status === 'Em Negociação');
+
+      let novaFase = cliente.fase_kanban;
+
+      // Se tem Negociação em aberto, deve estar obrigatoriamente em 'negociacao'
+      if (temNegociacao && cliente.fase_kanban !== 'negociacao') {
+        novaFase = 'negociacao';
+      } 
+      // Se não tem negociação mas tem contato, deve estar em 'contato' (se estiver em lead)
+      else if (temInteracao && cliente.fase_kanban === 'lead') {
+        novaFase = 'contato';
+      }
+
+      // Se a fase foi corrigida pela lógica, atualiza o banco em background
+      if (novaFase !== cliente.fase_kanban) {
+        supabase
+          .from('tab_clientes')
+          .update({ fase_kanban: novaFase })
+          .eq('id', cliente.id)
+          .then(({ error: errUpdate }) => {
+            if (errUpdate) console.error(`Erro ao auto-mover cliente ${cliente.id}:`, errUpdate);
+          });
+          
+        return { ...cliente, fase_kanban: novaFase };
+      }
+
+      return cliente;
+    });
+
+    setClientes(clientesTratados);
+    // ------------------------------------------------
+    
+  } catch (error) {
+    console.error("Erro ao buscar clientes:", error);
   }
+}
 
   const getClientesDaColuna = (colunaId: string) => {
-    return clientes.filter(cliente => {
-      const clienteData = cliente as any;
-      const temInteracao = clienteData.tab_interacoes && clienteData.tab_interacoes.length > 0;
-      const temPropostaEmNegocicao = clienteData.tab_propostas?.some(
-        (p: any) => p.status === 'Em Negociação'
-      );
-
-      switch (colunaId) {
-        case 'lead': return !temInteracao;
-        case 'contato': return temInteracao && !temPropostaEmNegocicao;
-        case 'negociacao': return temInteracao && temPropostaEmNegocicao;
-        default: return false;
-      }
-    });
+    return clientes
+      .filter(cliente => cliente.fase_kanban === colunaId)
+      .sort((a, b) => (a.posicao_kanban || 0) - (b.posicao_kanban || 0));
   };
 
   function handleDragStart(event: DragStartEvent) {
@@ -183,85 +204,97 @@ export default function KanbanAtendimentos() {
 
     if (!over) return;
 
-    const cliente = clientes.find(c => c.id === active.id) as any;
-    if (!cliente) return;
+    const activeIdStr = active.id as string;
+    const overIdStr = over.id as string;
 
-    const faseAtual = getFaseCliente(cliente);
+    const clienteAtivo = clientes.find(c => c.id === activeIdStr);
+    if (!clienteAtivo) return;
 
-    // --- CORREÇÃO PONTUAL E BLINDAGEM ---
-    let destino = (over.data.current?.sortable?.containerId as string) ?? (over.id as string);
-
-    // Double Check: Se o destino for o ID de um card (UUID), buscamos a coluna dele
-    const clienteDestino = clientes.find(c => c.id === destino);
-    if (clienteDestino) {
-      destino = getFaseCliente(clienteDestino);
+    // 1. Identificação da Coluna de Destino
+    let colDestino = overIdStr;
+    const colunasValidas = ['lead', 'contato', 'negociacao'];
+    if (!colunasValidas.includes(overIdStr)) {
+      const clienteOver = clientes.find(c => c.id === overIdStr);
+      colDestino = clienteOver?.fase_kanban || clienteAtivo.fase_kanban;
     }
 
-    // Bloqueio de segurança contra IDs internos ou nulos
-    if (!destino || destino === faseAtual || String(destino).startsWith('Sortable')) return;
-    // ------------------------------------
+    const colOrigem = clienteAtivo.fase_kanban;
 
-    const temInteracao = cliente.tab_interacoes?.length > 0;
-    const temPropostaEmNegociacao = cliente.tab_propostas?.some(
-      (p: any) => p.status === 'Em Negociação'
-    );
+    // --- CASO 1: REORDENAÇÃO NA MESMA COLUNA ---
+    if (colOrigem === colDestino) {
+      if (activeIdStr === overIdStr) return;
 
-    // --- REGRAS DE NEGÓCIO ---
-    if (faseAtual === 'lead') {
-      if (destino === 'contato' && !temInteracao) {
-        setModalImpedimento({ isOpen: true, mensagem: "Para mover para Contato, é obrigatório registrar uma interação com o cliente." });
+      const itemsDaColuna = getClientesDaColuna(colOrigem);
+      const oldIndex = itemsDaColuna.findIndex(c => c.id === activeIdStr);
+      const newIndex = itemsDaColuna.findIndex(c => c.id === overIdStr);
+
+      const novaListaOrdenada = arrayMove(itemsDaColuna, oldIndex, newIndex);
+
+      // Atualização Otimista no Estado
+      setClientes(prev => prev.map(c => {
+        const itemNovo = novaListaOrdenada.find(ni => ni.id === c.id);
+        if (itemNovo) {
+          return { ...c, posicao_kanban: novaListaOrdenada.indexOf(itemNovo) };
+        }
+        return c;
+      }));
+
+      // Persistência em Massa (Promessas paralelas para atualizar as posições)
+      const updates = novaListaOrdenada.map((item, index) => 
+        supabase.from('tab_clientes').update({ posicao_kanban: index }).eq('id', item.id)
+      );
+      await Promise.all(updates);
+      return;
+    }
+
+    // --- CASO 2: MUDANÇA DE COLUNA (REGRAS DE NEGÓCIO) ---
+    const temInteracao = (clienteAtivo.tab_interacoes?.length ?? 0) > 0;
+    const temPropostaEmNegocicao = clienteAtivo.tab_propostas?.some((p: any) => p.status === 'Em Negociação');
+
+    if (colOrigem === 'lead') {
+      if (colDestino === 'contato' && !temInteracao) {
+        setModalImpedimento({ isOpen: true, mensagem: "É necessário realizar ao menos 1 contato para mover para Contato." });
         return;
       }
-      if (destino === 'negociacao' && (!temInteracao || !temPropostaEmNegociacao)) {
-        setModalImpedimento({ isOpen: true, mensagem: "Para avançar para Negociação, é necessário ter contato registrado e proposta em negociação." });
+      if (colDestino === 'negociacao' && !temPropostaEmNegocicao) {
+        setModalImpedimento({ isOpen: true, mensagem: "É necessário ter uma negociação em aberto para mover para Negociação." });
         return;
       }
     }
 
-    if (faseAtual === 'contato') {
-      if (destino === 'lead' && temInteracao) {
-        setModalImpedimento({ isOpen: true, mensagem: "Este cliente já possui interações, portanto não pode retornar para Lead." });
+    if (colOrigem === 'contato') {
+      if (colDestino === 'lead' && temInteracao) {
+        setModalImpedimento({ isOpen: true, mensagem: "Este cliente já tem contato cadastrado e não pode retornar para Lead." });
         return;
       }
-      if (destino === 'negociacao' && !temPropostaEmNegociacao) {
-        setModalImpedimento({ isOpen: true, mensagem: "Para mover para Negociação, é necessário cadastrar uma proposta com status 'Em Negociação'." });
-        return;
-      }
-    }
-
-    if (faseAtual === 'negociacao') {
-      if (destino === 'contato' && temPropostaEmNegociacao) {
-        setModalImpedimento({ isOpen: true, mensagem: "Existe uma negociação em aberto. Não é permitido retroceder para Contato." });
-        return;
-      }
-      if (destino === 'lead') {
-        setModalImpedimento({ isOpen: true, mensagem: "Este cliente já avançou no ciclo comercial e não pode retornar ao estado de Lead." });
+      if (colDestino === 'negociacao' && !temPropostaEmNegocicao) {
+        setModalImpedimento({ isOpen: true, mensagem: "É necessário ter ao menos 1 negociação em aberto para avançar." });
         return;
       }
     }
 
-    // --- PERSISTÊNCIA ---
+    if (colOrigem === 'negociacao') {
+      if (colDestino === 'contato' && temPropostaEmNegocicao) {
+        setModalImpedimento({ isOpen: true, mensagem: "Possui negociação em aberto. Não pode retornar para Contato." });
+        return;
+      }
+      if (colDestino === 'lead') {
+        setModalImpedimento({ isOpen: true, mensagem: "Possui contato e negociação. Não pode retornar para Lead." });
+        return;
+      }
+    }
+
     try {
-      setClientes(prev => {
-        const filtrados = prev.filter(c => c.id !== active.id);
-        return [{ ...cliente, fase_kanban: destino }, ...filtrados];
-      });
-
-      const { error } = await supabase
-        .from('tab_clientes')
-        .update({ fase_kanban: destino, posicao_kanban: 0 })
-        .eq('id', active.id);
-
+      setClientes(prev => prev.map(c => c.id === activeIdStr ? { ...c, fase_kanban: colDestino, posicao_kanban: 0 } : c));
+      const { error } = await supabase.from('tab_clientes').update({ fase_kanban: colDestino, posicao_kanban: 0 }).eq('id', activeIdStr);
       if (error) throw error;
-      
       toast.success("Movimentação realizada!");
-      fetchClientes();
     } catch (err) {
-      console.error("Erro no update do Kanban:", err);
-      toast.error("Erro ao salvar movimentação");
+      console.error(err);
+      toast.error("Erro ao salvar");
       fetchClientes();
     }
-}
+  }
 
   return (
     <div className="px-4 py-8 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen w-full">
@@ -322,13 +355,13 @@ export default function KanbanAtendimentos() {
       
       <DndContext
         sensors={sensors}
-        collisionDetection={rectIntersection}
+        collisionDetection={pointerWithin} // Alterado de rectIntersection
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-6 overflow-x-auto pb-10">
+        <div className="flex gap-6 overflow-x-auto pb-10 items-stretch">
           {!loadingConfig && colunas.map(col => (
-            <div key={col.id} className="flex-1 min-w-[380px] max-w-[480px]">
+            <div key={col.id} className="flex-1 min-w-[380px] max-w-[480px] flex flex-col">
               <div className="flex items-center justify-between mb-4 px-2">
                 <div className="flex items-center gap-2">
                   <span 
@@ -408,10 +441,22 @@ export default function KanbanAtendimentos() {
 }
 
 function KanbanColumn({ id, children }: { id: string; children: React.ReactNode }) {
-  const { setNodeRef } = useDroppable({ id });
+  const { setNodeRef, isOver } = useDroppable({ id });
+  
   return (
-    <div ref={setNodeRef} className="bg-slate-100/50 dark:bg-zinc-900/50 p-3 rounded-[24px] min-h-[70vh] flex flex-col">
-      <div className="flex flex-col gap-3 h-full">{children}</div>
+    <div 
+      ref={setNodeRef} 
+      className={`
+        p-3 rounded-[24px] min-h-[75vh] flex-1 flex flex-col border transition-all duration-200
+        ${isOver 
+          ? 'bg-slate-300/70 dark:bg-zinc-900 border-blue-400/50' 
+          : 'bg-slate-200/60 dark:bg-zinc-950 border-slate-300/50 dark:border-zinc-800/80'
+        }
+      `}
+    >
+      <div className="flex flex-col gap-3 flex-1 h-full">
+        {children}
+      </div>
     </div>
   );
 }

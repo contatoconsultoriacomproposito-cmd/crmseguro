@@ -736,7 +736,7 @@ export default function HomePage() {
           <p className="text-sm text-zinc-500 font-medium">Hospedagem, domínio e integração total.</p>
         </div>
         <div className="text-center px-6 border-l border-zinc-100">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Opcional</p>
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Opcional e a partir de</p>
           <p className="text-2xl font-black text-zinc-900">R$ 150<span className="text-sm text-zinc-400">/mês</span></p>
         </div>
       </motion.div>
@@ -755,7 +755,7 @@ export default function HomePage() {
           <p className="text-sm text-zinc-500 font-medium italic">Setup e automação de funil inclusos.</p>
         </div>
         <div className="text-center px-6 border-l border-zinc-100">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Opcional</p>
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Opcional e a partir de</p>
           <p className="text-2xl font-black text-zinc-900">R$ 150<span className="text-sm text-zinc-400">/mês</span></p>
         </div>
       </motion.div>

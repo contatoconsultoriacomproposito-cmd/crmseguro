@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
-import { Search, Building2, ChevronLeft, Send, ShieldCheck, FileUp, FileText, X } from 'lucide-react';
+import { Building2, ChevronLeft, Send, ShieldCheck, FileUp, FileText, X, ChevronRight, Check, Loader2 } from 'lucide-react';
 
 interface ModuloCotacaoProps {
   onBack: () => void;
@@ -39,22 +39,24 @@ export const ModuloCotacao: React.FC<ModuloCotacaoProps> = ({ onBack, onSend, ma
 
   useEffect(() => {
     const buscarSeguradoras = async () => {
-      if (seguradoraBusca.length < 2) {
-        setSugestoes([]);
-        return;
-      }
-      const { data, error } = await supabase
+      let query = supabase
         .from('base_seguradoras')
         .select('nome, logo_url')
-        .ilike('nome', `%${seguradoraBusca}%`)
         .eq('ativo', true)
-        .limit(5);
+        .limit(20); // Aumentei o limite para ter uma lista inicial legal
 
+      // Se houver texto, filtra. Se não, traz as top 20.
+      if (seguradoraBusca.length >= 1) {
+        query = query.ilike('nome', `%${seguradoraBusca}%`);
+      }
+
+      const { data, error } = await query;
       if (!error && data) setSugestoes(data);
     };
-    const timer = setTimeout(buscarSeguradoras, 300);
-    return () => clearTimeout(timer);
-  }, [seguradoraBusca]);
+
+  const timer = setTimeout(buscarSeguradoras, 300);
+  return () => clearTimeout(timer);
+}, [seguradoraBusca]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -121,36 +123,85 @@ export const ModuloCotacao: React.FC<ModuloCotacaoProps> = ({ onBack, onSend, ma
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* Campo Seguradora */}
+        {/* Campo Seguradora - Busca Direta na base_seguradoras */}
         <div className="relative" ref={wrapperRef}>
-          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">Seguradora</label>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">
+            Seguradora
+          </label>
           <div className="relative">
             <input 
               type="text"
               value={seguradoraBusca}
-              onChange={(e) => { setSeguradoraBusca(e.target.value); setShowSugestoes(true); }}
-              placeholder="Digite o nome..."
-              className="w-full h-14 pl-12 pr-4 bg-white border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none transition-all font-bold text-slate-700"
+              // Garante abertura imediata ao interagir
+              onFocus={() => setShowSugestoes(true)}
+              onClick={() => setShowSugestoes(true)}
+              onChange={(e) => { 
+                setSeguradoraBusca(e.target.value); 
+                setShowSugestoes(true); 
+              }}
+              placeholder="Selecione ou digite..."
+              className="w-full h-14 pl-12 pr-12 bg-white border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 uppercase"
             />
             <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+            
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+              <ChevronRight size={18} className={`text-slate-300 transition-transform ${showSugestoes ? 'rotate-90' : ''}`} />
+            </div>
           </div>
-          {showSugestoes && sugestoes.length > 0 && (
-            <div className="absolute z-10 w-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden">
-              {sugestoes.map((s, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => {
-                    setDados({ ...dados, seguradora: s.nome });
-                    setSeguradoraBusca(s.nome);
-                    setShowSugestoes(false);
-                  }}
-                  className="w-full p-4 text-left hover:bg-indigo-50 flex items-center gap-3 transition-colors border-b border-slate-50 last:border-0"
-                >
-                  <Search size={14} className="text-indigo-400" />
-                  <span className="font-bold text-slate-700 text-sm uppercase">{s.nome}</span>
-                </button>
-              ))}
+
+          {/* Dropdown Corrigido */}
+          {showSugestoes && (
+            <div className="absolute z-[100] w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl overflow-hidden">
+              <div className="max-h-[250px] overflow-y-auto">
+                {(() => {
+                  // Agora usamos as sugestões vindas do banco (que já estão filtradas ou completas)
+                  const listaParaExibir = sugestoes;
+
+                  if (listaParaExibir.length === 0 && seguradoraBusca.length < 1) {
+                    return (
+                      <div className="p-4 flex items-center justify-center gap-2">
+                        <Loader2 size={14} className="animate-spin text-indigo-500" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase">Sincronizando Base...</span>
+                      </div>
+                    );
+                  }
+
+                  // Se digitou algo que não existe na sua tabela
+                  if (listaParaExibir.length === 0 && seguradoraBusca.length >= 1) {
+                    return (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setDados({ ...dados, seguradora: seguradoraBusca.toUpperCase() });
+                          setSeguradoraBusca(seguradoraBusca.toUpperCase());
+                          setShowSugestoes(false);
+                        }}
+                        className="w-full p-4 text-center hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="text-[10px] font-black text-indigo-600 uppercase underline">Usar "{seguradoraBusca}"</span>
+                      </button>
+                    );
+                  }
+
+                  return listaParaExibir.map((s, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setDados({ ...dados, seguradora: s.nome });
+                        setSeguradoraBusca(s.nome);
+                        setShowSugestoes(false);
+                      }}
+                      className="w-full p-4 text-left hover:bg-indigo-50 flex items-center justify-between group border-b border-slate-50 last:border-0"
+                    >
+                      <span className="font-bold text-sm text-slate-700 uppercase">{s.nome}</span>
+                      {dados.seguradora === s.nome && <Check size={14} className="text-indigo-600" />}
+                    </button>
+                  ));
+                })()}
+              </div>
             </div>
           )}
         </div>

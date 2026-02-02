@@ -37,14 +37,14 @@ export const CardHistorico = ({ item, onClick, isRecusada }: CardProps) => {
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-[10px] shadow-inner ${renegociando ? 'bg-red-100 text-red-600' : 'bg-slate-50 text-blue-600'}`}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-[14px] shadow-inner ${renegociando ? 'bg-red-100 text-red-600' : 'bg-slate-50 text-blue-600'}`}>
             {item.nome_cliente?.substring(0, 2).toUpperCase()}
           </div>
           <div>
-            <h4 className="text-[11px] font-black text-slate-800 uppercase leading-none">
+            <h4 className="text-[16px] font-black text-slate-800 uppercase leading-none">
               {item.nome_cliente}
             </h4>
-            <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">
+            <p className="text-[12px] font-bold text-slate-400 uppercase mt-1">
               {item.produto_interesse} • {new Date(item.created_at).toLocaleDateString()}
             </p>
           </div>
@@ -59,7 +59,7 @@ export const CardHistorico = ({ item, onClick, isRecusada }: CardProps) => {
 
       {temAcao && (
         <div className={`flex items-center justify-between pt-4 mt-4 border-t border-slate-50 ${renegociando ? 'text-red-600' : 'text-blue-600'}`}>
-          <span className="text-[9px] font-black uppercase flex items-center gap-1">
+          <span className="text-[13px] font-black uppercase flex items-center gap-1">
             <Info size={12}/> 
             {renegociando 
               ? 'Cotação Recusada - Aguardando Nova Opção' 

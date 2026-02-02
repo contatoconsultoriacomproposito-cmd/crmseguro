@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
   Save, FileText, Search, Trash2, User, 
-  X, Hash, CheckCircle2
+  X, Hash, CheckCircle2, PlusCircle
   
 } from "lucide-react";
 import { useParams, useNavigate, useLocation } from "react-router-dom"; // Importante para detectar modo edição
 import { supabase } from "../../lib/supabaseClient";
 import { gerarPDFProposta } from '../../utils/gerarPDF';
+import { ModalGerenciarPortfolio } from './ModalGerenciarPortfolio';
 
 
 
@@ -59,6 +60,7 @@ export default function PropostasCadastro() {
   const [validadeProposta, setValidadeProposta] = useState("");
   const [numeroProposta, setNumeroProposta] = useState("");
   const [portfolioRaw, setPortfolioRaw] = useState<any[]>([]);
+  const [isModalPortfolioOpen, setIsModalPortfolioOpen] = useState(false);
 
   // Estado inicial com as 3 OPÇÕES AUTOMÁTICAS
   const [opcoes, setOpcoes] = useState<OpcaoSeguradora[]>([
@@ -593,128 +595,149 @@ useEffect(() => {
             </div>
 
             <div className="p-6 space-y-6 flex-1">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Companhia Seguradora</label>
-                <select className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-bold outline-none"
-                  value={opcao.seguradora_id}
-                  onChange={(e) => {
-                    const sel = seguradoras.find(s => s.id === e.target.value);
-                    const novas = [...opcoes];
-                    novas[opIdx].seguradora_id = e.target.value;
-                    novas[opIdx].nome_seguradora = sel?.nome || "";
-                    setOpcoes(novas);
-                  }}
+  <div>
+    {/* Cabeçalho com Label e Atalho para o Modal */}
+    <div className="flex items-center justify-between mb-1">
+      <label className="text-[10px] font-black text-slate-400 uppercase block">
+        Companhia Seguradora
+      </label>
+      <button 
+        type="button"
+        onClick={() => setIsModalPortfolioOpen(true)}
+        className="text-[10px] font-black text-blue-500 hover:text-blue-700 uppercase flex items-center gap-1 transition-all active:scale-95"
+      >
+        <PlusCircle size={12} /> Gerenciar Portfólio
+      </button>
+    </div>
+
+    <select 
+      className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-bold outline-none"
+      value={opcao.seguradora_id}
+      onChange={(e) => {
+        const sel = seguradoras.find(s => s.id === e.target.value);
+        const novas = [...opcoes];
+        novas[opIdx].seguradora_id = e.target.value;
+        novas[opIdx].nome_seguradora = sel?.nome || "";
+        setOpcoes(novas);
+      }}
+    >
+      <option value="">Selecione...</option>
+      {seguradoras.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+    </select>
+  </div>
+
+  {opcao.seguradora_id && (
+    <div className="space-y-4">
+      <div className="p-4 bg-slate-50 dark:bg-zinc-800/40 rounded-2xl border border-dashed border-slate-200">
+        <label className="text-[10px] font-black text-slate-500 uppercase mb-2 block italic">
+          + Adicionar Produtos Disponíveis nesta Seguradora
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {portfolioRaw
+            .filter(item => item.base_seguradora_id === opcao.seguradora_id)
+            .map(item => {
+              const p = item.base_produtos as any;
+              return (
+                <button 
+                  key={p.id} 
+                  onClick={() => addProdutoToOpcao(opIdx, p)}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm flex items-center gap-1"
                 >
-                  <option value="">Selecione...</option>
-                  {seguradoras.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                  + {p.nome}
+                </button>
+              );
+            })
+          }
+
+          {portfolioRaw.filter(item => item.base_seguradora_id === opcao.seguradora_id).length === 0 && (
+            <p className="text-[10px] text-slate-400 italic">Nenhum produto ativado para esta seguradora no seu portfólio.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {opcao.cotacoes.map((cot, cotIdx) => (
+          <div key={cotIdx} className="p-5 border border-slate-200 dark:border-zinc-800 rounded-[24px] bg-white dark:bg-zinc-900 shadow-sm relative group">
+            <div className="flex items-center justify-between mb-4">
+              <span className="px-3 py-1 bg-blue-100 text-blue-600 text-[10px] font-black rounded-full uppercase">{cot.nome_produto}</span>
+              <button onClick={() => { const novas = [...opcoes]; novas[opIdx].cotacoes.splice(cotIdx, 1); setOpcoes(novas); }} className="text-red-400 opacity-0 group-hover:opacity-100"><X size={14} /></button>
+            </div>
+            
+            <div className="mb-3">
+              <label className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                <Hash size={10} /> Nº Cotação (Opcional)
+              </label>
+              <input 
+                type="text" 
+                placeholder="Ex: 998877"
+                className="w-full h-8 bg-transparent border-b border-slate-200 text-xs font-bold outline-none focus:border-blue-500 transition-colors"
+                value={cot.numero_cotacao}
+                onChange={e => updateCotacao(opIdx, cotIdx, 'numero_cotacao', e.target.value)}
+              />
+            </div>                    
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Valor Cotação</label>
+                <input type="text" className="w-full h-9 bg-transparent border-b border-slate-200 font-black text-sm text-blue-600" 
+                  value={cot.valor}
+                  onChange={e => handleValorChange(opIdx, cotIdx, e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Data</label>
+                <input type="date" className="w-full h-9 bg-transparent border-b border-slate-200 text-xs" 
+                  value={cot.data} onChange={e => updateCotacao(opIdx, cotIdx, 'data', e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Parcelas</label>
+                <select className="w-full h-9 bg-transparent border-b border-slate-200 text-xs font-bold"
+                  value={cot.parcelamento}
+                  onChange={e => updateCotacao(opIdx, cotIdx, 'parcelamento', e.target.value)}
+                >
+                  {[...Array(12)].map((_, i) => (
+                    <option key={i} value={`${i+1}x`}>{i+1}x</option>
+                  ))}
                 </select>
               </div>
-
-              {opcao.seguradora_id && (
-                <div className="space-y-4">
-                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/40 rounded-2xl border border-dashed border-slate-200">
-                    <label className="text-[10px] font-black text-slate-500 uppercase mb-2 block italic">
-                      + Adicionar Produtos Disponíveis nesta Seguradora
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {/* Filtramos o portfólio para mostrar só produtos da seguradora desta opção */}
-                      {portfolioRaw
-                        .filter(item => item.base_seguradora_id === opcao.seguradora_id)
-                        .map(item => {
-                          const p = item.base_produtos as any;
-                          return (
-                            <button 
-                              key={p.id} 
-                              onClick={() => addProdutoToOpcao(opIdx, p)}
-                              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm flex items-center gap-1"
-                            >
-                              + {p.nome}
-                            </button>
-                          );
-                        })
-                      }
-
-                      {/* Caso a seguradora não tenha produtos no portfólio */}
-                      {portfolioRaw.filter(item => item.base_seguradora_id === opcao.seguradora_id).length === 0 && (
-                        <p className="text-[10px] text-slate-400 italic">Nenhum produto ativado para esta seguradora no seu portfólio.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {opcao.cotacoes.map((cot, cotIdx) => (
-                      <div key={cotIdx} className="p-5 border border-slate-200 dark:border-zinc-800 rounded-[24px] bg-white dark:bg-zinc-900 shadow-sm relative group">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="px-3 py-1 bg-blue-100 text-blue-600 text-[10px] font-black rounded-full uppercase">{cot.nome_produto}</span>
-                          <button onClick={() => { const novas = [...opcoes]; novas[opIdx].cotacoes.splice(cotIdx, 1); setOpcoes(novas); }} className="text-red-400 opacity-0 group-hover:opacity-100"><X size={14} /></button>
-                        </div>
-                        
-                        {/* --- ADICIONE ESTE BLOCO ACIMA DO GRID DE VALOR/DATA --- */}
-                        <div className="mb-3">
-                          <label className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                            <Hash size={10} /> Nº Cotação (Opcional)
-                          </label>
-                          <input 
-                            type="text" 
-                            placeholder="Ex: 998877"
-                            className="w-full h-8 bg-transparent border-b border-slate-200 text-xs font-bold outline-none focus:border-blue-500 transition-colors"
-                            value={cot.numero_cotacao}
-                            onChange={e => updateCotacao(opIdx, cotIdx, 'numero_cotacao', e.target.value)}
-                          />
-                        </div>                    
-                        <div className="grid grid-cols-2 gap-3 mb-3">
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-400 uppercase">Valor Cotação</label>
-                            <input type="text" className="w-full h-9 bg-transparent border-b border-slate-200 font-black text-sm text-blue-600" 
-                              value={cot.valor}
-                              onChange={e => handleValorChange(opIdx, cotIdx, e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-400 uppercase">Data</label>
-                            <input type="date" className="w-full h-9 bg-transparent border-b border-slate-200 text-xs" 
-                              value={cot.data} onChange={e => updateCotacao(opIdx, cotIdx, 'data', e.target.value)}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 mb-4">
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-400 uppercase">Parcelas</label>
-                            <select className="w-full h-9 bg-transparent border-b border-slate-200 text-xs font-bold"
-                              value={cot.parcelamento}
-                              onChange={e => updateCotacao(opIdx, cotIdx, 'parcelamento', e.target.value)}
-                            >
-                              {[...Array(12)].map((_, i) => (
-                                <option key={i} value={`${i+1}x`}>{i+1}x</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-400 uppercase">Meio</label>
-                            <select className="w-full h-9 bg-transparent border-b border-slate-200 text-xs font-bold"
-                              value={cot.meio}
-                              onChange={e => updateCotacao(opIdx, cotIdx, 'meio', e.target.value)}
-                            >
-                              <option value="Boleto">Boleto</option>
-                              <option value="Cartão">Cartão</option>
-                              <option value="Pix">À vista</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Coberturas</label>
-                          <textarea className="w-full p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl text-[11px] h-20 resize-none outline-none" 
-                            value={cot.cobertura} onChange={e => updateCotacao(opIdx, cotIdx, 'cobertura', e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Meio</label>
+                <select className="w-full h-9 bg-transparent border-b border-slate-200 text-xs font-bold"
+                  value={cot.meio}
+                  onChange={e => updateCotacao(opIdx, cotIdx, 'meio', e.target.value)}
+                >
+                  <option value="Boleto">Boleto</option>
+                  <option value="Cartão">Cartão</option>
+                  <option value="Pix">À vista</option>
+                </select>
+              </div>
             </div>
+
+            <div>
+              <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Coberturas</label>
+              <textarea className="w-full p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl text-[11px] h-20 resize-none outline-none" 
+                value={cot.cobertura} onChange={e => updateCotacao(opIdx, cotIdx, 'cobertura', e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+
+  {/* Inserção do Modal no fluxo do componente */}
+  <ModalGerenciarPortfolio 
+    isOpen={isModalPortfolioOpen}
+    onClose={() => setIsModalPortfolioOpen(false)}
+    onUpdate={() => {
+      // CORREÇÃO: Alterado de carregarDadosIniciais para fetchDados
+      fetchDados(); 
+    }}
+  />
+  </div>
 
             <div className="p-6 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-100 rounded-b-[32px]">
                 <span className="text-[10px] font-black text-slate-400 uppercase block tracking-tighter">Total da Opção</span>

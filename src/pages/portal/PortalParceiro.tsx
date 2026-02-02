@@ -322,7 +322,7 @@ export default function PortalParceiro() {
         onRefresh={() => carregarHistorico(parceiro?.id)} 
       />
 
-      <main className="max-w-2xl mx-auto mt-8 px-4">
+      <main className="max-w-4xl mx-auto mt-8 px-4">
         {abaAtiva === 'NOVA' ? (
           !sent ? (
             <FormIndicacao 
@@ -339,21 +339,44 @@ export default function PortalParceiro() {
             </div>
           )
         ) : (
-          <div className="space-y-4">
-            <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 space-y-3">
+          <div className="space-y-6">
+            {/* AREA DE FILTROS AMPLIADA */}
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 space-y-4">
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                <input className="w-full h-11 pl-11 pr-4 bg-slate-50 rounded-xl text-[10px] font-bold uppercase outline-none border border-transparent focus:border-blue-500" placeholder="BUSCAR POR NOME..." value={filtroNome} onChange={e => setFiltroNome(e.target.value)} />
+                <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+                <input 
+                  className="w-full h-16 pl-16 pr-6 bg-slate-50 rounded-2xl text-[13px] font-black uppercase outline-none border-2 border-transparent focus:border-blue-500 focus:bg-white transition-all tracking-wider" 
+                  placeholder="BUSCAR POR NOME DO CLIENTE..." 
+                  value={filtroNome} 
+                  onChange={e => setFiltroNome(e.target.value)} 
+                />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input type="date" className="w-full h-11 px-4 bg-slate-50 rounded-xl text-[10px] font-bold outline-none" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
-                <input type="date" className="w-full h-11 px-4 bg-slate-50 rounded-xl text-[10px] font-bold outline-none" value={dataFim} onChange={e => setDataFim(e.target.value)} />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="relative">
+                  <span className="absolute -top-2.5 left-5 bg-white px-2 text-[14px] font-black text-blue-600 uppercase z-10">Início</span>
+                  <input 
+                    type="date" 
+                    className="w-full h-14 px-5 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-blue-500 focus:bg-white transition-all" 
+                    value={dataInicio} 
+                    onChange={e => setDataInicio(e.target.value)} 
+                  />
+                </div>
+                <div className="relative">
+                  <span className="absolute -top-2.5 left-5 bg-white px-2 text-[14px] font-black text-blue-600 uppercase z-10">Fim</span>
+                  <input 
+                    type="date" 
+                    className="w-full h-14 px-5 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-transparent focus:border-blue-500 focus:bg-white transition-all" 
+                    value={dataFim} 
+                    onChange={e => setDataFim(e.target.value)} 
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4">
+            {/* LISTAGEM DE CARDS */}
+            <div className="grid grid-cols-1 gap-6">
               {historicoFiltrado.map((item) => {
-                // Lógica de Recusa: Se o status do banco for COTADO, mas o parceiro deu feedback RECUSADO
                 const isRecusada = item.status_indicacao === 'COTADO' && 
                                   item.tab_indicacoes_cotacoes?.[0]?.status_feedback === 'RECUSADO';
 
@@ -366,6 +389,12 @@ export default function PortalParceiro() {
                   />
                 );
               })}
+              
+              {historicoFiltrado.length === 0 && (
+                <div className="py-12 text-center bg-white rounded-[2rem] border-2 border-dashed border-slate-100">
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Nenhuma indicação encontrada</p>
+                </div>
+              )}
             </div>
           </div>
         )}
