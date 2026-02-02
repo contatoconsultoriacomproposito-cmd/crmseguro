@@ -452,7 +452,7 @@ export default function HomePage() {
                 </div>
               </div>
               <img 
-                src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=1200" 
+                src="img/kanban1.jpg" 
                 alt="Site Corretor Moderno" 
                 className="w-full h-auto rounded-b-[26px] grayscale hover:grayscale-0 transition-all duration-1000" 
               />
