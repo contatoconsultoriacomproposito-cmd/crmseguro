@@ -114,7 +114,7 @@ export function ModalPlanos({ isOpen, onClose, planoAtual }: ModalPlanosProps) {
 ---------------------------------------
 _Olá! Gostaria de finalizar o pagamento da minha assinatura._`;
 
-      const whatsappUrl = `https://wa.me/5548996536507?text=${encodeURIComponent(msg)}`;
+      const whatsappUrl = `https://wa.me/5548996461645?text=${encodeURIComponent(msg)}`;
       window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
       
       onClose(); // Fecha o modal principal

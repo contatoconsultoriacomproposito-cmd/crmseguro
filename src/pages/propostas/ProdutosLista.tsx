@@ -48,6 +48,7 @@ export default function ProdutosLista() {
   const [dataVendaInicio, setDataVendaInicio] = useState(""); // Novo
   const [dataVendaFim, setDataVendaFim] = useState("");       // Novo
   const [selectedPeriodicidades, setSelectedPeriodicidades] = useState<string[]>([]); //novo
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]); // ADICIONE ESTA LINHA
   
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -230,54 +231,85 @@ export default function ProdutosLista() {
       const matchPeriodicidade = selectedPeriodicidades.length === 0 || 
                           selectedPeriodicidades.includes(i.periodicidade);
 
-      return matchTexto && matchCorretor && matchParceiro && matchDataRenovacao && matchDataVenda && matchPeriodicidade;
+      const matchStatus = selectedStatuses.length === 0 || selectedStatuses.includes(i.status);
+
+      return matchTexto && matchCorretor && matchParceiro && matchDataRenovacao && matchDataVenda && matchPeriodicidade && matchStatus;
     });
-  }, [filter, dataInicio, dataFim, dataVendaInicio, dataVendaFim, selectedCorretores, selectedParceiros, selectedPeriodicidades, itens]);
+  }, [filter, dataInicio, dataFim, dataVendaInicio, dataVendaFim, selectedCorretores, selectedParceiros, selectedPeriodicidades, selectedStatuses, itens]);
 
   const exportarExcel = () => {
-    const dadosParaExportar = itensFiltrados.map(i => ({
-      "Proposta": i.numero_proposta,
-      "Cliente": i.cliente,
-      "Seguradora": i.seguradora,
-      "Produto": i.produto,
-      "Venda": i.data_venda ? formatarDataBR(i.data_venda) : "-",
-      "Início Vigência": formatarDataBR(i.data_inicio_vigencia),
-      "Fim Vigência (Renovação)": i.periodicidade === 'ÚNICO' ? "N/A (ÚNICO)" : (i.data_fim_vigencia ? formatarDataBR(i.data_fim_vigencia) : "-"),
-      "Valor Prêmio": i.valor, // Mantido como número
-      "Apólice": i.numero_apolice || "N/A"
-    }));
+  // 1. Mapeia os dados normais
+  const dadosParaExportar = itensFiltrados.map(i => ({
+    "Proposta": i.numero_proposta,
+    "Cliente": i.cliente,
+    "Seguradora": i.seguradora,
+    "Produto": i.produto,
+    "Venda": i.data_venda ? formatarDataBR(i.data_venda) : "-",
+    "Início Vigência": formatarDataBR(i.data_inicio_vigencia),
+    "Fim Vigência (Renovação)": i.periodicidade === 'ÚNICO' ? "N/A (ÚNICO)" : (i.data_fim_vigencia ? formatarDataBR(i.data_fim_vigencia) : "-"),
+    "Valor Prêmio": i.valor,
+    "Apólice": i.numero_apolice || "N/A"
+  }));
 
-    const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Produtos");
-    XLSX.writeFile(wb, `Relatorio_Produtos_${new Date().getTime()}.xlsx`);
-  };
+  // 2. Calcula o somatório total
+  const totalGeral = itensFiltrados.reduce((acc, i) => acc + (i.valor || 0), 0);
 
-  const exportarPDF = () => {
-    const doc = new jsPDF('l', 'mm', 'a4'); // 'l' para modo paisagem (landscape) pois a tabela é larga
-    doc.text("Relatório de Produtos e Vigências", 14, 15);
-    
-    const tableData = itensFiltrados.map(i => [
-      i.numero_proposta,
-      i.cliente,
-      i.produto,
-      i.numero_apolice || "-",
-      i.periodicidade === 'ÚNICO' ? "ÚNICO" : formatarDataBR(i.data_fim_vigencia),
-      formatarDataBR(i.data_venda),
-      formatarDataBR(i.data_fim_vigencia),
-      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(i.valor)
-    ]);
+  // 3. Adiciona a linha de total ao final do array
+  // Importante: as chaves devem ser IDENTICAS às do map acima para alinharem nas colunas
+  dadosParaExportar.push({
+    "Proposta": "TOTAL GERAL",
+    "Cliente": "",
+    "Seguradora": "",
+    "Produto": "",
+    "Venda": "",
+    "Início Vigência": "",
+    "Fim Vigência (Renovação)": "",
+    "Valor Prêmio": totalGeral, // O valor entra aqui para ficar na mesma coluna
+    "Apólice": ""
+  } as any);
 
-    autoTable(doc, {
-      head: [['Proposta', 'Cliente', 'Produto', 'Apólice', 'Venda', 'Renovação', 'Valor']],
-      body: tableData,
-      startY: 20,
-      theme: 'grid',
-      styles: { fontSize: 7 }
-    });
+  const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Produtos");
+  
+  XLSX.writeFile(wb, `Relatorio_Produtos_${new Date().getTime()}.xlsx`);
+};
 
-    doc.save(`Produtos_Vigencias_${new Date().getTime()}.pdf`);
-  };
+const exportarPDF = () => {
+  const doc = new jsPDF('l', 'mm', 'a4');
+  doc.text("Relatório de Produtos e Vigências", 14, 15);
+  
+  // Alteração aqui: adicionamos o ": any[][]" para permitir objetos de estilo na linha de total
+  const tableData: any[][] = itensFiltrados.map(i => [
+    i.numero_proposta,
+    i.cliente,
+    i.produto,
+    i.numero_apolice || "-",
+    i.data_venda ? formatarDataBR(i.data_venda) : "-",
+    i.periodicidade === 'ÚNICO' ? "PAGTO ÚNICO" : formatarDataBR(i.data_fim_vigencia),
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(i.valor)
+  ]);
+
+  const totalGeral = itensFiltrados.reduce((acc, i) => acc + (i.valor || 0), 0);
+  const totalFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalGeral);
+
+  // Agora o TypeScript aceitará os objetos de configuração abaixo
+  tableData.push([
+    { content: 'TOTAL GERAL', colSpan: 6, styles: { halign: 'right', fontStyle: 'bold' } },
+    { content: totalFormatado, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }
+  ]);
+
+  autoTable(doc, {
+    head: [['Proposta', 'Cliente', 'Produto', 'Apólice', 'Venda', 'Renovação', 'Valor']],
+    body: tableData,
+    startY: 20,
+    theme: 'grid',
+    styles: { fontSize: 7 },
+    headStyles: { fillColor: [30, 41, 59] }
+  });
+
+  doc.save(`Produtos_Vigencias_${new Date().getTime()}.pdf`);
+};
 
 
   return (
@@ -330,7 +362,7 @@ export default function ProdutosLista() {
 
           {/* BARRA DE FILTROS AVANÇADOS */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
               
               {/* Coluna 1: Corretores */}
               <div className="flex flex-col gap-1">
@@ -382,7 +414,26 @@ export default function ProdutosLista() {
                 </select>
               </div>
 
-              {/* Coluna 4: Datas Empilhadas */}
+              {/* Coluna 4: Status Propostas */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-black text-amber-500 uppercase flex items-center gap-1">
+                  <ShieldCheck size={12}/> Status da Proposta
+                </label>
+                <select 
+                  multiple
+                  className="w-full h-24 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
+                  value={selectedStatuses}
+                  onChange={(e) => setSelectedStatuses(Array.from(e.target.selectedOptions, opt => opt.value))}
+                >
+                  <option value="Vendido">VENDIDO</option>
+                  <option value="Perdido">PERDIDO</option>
+                  <option value="Em Negociação">EM NEGOCIAÇÃO</option>
+                  <option value="Cancelado">CANCELADO</option>
+                </select>
+              </div>
+
+
+              {/* Coluna 5: Datas Empilhadas */}
               <div className="flex flex-col gap-4">
                 {/* Grupo Renovação */}
                 <div className="flex flex-col gap-1">
@@ -433,7 +484,8 @@ export default function ProdutosLista() {
 
             {(selectedCorretores.length > 0 || 
               selectedParceiros.length > 0 || 
-              selectedPeriodicidades.length > 0 || // Substituímos a repetição por esta linha
+              selectedPeriodicidades.length > 0 ||
+              selectedStatuses.length > 0 || // Substituímos a repetição por esta linha
               dataInicio || 
               dataFim || 
               dataVendaInicio || 
@@ -447,7 +499,8 @@ export default function ProdutosLista() {
                         setDataFim("");
                         setDataVendaInicio("");
                         setDataVendaFim("");
-                        setSelectedPeriodicidades([]); // Este já estava certo no seu
+                        setSelectedPeriodicidades([]);
+                        setSelectedStatuses([]); // Este já estava certo no seu
                     }}
                     className="text-[10px] font-black text-red-500 uppercase hover:underline"
                   >

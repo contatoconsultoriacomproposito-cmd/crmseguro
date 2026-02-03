@@ -23,10 +23,12 @@ export default function PropostasLista() {
   const [corretores, setCorretores] = useState<any[]>([]);
   const [parceiros, setParceiros] = useState<any[]>([]);
   
+  
   // Estados de Filtro
   const [selectedCorretores, setSelectedCorretores] = useState<string[]>([]);
   const [selectedParceiros, setSelectedParceiros] = useState<string[]>([]);
   const [selectedPeriodicidade, setSelectedPeriodicidade] = useState<string[]>([]);
+  const [selectedStatus, setSelectedStatus] = useState<string[]>([]); // Novo estado
   
   // Intervalos de Data
   const [vencimentoInicio, setVencimentoInicio] = useState("");
@@ -47,50 +49,87 @@ export default function PropostasLista() {
   });
 
   const exportarExcel = () => {
-    const dadosParaExportar = propostasFiltradas.map(p => ({
-      "Proposta": p.numero_proposta,
-      "Cliente": p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
-      "Corretor": p.usuarios_perfis?.nome,
-      "Periodicidade": Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
-        opt.tab_proposta_itens?.map((i: any) => i.periodicidade)
-      ))).join(' / '), 
-      "Status": p.status,
-      "Valor Total": p.valor_total_proposta, // Passando como número para o Excel permitir cálculos
-      "Vencimento": formatarDataBR(p.data_validade),
-      "Data Venda": p.data_venda ? formatarDataBR(p.data_venda) : "-"
-    }));
+    const dadosParaExportar = propostasFiltradas.map(p => {
+      // Lógica de extração idêntica à da tabela visual
+      const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+        opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
+      ))).filter(Boolean).join(', ');
+
+      const qtdeCotacoes = p.tab_proposta_opcoes?.length || 0;
+
+      return {
+        "Proposta": p.numero_proposta,
+        "Cliente": p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
+        "Corretor": p.usuarios_perfis?.nome,
+        "Cotações": qtdeCotacoes, // Nova Coluna
+        "Produtos Cotados": produtosNomes || "NÃO INFORMADO", // Nova Coluna
+        "Periodicidade": Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+          opt.tab_proposta_itens?.map((i: any) => i.periodicidade)
+        ))).join(' / '), 
+        "Status": p.status,
+        "Valor Total": p.valor_total_proposta,
+        "Vencimento": formatarDataBR(p.data_validade),
+        "Data Venda": p.data_venda ? formatarDataBR(p.data_venda) : "-"
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
-    
-    // Pequeno ajuste para garantir que o Excel entenda a coluna de valor como número
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Propostas");
     XLSX.writeFile(wb, `Relatorio_Propostas_${new Date().getTime()}.xlsx`);
   };
 
   const exportarPDF = () => {
-    const doc = new jsPDF();
-    
-    doc.text("Relatório de Propostas", 14, 15);
-    
-    const tableData = propostasFiltradas.map(p => [
+  const doc = new jsPDF({ orientation: 'landscape' });
+  
+  doc.setFontSize(14);
+  doc.text("Relatório de Propostas", 14, 15);
+  
+  const totalGeral = propostasFiltradas.reduce((sum, p) => sum + (Number(p.valor_total_proposta) || 0), 0);
+
+  const tableData = propostasFiltradas.map(p => {
+    const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+      opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
+    ))).filter(Boolean).join(', ');
+
+    return [
       p.numero_proposta,
       p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
-      p.usuarios_perfis?.nome,
+      p.tab_proposta_opcoes?.length || 0,
+      produtosNomes || "-",
       p.status,
       new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)
-    ]);
+    ];
+  });
 
-    autoTable(doc, {
-      head: [['Nº Proposta', 'Cliente', 'Corretor', 'Status', 'Valor']],
-      body: tableData,
-      startY: 20,
-      theme: 'grid',
-      styles: { fontSize: 8 }
-    });
+  autoTable(doc, {
+    head: [['Nº Proposta', 'Cliente', 'Cot.', 'Produtos Cotados', 'Status', 'Valor']],
+    body: tableData,
+    foot: [[
+      { content: 'TOTALIZADOR GERAL', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
+      { content: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalGeral), styles: { fontStyle: 'bold' } }
+    ]],
+    showFoot: 'lastPage', // ESTA LINHA resolve o problema: mostra o rodapé apenas na última página
+    startY: 20,
+    theme: 'grid',
+    styles: { 
+      fontSize: 8,
+      cellPadding: 2 
+    },
+    columnStyles: {
+      0: { cellWidth: 35 },
+      1: { cellWidth: 60 },
+      2: { cellWidth: 12, halign: 'center' },
+      3: { cellWidth: 80 },
+      4: { cellWidth: 30 },
+      5: { cellWidth: 40, halign: 'right' }
+    },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+    footStyles: { fillColor: [241, 245, 249], textColor: 51, fontSize: 9 }
+  });
 
-    doc.save(`Relatorio_Propostas_${new Date().getTime()}.pdf`);
-  };
+  doc.save(`Relatorio_Propostas_${new Date().getTime()}.pdf`);
+};
 
   useEffect(() => {
     async function getInitialData() {
@@ -143,7 +182,11 @@ export default function PropostasLista() {
           tab_clientes (id, nome, razao_social, tipo_cliente, cpf, cnpj, telefone_whats),
           usuarios_perfis!tab_propostas_corretor_id_fkey(nome),
           tab_proposta_opcoes (
-            tab_proposta_itens (periodicidade)
+            id,
+            tab_proposta_itens (
+              periodicidade,
+              base_produtos (nome)
+            )
           )
         `)
         .eq("corretora_id", userProfile.corretora_id)
@@ -168,7 +211,6 @@ export default function PropostasLista() {
     const term = filter.toLowerCase().trim();
 
     return propostas.filter(p => {
-      // 1. Termo de Busca
       const matchTerm = !term || 
         (p.numero_proposta || "").toLowerCase().includes(term) ||
         (p.tab_clientes?.nome || "").toLowerCase().includes(term) ||
@@ -176,6 +218,9 @@ export default function PropostasLista() {
 
       // 2. Corretor
       const matchCorretor = selectedCorretores.length === 0 || selectedCorretores.includes(p.corretor_id);
+
+      // Novo filtro de Status
+      const matchStatus = selectedStatus.length === 0 || selectedStatus.includes(p.status);
 
       // 3. Parceiro (Lógica de Venda Direta vs Parceiro ID)
       const matchParceiro = selectedParceiros.length === 0 || 
@@ -194,9 +239,9 @@ export default function PropostasLista() {
         opt.tab_proposta_itens?.some((item: any) => selectedPeriodicidade.includes(item.periodicidade))
       );                   
 
-      return matchTerm && matchCorretor && matchParceiro && matchVencimento && matchVenda && matchPeriodicidade;
+      return matchTerm && matchCorretor && matchStatus && matchParceiro && matchVencimento && matchVenda && matchPeriodicidade;
     });
-  }, [filter, propostas, selectedCorretores, selectedParceiros, vencimentoInicio, vencimentoFim, vendaInicio, vendaFim, selectedPeriodicidade]);
+  }, [filter, propostas, selectedCorretores, selectedStatus, selectedParceiros, vencimentoInicio, vencimentoFim, vendaInicio, vendaFim, selectedPeriodicidade]);
 
   const handleRegerarPDF = async (proposta: any) => {
     try {
@@ -215,16 +260,26 @@ export default function PropostasLista() {
 
       if (error || !opcoesDb) return alert("Erro ao recuperar dados da proposta.");
 
+      // 1. Gera a lista de produtos únicos para o cabeçalho/resumo do PDF
       const produtosUnicos = Array.from(new Set(
         opcoesDb.flatMap(opt => 
-          opt.tab_proposta_itens.map((i: any) => i.base_produtos?.nome || 'Produto')
+          opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
         )
-      ));
+      )).filter(Boolean) as string[];
+
+      // 2. Cria a string formatada de produtos cotados (igual à tabela)
+      const produtosCotadosTexto = produtosUnicos.join(', ');
+
+      // 3. Calcula a quantidade de cotações (opções)
+      const totalCotacoes = opcoesDb.length;
 
       await gerarPDFProposta({
         numeroProposta: proposta.numero_proposta,
         corretorId: proposta.corretor_id,
         validade: proposta.data_validade,
+        // NOVAS INFORMAÇÕES ADICIONADAS AQUI:
+        qtdeCotacoes: totalCotacoes,
+        produtosCotados: produtosCotadosTexto,
         cliente: {
           nome: proposta.tab_clientes?.tipo_cliente === 'PJ' ? proposta.tab_clientes?.razao_social : proposta.tab_clientes?.nome,
           documento: proposta.tab_clientes?.tipo_cliente === 'PJ' ? proposta.tab_clientes?.cnpj : proposta.tab_clientes?.cpf,
@@ -232,18 +287,20 @@ export default function PropostasLista() {
         },
         produtosUnicos,
         opcoes: opcoesDb.map(opt => ({
-          companhia: (opt.base_seguradoras as any)?.nome || 'N/A',
-          itens: opt.tab_proposta_itens.map((i: any) => ({
-            nomeProduto: i.base_produtos?.nome,
+          companhia: opt.base_seguradoras?.nome || 'N/A',
+          itens: opt.tab_proposta_itens?.map((i: any) => ({
+            nomeProduto: i.base_produtos?.nome || 'Produto',
             valor: i.valor_premio,
             cobertura: i.coberturas_franquias || '-',
             parcelamento: i.parcelamento || '1x',
-            meio: i.meio_pagamento || 'Boleto'
+            meio: i.meio_pagamento || 'Boleto',
+            periodicidade: i.periodicidade || 'MENSAL'
           }))
         }))
       });
     } catch (err) {
       console.error("Erro ao gerar PDF:", err);
+      alert("Ocorreu um erro inesperado ao gerar o PDF.");
     }
   };
 
@@ -349,137 +406,131 @@ export default function PropostasLista() {
           </div>
           
           {/* Campos de filtros */}
-          <div className="flex flex-col gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-              
-              {/* Filtro Corretor */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
-                  <Users size={12}/> Corretores
-                </label>
-                <select 
-                  multiple
-                  className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
-                  value={selectedCorretores}
-                  onChange={(e) => setSelectedCorretores(Array.from(e.target.selectedOptions, opt => opt.value))}
-                  disabled={userProfile?.tipo_usuario === 'CORRETOR'}
-                >
-                  {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                </select>
-              </div>
-
-              {/* Filtro Parceiro */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
-                  <Handshake size={12}/> Parceiros
-                </label>
-                <select 
-                  multiple
-                  className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
-                  value={selectedParceiros}
-                  onChange={(e) => setSelectedParceiros(Array.from(e.target.selectedOptions, opt => opt.value))}
-                >
-                  <option value="venda_direta">VENDA DIRETA (SEM PARCEIRO)</option>
-                  {parceiros.map(p => <option key={p.id} value={p.id}>{p.nome_parceiro.toUpperCase()}</option>)}
-                </select>
-              </div>
-
-              {/* Filtro Vencimento Intervalo */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
-                  <Calendar size={12}/> Período de Vencimento
-                </label>
-                <div className="flex flex-col gap-2">
-                  <input 
-                    type="date"
-                    className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
-                    value={vencimentoInicio}
-                    onChange={(e) => setVencimentoInicio(e.target.value)}
-                  />
-                  <input 
-                    type="date"
-                    className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
-                    value={vencimentoFim}
-                    onChange={(e) => setVencimentoFim(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Filtro Venda Intervalo */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
-                  <CheckCircle size={12}/> Período da Venda
-                </label>
-                <div className="flex flex-col gap-2">
-                  <input 
-                    type="date"
-                    className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
-                    value={vendaInicio}
-                    onChange={(e) => setVendaInicio(e.target.value)}
-                  />
-                  <input 
-                    type="date"
-                    className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
-                    value={vendaFim}
-                    onChange={(e) => setVendaFim(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Filtro periodicidade */}
-
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
-                  <Calendar size={12}/> Periodicidade
-                </label>
-                <select 
-                  multiple
-                  className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
-                  value={selectedPeriodicidade}
-                  onChange={(e) => setSelectedPeriodicidade(Array.from(e.target.selectedOptions, opt => opt.value))}
-                >
-                  <option value="ANUAL">ANUAL</option>
-                  <option value="MENSAL">MENSAL</option>
-                  <option value="ÚNICO">ÚNICO</option>
-                  <option value="PERSONALIZADO">PERSONALIZADO</option>
-                </select>
-              </div>
-
+          <div className="flex flex-row flex-wrap items-end gap-5 bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm">
+            
+            {/* Filtro Corretor - removi a div grid e usei flex-1 ou largura fixa */}
+            <div className="flex-1 min-w-[160px]">
+              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                <Users size={12}/> Corretores
+              </label>
+              <select 
+                multiple
+                className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                value={selectedCorretores}
+                onChange={(e) => setSelectedCorretores(Array.from(e.target.selectedOptions, opt => opt.value))}
+                disabled={userProfile?.tipo_usuario === 'CORRETOR'}
+              >
+                {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
             </div>
 
-            {/* Ações de Filtro */}
-            <div className="flex justify-end pt-4 mt-2 border-t border-slate-100">
-              {(
-                selectedCorretores.length > (userProfile?.tipo_usuario === 'CORRETOR' ? 1 : 0) || 
+            {/* Filtro Parceiro */}
+            <div className="flex-1 min-w-[160px]">
+              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                <Handshake size={12}/> Parceiros
+              </label>
+              <select 
+                multiple
+                className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                value={selectedParceiros}
+                onChange={(e) => setSelectedParceiros(Array.from(e.target.selectedOptions, opt => opt.value))}
+              >
+                <option value="venda_direta">VENDA DIRETA (SEM PARCEIRO)</option>
+                {parceiros.map(p => <option key={p.id} value={p.id}>{p.nome_parceiro.toUpperCase()}</option>)}
+              </select>
+            </div>
+
+            {/* Filtro Vencimento */}
+            <div className="min-w-[140px]">
+              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                <Calendar size={12}/> Vencimento
+              </label>
+              <div className="flex flex-col gap-2">
+                <input type="date" className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                  value={vencimentoInicio} onChange={(e) => setVencimentoInicio(e.target.value)} />
+                <input type="date" className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                  value={vencimentoFim} onChange={(e) => setVencimentoFim(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Filtro Venda */}
+            <div className="min-w-[140px]">
+              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                <CheckCircle size={12}/> Venda
+              </label>
+              <div className="flex flex-col gap-2">
+                <input type="date" className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                  value={vendaInicio} onChange={(e) => setVendaInicio(e.target.value)} />
+                <input type="date" className="w-full h-10 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 px-2 outline-none"
+                  value={vendaFim} onChange={(e) => setVendaFim(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Filtro Periodicidade */}
+            <div className="flex-1 min-w-[130px]">
+              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                <Calendar size={12}/> Periodicidade
+              </label>
+              <select 
+                multiple
+                className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                value={selectedPeriodicidade}
+                onChange={(e) => setSelectedPeriodicidade(Array.from(e.target.selectedOptions, opt => opt.value))}
+              >
+                <option value="ANUAL">ANUAL</option>
+                <option value="MENSAL">MENSAL</option>
+                <option value="ÚNICO">ÚNICO</option>
+                <option value="PERSONALIZADO">PERSONALIZADO</option>
+              </select>
+            </div>
+
+            {/* Filtro Status */}
+            <div className="flex-1 min-w-[130px]">
+              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
+                <Loader2 size={12}/> Status
+              </label>
+              <select 
+                multiple
+                className="w-full h-24 text-xs font-bold rounded-lg border-slate-200 bg-slate-50 p-2 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(Array.from(e.target.selectedOptions, opt => opt.value))}
+              >
+                <option value="Em Negociação">EM NEGOCIAÇÃO</option>
+                <option value="Vendido">VENDIDO</option>
+                <option value="Perdido">PERDIDO</option>
+              </select>
+            </div>
+
+            {/* Ações de Filtro integradas na mesma linha */}
+            <div className="pb-1 ml-auto">
+              {(selectedCorretores.length > (userProfile?.tipo_usuario === 'CORRETOR' ? 1 : 0) || 
                 selectedParceiros.length > 0 || 
                 selectedPeriodicidade.length > 0 ||
+                selectedStatus.length > 0 ||
                 vencimentoInicio !== "" || 
-                vencimentoFim !== "" || // Adicionado para garantir que o fim também ative o botão
+                vencimentoFim !== "" || 
                 vendaInicio !== "" || 
-                vendaFim !== "" // Adicionado para garantir que o fim também ative o botão
+                vendaFim !== ""
               ) ? (
                 <button 
                   onClick={() => {
-                      // 2. Lógica de limpeza precisa e completa
-                      if(userProfile?.tipo_usuario !== 'CORRETOR') {
-                        setSelectedCorretores([]);
-                      } else {
-                        setSelectedCorretores([userProfile?.id]);
-                      }
-                      setSelectedParceiros([]);
-                      setVencimentoInicio("");
-                      setVencimentoFim("");
-                      setVendaInicio("");
-                      setVendaFim("");
-                      setSelectedPeriodicidade([]); // Limpa o estado correto: selectedPeriodicidade
+                    if(userProfile?.tipo_usuario !== 'CORRETOR') setSelectedCorretores([]);
+                    else setSelectedCorretores([userProfile?.id]);
+                    setSelectedParceiros([]);
+                    setVencimentoInicio("");
+                    setVencimentoFim("");
+                    setVendaInicio("");
+                    setVendaFim("");
+                    setSelectedPeriodicidade([]);
+                    setSelectedStatus([]);
                   }}
-                  className="flex items-center gap-2 text-[10px] font-black text-red-600 uppercase bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl transition-all border border-red-100 shadow-sm"
+                  className="flex items-center gap-2 text-[10px] font-black text-red-600 uppercase bg-red-50 hover:bg-red-100 px-4 py-3 rounded-xl transition-all border border-red-100 shadow-sm h-fit"
                 >
-                  <XCircle size={14} /> × Limpar Filtros Ativos
+                  <XCircle size={14} /> Limpar Filtros
                 </button>
               ) : (
-                <span className="text-[10px] font-bold text-slate-300 uppercase italic">
-                  Nenhum filtro aplicado
+                <span className="text-[9px] font-bold text-slate-300 uppercase italic mb-2 block">
+                  Nenhum filtro ativo
                 </span>
               )}
             </div>
@@ -492,6 +543,8 @@ export default function PropostasLista() {
               <tr className="bg-slate-50/50">
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Proposta</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Cliente</th>
+                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 text-center">Cotações</th>
+                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Produtos Cotados</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Status</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Total Estimado</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 text-center">Ações</th>
@@ -499,77 +552,104 @@ export default function PropostasLista() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" /></td></tr>
-              ) : propostasFiltradas.map((p) => (
-                <tr key={p.id} className="group hover:bg-blue-50/20 transition-all">
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="text-sm font-black text-blue-600 italic leading-none">{p.numero_proposta}</div>
-                    <div className="text-[10px] text-slate-400 mt-1 font-bold italic uppercase">Vence: {formatarDataBR(p.data_validade)}</div>
-                  </td>
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="text-sm font-bold text-slate-700 uppercase leading-none">
-                      {p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 font-medium italic">
-                      Corretor: {p.usuarios_perfis?.nome}
-                    </div>
-                  </td>
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="flex flex-col gap-1">
-                      <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border shadow-sm w-fit
-                        ${p.status === 'Vendido' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                          p.status === 'Perdido' ? 'bg-red-50 text-red-600 border-red-100' : 
-                          'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                        {p.status}
-                    </span>
-                    {/* EXIBIÇÃO DA PERIODICIDADE */}
-                      <span className="text-[10px] font-bold text-slate-500 italic ml-1">
-                        {Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
-                          opt.tab_proposta_itens?.map((i: any) => i.periodicidade)
-                        ))).join(' / ')}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="text-sm font-black text-slate-700">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)}
-                    </div>
-                  </td>
-                  <td className="p-5 border-b border-slate-50">
-                    <div className="flex justify-center gap-1">
-                      <button onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: p })} 
-                        className="p-2 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all" title="Marcar como Vendido">
-                        <CheckCircle size={18} />
-                      </button>
-                      
-                      <button onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: p })}
-                        className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-all" title="Marcar como Perda">
-                        <XCircle size={18} />
-                      </button>
-
-                      <div className="w-[1px] h-4 bg-slate-100 self-center mx-1" />
-
-                      <button 
-                        onClick={() => navigate(`/propostas/editar/${p.id}`)}
-                        className="p-2 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all" 
-                        title="Editar Opções"
-                      >
-                        <Edit3 size={18} />
-                      </button>
-
-                      <button onClick={() => handleRegerarPDF(p)}
-                        className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all" title="Gerar PDF">
-                        <FileText size={18} />
-                      </button>
-
-                      <button onClick={() => executarExclusaoSegura(p)}
-                        className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-all" title="Excluir">
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
+                <tr>
+                  <td colSpan={7} className="p-20 text-center">
+                    <Loader2 className="animate-spin mx-auto text-blue-500" />
                   </td>
                 </tr>
-              ))}
+              ) : propostasFiltradas.map((p) => {
+                // Extração dos produtos para exibição em texto
+                const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+                  opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
+                ))).filter(Boolean).join(', ');
+
+                return (
+                  <tr key={p.id} className="group hover:bg-blue-50/20 transition-all">
+                    {/* Coluna: Proposta */}
+                    <td className="p-5 border-b border-slate-50">
+                      <div className="text-sm font-black text-blue-600 italic leading-none">{p.numero_proposta}</div>
+                      <div className="text-[10px] text-slate-400 mt-1 font-bold italic uppercase">
+                        Vence: {formatarDataBR(p.data_validade)}
+                      </div>
+                    </td>
+
+                    {/* Coluna: Cliente */}
+                    <td className="p-5 border-b border-slate-50">
+                      <div className="text-sm font-bold text-slate-700 uppercase leading-none">
+                        {p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1 font-medium italic">
+                        Corretor: {p.usuarios_perfis?.nome}
+                      </div>
+                    </td>
+
+                    {/* NOVA Coluna: Qtde Cotações */}
+                    <td className="p-5 border-b border-slate-50 text-center">
+                      <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[11px] font-black">
+                        {p.tab_proposta_opcoes?.length || 0}
+                      </span>
+                    </td>
+
+                    {/* NOVA Coluna: Produtos Cotados */}
+                    <td className="p-5 border-b border-slate-50">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase leading-tight max-w-[200px] line-clamp-2" title={produtosNomes}>
+                        {produtosNomes || "NÃO INFORMADO"}
+                      </div>
+                    </td>
+
+                    {/* Coluna: Status */}
+                    <td className="p-5 border-b border-slate-50">
+                      <div className="flex flex-col gap-1">
+                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border shadow-sm w-fit
+                          ${p.status === 'Vendido' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                            p.status === 'Perdido' ? 'bg-red-50 text-red-600 border-red-100' : 
+                            'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                          {p.status}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-400 italic ml-1">
+                          {Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+                            opt.tab_proposta_itens?.map((i: any) => i.periodicidade)
+                          ))).join(' / ')}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Coluna: Valor */}
+                    <td className="p-5 border-b border-slate-50">
+                      <div className="text-sm font-black text-slate-700">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)}
+                      </div>
+                    </td>
+
+                    {/* Coluna: Ações */}
+                    <td className="p-5 border-b border-slate-50">
+                      <div className="flex justify-center gap-1">
+                        <button onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: p })} 
+                          className="p-2 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all" title="Vendido">
+                          <CheckCircle size={18} />
+                        </button>
+                        <button onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: p })}
+                          className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-all" title="Perdido">
+                          <XCircle size={18} />
+                        </button>
+                        <div className="w-[1px] h-4 bg-slate-100 self-center mx-1" />
+                        <button onClick={() => navigate(`/propostas/editar/${p.id}`)}
+                          className="p-2 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all" title="Editar">
+                          <Edit3 size={18} />
+                        </button>
+                        <button onClick={() => handleRegerarPDF(p)}
+                          className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all" title="PDF">
+                          <FileText size={18} />
+                        </button>
+                        <button onClick={() => executarExclusaoSegura(p)}
+                          className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-all" title="Excluir">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
