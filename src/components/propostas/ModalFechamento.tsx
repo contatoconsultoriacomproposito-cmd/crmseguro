@@ -16,7 +16,6 @@ const isValidDate = (dateString: string) => {
   return d instanceof Date && !isNaN(d.getTime());
 };
 
-// Nova tipagem para refletir a realidade do negócio
 type Periodicidade = 'ANUAL' | 'MENSAL' | 'PERSONALIZADO' | 'ÚNICO';
 
 export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: type }: ModalFechamentoProps) {
@@ -36,7 +35,10 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
       apolice: string, 
       inicioVigencia: string, 
       fimVigencia: string,
-      periodicidade: Periodicidade
+      periodicidade: Periodicidade,
+      dataRenovacao: string,
+      horarioRenovacao: string,
+      notificacaoAtiva: boolean
     } 
   }>({});
 
@@ -46,14 +48,12 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
     if (e.key === ' ') e.stopPropagation();
   };
 
-  // Lógica Centralizada de Cálculo de Datas
   const calcularDatasVigencia = (idItem: string, tipo: Periodicidade, dataVendaBase: string) => {
     if (!isValidDate(dataVendaBase)) return;
 
     let dataInicio = dataVendaBase;
     let dataFim = "";
-
-    const d = new Date(dataVendaBase);
+    const d = new Date(dataVendaBase + 'T12:00:00');
 
     switch (tipo) {
       case 'ANUAL':
@@ -61,14 +61,13 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         dataFim = d.toISOString().split('T')[0];
         break;
       case 'MENSAL':
-        d.setDate(d.getDate() + 30); // Mercado de seguros: Renovação automática/30 dias
+        d.setDate(d.getDate() + 30);
         dataFim = d.toISOString().split('T')[0];
         break;
       case 'ÚNICO':
-        dataFim = ""; // Sem data de fim (vitalício/único)
+        dataFim = "";
         break;
       case 'PERSONALIZADO':
-        // Mantém o que já existe ou deixa vazio para o usuário preencher
         dataFim = dadosItens[idItem]?.fimVigencia || "";
         break;
     }
@@ -79,16 +78,16 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         ...prev[idItem],
         periodicidade: tipo,
         inicioVigencia: dataInicio,
-        fimVigencia: dataFim
+        fimVigencia: dataFim,
+        dataRenovacao: dataFim,
+        horarioRenovacao: prev[idItem]?.horarioRenovacao || "09:00",
+        notificacaoAtiva: tipo !== 'ÚNICO'
       }
     }));
   };
 
-  // Melhoria: Sincroniza todos os itens quando a Data da Venda principal muda
   const handleDataVendaChange = (novaData: string) => {
     setForm(prev => ({ ...prev, dataVenda: novaData }));
-
-    // Se a data estiver incompleta (ex: o usuário está digitando), não tenta calcular
     if (!novaData || novaData.length < 10) return;
     
     if (type === 'VENDIDO') {
@@ -97,12 +96,10 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         itensProposta.forEach(item => {
           const configAtual = prev[item.id];
           if (configAtual && configAtual.periodicidade !== 'PERSONALIZADO') {
-            // Recalcula datas para todos que não são manuais
-            const d = new Date(novaData + 'T12:00:00'); // T12:00 evita problemas de fuso
+            const d = new Date(novaData + 'T12:00:00');
             if (isNaN(d.getTime())) return;
 
             let fim = "";
-            
             if (configAtual.periodicidade === 'ANUAL') {
               d.setFullYear(d.getFullYear() + 1);
               fim = d.toISOString().split('T')[0];
@@ -116,7 +113,8 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
             novoEstado[item.id] = {
               ...configAtual,
               inicioVigencia: novaData,
-              fimVigencia: fim
+              fimVigencia: fim,
+              dataRenovacao: fim
             };
           }
         });
@@ -153,13 +151,16 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
             data_inicio_vigencia,
             data_fim_vigencia,
             periodicidade,
+            data_renovacao,
+            horario_renovacao,
+            notificacao_ativa,
             base_produtos ( nome )
           )
         `)
         .eq('proposta_id', propostaSelecionada.id);
 
       if (!error && data) {
-        const todosItens = data.flatMap(opt => opt.tab_proposta_itens || []);
+        const todosItens = data.flatMap(opt => (opt.tab_proposta_itens as any[]) || []);
         setItensProposta(todosItens);
         
         const inicial: any = {};
@@ -168,29 +169,15 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         todosItens.forEach(item => {
           const pDefault: Periodicidade = (item.periodicidade as Periodicidade) || 'ANUAL';
           
-          // Se já tem no banco, respeita. Se não, calcula com base na data da venda atual.
-          if (item.data_inicio_vigencia) {
-            inicial[item.id] = { 
-              apolice: item.numero_apolice || "", 
-              periodicidade: pDefault,
-              inicioVigencia: item.data_inicio_vigencia,
-              fimVigencia: item.data_fim_vigencia || ""
-            };
-          } else {
-            // Lógica de cálculo inicial para itens novos
-            let fim = "";
-            const d = new Date(dataBase);
-            if (pDefault === 'ANUAL') { d.setFullYear(d.getFullYear() + 1); fim = d.toISOString().split('T')[0]; }
-            else if (pDefault === 'MENSAL') { d.setDate(d.getDate() + 30); fim = d.toISOString().split('T')[0]; }
-            else if (pDefault === 'ÚNICO') { fim = ""; }
-
-            inicial[item.id] = { 
-              apolice: "", 
-              periodicidade: pDefault,
-              inicioVigencia: dataBase,
-              fimVigencia: fim
-            };
-          }
+          inicial[item.id] = { 
+            apolice: item.numero_apolice || "", 
+            periodicidade: pDefault,
+            inicioVigencia: item.data_inicio_vigencia || dataBase,
+            fimVigencia: item.data_fim_vigencia || "",
+            dataRenovacao: item.data_renovacao || item.data_fim_vigencia || "",
+            horarioRenovacao: item.horario_renovacao || "09:00",
+            notificacaoAtiva: item.notificacao_ativa ?? (pDefault !== 'ÚNICO')
+          };
         });
         setDadosItens(inicial);
       }
@@ -205,7 +192,6 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
     return itensProposta.every(item => {
       const dados = dadosItens[item.id];
       if (!dados?.inicioVigencia) return false;
-      // ÚNICO não exige fim da vigência
       if (dados.periodicidade !== 'ÚNICO' && !dados.fimVigencia) return false;
       return true;
     });
@@ -216,7 +202,6 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
       setLoading(true);
       const isVendido = type === 'VENDIDO';
 
-      // 1. Atualizar a Proposta Principal
       const { error: errorProposta } = await supabase
         .from('tab_propostas')
         .update({
@@ -230,25 +215,22 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
 
       if (errorProposta) throw errorProposta;
 
-      // 2. Atualizar Itens se for Vendido
       if (isVendido && itensProposta.length > 0) {
         for (const item of itensProposta) {
           const dados = dadosItens[item.id];
-          
-          // Normalização para o Banco de Dados (Postgres exige 'ÚNICO' com acento)
-          // Usamos 'as any' ou uma verificação simples para o TS permitir a atribuição
-          let periodicidadeParaBanco: string = dados?.periodicidade || 'ANUAL';
-          if (periodicidadeParaBanco === 'ÚNICO') periodicidadeParaBanco = 'ÚNICO';
+          const periodicidadeParaBanco = dados?.periodicidade || 'ANUAL';
 
           const { error: errorItem } = await supabase
             .from('tab_proposta_itens')
             .update({ 
               numero_apolice: dados?.apolice || null,
               data_inicio_vigencia: dados?.inicioVigencia || null,
-              // Se for ÚNICO (com ou sem acento), fim de vigência é null
               data_fim_vigencia: (periodicidadeParaBanco === 'ÚNICO') ? null : (dados?.fimVigencia || null),
               periodicidade: periodicidadeParaBanco,
-              data_venda: form.dataVenda
+              data_venda: form.dataVenda,
+              data_renovacao: dados?.dataRenovacao || null,
+              horario_renovacao: dados?.horarioRenovacao || "09:00",
+              notificacao_ativa: dados?.notificacaoAtiva ?? true
             })
             .eq('id', item.id);
           
@@ -256,7 +238,6 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         }
       }
 
-      // 3. Registrar Interação
       await supabase.from('tab_interacoes').insert({
         cliente_id: propostaSelecionada.cliente_id,
         corretor_id: propostaSelecionada.corretor_id,
@@ -380,19 +361,47 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
                   </label>
                   <input 
                     type="date"
-                    // Força o disabled se for ÚNICO
                     disabled={dadosItens[item.id]?.periodicidade === 'ÚNICO'}
                     onKeyDown={handleKeyDown}
                     className={`w-full h-10 px-3 rounded-lg border text-sm outline-none font-bold transition-all
                       ${dadosItens[item.id]?.periodicidade === 'ÚNICO' 
                         ? 'bg-slate-100 border-slate-100 text-slate-400 cursor-not-allowed opacity-50' 
                         : 'border-emerald-200 bg-emerald-50/30 text-slate-700'}`}
-                    // Se for ÚNICO, o valor deve ser vazio para não travar o formValido
                     value={dadosItens[item.id]?.periodicidade === 'ÚNICO' ? "" : (dadosItens[item.id]?.fimVigencia || "")}
                     onChange={(e) => setDadosItens({
                       ...dadosItens, 
                       [item.id]: { ...dadosItens[item.id], fimVigencia: e.target.value }
                     })}
+                  />
+                </div>
+
+                <div className="col-span-1">
+                  <label className="block text-[9px] font-bold uppercase text-blue-400 mb-1">Data Retorno</label>
+                  <input 
+                    type="date"
+                    disabled={dadosItens[item.id]?.periodicidade === 'ÚNICO'}
+                    onKeyDown={handleKeyDown}
+                    className={`w-full h-10 px-3 rounded-lg border text-sm outline-none font-bold transition-all
+                      ${dadosItens[item.id]?.periodicidade === 'ÚNICO' 
+                        ? 'bg-slate-100 border-slate-100 text-slate-400 cursor-not-allowed opacity-50' 
+                        : 'border-blue-100 bg-blue-50/20 text-slate-700'}`}
+                    value={dadosItens[item.id]?.dataRenovacao || ""}
+                    onChange={(e) => setDadosItens({...dadosItens, [item.id]: { ...dadosItens[item.id], dataRenovacao: e.target.value }})}
+                  />
+                </div>
+
+                <div className="col-span-1">
+                  <label className="block text-[9px] font-bold uppercase text-blue-400 mb-1">Hora Retorno</label>
+                  <input 
+                    type="time"
+                    disabled={dadosItens[item.id]?.periodicidade === 'ÚNICO'}
+                    onKeyDown={handleKeyDown}
+                    className={`w-full h-10 px-3 rounded-lg border text-sm outline-none font-bold transition-all
+                      ${dadosItens[item.id]?.periodicidade === 'ÚNICO' 
+                        ? 'bg-slate-100 border-slate-100 text-slate-400 cursor-not-allowed opacity-50' 
+                        : 'border-blue-100 bg-blue-50/20 text-slate-700'}`}
+                    value={dadosItens[item.id]?.horarioRenovacao || "09:00"}
+                    onChange={(e) => setDadosItens({...dadosItens, [item.id]: { ...dadosItens[item.id], horarioRenovacao: e.target.value }})}
                   />
                 </div>
               </div>

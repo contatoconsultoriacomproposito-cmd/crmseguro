@@ -620,29 +620,68 @@ export default function PropostasLista() {
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)}
                       </div>
                     </td>
-
                     {/* Coluna: Ações */}
                     <td className="p-5 border-b border-slate-50">
                       <div className="flex justify-center gap-1">
-                        <button onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: p })} 
-                          className="p-2 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all" title="Vendido">
+                        {/* BOTAO VENDIDO - Desabilitado se não estiver 'Em Negociação' */}
+                        <button 
+                          onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: p })} 
+                          disabled={p.status !== 'Em Negociação'}
+                          className={`p-2 rounded-lg transition-all ${
+                            p.status === 'Em Negociação' 
+                              ? 'hover:bg-emerald-50 text-slate-400 hover:text-emerald-600' 
+                              : 'text-slate-200 cursor-not-allowed'
+                          }`} 
+                          title={p.status === 'Em Negociação' ? "Marcar como Vendido" : `Status: ${p.status}`}
+                        >
                           <CheckCircle size={18} />
                         </button>
-                        <button onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: p })}
-                          className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-all" title="Perdido">
+
+                        {/* BOTAO PERDIDO - Desabilitado se não estiver 'Em Negociação' */}
+                        <button 
+                          onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: p })}
+                          disabled={p.status !== 'Em Negociação'}
+                          className={`p-2 rounded-lg transition-all ${
+                            p.status === 'Em Negociação' 
+                              ? 'hover:bg-red-50 text-slate-400 hover:text-red-600' 
+                              : 'text-slate-200 cursor-not-allowed'
+                          }`} 
+                          title={p.status === 'Em Negociação' ? "Marcar como Perdido" : `Status: ${p.status}`}
+                        >
                           <XCircle size={18} />
                         </button>
+
                         <div className="w-[1px] h-4 bg-slate-100 self-center mx-1" />
-                        <button onClick={() => navigate(`/propostas/editar/${p.id}`)}
-                          className="p-2 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all" title="Editar">
+
+                        {/* BOTAO EDITAR - Desabilitado se não estiver 'Em Negociação' */}
+                        <button 
+                          onClick={() => navigate(`/propostas/editar/${p.id}`)}
+                          disabled={p.status !== 'Em Negociação'}
+                          className={`p-2 rounded-lg transition-all ${
+                            p.status === 'Em Negociação' 
+                              ? 'hover:bg-blue-50 text-slate-400 hover:text-blue-600' 
+                              : 'text-slate-200 cursor-not-allowed'
+                          }`} 
+                          title={p.status === 'Em Negociação' ? "Editar Proposta" : "Propostas finalizadas não podem ser editadas"}
+                        >
                           <Edit3 size={18} />
                         </button>
-                        <button onClick={() => handleRegerarPDF(p)}
-                          className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all" title="PDF">
+
+                        {/* BOTAO PDF - Sempre Habilitado (Para consulta histórica) */}
+                        <button 
+                          onClick={() => handleRegerarPDF(p)}
+                          className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all" 
+                          title="Visualizar PDF"
+                        >
                           <FileText size={18} />
                         </button>
-                        <button onClick={() => executarExclusaoSegura(p)}
-                          className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-all" title="Excluir">
+
+                        {/* BOTAO EXCLUIR - Sempre Habilitado (Lógica de segurança já existe no modal) */}
+                        <button 
+                          onClick={() => executarExclusaoSegura(p)}
+                          className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-all" 
+                          title="Excluir Registro"
+                        >
                           <Trash2 size={18} />
                         </button>
                       </div>
