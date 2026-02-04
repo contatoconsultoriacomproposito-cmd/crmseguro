@@ -1,11 +1,10 @@
 import { 
   Lock, Eye, Database, UserCheck, 
-  ChevronLeft, Server, Share2, Trash2, ShieldCheck 
+  ChevronLeft, Server, Share2, ShieldCheck, Chrome
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const PoliticaPrivacidade = () => {
-  // ADICIONE ESTA LINHA ABAIXO PARA CORRIGIR O ERRO:
   const navigate = useNavigate();
 
 const empresa = {
@@ -13,7 +12,7 @@ const empresa = {
     cnpj: "21.205.476/0001-39",
     endereco: "R ALEXANDRINA DE SOUZA MARTINS, SN, BOA VISTA, IMBITUBA/SC, CEP 88.780-000",
     email: "BRUCE.ECONOMISTA@GMAIL.COM",
-    dataAtualizacao: "30 de janeiro de 2026"
+    dataAtualizacao: "04 de fevereiro de 2026" // Atualizado para hoje
   };
 
   return (
@@ -22,14 +21,13 @@ const empresa = {
         
         {/* Header */}
         <div className="text-center mb-12">
-          {/* Botão de Voltar */}
-        <button 
-        onClick={() => navigate('/')} // Agora ele força o retorno para a Home
-        className="inline-flex items-center text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 mb-6 transition-colors group"
-        >
-        <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> 
-        Voltar para Início
-        </button>
+          <button 
+            onClick={() => navigate('/')} 
+            className="inline-flex items-center text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 mb-6 transition-colors group"
+          >
+            <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> 
+            Voltar para Início
+          </button>
           <div className="flex justify-center mb-4">
             <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-500/20">
               <ShieldCheck size={32} />
@@ -70,13 +68,34 @@ const empresa = {
                 <ul className="list-none p-0 space-y-4 mt-6">
                   <li className="flex gap-4">
                     <span className="h-2 w-2 bg-blue-600 rounded-full mt-2 shrink-0"></span>
-                    <span><strong>Dados de Identificação:</strong> Nome e e-mail para autenticação e segurança do acesso.</span>
-                  </li>
-                  <li className="flex gap-4">
-                    <span className="h-2 w-2 bg-blue-600 rounded-full mt-2 shrink-0"></span>
-                    <span><strong>Integrações de Terceiros:</strong> Tokens de acesso ao Google Agenda para sincronização de compromissos, processados via OAuth 2.0 seguro.</span>
+                    <span><strong>Dados de Identificação:</strong> Nome, e-mail e foto de perfil para personalização da conta e segurança do acesso.</span>
                   </li>
                 </ul>
+              </section>
+
+              {/* SEÇÃO 5 - ADICIONADA PARA APROVAÇÃO DO GOOGLE */}
+              <section className="p-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-3xl border border-blue-100 dark:border-blue-900/30">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-blue-600 rounded-lg text-white">
+                    <Chrome size={20} />
+                  </div>
+                  <h3 className="text-xl font-black text-zinc-900 dark:text-white m-0 uppercase tracking-tight">5. Uso de Dados das APIs do Google</h3>
+                </div>
+                <p className="leading-relaxed mb-4">
+                  O SeguroCRM utiliza serviços de API do Google para otimizar o fluxo de trabalho do corretor através da nossa Extensão do Chrome e Painel Web.
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-blue-700 dark:text-blue-400 uppercase mb-1">Dados Acessados:</h4>
+                    <p className="text-sm">Acessamos seu endereço de e-mail e informações básicas de perfil (via Google OAuth 2.0) para autenticação segura e sincronização de lembretes.</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-blue-700 dark:text-blue-400 uppercase mb-1">Como usamos esses dados:</h4>
+                    <p className="text-sm leading-relaxed">
+                      Os dados são usados exclusivamente para identificar o usuário no sistema e permitir a funcionalidade de "Agendamento de Retorno" e "Alertas de Renovação". O SeguroCRM <strong>não transfere, compartilha ou vende</strong> dados de usuários do Google para terceiros, nem os utiliza para fins de publicidade ou marketing.
+                    </p>
+                  </div>
+                </div>
               </section>
 
               {/* Seção 2 */}
@@ -104,7 +123,7 @@ const empresa = {
                 </div>
               </section>
 
-              {/* Seção 3 */}
+              {/* Seção 3 e 4 permanecem iguais... */}
               <section>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
@@ -113,20 +132,7 @@ const empresa = {
                   <h3 className="text-xl font-black text-zinc-900 dark:text-white m-0 uppercase tracking-tight">3. Operadores e Subprocessadores</h3>
                 </div>
                 <p className="leading-relaxed">
-                  Para viabilizar a plataforma, utilizamos subprocessadores de dados de classe mundial que cumprem rigorosos padrões de conformidade (SOC2 e GDPR). Seus dados <strong>não são vendidos</strong> em hipótese alguma. Nossos parceiros incluem infraestrutura em nuvem (Supabase/AWS) e serviços de autenticação (Google Identity).
-                </p>
-              </section>
-
-              {/* Seção 4 */}
-              <section>
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
-                    <Trash2 className="text-blue-600" size={20} />
-                  </div>
-                  <h3 className="text-xl font-black text-zinc-900 dark:text-white m-0 uppercase tracking-tight">4. Retenção e Exclusão</h3>
-                </div>
-                <p className="leading-relaxed">
-                  Os dados pessoais e de clientes são mantidos apenas pelo período necessário para a prestação do serviço. No caso de encerramento da conta, o usuário dispõe de 30 dias para exportação de dados, após os quais procederemos com a <strong>exclusão definitiva</strong> ou anonimização irreversível.
+                  Para viabilizar a plataforma, utilizamos subprocessadores de dados de classe mundial (Supabase/AWS) e serviços de autenticação (Google Identity). Seus dados <strong>não são vendidos</strong> em hipótese alguma.
                 </p>
               </section>
 

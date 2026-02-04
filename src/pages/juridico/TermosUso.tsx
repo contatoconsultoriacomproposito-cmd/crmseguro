@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // 1. Importar o hook
+import { useNavigate } from 'react-router-dom';
 import { 
-  Shield, ChevronLeft, Scale, 
-  AlertTriangle, Cloud, Ban, Database, 
-  UserCheck, Server, Share2, Info, Gavel, Trash2
+  Shield, ChevronLeft, 
+  AlertTriangle, Cloud, Database, 
+  UserCheck, Server, Info, Gavel, Chrome, Lock
 } from 'lucide-react';
 
 const Legal = () => {
-  const navigate = useNavigate(); // 2. Instanciar a função de navegação
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'termos' | 'privacidade'>('termos');
 
   const empresa = {
@@ -15,7 +15,7 @@ const Legal = () => {
     cnpj: "21.205.476/0001-39",
     endereco: "R ALEXANDRINA DE SOUZA MARTINS, SN, BOA VISTA, IMBITUBA/SC, CEP 88.780-000",
     email: "BRUCE.ECONOMISTA@GMAIL.COM",
-    dataInicio: "09/10/2014"
+    dataAtualizacao: "04 de fevereiro de 2026"
   };
 
   return (
@@ -31,18 +31,17 @@ const Legal = () => {
             <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> 
             Voltar para Início
           </button>
-          <h1 className="text-4xl font-black text-zinc-900 dark:text-white mb-4 tracking-tight uppercase">
+          <h1 className="text-4xl font-black text-zinc-900 dark:text-white mb-4 tracking-tight uppercase italic">
             Compliance & Centro Jurídico
           </h1>
           <p className="text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto font-medium">
-            Documentação atualizada em conformidade com as Leis 12.965/14 e 13.709/18.
+            Documentação atualizada em conformidade com as Leis 12.965/14 (Marco Civil) e 13.709/18 (LGPD).
           </p>
         </div>
 
         {/* Tabs */}
         <div className="flex p-1 bg-zinc-200 dark:bg-zinc-900 rounded-2xl mb-8 max-w-md mx-auto">
           <button
-            type="button"
             onClick={() => setActiveTab('termos')}
             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
               activeTab === 'termos' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
@@ -51,7 +50,6 @@ const Legal = () => {
             <Gavel size={18} /> Termos de Uso
           </button>
           <button
-            type="button"
             onClick={() => setActiveTab('privacidade')}
             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
               activeTab === 'privacidade' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
@@ -67,71 +65,82 @@ const Legal = () => {
           {activeTab === 'termos' ? (
             <article className="prose prose-zinc dark:prose-invert max-w-none">
               <h2 className="text-3xl font-black text-zinc-900 dark:text-white mb-2 uppercase italic">Termos e Condições de Uso</h2>
-              <p className="text-xs text-zinc-400 mb-10 tracking-widest uppercase">Versão 2.0 - Fundamentada no Marco Civil da Internet</p>
+              <p className="text-xs text-zinc-400 mb-10 tracking-widest uppercase">Última revisão: {empresa.dataAtualizacao}</p>
               
               <div className="space-y-10 text-zinc-700 dark:text-zinc-300">
                 <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Info size={20} className="text-blue-600"/> 1. Definições (Glossário)</h3>
-                  <p className="text-sm">Para clareza deste contrato: <strong>"Software"</strong> refere-se ao CRM; <strong>"Usuário"</strong> é a pessoa física ou jurídica licenciada; <strong>"Dados de Cliente"</strong> são as informações inseridas pelo usuário no sistema.</p>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Info size={20} className="text-blue-600"/> 1. Objeto e Licença</h3>
+                  <p className="text-sm leading-relaxed">
+                    Estes termos regem o uso da plataforma SeguroCRM. O licenciamento é feito na modalidade SaaS (Software as a Service), sendo uma licença de uso revogável, não exclusiva e intransferível. O uso da plataforma implica na aceitação plena destas condições.
+                  </p>
                 </section>
 
                 <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Cloud size={20} className="text-blue-600"/> 2. Propriedade dos Dados</h3>
-                  <p>O <strong>Usuário</strong> mantém a propriedade exclusiva de todos os dados inseridos. O <strong>Software</strong> atua apenas como custodiante tecnológico, não possuindo qualquer direito de exploração comercial sobre os dados da carteira do usuário.</p>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Cloud size={20} className="text-blue-600"/> 2. Responsabilidade sobre Dados</h3>
+                  <p>
+                    O <strong>Usuário</strong> é o único "Controlador" (nos termos da LGPD) dos dados de seus clientes. O SeguroCRM atua como "Operador", fornecendo a infraestrutura tecnológica. O Usuário garante possuir autorização legal para inserir dados de terceiros na plataforma.
+                  </p>
                 </section>
 
                 <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Ban size={20} className="text-blue-600"/> 3. Uso Aceitável e Segurança</h3>
-                  <p>É vedada a utilização de scripts de automação não autorizados (bots) ou técnicas de <em>scraping</em>. O descumprimento resultará na suspensão imediata da conta sem direito a reembolso, visando proteger a integridade dos demais usuários.</p>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Lock size={20} className="text-blue-600"/> 3. Integrações e Terceiros</h3>
+                  <p>
+                    A plataforma permite integração com serviços de terceiros (como Google e Outlook). O Usuário reconhece que ao ativar estas integrações, está sujeito também aos termos e políticas desses provedores. O SeguroCRM não se responsabiliza por falhas ou interrupções causadas por serviços externos.
+                  </p>
                 </section>
 
                 <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><AlertTriangle size={20} className="text-blue-600"/> 4. Isenção de Responsabilidade de Lucros</h3>
-                  <p>O Software é uma ferramenta de apoio. Não garantimos resultados financeiros ou conversão de vendas, sendo a estratégia comercial de inteira responsabilidade do Usuário.</p>
-                </section>
-
-                <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Scale size={20} className="text-blue-600"/> 5. Rescisão e Exportação</h3>
-                  <p>O Usuário pode rescindir o serviço a qualquer momento. Em caso de cancelamento, o acesso aos dados será mantido por 30 dias para fins de exportação, sendo deletados permanentemente após este período.</p>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><AlertTriangle size={20} className="text-blue-600"/> 4. Limitação de Responsabilidade</h3>
+                  <p>
+                    Em nenhuma circunstância o SeguroCRM será responsável por lucros cessantes, perda de dados ou danos indiretos decorrentes do uso da ferramenta. A responsabilidade total da contratada limita-se ao valor total pago pelo usuário nos últimos 6 meses de serviço.
+                  </p>
                 </section>
               </div>
             </article>
           ) : (
             <article className="prose prose-zinc dark:prose-invert max-w-none">
-              <h2 className="text-3xl font-black text-zinc-900 dark:text-white mb-2 uppercase italic">Política de Privacidade & Dados</h2>
-              <p className="text-xs text-zinc-400 mb-10 tracking-widest uppercase">Certificação de Conformidade LGPD - Lei 13.709/18</p>
+              <h2 className="text-3xl font-black text-zinc-900 dark:text-white mb-2 uppercase italic">Política de Privacidade</h2>
+              <p className="text-xs text-zinc-400 mb-10 tracking-widest uppercase">Conformidade com a Política de Dados do Google API</p>
               
               <div className="space-y-10 text-zinc-700 dark:text-zinc-300">
-                <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Database size={20} className="text-blue-600"/> 1. Minimização de Dados</h3>
-                  <p>Seguimos o princípio da minimização: coletamos apenas o essencial para o funcionamento do CRM. Dados como tokens do Google Agenda são utilizados estritamente para sincronização e nunca para leitura de dados não autorizados.</p>
-                </section>
-
-                <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Server size={20} className="text-blue-600"/> 2. Medidas de Segurança Técnica</h3>
-                  <ul className="list-disc pl-5 space-y-2 mt-2 text-sm">
-                    <li>Criptografia SSL/TLS para todos os dados em trânsito.</li>
-                    <li>Hash de segurança para senhas (não armazenamos senhas em texto puro).</li>
-                    <li>Backups diários e isolamento de banco de dados por usuário (Tenant Isolation).</li>
+                
+                {/* SEÇÃO CRUCIAL PARA O GOOGLE */}
+                <section className="p-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-[24px] border border-blue-100 dark:border-blue-900/30">
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-blue-700 dark:text-blue-400 uppercase mb-4">
+                    <Chrome size={22} /> Uso de Dados das APIs do Google
+                  </h3>
+                  <p className="text-sm leading-relaxed mb-4">
+                    Para fornecer funcionalidades de CRM integradas, solicitamos acesso a informações do Google via OAuth 2.0.
+                  </p>
+                  <ul className="space-y-4 text-sm list-none p-0 m-0">
+                    <li>
+                      <strong>Dados Acessados:</strong> Endereço de e-mail e informações básicas de perfil (nome e foto) para autenticação segura.
+                    </li>
+                    <li>
+                      <strong>Uso e Finalidade:</strong> Estes dados são usados exclusivamente para identificar sua conta, permitir o envio de notificações e sincronizar alertas de renovação.
+                    </li>
+                    <li>
+                      <strong>Segurança e Transferência:</strong> O SeguroCRM <strong>não compartilha, não vende e não transfere</strong> dados obtidos através do Google para terceiros ou para fins de publicidade. O uso de informações recebidas das APIs do Google seguirá a <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" className="underline text-blue-600">Política de Dados do Usuário dos Serviços de API do Google</a>, incluindo os requisitos de Uso Limitado.
+                    </li>
                   </ul>
                 </section>
 
                 <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Trash2 size={20} className="text-blue-600"/> 3. Retenção e Descarte</h3>
-                  <p>Os dados pessoais são retidos enquanto a conta estiver ativa. Após o encerramento, os dados são anonimizados ou deletados conforme os requisitos legais de prescrição de obrigações (Marco Civil).</p>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Database size={20} className="text-blue-600"/> 1. Coleta Mínima</h3>
+                  <p>Coletamos apenas o estritamente necessário para a prestação do serviço. Informações como histórico de navegação ou dados sensíveis não são processados pela nossa plataforma.</p>
                 </section>
 
                 <section>
-                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Share2 size={20} className="text-blue-600"/> 4. Operadores e Subprocessadores</h3>
-                  <p>Utilizamos parceiros de infraestrutura de classe mundial (AWS/Supabase/Google). Ao utilizar o Software, o usuário autoriza o processamento técnico nestas plataformas sob nossos protocolos de segurança.</p>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-zinc-900 dark:text-white uppercase"><Server size={20} className="text-blue-600"/> 2. Proteção Técnica</h3>
+                  <p>Utilizamos criptografia ponta a ponta em trânsito (SSL/TLS 1.3) e em repouso (AES-256). Seus dados são isolados logicamente de outros usuários, garantindo privacidade total.</p>
                 </section>
 
-                <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-[24px] border border-blue-100 dark:border-blue-900/30 mt-10">
+                <div className="bg-zinc-100 dark:bg-zinc-800 p-6 rounded-[24px]">
                   <div className="flex gap-4">
                     <UserCheck className="text-blue-600 shrink-0" />
                     <div>
-                      <h4 className="text-sm font-black text-zinc-900 dark:text-white uppercase mb-1">DPO e Direitos do Titular</h4>
-                      <p className="text-xs leading-relaxed">Para exercer seu direito de acesso, portabilidade ou exclusão, contate Bruce Maciel através de <strong>{empresa.email}</strong>. Prazo de resposta: até 15 dias úteis.</p>
+                      <h4 className="text-sm font-black text-zinc-900 dark:text-white uppercase mb-1">Contato do Encarregado (DPO)</h4>
+                      <p className="text-xs leading-relaxed">Dúvidas sobre seus dados? Contate <strong>{empresa.email}</strong> aos cuidados de Bruce Maciel.</p>
                     </div>
                   </div>
                 </div>
@@ -140,16 +149,13 @@ const Legal = () => {
           )}
         </div>
 
-        {/* Footer Jurídico Institucional */}
+        {/* Footer Jurídico */}
         <div className="mt-12 text-center border-t border-zinc-200 dark:border-zinc-800 pt-8">
           <p className="text-[10px] text-zinc-400 uppercase tracking-[0.4em] font-black">
             {empresa.nome}
           </p>
           <p className="text-[10px] text-zinc-500 mt-2 uppercase font-medium">
-            CNPJ {empresa.cnpj} • Fundada em {empresa.dataInicio}
-          </p>
-          <p className="text-[10px] text-zinc-500 mt-1 uppercase italic font-medium">
-            {empresa.endereco}
+            CNPJ {empresa.cnpj} • Atualizado em {empresa.dataAtualizacao}
           </p>
         </div>
       </div>
