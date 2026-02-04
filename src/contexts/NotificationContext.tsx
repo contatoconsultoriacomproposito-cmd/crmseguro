@@ -5,16 +5,17 @@ import { useAuth } from '../auth/AuthContext';
 // Importação dos modais
 import { ModalInclusaoAcao } from '../components/kanban/ModalInclusaoAcao';
 import { ModalGerenciamentoSinistro } from '../components/kanban/components_visual_card/ModalGerenciamentoSinistro';
+import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
 
 interface Notificacao {
   id: string;
-  tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO';
+  tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO' | 'RENOVACAO';
   titulo: string;
   subtitulo?: string;
   data: string;
   horario?: string;
   atrasado: boolean;
-  ref_id: string; // ID do Cliente ou ID da Indicação
+  ref_id: string;
 }
 
 interface NotificationContextData {
@@ -42,7 +43,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       
       const listaGeral: Notificacao[] = [];
 
-      // 1. BUSCAR PERFIL PARA FILTRO DE PERMISSÃO
+      // 1. BUSCAR PERFIL
       const { data: perfil } = await supabase
         .from('usuarios_perfis')
         .select('tipo_usuario, corretora_id')
@@ -52,7 +53,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const isAdmin = perfil?.tipo_usuario === 'CORRETORA';
       const corretoraDonaId = perfil?.corretora_id || user.id;
 
-      // --- 2. BUSCAR INDICAÇÕES (MANTIDO CONFORME LÓGICA ANTERIOR) ---
+      // --- 2. BUSCAR INDICAÇÕES ---
       let queryInd = supabase
         .from('tab_indicacoes')
         .select(`id, nome_cliente, created_at, status_indicacao, tab_parceiros(nome_parceiro)`)
@@ -75,8 +76,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // --- 3. BUSCA EXCLUSIVA NA TAB_CLIENTES (COMERCIAL E SINISTRO) ---
-      // Eliminamos a busca na tab_sinistros/ocorrências para evitar duplicidade e nomes errados
+      // --- 3. BUSCA NA TAB_CLIENTES (COMERCIAL E SINISTRO) ---
       let queryClientes = supabase
         .from('tab_clientes')
         .select('id, nome, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro')
@@ -89,8 +89,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       
       clientes?.forEach(c => {
         const nomeExibicao = c.nome || 'Cliente sem nome';
-
-        // A. Processa Retorno Comercial
         if (c.data_retorno && c.data_retorno <= hojeLocalStr) {
           listaGeral.push({
             id: `com-${c.id}`,
@@ -102,8 +100,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             ref_id: c.id
           });
         }
-
-        // B. Processa Retorno de Sinistro (Baseado nos campos de data do cliente)
         if (c.data_retorno_sinistro && c.data_retorno_sinistro <= hojeLocalStr) {
           listaGeral.push({
             id: `sin-${c.id}`,
@@ -117,7 +113,50 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       });
 
-      // Ordenação: Indicações primeiro, depois por data (mais antigas/atrasadas no topo)
+      // --- 4. BUSCA DE RENOVAÇÕES (CORRIGIDO PARA UNIFORMIZAR TÍTULO E COR) ---
+      const { data: renovacoes, error: errorRen } = await supabase
+        .from('tab_proposta_itens')
+        .select(`
+          id, 
+          data_renovacao, 
+          horario_renovacao,
+          tab_proposta_opcoes!inner (
+            tab_propostas!inner (
+              corretora_id,
+              corretor_id,
+              tab_clientes (nome)
+            )
+          )
+        `)
+        .eq('notificacao_ativa', true)
+        .lte('data_renovacao', hojeLocalStr)
+        .filter('tab_proposta_opcoes.tab_propostas.corretora_id', 'eq', corretoraDonaId);
+
+      if (errorRen) console.error("Erro na query de renovações:", errorRen);
+
+      let listaRenovacoes = renovacoes || [];
+      if (!isAdmin) {
+        listaRenovacoes = listaRenovacoes.filter((r: any) => 
+          r.tab_proposta_opcoes?.tab_propostas?.corretor_id === user.id
+        );
+      }
+
+      listaRenovacoes.forEach((ren: any) => {
+        const nomeCli = ren.tab_proposta_opcoes?.tab_propostas?.tab_clientes?.nome || 'Cliente';
+        listaGeral.push({
+          id: `ren-${ren.id}`,
+          tipo: 'RENOVACAO',
+          // Incluímos o nome do cliente no título para que apareça na Sidebar
+          titulo: `RENOVAÇÃO: ${nomeCli}`,
+          subtitulo: 'Ajuste de vigência',
+          data: ren.data_renovacao,
+          horario: ren.horario_renovacao,
+          atrasado: ren.data_renovacao < hojeLocalStr,
+          ref_id: ren.id
+        });
+      });
+
+      // Ordenação Final
       setNotificacoes(listaGeral.sort((a, b) => {
         if (a.tipo === 'INDICACAO' && b.tipo !== 'INDICACAO') return -1;
         if (a.tipo !== 'INDICACAO' && b.tipo === 'INDICACAO') return 1;
@@ -129,16 +168,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [user]);
 
-  // Função para abrir o modal correto baseado no tipo e ID do cliente
   const abrirNotificacao = async (n: Notificacao) => {
     if (n.tipo === 'INDICACAO') {
       window.location.href = `/parceiros/triagem?id=${n.ref_id}`;
       return;
     }
 
+    if (n.tipo === 'RENOVACAO') {
+      setModalAtivo({ tipo: 'RENOVACAO', id: n.ref_id });
+      return;
+    }
+
     if (n.tipo === 'SINISTRO') {
-      // Como a notificação vem da tab_clientes, o ref_id é o cliente_id.
-      // Precisamos buscar o ID do sinistro aberto deste cliente para o modal.
       const { data } = await supabase
         .from('tab_sinistros')
         .select('id')
@@ -167,6 +208,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .channel('notificacoes-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_proposta_itens' }, () => carregarNotificacoes())
       .subscribe();
 
     carregarNotificacoes();
@@ -191,6 +233,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {modalAtivo?.tipo === 'SINISTRO' && (
         <ModalGerenciamentoSinistro 
           sinistroId={modalAtivo.id}
+          onClose={() => setModalAtivo(null)}
+          onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
+        />
+      )}
+      {modalAtivo?.tipo === 'RENOVACAO' && (
+        <ModalGerenciamentoRenovacao 
+          itemId={modalAtivo.id}
           onClose={() => setModalAtivo(null)}
           onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
         />
