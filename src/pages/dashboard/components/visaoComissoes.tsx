@@ -15,7 +15,7 @@ export default function VisaoComissoes({
   const [comissoesRaw, setComissoesRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 1. ESTADOS DE FILTRO (Data Início começa vazia para gatilho automático)
+  // 1. ESTADOS DE FILTRO
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
   const [corretorId, setCorretorId] = useState('todos');
@@ -31,33 +31,40 @@ export default function VisaoComissoes({
         .eq('corretora_id', corretoraId)
         .order('data_venda', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!error && data?.data_venda) {
         setDataInicio(data.data_venda.split(' ')[0]);
       } else {
         // Fallback: Início do mês atual
-        setDataInicio(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
+        const now = new Date();
+        setDataInicio(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
       }
     }
     buscarPrimeiroLancamento();
   }, [corretoraId]);
 
-  // 3. BUSCA DE DADOS PRINCIPAL (Ajustado para filtrar no banco)
+  // 3. BUSCA DE DADOS PRINCIPAL (Ajustado para filtrar no banco e evitar redundância)
   useEffect(() => {
     async function fetchComissoes() {
       if (!corretoraId || !dataInicio) return;
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('tab_comissoes')
           .select(`
             *,
             tab_clientes ( nome )
           `)
           .eq('corretora_id', corretoraId)
-          .gte('data_venda', dataInicio) // Filtro direto no banco
-          .lte('data_venda', dataFim);   // Filtro direto no banco
+          .gte('data_venda', dataInicio)
+          .lte('data_venda', dataFim);
+
+        if (corretorId !== 'todos') {
+          query = query.eq('corretor_id', corretorId);
+        }
+
+        const { data, error } = await query.order('data_venda', { ascending: false });
 
         if (error) throw error;
         setComissoesRaw(data || []);
@@ -69,7 +76,7 @@ export default function VisaoComissoes({
     }
 
     fetchComissoes();
-  }, [corretoraId, dataInicio, dataFim]); // Adicionado dataFim como dependência
+  }, [corretoraId, dataInicio, dataFim, corretorId]);
 
   const bcl = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
@@ -79,38 +86,23 @@ export default function VisaoComissoes({
     const s = { total: 0, recebido: 0, pendente: 0, detalhe: [] as any[] };
 
     comissoesRaw.forEach((c) => {
-      const itemCorretorId = c.corretor_id || '';
-      const passaFiltroCorretor = corretorId === 'todos' || itemCorretorId === corretorId;
+      const valor = Number(c.valor_comissao || 0);
+      const isLiquidado = !!(c.data_recebimento);
 
-      const dataRef = (c.data_venda || '').split(/[ T]/)[0];
-      const dentroDoPeriodo = dataRef >= dataInicio && dataRef <= dataFim;
-
-      if (dentroDoPeriodo && passaFiltroCorretor) {
-        const valor = Number(c.valor_comissao || 0);
-        const isLiquidado = !!(c.data_recebimento);
-
-        s.total += valor;
-        if (isLiquidado) s.recebido += valor;
-        else s.pendente += valor;
-        
-        s.detalhe.push({
-          ...c,
-          status_real: isLiquidado ? 'LIQUIDADO' : 'AGUARDANDO'
-        });
-      }
-    });
-
-    s.detalhe.sort((a, b) => {
-       const dA = a.data_venda ? new Date(a.data_venda).getTime() : 0;
-       const dB = b.data_venda ? new Date(b.data_venda).getTime() : 0;
-       return dB - dA;
+      s.total += valor;
+      if (isLiquidado) s.recebido += valor;
+      else s.pendente += valor;
+      
+      s.detalhe.push({
+        ...c,
+        status_real: isLiquidado ? 'LIQUIDADO' : 'AGUARDANDO'
+      });
     });
 
     return { ...s, percentual: s.total > 0 ? (s.recebido / s.total) * 100 : 0 };
-  }, [comissoesRaw, dataInicio, dataFim, corretorId]);
+  }, [comissoesRaw]);
 
   const resetFiltros = () => {
-    // Ao resetar, volta para a data inicial automática
     setCorretorId('todos');
     setDataFim(new Date().toISOString().split('T')[0]);
   };
@@ -142,9 +134,19 @@ export default function VisaoComissoes({
         <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-[28px] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-2 px-4 border-r border-slate-100">
             <Calendar size={14} className="text-indigo-500" />
-            <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="text-[10px] font-bold uppercase bg-transparent outline-none focus:text-indigo-600 p-1" />
+            <input 
+              type="date" 
+              value={dataInicio} 
+              onChange={(e) => setDataInicio(e.target.value)} 
+              className="text-[10px] font-bold uppercase bg-transparent outline-none focus:text-indigo-600 p-1" 
+            />
             <span className="text-slate-300">/</span>
-            <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="text-[10px] font-bold uppercase bg-transparent outline-none focus:text-indigo-600 p-1" />
+            <input 
+              type="date" 
+              value={dataFim} 
+              onChange={(e) => setDataFim(e.target.value)} 
+              className="text-[10px] font-bold uppercase bg-transparent outline-none focus:text-indigo-600 p-1" 
+            />
             
             <span className="ml-3 text-[9px] font-black text-emerald-600 uppercase bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 whitespace-nowrap">
               💰 Base: Data de Venda
@@ -153,7 +155,11 @@ export default function VisaoComissoes({
 
           <div className="flex items-center gap-2 px-4">
             <User size={14} className="text-slate-400" />
-            <select value={corretorId} onChange={(e) => setCorretorId(e.target.value)} className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]">
+            <select 
+              value={corretorId} 
+              onChange={(e) => setCorretorId(e.target.value)} 
+              className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
+            >
               <option value="todos">Todos os Corretores</option>
               {corretoresLista.map(corr => (
                 <option key={corr.id} value={corr.id}>{corr.nome}</option>
@@ -198,13 +204,20 @@ export default function VisaoComissoes({
       </div>
 
       {/* TABELA DE LANÇAMENTOS */}
-      <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10">
+            <Loader2 className="animate-spin text-indigo-500" size={32} />
+          </div>
+        )}
+        
         <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
            <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest italic">Detalhamento de Entradas</h3>
            <span className="text-[10px] font-black text-indigo-500 bg-white px-3 py-1 rounded-full border border-indigo-50 shadow-sm">
              {stats.detalhe.length} Registros
            </span>
         </div>
+        
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -216,31 +229,33 @@ export default function VisaoComissoes({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 text-xs">
-              {stats.detalhe.length > 0 ? stats.detalhe.map((item, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/80 transition-all group">
-                  <td className="px-8 py-5 font-bold text-slate-500">
-                    {item.data_venda ? new Date(item.data_venda).toLocaleDateString('pt-BR') : '---'}
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex flex-col">
-                      <span className="font-black text-slate-800 uppercase tracking-tighter italic group-hover:text-indigo-600 transition-colors">
-                        {item.tab_clientes?.nome || 'CLIENTE N/A'}
+              {stats.detalhe.length > 0 ? (
+                stats.detalhe.map((item, idx) => (
+                  <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-all group">
+                    <td className="px-8 py-5 font-bold text-slate-500">
+                      {item.data_venda ? new Date(item.data_venda).toLocaleDateString('pt-BR') : '---'}
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex flex-col">
+                        <span className="font-black text-slate-800 uppercase tracking-tighter italic group-hover:text-indigo-600 transition-colors">
+                          {item.tab_clientes?.nome || 'CLIENTE N/A'}
+                        </span>
+                        <span className="text-[10px] text-indigo-400 font-bold uppercase">{item.nome_seguradora || 'S/N'}</span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                      <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase border shadow-sm ${
+                        item.status_real === 'LIQUIDADO' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
+                      }`}>
+                        {item.status_real}
                       </span>
-                      <span className="text-[10px] text-indigo-400 font-bold uppercase">{item.nome_seguradora || 'S/N'}</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-center">
-                    <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase border shadow-sm ${
-                      item.status_real === 'LIQUIDADO' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-                    }`}>
-                      {item.status_real}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-right font-black text-slate-800 text-sm">
-                    {bcl(item.valor_comissao)}
-                  </td>
-                </tr>
-              )) : (
+                    </td>
+                    <td className="px-8 py-5 text-right font-black text-slate-800 text-sm">
+                      {bcl(item.valor_comissao)}
+                    </td>
+                  </tr>
+                ))
+              ) : (
                 <tr>
                   <td colSpan={4} className="px-8 py-24 text-center">
                     <div className="flex flex-col items-center justify-center opacity-20">
