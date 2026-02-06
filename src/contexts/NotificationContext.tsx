@@ -43,7 +43,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       
       const listaGeral: Notificacao[] = [];
 
-      // 1. BUSCAR PERFIL
+      // 1. BUSCAR PERFIL DO USUÁRIO
       const { data: perfil } = await supabase
         .from('usuarios_perfis')
         .select('tipo_usuario, corretora_id')
@@ -113,15 +113,17 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       });
 
-      // --- 4. BUSCA DE RENOVAÇÕES (CORRIGIDO PARA UNIFORMIZAR TÍTULO E COR) ---
+      // --- 4. BUSCA DE RENOVAÇÕES (LÓGICA CORRIGIDA) ---
+      // Removemos o filtro direto de corretora_id da query para evitar que o Supabase descarte linhas por erro de Join
       const { data: renovacoes, error: errorRen } = await supabase
         .from('tab_proposta_itens')
         .select(`
           id, 
           data_renovacao, 
           horario_renovacao,
-          tab_proposta_opcoes!inner (
-            tab_propostas!inner (
+          notificacao_ativa,
+          tab_proposta_opcoes (
+            tab_propostas (
               corretora_id,
               corretor_id,
               tab_clientes (nome)
@@ -129,24 +131,30 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           )
         `)
         .eq('notificacao_ativa', true)
-        .lte('data_renovacao', hojeLocalStr)
-        .filter('tab_proposta_opcoes.tab_propostas.corretora_id', 'eq', corretoraDonaId);
+        .lte('data_renovacao', hojeLocalStr);
 
       if (errorRen) console.error("Erro na query de renovações:", errorRen);
 
-      let listaRenovacoes = renovacoes || [];
-      if (!isAdmin) {
-        listaRenovacoes = listaRenovacoes.filter((r: any) => 
-          r.tab_proposta_opcoes?.tab_propostas?.corretor_id === user.id
-        );
-      }
+      // Filtro manual para garantir integridade dos dados e permissões
+      const listaRenovacoesFiltradas = (renovacoes || []).filter((ren: any) => {
+        const itemOpcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
+        const proposta = itemOpcao?.tab_propostas;
+        
+        if (!proposta) return false;
 
-      listaRenovacoes.forEach((ren: any) => {
-        const nomeCli = ren.tab_proposta_opcoes?.tab_propostas?.tab_clientes?.nome || 'Cliente';
+        const pertenceACorretora = proposta.corretora_id === corretoraDonaId;
+        const pertenceAoCorretor = isAdmin || proposta.corretor_id === user.id;
+
+        return pertenceACorretora && pertenceAoCorretor;
+      });
+
+      listaRenovacoesFiltradas.forEach((ren: any) => {
+        const itemOpcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
+        const nomeCli = itemOpcao?.tab_propostas?.tab_clientes?.nome || 'Cliente';
+        
         listaGeral.push({
           id: `ren-${ren.id}`,
           tipo: 'RENOVACAO',
-          // Incluímos o nome do cliente no título para que apareça na Sidebar
           titulo: `RENOVAÇÃO: ${nomeCli}`,
           subtitulo: 'Ajuste de vigência',
           data: ren.data_renovacao,
@@ -156,7 +164,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Ordenação Final
+      // Ordenação Final: Indicações primeiro, depois por data
       setNotificacoes(listaGeral.sort((a, b) => {
         if (a.tipo === 'INDICACAO' && b.tipo !== 'INDICACAO') return -1;
         if (a.tipo !== 'INDICACAO' && b.tipo === 'INDICACAO') return 1;
@@ -204,6 +212,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   useEffect(() => {
     if (!user) return;
+    
+    // Realtime subscriptions
     const channel = supabase
       .channel('notificacoes-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
@@ -212,7 +222,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .subscribe();
 
     carregarNotificacoes();
-    return () => { supabase.removeChannel(channel); };
+    
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
   }, [user, carregarNotificacoes]);
 
   return (
@@ -223,6 +236,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       markAsReadByIndicacao 
     }}>
       {children}
+      
+      {/* RENDERIZAÇÃO DOS MODAIS CONDICIONAIS */}
       {modalAtivo?.tipo === 'COMERCIAL' && (
         <ModalInclusaoAcao 
           clienteId={modalAtivo.id}
@@ -230,6 +245,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
         />
       )}
+      
       {modalAtivo?.tipo === 'SINISTRO' && (
         <ModalGerenciamentoSinistro 
           sinistroId={modalAtivo.id}
@@ -237,6 +253,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
         />
       )}
+      
       {modalAtivo?.tipo === 'RENOVACAO' && (
         <ModalGerenciamentoRenovacao 
           itemId={modalAtivo.id}
