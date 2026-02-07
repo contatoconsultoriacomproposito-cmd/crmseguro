@@ -12,11 +12,18 @@ import { supabase } from '../../../lib/supabaseClient';
 interface VisaoParceirosProps {
   corretoraId: string;
   corretoresLista: { id: string; nome: string }[];
+  userLevel?: string;
+  userId?: string;
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
 
-export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoParceirosProps) {
+export default function VisaoParceiros({ 
+  corretoraId, 
+  corretoresLista,
+  userLevel,
+  userId 
+}: VisaoParceirosProps) {
   const [loading, setLoading] = useState(true);
   const [parceiros, setParceiros] = useState<any[]>([]);
   const [propostas, setPropostas] = useState<any[]>([]);
@@ -27,7 +34,7 @@ export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoPa
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
   const [corretorLocal, setCorretorLocal] = useState('todos');
 
-  // 2. BUSCA DA DATA MAIS ANTIGA (Retrovisor Automático)
+  // 2. BUSCA DA DATA MAIS ANTIGA
   useEffect(() => {
     async function buscarPrimeiraProposta() {
       if (!corretoraId) return;
@@ -37,64 +44,74 @@ export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoPa
         .eq('corretora_id', corretoraId)
         .order('created_at', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         setDataInicio(data.created_at.split('T')[0]);
       } else {
-        // Fallback: Início do ano corrente
         setDataInicio(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
       }
     }
     buscarPrimeiraProposta();
   }, [corretoraId]);
 
-  // 3. BUSCA DE DADOS (Parceiros + Propostas Filtradas)
+  // 3. BUSCA DE DADOS COM TRAVA DE SEGURANÇA
   useEffect(() => {
-  async function fetchData() {
-    if (!dataInicio || !corretoraId) return;
+    async function fetchData() {
+      if (!dataInicio || !corretoraId) return;
 
-    setLoading(true);
-    setErrorLog(null);
+      setLoading(true);
+      setErrorLog(null);
 
-    try {
-      // 1. Busca Parceiros
-      const { data: pData, error: pError } = await supabase
-        .from('tab_parceiros')
-        .select('*')
-        .eq('corretora_id', corretoraId);
+      try {
+        // Query base para parceiros
+        let pQuery = supabase
+          .from('tab_parceiros')
+          .select('*')
+          .eq('corretora_id', corretoraId);
 
-      if (pError) throw pError;
+        // Query base para propostas
+        let query = supabase
+          .from('tab_propostas')
+          .select('*')
+          .eq('corretora_id', corretoraId)
+          .gte('created_at', `${dataInicio}T00:00:00`)
+          .lte('created_at', `${dataFim}T23:59:59`);
 
-      // 2. Construção da Query de Propostas
-      let query = supabase
-        .from('tab_propostas')
-        .select('*')
-        .eq('corretora_id', corretoraId)
-        .gte('created_at', `${dataInicio}T00:00:00`)
-        .lte('created_at', `${dataFim}T23:59:59`);
+        // Aplicação da lógica de filtro unificada
+        if (userLevel === 'corretor' && userId) {
+          pQuery = pQuery.eq('corretor_id', userId);
+          query = query.eq('corretor_id', userId);
+        } else {
+          if (corretorLocal === 'casa') {
+            // A "CASA" pode ser tanto NULL quanto o ID da própria Corretora
+            // Usamos uma string OR para o Supabase entender a busca composta
+            const filtroCasa = `corretor_id.is.null,corretor_id.eq.${corretoraId}`;
+            pQuery = pQuery.or(filtroCasa);
+            query = query.or(filtroCasa);
+          } else if (corretorLocal !== 'todos') {
+            pQuery = pQuery.eq('corretor_id', corretorLocal);
+            query = query.eq('corretor_id', corretorLocal);
+          }
+        }
 
-      // --- LÓGICA DE FILTRO CORRIGIDA ---
-      if (corretorLocal !== 'todos') {
-        query = query.eq('corretor_id', corretorLocal);
+        const [pRes, propRes] = await Promise.all([pQuery, query]);
+
+        if (pRes.error) throw pRes.error;
+        if (propRes.error) throw propRes.error;
+
+        setParceiros(pRes.data || []);
+        setPropostas(propRes.data || []);
+      } catch (err: any) {
+        console.error("Erro Visão Parceiros:", err);
+        setErrorLog(err.message);
+      } finally {
+        setLoading(false);
       }
-      // ----------------------------------
-
-      const { data: propData, error: propError } = await query;
-      if (propError) throw propError;
-      
-      setParceiros(pData || []);
-      setPropostas(propData || []);
-    } catch (err: any) {
-      console.error("Erro Visão Parceiros:", err);
-      setErrorLog(err.message);
-    } finally {
-      setLoading(false);
     }
-  }
 
-  fetchData();
-}, [corretoraId, dataInicio, dataFim, corretorLocal]);
+    fetchData();
+  }, [corretoraId, dataInicio, dataFim, corretorLocal, userLevel, userId]);
 
   // 4. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
@@ -127,6 +144,9 @@ export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoPa
 
       if (eSucesso) {
         acc.totalVendasConvertidasParceiro++;
+        
+        // Se o parceiro não foi mapeado no loop anterior (porque o filtro o barrou), 
+        // mas a proposta caiu aqui, precisamos evitar erro de undefined
         if (acc.performance[pId]) {
           acc.performance[pId].total += Number(prop.valor_total_proposta || 0);
           acc.performance[pId].qtd += 1;
@@ -163,7 +183,7 @@ export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoPa
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-10">
       
-      {/* FILTROS */}
+      {/* FILTROS PADRONIZADOS */}
       <div className="bg-white p-4 rounded-[28px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100">
           <Filter size={16} className="text-indigo-500" />
@@ -185,21 +205,25 @@ export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoPa
           </span>
         </div>
 
-        <div className="flex items-center gap-2 px-4 border-l border-slate-100 ml-auto">
-          <User size={14} className="text-slate-400" />
-          <select 
-            value={corretorLocal} 
-            onChange={(e) => setCorretorLocal(e.target.value)} 
-            className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
-          >
-            <option value="todos">Todos os Corretores</option>
-            {/* Se for na visão de Produtividade, mantenha a opção 'casa' abaixo se ela existir no seu banco */}
-            {/* <option value="casa">Somente a Casa</option> */}
-            {(corretoresLista || []).map(c => (
-              <option key={c.id} value={c.id}>{c.nome}</option>
-            ))}
-          </select>
-        </div>
+        {userLevel !== 'corretor' && (
+          <div className="flex items-center gap-2 px-4 border-l border-slate-100 ml-auto">
+            <User size={14} className="text-slate-400" />
+            <select 
+              value={corretorLocal} 
+              onChange={(e) => setCorretorLocal(e.target.value)} 
+              className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
+            >
+              <option value="todos">Todos os Corretores</option>
+              <option value="casa">ATENDIMENTO DIRETO (CASA)</option>
+              {(corretoresLista || [])
+                .filter(c => c.nome.toUpperCase() !== "ATENDIMENTO DIRETO (CASA)")
+                .map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))
+              }
+            </select>
+          </div>
+        )}
       </div>
 
       {errorLog && (
@@ -241,27 +265,39 @@ export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoPa
           <h3 className="text-xs font-black uppercase text-slate-400 mb-8 flex items-center gap-2 tracking-widest">
             <PieIcon size={16} className="text-indigo-500" /> Perfil da Rede
           </h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie 
-                  data={stats.dataTipos} 
-                  innerRadius={70} 
-                  outerRadius={90} 
-                  paddingAngle={10} 
-                  dataKey="value"
-                >
-                  {stats.dataTipos.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="none" />)}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+          
+          {/* Ajuste de estabilidade para evitar erro de width/height -1 */}
+          <div className="h-64 w-full" style={{ minHeight: '256px', position: 'relative' }}>
+            {stats.dataTipos.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%" debounce={1}>
+                <PieChart>
+                  <Pie 
+                    data={stats.dataTipos} 
+                    innerRadius={70} 
+                    outerRadius={90} 
+                    paddingAngle={10} 
+                    dataKey="value"
+                    isAnimationActive={false} // Mantido falso para evitar conflito de renderização
+                  >
+                    {stats.dataTipos.map((_, i) => (
+                      <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} stroke="none" />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-[10px] font-black text-slate-300 tracking-widest">
+                SEM DADOS PARA O PERÍODO
+              </div>
+            )}
           </div>
+
           <div className="grid grid-cols-2 gap-4 mt-6">
             {stats.dataTipos.map((t, i) => (
-              <div key={i} className="bg-slate-50 p-3 rounded-2xl text-center">
+              <div key={`stats-${i}`} className="bg-slate-50 p-3 rounded-2xl text-center">
                 <span className="text-[9px] font-black text-slate-400 uppercase block">{t.name}</span>
                 <span className="text-xl font-black text-slate-700">{t.value}</span>
               </div>
@@ -278,7 +314,7 @@ export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoPa
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {stats.ranking.length > 0 ? stats.ranking.map((p, idx) => (
-              <div key={idx} className="group p-6 rounded-[32px] bg-slate-50 border border-slate-100 hover:bg-white hover:shadow-2xl hover:shadow-indigo-50 transition-all duration-500">
+              <div key={p.nome || idx} className="group p-6 rounded-[32px] bg-slate-50 border border-slate-100 hover:bg-white hover:shadow-2xl hover:shadow-indigo-50 transition-all duration-500">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-indigo-600 font-black text-sm border border-slate-100 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
@@ -306,9 +342,9 @@ export default function VisaoParceiros({ corretoraId, corretoresLista }: VisaoPa
                 </div>
               </div>
             )) : (
-              <div className="col-span-2 py-20 flex flex-col items-center justify-center text-slate-300">
+              <div className="col-span-1 md:col-span-2 py-20 flex flex-col items-center justify-center text-slate-300">
                 <BarChart3 size={40} className="mb-2 opacity-20" />
-                <p className="font-black uppercase text-[10px] tracking-widest italic">Nenhum resultado para os filtros atuais</p>
+                <p className="font-black uppercase text-[10px] tracking-widest italic text-center">Nenhum resultado para os filtros atuais</p>
               </div>
             )}
           </div>

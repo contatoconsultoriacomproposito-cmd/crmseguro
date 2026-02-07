@@ -46,8 +46,10 @@ export default function Dashboard() {
           setUserProfile(perfil);
 
           if (perfil.tipo_usuario === 'CORRETOR') {
-            setCorretores([perfil]);
+            // AJUSTE: Garante que o array tenha o formato esperado {id, nome}
+            setCorretores([{ id: perfil.id, nome: perfil.nome }]);
           } else {
+            // ... lógica da CORRETORA (ID da Casa + Lista) permanece igual
             const { data: lista } = await supabase
               .from('usuarios_perfis')
               .select('id, nome')
@@ -55,8 +57,6 @@ export default function Dashboard() {
               .eq('tipo_usuario', 'CORRETOR')
               .order('nome');
             
-            // ALTERAÇÃO AQUI: ID da Casa agora é uma string clara 'casa'
-            // Isso evita conflito com o UUID da corretora
             setCorretores([
               { id: 'casa', nome: "ATENDIMENTO DIRETO (CASA)" },
               ...(lista || [])
@@ -118,7 +118,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* RENDERIZAÇÃO CONDICIONAL - AGORA TODAS PASSAM APENAS ID E LISTA */}
+      {/* RENDERIZAÇÃO CONDICIONAL - UNIFICADA E SEGURA */}
       <main className="animate-in fade-in slide-in-from-bottom-4 duration-500">
         {!cid ? (
           <div className="flex justify-center p-20">
@@ -126,17 +126,80 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
-            {abaAtiva === 'clientes' && <VisaoCliente corretoraId={cid} corretoresLista={corretores} />}
-            {abaAtiva === 'propostas' && <VisaoPropostas corretoraId={cid} corretoresLista={corretores} />}
-            {abaAtiva === 'produtos' && <VisaoProdutos corretoraId={cid} corretoresLista={corretores} />}
-            {abaAtiva === 'seguradoras' && <VisaoSeguradoras corretoraId={cid} corretoresLista={corretores} />}
-            {abaAtiva === 'produtividade' && <VisaoProdutividade corretoraId={cid} corretoresLista={corretores} />}
-            {abaAtiva === 'parceiros' && <VisaoParceiros corretoraId={cid} corretoresLista={corretores} />}
-            {abaAtiva === 'comissoes' && <VisaoComissoes corretoraId={cid} corretoresLista={corretores} />}
-            {abaAtiva === 'sinistros' && <VisaoSinistros corretoraId={cid} corretoresLista={corretores} />}
+            {abaAtiva === 'clientes' && (
+              <VisaoCliente 
+                corretoraId={cid} 
+                corretoresLista={corretores} 
+                userLevel={userProfile?.tipo_usuario} 
+                userId={userProfile?.id} 
+              />
+            )}
+            
+            {abaAtiva === 'propostas' && (
+              <VisaoPropostas 
+                corretoraId={cid} 
+                corretoresLista={corretores} 
+                userLevel={userProfile?.tipo_usuario} 
+                userId={userProfile?.id} 
+              />
+            )}
+
+            {abaAtiva === 'produtos' && (
+              <VisaoProdutos 
+                corretoraId={cid} 
+                corretoresLista={corretores} 
+                userLevel={userProfile?.tipo_usuario} 
+                userId={userProfile?.id} 
+              />
+            )}
+
+            {abaAtiva === 'seguradoras' && (
+              <VisaoSeguradoras 
+                corretoraId={cid} 
+                corretoresLista={corretores} 
+                userLevel={userProfile?.tipo_usuario} 
+                userId={userProfile?.id} 
+              />
+            )}
+
+            {abaAtiva === 'produtividade' && (
+              <VisaoProdutividade 
+                corretoraId={cid} 
+                corretoresLista={corretores} 
+                userLevel={userProfile?.tipo_usuario} 
+                userId={userProfile?.id} 
+              />
+            )}
+
+            {abaAtiva === 'parceiros' && (
+              <VisaoParceiros 
+                corretoraId={cid} 
+                corretoresLista={corretores} 
+                userLevel={userProfile?.tipo_usuario} 
+                userId={userProfile?.id} 
+              />
+            )}
+
+            {abaAtiva === 'comissoes' && (
+              <VisaoComissoes 
+                corretoraId={cid} 
+                corretoresLista={corretores} 
+                userLevel={userProfile?.tipo_usuario} 
+                userId={userProfile?.id} 
+              />
+            )}
+
+            {abaAtiva === 'sinistros' && (
+              <VisaoSinistros 
+                corretoraId={cid} 
+                corretoresLista={corretores} 
+                userLevel={userProfile?.tipo_usuario} 
+                userId={userProfile?.id} 
+              />
+            )}
           </>
         )}
       </main>
-    </div>
-  );
+          </div>
+        );
 }

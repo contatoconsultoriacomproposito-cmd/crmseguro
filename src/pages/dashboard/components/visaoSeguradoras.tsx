@@ -4,14 +4,22 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 import { supabase } from '../../../lib/supabaseClient';
 
+// Interface atualizada para paridade com os outros componentes
 interface VisaoSeguradorasProps {
   corretoraId: string;
   corretoresLista: { id: string; nome: string }[];
+  userLevel?: string;
+  userId?: string;
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', '#06b6d4'];
 
-export default function VisaoSeguradoras({ corretoraId, corretoresLista }: VisaoSeguradorasProps) {
+export default function VisaoSeguradoras({ 
+  corretoraId, 
+  corretoresLista, 
+  userLevel, 
+  userId 
+}: VisaoSeguradorasProps) {
   
   const [loading, setLoading] = useState(true);
   const [propostasVendidas, setPropostasVendidas] = useState<any[]>([]);
@@ -21,7 +29,7 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
   const [corretorLocal, setCorretorLocal] = useState('todos');
 
-  // 2. BUSCAR A DATA DA PROPOSTA MAIS ANTIGA DA CORRETORA (ID)
+  // 2. BUSCAR A DATA DA PROPOSTA MAIS ANTIGA
   useEffect(() => {
     async function buscarPrimeiraData() {
       if (!corretoraId) return;
@@ -32,19 +40,18 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
         .eq('corretora_id', corretoraId)
         .order('created_at', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         setDataInicio(data.created_at.split('T')[0]);
       } else {
-        // Fallback para o início do ano caso não encontre propostas
         setDataInicio(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
       }
     }
     buscarPrimeiraData();
   }, [corretoraId]);
 
-  // 3. BUSCA DE DADOS (Focada em Vendas e Joins de Seguradoras)
+  // 3. BUSCA DE DADOS COM LÓGICA DE SEGURANÇA E FILTRO
   useEffect(() => {
     async function fetchVendasSeguradoras() {
       if (!dataInicio || !corretoraId) return;
@@ -65,12 +72,19 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
             )
           `)
           .eq('corretora_id', corretoraId)
-          .in('status', ['Vendido', 'vendido', 'Fechado', 'fechado', 'concluído', 'Concluído'])
+          .in('status', ['Vendido', 'vendido', 'Fechado', 'fechado', 'concluído', 'Concluído', 'emitido', 'Emitido'])
           .gte('created_at', `${dataInicio}T00:00:00`)
           .lte('created_at', `${dataFim}T23:59:59`);
 
-        if (corretorLocal !== 'todos') {
-          query = query.eq('corretor_id', corretorLocal);
+        // Trava de Segurança: Corretor só vê o dele. Admin usa o filtro do select.
+        if (userLevel === 'corretor' && userId) {
+          query = query.eq('corretor_id', userId);
+        } else {
+          if (corretorLocal === 'casa') {
+            query = query.is('corretor_id', null);
+          } else if (corretorLocal !== 'todos') {
+            query = query.eq('corretor_id', corretorLocal);
+          }
         }
 
         const { data, error } = await query;
@@ -84,7 +98,7 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
     }
 
     fetchVendasSeguradoras();
-  }, [dataInicio, dataFim, corretorLocal, corretoraId]);
+  }, [dataInicio, dataFim, corretorLocal, corretoraId, userId, userLevel]);
 
   // 4. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
@@ -132,7 +146,7 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       
-      {/* BARRA DE FILTROS */}
+      {/* BARRA DE FILTROS PADRONIZADA */}
       <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
           <Filter size={16} className="text-slate-400" />
@@ -155,20 +169,27 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
           />
 
           <span className="ml-2 text-[9px] font-black text-emerald-500 uppercase bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
-            🛡️ Base: Histórico desde o Início
+            🛡️ Base: Histórico de Vendas
           </span>
         </div>
 
-        <select 
-          value={corretorLocal} 
-          onChange={(e) => setCorretorLocal(e.target.value)}
-          className="ml-auto bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-600 p-2 min-w-[200px]"
-        >
-          <option value="todos">Todos os Corretores / Casa</option>
-          {(corretoresLista || []).map(c => (
-            <option key={c.id} value={c.id}>{c.nome}</option>
-          ))}
-        </select>
+        {/* Só mostra o seletor de corretor se não for nível 'corretor' limitado */}
+        {userLevel !== 'corretor' && (
+          <select 
+            value={corretorLocal} 
+            onChange={(e) => setCorretorLocal(e.target.value)}
+            className="ml-auto bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-600 p-2 min-w-[200px]"
+          >
+            <option value="todos">Todos os Corretores</option>
+            <option value="casa">ATENDIMENTO DIRETO (CASA)</option>
+            {(corretoresLista || [])
+              .filter(c => c.nome.toUpperCase() !== "ATENDIMENTO DIRETO (CASA)")
+              .map(c => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))
+            }
+          </select>
+        )}
 
         {loading && <Loader2 size={18} className="animate-spin text-indigo-500 ml-2" />}
       </div>
@@ -202,7 +223,7 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
         <div className="lg:col-span-2 bg-indigo-600 p-8 rounded-[32px] text-white flex flex-col justify-center relative overflow-hidden shadow-xl shadow-indigo-100">
           <Award size={180} className="absolute -right-10 -bottom-10 opacity-10 rotate-12" />
           <div className="relative z-10">
-            <p className="text-indigo-200 text-xs font-black uppercase tracking-[0.2em] mb-2">Produção Acumulada Parceiros</p>
+            <p className="text-indigo-200 text-xs font-bold uppercase tracking-[0.2em] mb-2">Produção Acumulada Parceiros</p>
             <h1 className="text-5xl font-black mb-4">
               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.totalGeral)}
             </h1>
@@ -269,7 +290,7 @@ export default function VisaoSeguradoras({ corretoraId, corretoresLista }: Visao
         <div className="h-40 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-[32px] bg-slate-50/30">
           <ShieldCheck size={32} className="text-slate-200 mb-2" />
           <p className="text-xs font-black uppercase text-slate-400 tracking-widest text-center px-4">
-            Nenhuma venda registrada no período para este corretor.
+            Nenhuma venda registrada no período para este filtro.
           </p>
         </div>
       )}

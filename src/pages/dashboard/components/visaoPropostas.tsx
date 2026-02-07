@@ -1,15 +1,17 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { 
   FileText, ShieldCheck, XCircle, 
-  Target, Users, CalendarDays, Wallet, Filter, Loader2
+  Target, Users, CalendarDays, Wallet, Filter, Loader2,  
 } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
-  BarChart, Bar, XAxis, CartesianGrid, Legend
+  BarChart, Bar, XAxis, CartesianGrid, Legend, YAxis
 } from 'recharts';
 
+import type { LucideProps } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 
+// --- Interfaces ---
 interface PropostaData {
   id: string;
   numero_proposta: string;
@@ -26,52 +28,78 @@ interface PropostaData {
 
 interface VisaoPropostasProps {
   corretoraId: string;
-  corretoresLista: { id: string; nome: string }[]; 
+  corretoresLista: { id: string; nome: string }[];
+  userLevel?: string; // Adicionado para resolver o erro do TS
+  userId?: string;    // Adicionado para resolver o erro do TS
 }
 
+// Interface para o componente StatCard para evitar erros de tipagem
+interface StatCardProps {
+  label: string;
+  val: number;
+  money: number;
+  color: 'indigo' | 'emerald';
+  icon: React.ReactElement<LucideProps>;
+}
+
+// --- Constantes ---
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4'];
 
 export default function VisaoPropostas({ 
   corretoraId,
-  corretoresLista 
+  corretoresLista,
+  userLevel,
+  userId
 }: VisaoPropostasProps) {
   
+  // --- Estados ---
+  const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [propostasLocais, setPropostasLocais] = useState<PropostaData[]>([]);
   const [parceirosLocais, setParceirosLocais] = useState<any[]>([]);
 
-  // 1. ESTADOS DE FILTRO (Data de início começa vazia para ser preenchida pelo useEffect)
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
-  const [corretorLocal, setCorretorLocal] = useState('todos');
+  const [corretorLocal, setCorretorLocal] = useState(userLevel === 'CORRETOR' ? userId : 'todos');
 
-  // 2. BUSCAR A DATA DA PROPOSTA MAIS ANTIGA
+  // Fix para Hydration/Gráficos Recharts
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // 1. BUSCAR A DATA DA PROPOSTA MAIS ANTIGA PARA O FILTRO INICIAL
   useEffect(() => {
     async function buscarPrimeiraData() {
       if (!corretoraId) return;
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('tab_propostas')
         .select('created_at')
-        .eq('corretora_id', corretoraId)
+        .eq('corretora_id', corretoraId);
+
+      // Se for CORRETOR, busca a data da primeira proposta DELE
+      if (userLevel === 'CORRETOR' && userId) {
+        query = query.eq('corretor_id', userId);
+      }
+
+      const { data, error } = await query
         .order('created_at', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle(); 
 
       if (!error && data) {
         setDataInicio(data.created_at.split('T')[0]);
       } else {
-        // Fallback: Primeiro dia do mês atual caso não haja propostas
         setDataInicio(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
       }
     }
     buscarPrimeiraData();
-  }, [corretoraId]);
+  }, [corretoraId, userLevel, userId]);
 
-  // 3. BUSCA DE DADOS
+  // 2. BUSCA DE DADOS (PROPOSTAS E PARCEIROS)
   useEffect(() => {
-    async function fetchPropostas() {
-      if (!dataInicio) return; // Aguarda a definição da data de início
+    async function fetchDados() {
+      if (!dataInicio || !corretoraId) return; 
       
       setLoading(true);
       try {
@@ -79,23 +107,31 @@ export default function VisaoPropostas({
           .from('tab_propostas')
           .select('*')
           .eq('corretora_id', corretoraId)
-          .gte('created_at', `${dataInicio}T00:00:00`)
-          .lte('created_at', `${dataFim}T23:59:59`);
+          .gte('created_at', `${dataInicio}T00:00:00.000Z`)
+          .lte('created_at', `${dataFim}T23:59:59.999Z`);
 
-        if (corretorLocal !== 'todos') {
-          query = query.eq('corretor_id', corretorLocal);
+        // --- TRAVA DE SEGURANÇA E LÓGICA DE FILTRO ---
+        if (userLevel === 'CORRETOR' && userId) {
+          // Se for corretor, ignora qualquer tentativa de ver "todos" ou "casa"
+          query = query.eq('corretor_id', userId);
+        } else {
+          // Lógica para nível CORRETORA
+          if (corretorLocal === 'casa') {
+            query = query.is('corretor_id', null);
+          } else if (corretorLocal !== 'todos') {
+            query = query.eq('corretor_id', corretorLocal);
+          }
         }
 
-        const { data: propData, error: propError } = await query;
-        if (propError) throw propError;
+        const [resPropostas, resParceiros] = await Promise.all([
+          query,
+          supabase.from('tab_parceiros').select('*').eq('corretora_id', corretoraId)
+        ]);
 
-        const { data: parcData } = await supabase
-          .from('tab_parceiros')
-          .select('*')
-          .eq('corretora_id', corretoraId);
+        if (resPropostas.error) throw resPropostas.error;
 
-        setPropostasLocais(propData || []);
-        setParceirosLocais(parcData || []);
+        setPropostasLocais(resPropostas.data || []);
+        setParceirosLocais(resParceiros.data || []);
       } catch (err) {
         console.error("Erro ao carregar Visão Propostas:", err);
       } finally {
@@ -103,10 +139,10 @@ export default function VisaoPropostas({
       }
     }
 
-    if (corretoraId) fetchPropostas();
-  }, [dataInicio, dataFim, corretorLocal, corretoraId]);
+    fetchDados();
+  }, [dataInicio, dataFim, corretorLocal, corretoraId, userLevel, userId]);
 
-  // 4. PROCESSAMENTO DE ESTATÍSTICAS
+  // 3. PROCESSAMENTO DE ESTATÍSTICAS (MEMOIZED)
   const stats = useMemo(() => {
     const acc = {
       total: 0, vlrCriado: 0,
@@ -135,12 +171,13 @@ export default function VisaoPropostas({
       acc.vlrCriado += valor;
       acc.statusCount[status] = (acc.statusCount[status] || 0) + 1;
 
-      if (statusLower === 'vendido' || statusLower === 'fechado' || statusLower === 'concluído') {
+      if (['vendido', 'fechado', 'concluído', 'emitido'].includes(statusLower)) {
         acc.vendidas++;
         acc.vlrVendido += valor;
 
         const dataRefVenda = (p.data_venda || p.created_at || '').split(/[ T]/)[0];
-        const mesAno = dataRefVenda.substring(0, 7);
+        const mesAno = dataRefVenda.substring(0, 7); 
+        
         if (!acc.vendasPorMes[mesAno]) acc.vendasPorMes[mesAno] = { qtd: 0, valor: 0 };
         acc.vendasPorMes[mesAno].qtd++;
         acc.vendasPorMes[mesAno].valor += valor;
@@ -155,7 +192,7 @@ export default function VisaoPropostas({
         }
       }
 
-      if (statusLower === 'perdido' || statusLower === 'cancelado') {
+      if (['perdido', 'cancelado', 'recusado'].includes(statusLower)) {
         acc.perdidas++;
         acc.vlrPerdido += valor;
         const motivo = p.motivo_perda || 'Não informado';
@@ -175,7 +212,7 @@ export default function VisaoPropostas({
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([name, data]) => ({ name, valor: data.valor, qtd: data.qtd }));
 
-  return (
+return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       
       {/* BARRA DE FILTROS */}
@@ -210,10 +247,14 @@ export default function VisaoPropostas({
           onChange={(e) => setCorretorLocal(e.target.value)}
           className="ml-auto bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-600 p-2 min-w-[200px]"
         >
-          <option value="todos">Todos os Corretores / Casa</option>
-          {(corretoresLista || []).map(c => (
-            <option key={c.id} value={c.id}>{c.nome}</option>
-          ))}
+          <option value="todos">Todos os Corretores</option>
+          <option value="casa">ATENDIMENTO DIRETO (CASA)</option>
+          {(corretoresLista || [])
+            .filter(c => c.nome.toUpperCase() !== "ATENDIMENTO DIRETO (CASA)")
+            .map(c => (
+              <option key={c.id} value={c.id}>{c.nome}</option>
+            ))
+          }
         </select>
 
         {loading && (
@@ -251,16 +292,25 @@ export default function VisaoPropostas({
           <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
             <Target size={18} className="text-indigo-500" /> Status das Propostas
           </h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={chartStatus} innerRadius={60} outerRadius={85} paddingAngle={5} dataKey="value">
-                  {chartStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="none" />)}
-                </Pie>
-                <Tooltip />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase' }} />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="h-64 w-full" style={{ minHeight: '256px', minWidth: 0 }}>
+            {isMounted && (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie 
+                    data={chartStatus} 
+                    innerRadius={60} 
+                    outerRadius={85} 
+                    paddingAngle={5} 
+                    dataKey="value"
+                    isAnimationActive={false} // Evita o erro de cálculo de largura durante o mount
+                  >
+                    {chartStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="none" />)}
+                  </Pie>
+                  <Tooltip />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -294,18 +344,22 @@ export default function VisaoPropostas({
           <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
             <CalendarDays size={18} className="text-indigo-500" /> Vendas por Mês
           </h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartMeses}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{fontSize: 10, fontWeight: 900}} axisLine={false} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                  formatter={(val: any) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val || 0))}
-                />
-                <Bar dataKey="valor" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={30} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="h-64 w-full" style={{ minHeight: '256px', minWidth: 0 }}>
+            {isMounted && (
+              <ResponsiveContainer width="99%" height="100%"> {/* Usar 99% às vezes força o recalculate correto */}
+                <BarChart data={chartMeses}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" tick={{fontSize: 10, fontWeight: 900}} axisLine={false} />
+                  {/* Adicione um YAxis mesmo que invisível para ajudar no cálculo do gráfico */}
+                  <YAxis hide domain={[0, 'auto']} /> 
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                    formatter={(val: any) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val || 0))}
+                  />
+                  <Bar dataKey="valor" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={30} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>
@@ -351,24 +405,28 @@ export default function VisaoPropostas({
   );
 }
 
-function StatCard({ label, val, money, color, icon }: any) {
-  const colorMap: any = {
+// --- Subcomponente Auxiliar ---
+function StatCard({ label, val, money, color, icon }: StatCardProps) {
+  const colorMap = {
     indigo: 'bg-indigo-500 text-indigo-600 border-indigo-100',
     emerald: 'bg-emerald-500 text-emerald-600 border-emerald-100',
   };
 
+  const currentStyles = colorMap[color] || colorMap.indigo;
+
   return (
     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden group">
-      <div className={`w-10 h-10 ${colorMap[color].split(' ')[0]} rounded-xl flex items-center justify-center text-white mb-4 shadow-lg`}>
+      <div className={`w-10 h-10 ${currentStyles.split(' ')[0]} rounded-xl flex items-center justify-center text-white mb-4 shadow-lg`}>
         {icon}
       </div>
       <p className="text-[12px] font-black uppercase text-slate-400 mb-1">{label}</p>
       <p className="text-3xl font-black text-slate-800">{val || 0}</p>
-      <p className={`text-[13px] font-bold mt-1 ${colorMap[color].split(' ')[1]}`}>
+      <p className={`text-[13px] font-bold mt-1 ${currentStyles.split(' ')[1]}`}>
         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(money || 0)}
       </p>
       <div className="absolute -right-2 -bottom-2 opacity-[0.03] group-hover:scale-110 transition-transform duration-500">
-        {React.cloneElement(icon, { size: 100 })}
+        {/* Cast para any para resolver o erro do TypeScript no cloneElement com Lucide Icons */}
+        {React.cloneElement(icon as any, { size: 100 })}
       </div>
     </div>
   );

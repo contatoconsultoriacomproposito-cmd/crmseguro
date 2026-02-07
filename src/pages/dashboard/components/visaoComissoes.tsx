@@ -5,11 +5,15 @@ import { supabase } from '../../../lib/supabaseClient';
 interface VisaoComissoesProps {
   corretoraId: string;
   corretoresLista: any[];
+  userLevel?: string;
+  userId?: string;
 }
 
 export default function VisaoComissoes({ 
   corretoraId, 
-  corretoresLista = [] 
+  corretoresLista = [],
+  userLevel,
+  userId
 }: VisaoComissoesProps) {
   
   const [comissoesRaw, setComissoesRaw] = useState<any[]>([]);
@@ -36,7 +40,6 @@ export default function VisaoComissoes({
       if (!error && data?.data_venda) {
         setDataInicio(data.data_venda.split(' ')[0]);
       } else {
-        // Fallback: Início do mês atual
         const now = new Date();
         setDataInicio(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
       }
@@ -44,7 +47,7 @@ export default function VisaoComissoes({
     buscarPrimeiroLancamento();
   }, [corretoraId]);
 
-  // 3. BUSCA DE DADOS PRINCIPAL (Ajustado para filtrar no banco e evitar redundância)
+  // 3. BUSCA DE DADOS COM TRAVA DE SEGURANÇA
   useEffect(() => {
     async function fetchComissoes() {
       if (!corretoraId || !dataInicio) return;
@@ -60,7 +63,10 @@ export default function VisaoComissoes({
           .gte('data_venda', dataInicio)
           .lte('data_venda', dataFim);
 
-        if (corretorId !== 'todos') {
+        // Trava de Segurança: Corretor só vê o dele
+        if (userLevel === 'corretor' && userId) {
+          query = query.eq('corretor_id', userId);
+        } else if (corretorId !== 'todos') {
           query = query.eq('corretor_id', corretorId);
         }
 
@@ -76,12 +82,12 @@ export default function VisaoComissoes({
     }
 
     fetchComissoes();
-  }, [corretoraId, dataInicio, dataFim, corretorId]);
+  }, [corretoraId, dataInicio, dataFim, corretorId, userLevel, userId]);
 
   const bcl = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 
-  // 4. LÓGICA DE CÁLCULO (MEMO)
+  // 4. LÓGICA DE CÁLCULO
   const stats = useMemo(() => {
     const s = { total: 0, recebido: 0, pendente: 0, detalhe: [] as any[] };
 
@@ -153,19 +159,22 @@ export default function VisaoComissoes({
             </span>
           </div>
 
-          <div className="flex items-center gap-2 px-4">
-            <User size={14} className="text-slate-400" />
-            <select 
-              value={corretorId} 
-              onChange={(e) => setCorretorId(e.target.value)} 
-              className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
-            >
-              <option value="todos">Todos os Corretores</option>
-              {corretoresLista.map(corr => (
-                <option key={corr.id} value={corr.id}>{corr.nome}</option>
-              ))}
-            </select>
-          </div>
+          {/* Filtro de Corretor visível apenas para Admin/Dono */}
+          {userLevel !== 'corretor' && (
+            <div className="flex items-center gap-2 px-4">
+              <User size={14} className="text-slate-400" />
+              <select 
+                value={corretorId} 
+                onChange={(e) => setCorretorId(e.target.value)} 
+                className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
+              >
+                <option value="todos">Todos os Corretores</option>
+                {corretoresLista.map(corr => (
+                  <option key={corr.id} value={corr.id}>{corr.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <button onClick={resetFiltros} className="p-2.5 hover:bg-slate-50 rounded-full text-slate-400 hover:text-indigo-600 transition-all">
             <RefreshCcw size={16} />

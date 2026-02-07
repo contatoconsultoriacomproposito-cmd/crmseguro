@@ -10,14 +10,22 @@ import {
 
 import { supabase } from '../../../lib/supabaseClient';
 
+// Atualizado para incluir userLevel e evitar erros de tipagem
 interface VisaoProdutosProps {
   corretoraId: string;
   corretoresLista: { id: string; nome: string }[];
+  userLevel?: string; // Nível de acesso (admin, corretor, etc)
+  userId?: string;    // ID do usuário logado
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4'];
 
-export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoProdutosProps) {
+export default function VisaoProdutos({ 
+  corretoraId, 
+  corretoresLista, 
+  userLevel, 
+  userId 
+}: VisaoProdutosProps) {
   
   const [loading, setLoading] = useState(true);
   const [propostasLocais, setPropostasLocais] = useState<any[]>([]);
@@ -37,7 +45,7 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
         .eq('corretora_id', corretoraId)
         .order('created_at', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         setDataInicio(data.created_at.split('T')[0]);
@@ -48,7 +56,7 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
     buscarPrimeiraData();
   }, [corretoraId]);
 
-  // 3. BUSCA DE DADOS COM JOINS COMPLETOS
+  // 3. BUSCA DE DADOS
   useEffect(() => {
     async function fetchDadosProdutos() {
       if (!dataInicio || !corretoraId) return;
@@ -71,8 +79,16 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
           .gte('created_at', `${dataInicio}T00:00:00`)
           .lte('created_at', `${dataFim}T23:59:59`);
 
-        if (corretorLocal !== 'todos') {
-          query = query.eq('corretor_id', corretorLocal);
+        // APLICAÇÃO DO FILTRO DE SEGURANÇA (Resolve o aviso de 'never read')
+        if (userLevel === 'corretor' && userId) {
+          query = query.eq('corretor_id', userId);
+        } else {
+          // Se for admin, respeita o filtro do Select
+          if (corretorLocal === 'casa') {
+            query = query.is('corretor_id', null);
+          } else if (corretorLocal !== 'todos') {
+            query = query.eq('corretor_id', corretorLocal);
+          }
         }
 
         const { data, error } = await query;
@@ -86,7 +102,8 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
     }
 
     fetchDadosProdutos();
-  }, [dataInicio, dataFim, corretorLocal, corretoraId]);
+    // Adicionado userId e userLevel às dependências
+  }, [dataInicio, dataFim, corretorLocal, corretoraId, userId, userLevel]);
 
   // 4. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
@@ -107,19 +124,17 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
           const valorItem = Number(item.valor_premio || 0);
           const nomeProd = item.base_produtos?.nome || 'OUTROS';
           
-          // Performance por Produto
           if (!acc.produtos[nomeProd]) {
             acc.produtos[nomeProd] = { nome: nomeProd, criadas: 0, vendidas: 0, vlrCriado: 0, vlrVendido: 0 };
           }
           acc.produtos[nomeProd].criadas++;
           acc.produtos[nomeProd].vlrCriado += valorItem;
 
-          // Histórico de Cotações (Mês a Mês - Quantidade e Valor)
           if (!acc.historicoMes[dataRef]) acc.historicoMes[dataRef] = { qtd: 0, valor: 0 };
           acc.historicoMes[dataRef].qtd++;
           acc.historicoMes[dataRef].valor += valorItem;
           
-          if (status === 'vendido' || status === 'fechado' || status === 'concluído') {
+          if (['vendido', 'fechado', 'concluído', 'emitido'].includes(status)) {
             acc.produtos[nomeProd].vendidas++;
             acc.produtos[nomeProd].vlrVendido += valorItem;
 
@@ -143,7 +158,7 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
     const mesAtual = new Date().toISOString().substring(0, 7);
 
     return {
-      rankingProdutos: Object.values(acc.produtos).sort((a, b) => b.vlrVendido - a.vlrVendido),
+      rankingProdutos: Object.values(acc.produtos).sort((a: any, b: any) => b.vlrVendido - a.vlrVendido),
       graficoHistorico: Object.entries(acc.historicoMes)
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([name, d]) => ({ 
@@ -164,7 +179,7 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       
-      {/* FILTROS */}
+      {/* FILTROS PADRONIZADOS */}
       <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
           <Filter size={16} className="text-slate-400" />
@@ -191,7 +206,13 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
           className="ml-auto bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-600 p-2 min-w-[200px]"
         >
           <option value="todos">Todos os Corretores</option>
-          {(corretoresLista || []).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          <option value="casa">ATENDIMENTO DIRETO (CASA)</option>
+          {(corretoresLista || [])
+            .filter(c => c.nome.toUpperCase() !== "ATENDIMENTO DIRETO (CASA)")
+            .map(c => (
+              <option key={c.id} value={c.id}>{c.nome}</option>
+            ))
+          }
         </select>
 
         {loading && <Loader2 size={18} className="animate-spin text-indigo-500 ml-2" />}
@@ -269,7 +290,7 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
             </div>
         </div>
 
-        {/* 3. PAGAMENTO E PERIODICIDADE (FUNDOS CLAROS) */}
+        {/* 3. PAGAMENTO E PERIODICIDADE */}
         <div className="grid grid-rows-2 gap-6">
           <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center">
             <div className="w-1/2">
@@ -325,7 +346,7 @@ export default function VisaoProdutos({ corretoraId, corretoresLista }: VisaoPro
         </div>
       </div>
 
-      {/* 4. HISTÓRICO MÊS A MÊS (QUANTIDADE E VALOR) */}
+      {/* 4. HISTÓRICO MÊS A MÊS */}
       <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
         <div className="flex justify-between items-center mb-8">
           <h3 className="text-sm font-black uppercase text-slate-500 flex items-center gap-2">

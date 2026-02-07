@@ -40,18 +40,26 @@ interface ClienteData {
 interface VisaoClienteProps {
   corretoresLista: { id: string; nome: string }[];
   corretoraId: string;
+  userLevel?: string; // Nível do usuário: 'CORRETORA' ou 'CORRETOR'
+  userId?: string;    // ID do usuário logado
 }
 
 const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
 
-export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClienteProps) {
+export default function VisaoCliente({ 
+    corretoresLista, 
+    corretoraId, 
+    userLevel, 
+    userId 
+  }: VisaoClienteProps) {
   const [loading, setLoading] = useState(true);
   const [clientesLocais, setClientesLocais] = useState<ClienteData[]>([]);
   
   // 1. ESTADOS DE FILTRO
+  const isCorretora = userLevel === 'CORRETORA';
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
-  const [corretorLocal, setCorretorLocal] = useState('todos');
+  const [corretorLocal, setCorretorLocal] = useState(isCorretora ? 'todos' : (userId || ''));
 
   // 2. BUSCAR A DATA DO PRIMEIRO CLIENTE (PARA O INÍCIO DO FILTRO)
   useEffect(() => {
@@ -78,15 +86,24 @@ export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClie
   // 3. BUSCA DE DADOS (Trazemos a base para processar os retornos globalmente)
   useEffect(() => {
     async function fetchDados() {
+      if (!corretoraId || (userLevel === 'CORRETOR' && !userId)) return;
+
       setLoading(true);
       try {
-        // REMOVIDO: Filtros de data na query para permitir cálculo global de retornos
         let query = supabase
           .from('tab_clientes')
           .select('*')
           .eq('corretora_id', corretoraId);
 
-        if (corretorLocal !== 'todos') {
+        if (userLevel === 'CORRETOR') {
+          // Corretor só vê o dele
+          query = query.eq('corretor_id', userId);
+        } else if (corretorLocal === 'casa') {
+          // AJUSTE AQUI: Se for "Casa", filtramos onde o corretor_id é o ID da Corretora
+          // ou onde o corretor_id é nulo (atendimento direto)
+          query = query.or(`corretor_id.eq.${corretoraId},corretor_id.is.null`);
+        } else if (corretorLocal !== 'todos') {
+          // Filtra por um corretor específico selecionado
           query = query.eq('corretor_id', corretorLocal);
         }
 
@@ -98,10 +115,10 @@ export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClie
       } finally {
         setLoading(false);
       }
-    }
+      }
 
-    if (corretoraId) fetchDados();
-  }, [corretorLocal, corretoraId]);
+    fetchDados();
+  }, [corretorLocal, corretoraId, userId, userLevel]);
 
   // 4. PROCESSAMENTO DE ESTATÍSTICAS
   const { stats, totalFiltrados } = useMemo(() => {
@@ -238,14 +255,23 @@ export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClie
         </div>
 
         <select 
-          value={corretorLocal} 
-          onChange={(e) => setCorretorLocal(e.target.value)}
-          className="ml-auto bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-slate-600 p-2 min-w-[200px]"
-        >
-          <option value="todos">Todos os Corretores</option>
-          {(corretoresLista || []).map(c => (
-            <option key={c.id} value={c.id}>{c.nome}</option>
-          ))}
+            value={corretorLocal} 
+            onChange={(e) => setCorretorLocal(e.target.value)}
+            disabled={!isCorretora} // Trava o campo se não for nível Corretora
+            className={`ml-auto border border-slate-100 rounded-lg text-xs font-bold p-2 min-w-[200px] ${
+              !isCorretora ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-white text-slate-600'
+            }`}
+          >
+            {isCorretora && <option value="todos">Todos os Corretores</option>}
+            
+            {isCorretora ? (
+              (corretoresLista || []).map(c => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))
+            ) : (
+              // Se for corretor, mostra apenas o nome dele na lista
+              <option value={userId}>{corretoresLista.find(c => c.id === userId)?.nome || 'Meu Usuário'}</option>
+            )}
         </select>
 
         {loading && (
@@ -289,7 +315,7 @@ export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClie
         </div>
       </div>
 
-      {/* RESTANTE DO DASHBOARD (Gráficos que respeitam o filtro de data) */}
+      {/* RESTANTE DO DASHBOARD */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-amber-50 border border-amber-100 p-6 rounded-[24px] flex items-center justify-between">
             <div>
@@ -297,10 +323,17 @@ export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClie
               <p className="text-lg font-black text-slate-700 leading-none">PF: {stats.tipo.pf}</p>
               <p className="text-lg font-black text-slate-700 mt-1">PJ: {stats.tipo.pj}</p>
             </div>
-            <div className="h-20 w-20">
+            {/* AJUSTE 1: Definida altura fixa no container pai do mini-gráfico */}
+            <div style={{ width: 80, height: 80, minWidth: 80, minHeight: 80 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={[{v: stats.tipo.pf}, {v: stats.tipo.pj}]} innerRadius={20} outerRadius={35} dataKey="v">
+                  <Pie 
+                    data={[{v: stats.tipo.pf}, {v: stats.tipo.pj}]} 
+                    innerRadius={20} 
+                    outerRadius={35} 
+                    dataKey="v"
+                    isAnimationActive={false} // Desabilita animação para evitar flicker no resize
+                  >
                     <Cell fill="#6366f1" /><Cell fill="#f59e0b" />
                   </Pie>
                 </PieChart>
@@ -326,7 +359,8 @@ export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClie
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
           <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><PieIcon size={18} className="text-indigo-500" /> Gênero e Idades</h3>
-          <div className="h-64">
+          {/* AJUSTE 2: Altura definida via style no container pai */}
+          <div className="h-[250px] w-full"> {/* Altura fixa para o container pai */}
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={chartData.sexo} innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
@@ -337,6 +371,7 @@ export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClie
               </PieChart>
             </ResponsiveContainer>
           </div>
+          {/* ... (Idades mantêm-se iguais) */}
           <div className="grid grid-cols-5 gap-1 mt-4">
              {chartData.idades.map(id => (
                <div key={id.name} className="text-center bg-slate-50 p-2 rounded-xl">
@@ -349,13 +384,14 @@ export default function VisaoCliente({ corretoresLista, corretoraId }: VisaoClie
 
         <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
           <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><BarIcon size={18} className="text-emerald-500" /> Fase no Kanban</h3>
-          <div className="h-64">
+          {/* AJUSTE 3: Altura definida no container pai */}
+          <div className="h-[300px] w-full"> {/* Ajuste a altura conforme seu layout */}
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData.fases}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" tick={{fontSize: 9, fontWeight: 900, fill: '#64748b'}} axisLine={false} tickLine={false} />
                 <YAxis hide />
-                <Tooltip />
+                <Tooltip cursor={{fill: 'transparent'}} />
                 <Bar dataKey="value" fill="#10b981" radius={[8, 8, 0, 0]} barSize={35} />
               </BarChart>
             </ResponsiveContainer>

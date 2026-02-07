@@ -5,19 +5,26 @@ import { supabase } from '../../../lib/supabaseClient';
 interface VisaoSinistrosProps {
   corretoraId: string;
   corretoresLista: any[];
+  userLevel?: string;
+  userId?: string;
 }
 
-export default function VisaoSinistros({ corretoraId, corretoresLista = [] }: VisaoSinistrosProps) {
+export default function VisaoSinistros({ 
+  corretoraId, 
+  corretoresLista = [],
+  userLevel,
+  userId
+}: VisaoSinistrosProps) {
   // --- 1. ESTADOS ---
   const [sinistrosRaw, setSinistrosRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estados de Filtro (Início vazio para gatilho automático)
+  // Estados de Filtro
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
   const [corretorId, setCorretorId] = useState('todos');
 
-  // --- 2. BUSCA DA DATA MAIS ANTIGA (Retrovisor Automático) ---
+  // --- 2. BUSCA DA DATA MAIS ANTIGA ---
   useEffect(() => {
     async function buscarPrimeiroSinistro() {
       if (!corretoraId) return;
@@ -28,26 +35,25 @@ export default function VisaoSinistros({ corretoraId, corretoresLista = [] }: Vi
         .eq('corretora_id', corretoraId)
         .order('data_abertura', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!error && (data?.data_abertura || data?.criado_em)) {
         const dataRef = data.data_abertura || data.criado_em;
         setDataInicio(dataRef.split(' ')[0].split('T')[0]);
       } else {
-        // Fallback: Início do mês atual
         setDataInicio(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
       }
     }
     buscarPrimeiroSinistro();
   }, [corretoraId]);
 
-  // --- 3. QUERY PRINCIPAL ---
+  // --- 3. QUERY PRINCIPAL COM TRAVA DE SEGURANÇA ---
   useEffect(() => {
     async function fetchSinistros() {
       if (!corretoraId || !dataInicio) return;
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('tab_sinistros')
           .select(`
             *,
@@ -56,6 +62,13 @@ export default function VisaoSinistros({ corretoraId, corretoresLista = [] }: Vi
             )
           `)
           .eq('corretora_id', corretoraId);
+
+        // Trava de Segurança
+        if (userLevel === 'corretor' && userId) {
+          query = query.eq('corretor_id', userId);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
         setSinistrosRaw(data || []);
@@ -67,7 +80,7 @@ export default function VisaoSinistros({ corretoraId, corretoresLista = [] }: Vi
     }
 
     fetchSinistros();
-  }, [corretoraId, dataInicio]);
+  }, [corretoraId, dataInicio, userLevel, userId]);
 
   // --- 4. LÓGICA DE PROCESSAMENTO (MEMO) ---
   const stats = useMemo(() => {
@@ -79,8 +92,9 @@ export default function VisaoSinistros({ corretoraId, corretoresLista = [] }: Vi
     };
 
     sinistrosRaw.forEach((sin: any) => {
+      // Filtro local adicional para Admin (se selecionado corretor específico)
       const itemCorretorId = sin.corretor_id || '';
-      if (corretorId !== 'todos' && itemCorretorId !== corretorId) return;
+      if (userLevel !== 'corretor' && corretorId !== 'todos' && itemCorretorId !== corretorId) return;
 
       const dataBruta = sin.data_abertura || sin.criado_em || '';
       const dataRef = dataBruta.split(/[ T]/)[0];
@@ -104,7 +118,7 @@ export default function VisaoSinistros({ corretoraId, corretoresLista = [] }: Vi
     });
 
     return s;
-  }, [sinistrosRaw, dataInicio, dataFim, corretorId]);
+  }, [sinistrosRaw, dataInicio, dataFim, corretorId, userLevel]);
 
   function updateDetalhe(arr: any[], produto: string) {
     const exist = arr.find(d => d.produto === produto);
@@ -152,15 +166,17 @@ export default function VisaoSinistros({ corretoraId, corretoresLista = [] }: Vi
             </span>
           </div>
 
-          <div className="flex items-center gap-2 px-4">
-            <User size={14} className="text-slate-400" />
-            <select value={corretorId} onChange={(e) => setCorretorId(e.target.value)} className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]">
-              <option value="todos">Todos os Corretores</option>
-              {corretoresLista.map(corr => (
-                <option key={corr.id} value={corr.id}>{corr.nome}</option>
-              ))}
-            </select>
-          </div>
+          {userLevel !== 'corretor' && (
+            <div className="flex items-center gap-2 px-4">
+              <User size={14} className="text-slate-400" />
+              <select value={corretorId} onChange={(e) => setCorretorId(e.target.value)} className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]">
+                <option value="todos">Todos os Corretores</option>
+                {corretoresLista.map(corr => (
+                  <option key={corr.id} value={corr.id}>{corr.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <button onClick={resetFiltros} className="p-2.5 hover:bg-slate-50 rounded-full text-slate-400 hover:text-amber-600 transition-all">
             <RefreshCcw size={16} />

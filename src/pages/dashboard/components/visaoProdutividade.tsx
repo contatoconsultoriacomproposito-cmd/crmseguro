@@ -10,14 +10,19 @@ import {
 
 import { supabase } from '../../../lib/supabaseClient';
 
+// Interface atualizada para evitar erros no componente pai
 interface VisaoProdutividadeProps {
   corretoraId: string; 
   corretoresLista: { id: string; nome: string }[];
+  userLevel?: string;
+  userId?: string;
 }
 
 export default function VisaoProdutividade({ 
   corretoraId, 
-  corretoresLista 
+  corretoresLista,
+  userLevel,
+  userId
 }: VisaoProdutividadeProps) {
 
   const [loading, setLoading] = useState(true);
@@ -27,7 +32,7 @@ export default function VisaoProdutividade({
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
   const [corretorLocal, setCorretorLocal] = useState('todos');
 
-  // 1. BUSCA DATA INICIAL (Executa apenas uma vez ao montar ou mudar a corretora)
+  // 1. BUSCA DATA INICIAL (Histórico de Interações)
   useEffect(() => {
     async function buscarPrimeiraInteracao() {
       if (!corretoraId) return;
@@ -37,7 +42,7 @@ export default function VisaoProdutividade({
         .eq('corretora_id', corretoraId)
         .order('data_historico', { ascending: true })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         setDataInicio(data.data_historico);
@@ -48,7 +53,7 @@ export default function VisaoProdutividade({
     buscarPrimeiraInteracao();
   }, [corretoraId]);
 
-  // 2. BUSCA DE DADOS PRINCIPAL (UNIFICADO PARA EVITAR LOOPING)
+  // 2. BUSCA DE DADOS COM TRAVA DE SEGURANÇA
   useEffect(() => {
     async function fetchProdutividade() {
       if (!dataInicio || !corretoraId) return;
@@ -65,11 +70,14 @@ export default function VisaoProdutividade({
           .gte('data_historico', dataInicio)
           .lte('data_historico', dataFim);
 
-        // REGRA DE NEGÓCIO: Atendimento Direto (Casa)
-        if (corretorLocal !== 'todos') {
+        // Lógica de Segurança: Corretor só vê suas próprias interações
+        if (userLevel === 'corretor' && userId) {
+          query = query.eq('corretor_id', userId);
+        } else {
+          // Lógica para Admin/Dono
           if (corretorLocal === 'casa') {
             query = query.eq('corretor_id', corretoraId);
-          } else {
+          } else if (corretorLocal !== 'todos') {
             query = query.eq('corretor_id', corretorLocal);
           }
         }
@@ -85,7 +93,7 @@ export default function VisaoProdutividade({
     }
 
     fetchProdutividade();
-  }, [dataInicio, dataFim, corretorLocal, corretoraId]);
+  }, [dataInicio, dataFim, corretorLocal, corretoraId, userId, userLevel]);
 
   // 3. PROCESSAMENTO DE ESTATÍSTICAS
   const stats = useMemo(() => {
@@ -98,9 +106,9 @@ export default function VisaoProdutividade({
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
       if (acao.includes('whatsapp') || acao.includes('wpp')) counts.whatsapp++;
-      else if (acao.includes('ligacao') || acao.includes('fone') || acao.includes('tel')) counts.ligacao++;
+      else if (acao.includes('ligacao') || acao.includes('fone') || acao.includes('tel') || acao.includes('chamada')) counts.ligacao++;
       else if (acao.includes('email')) counts.email++;
-      else if (acao.includes('online') || acao.includes('meet')) counts.reuniaoOn++;
+      else if (acao.includes('online') || acao.includes('meet') || acao.includes('zoom') || acao.includes('video')) counts.reuniaoOn++;
       else if (acao.includes('presencial')) counts.reuniaoPres++;
       else if (acao.includes('visita')) counts.visita++;
       else counts.outros++;
@@ -149,19 +157,26 @@ export default function VisaoProdutividade({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-4 border-l border-slate-100 ml-auto">
-          <User size={14} className="text-slate-400" />
-          <select 
-            value={corretorLocal} 
-            onChange={(e) => setCorretorLocal(e.target.value)} 
-            className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
-          >
-            <option value="todos">Todos os Corretores</option>
-            {(corretoresLista || []).map(c => (
-              <option key={c.id} value={c.id}>{c.nome}</option>
-            ))}
-          </select>
-        </div>
+        {/* Só exibe seletor se não for corretor restrito */}
+        {userLevel !== 'corretor' && (
+          <div className="flex items-center gap-2 px-4 border-l border-slate-100 ml-auto">
+            <User size={14} className="text-slate-400" />
+            <select 
+              value={corretorLocal} 
+              onChange={(e) => setCorretorLocal(e.target.value)} 
+              className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
+            >
+              <option value="todos">Todos os Corretores</option>
+              <option value="casa">ATENDIMENTO DIRETO (CASA)</option>
+              {(corretoresLista || [])
+                .filter(c => c.nome.toUpperCase() !== "ATENDIMENTO DIRETO (CASA)")
+                .map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))
+              }
+            </select>
+          </div>
+        )}
 
         {loading && <Loader2 size={18} className="animate-spin text-indigo-500 ml-2" />}
       </div>
