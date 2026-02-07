@@ -22,9 +22,13 @@ export default function VisaoComissoes({
   // 1. ESTADOS DE FILTRO
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
-  const [corretorId, setCorretorId] = useState('todos');
+  
+  // Inicializa o filtro de corretor com base no nível de acesso
+  const [corretorFiltro, setCorretorFiltro] = useState(
+    userLevel?.toUpperCase() === 'CORRETOR' ? userId : 'todos'
+  );
 
-  // 2. BUSCA AUTOMÁTICA DA DATA DA PRIMEIRA VENDA
+  // 2. BUSCA AUTOMÁTICA DA DATA DA PRIMEIRA VENDA (MANTIDO)
   useEffect(() => {
     async function buscarPrimeiroLancamento() {
       if (!corretoraId) return;
@@ -47,7 +51,7 @@ export default function VisaoComissoes({
     buscarPrimeiroLancamento();
   }, [corretoraId]);
 
-  // 3. BUSCA DE DADOS COM TRAVA DE SEGURANÇA
+  // 3. BUSCA DE DADOS COM TRAVA DE SEGURANÇA REFORÇADA
   useEffect(() => {
     async function fetchComissoes() {
       if (!corretoraId || !dataInicio) return;
@@ -63,11 +67,10 @@ export default function VisaoComissoes({
           .gte('data_venda', dataInicio)
           .lte('data_venda', dataFim);
 
-        // Trava de Segurança: Corretor só vê o dele
-        if (userLevel === 'corretor' && userId) {
-          query = query.eq('corretor_id', userId);
-        } else if (corretorId !== 'todos') {
-          query = query.eq('corretor_id', corretorId);
+        // TRAVA RÍGIDA: Se for corretor, ignora qualquer tentativa de ver "todos"
+        if (userLevel?.toUpperCase() === 'CORRETOR' || corretorFiltro !== 'todos') {
+          const idParaFiltrar = userLevel?.toUpperCase() === 'CORRETOR' ? userId : corretorFiltro;
+          query = query.eq('corretor_id', idParaFiltrar);
         }
 
         const { data, error } = await query.order('data_venda', { ascending: false });
@@ -82,7 +85,7 @@ export default function VisaoComissoes({
     }
 
     fetchComissoes();
-  }, [corretoraId, dataInicio, dataFim, corretorId, userLevel, userId]);
+  }, [corretoraId, dataInicio, dataFim, corretorFiltro, userLevel, userId]);
 
   const bcl = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
@@ -109,7 +112,9 @@ export default function VisaoComissoes({
   }, [comissoesRaw]);
 
   const resetFiltros = () => {
-    setCorretorId('todos');
+    if (userLevel?.toUpperCase() !== 'CORRETOR') {
+      setCorretorFiltro('todos');
+    }
     setDataFim(new Date().toISOString().split('T')[0]);
   };
 
@@ -125,7 +130,7 @@ export default function VisaoComissoes({
   return (
     <section className="space-y-6 animate-in fade-in duration-500 pb-10">
       
-      {/* HEADER E FILTROS */}
+      {/* HEADER E FILTROS PADRONIZADOS */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="bg-emerald-600 p-2.5 rounded-2xl text-white shadow-lg shadow-emerald-100">
@@ -153,28 +158,37 @@ export default function VisaoComissoes({
               onChange={(e) => setDataFim(e.target.value)} 
               className="text-[10px] font-bold uppercase bg-transparent outline-none focus:text-indigo-600 p-1" 
             />
-            
-            <span className="ml-3 text-[9px] font-black text-emerald-600 uppercase bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 whitespace-nowrap">
-              💰 Base: Data de Venda
-            </span>
           </div>
 
-          {/* Filtro de Corretor visível apenas para Admin/Dono */}
-          {userLevel !== 'corretor' && (
-            <div className="flex items-center gap-2 px-4">
-              <User size={14} className="text-slate-400" />
-              <select 
-                value={corretorId} 
-                onChange={(e) => setCorretorId(e.target.value)} 
-                className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
-              >
-                <option value="todos">Todos os Corretores</option>
-                {corretoresLista.map(corr => (
-                  <option key={corr.id} value={corr.id}>{corr.nome}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Filtro de Corretor com Trava Visual */}
+          <div className="flex items-center gap-2 px-4">
+            <User size={14} className="text-slate-400" />
+            <select 
+              value={corretorFiltro} 
+              onChange={(e) => setCorretorFiltro(e.target.value)} 
+              disabled={userLevel?.toUpperCase() === 'CORRETOR'}
+              className={`text-[10px] font-black uppercase bg-transparent outline-none min-w-[160px] ${
+                userLevel?.toUpperCase() === 'CORRETOR' ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-indigo-600'
+              }`}
+            >
+              {userLevel?.toUpperCase() !== 'CORRETOR' ? (
+                <>
+                  <option value="todos">Todos os Corretores</option>
+                  <option value="casa">ATENDIMENTO DIRETO (CORRETORA)</option>
+                  {corretoresLista
+                    .filter(corr => corr.nome?.toUpperCase() !== "ATENDIMENTO DIRETO (CORRETORA)")
+                    .map(corr => (
+                      <option key={corr.id} value={corr.id}>{corr.nome}</option>
+                    ))
+                  }
+                </>
+              ) : (
+                <option value={userId}>
+                  {corretoresLista.find(c => c.id === userId)?.nome || 'Minha Produção'}
+                </option>
+              )}
+            </select>
+          </div>
 
           <button onClick={resetFiltros} className="p-2.5 hover:bg-slate-50 rounded-full text-slate-400 hover:text-indigo-600 transition-all">
             <RefreshCcw size={16} />
@@ -182,7 +196,7 @@ export default function VisaoComissoes({
         </div>
       </div>
 
-      {/* CARDS DE KPIS */}
+      {/* KPIS COM ESTILO PADRÃO */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm group hover:border-indigo-100 transition-all">
           <p className="text-[10px] font-black text-slate-400 uppercase mb-2 text-center tracking-widest">Previsão Bruta</p>
@@ -212,7 +226,7 @@ export default function VisaoComissoes({
         </div>
       </div>
 
-      {/* TABELA DE LANÇAMENTOS */}
+      {/* TABELA DE LANÇAMENTOS (MANTIDA COM PEQUENOS AJUSTES DE HOVER) */}
       <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden relative">
         {loading && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10">

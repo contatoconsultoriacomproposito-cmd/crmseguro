@@ -56,10 +56,16 @@ export default function VisaoCliente({
   const [clientesLocais, setClientesLocais] = useState<ClienteData[]>([]);
   
   // 1. ESTADOS DE FILTRO
-  const isCorretora = userLevel === 'CORRETORA';
+  
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
-  const [corretorLocal, setCorretorLocal] = useState(isCorretora ? 'todos' : (userId || ''));
+  const [corretorLocal, setCorretorLocal] = useState(userLevel === 'CORRETOR' ? userId : 'todos');
+
+  useEffect(() => {
+  if (userLevel === 'CORRETOR' && userId) {
+    setCorretorLocal(userId);
+  }
+}, [userId, userLevel]);
 
   // 2. BUSCAR A DATA DO PRIMEIRO CLIENTE (PARA O INÍCIO DO FILTRO)
   useEffect(() => {
@@ -83,10 +89,11 @@ export default function VisaoCliente({
     buscarPrimeiraData();
   }, [corretoraId]);
 
-  // 3. BUSCA DE DADOS (Trazemos a base para processar os retornos globalmente)
+  // 3. BUSCA DE DADOS
   useEffect(() => {
     async function fetchDados() {
-      if (!corretoraId || (userLevel === 'CORRETOR' && !userId)) return;
+      if (!corretoraId) return;
+      if (userLevel === 'CORRETOR' && !userId) return;
 
       setLoading(true);
       try {
@@ -96,26 +103,27 @@ export default function VisaoCliente({
           .eq('corretora_id', corretoraId);
 
         if (userLevel === 'CORRETOR') {
-          // Corretor só vê o dele
+          // Filtro rigoroso para o Corretor logado
           query = query.eq('corretor_id', userId);
-        } else if (corretorLocal === 'casa') {
-          // AJUSTE AQUI: Se for "Casa", filtramos onde o corretor_id é o ID da Corretora
-          // ou onde o corretor_id é nulo (atendimento direto)
-          query = query.or(`corretor_id.eq.${corretoraId},corretor_id.is.null`);
-        } else if (corretorLocal !== 'todos') {
-          // Filtra por um corretor específico selecionado
-          query = query.eq('corretor_id', corretorLocal);
+        } else {
+          // Filtros para nível Administrativo (Corretora)
+          if (corretorLocal === 'casa') {
+            query = query.or(`corretor_id.is.null,corretor_id.eq.${corretoraId}`);
+          } else if (corretorLocal !== 'todos') {
+            query = query.eq('corretor_id', corretorLocal);
+          }
         }
 
         const { data, error } = await query;
         if (error) throw error;
+        
         setClientesLocais(data || []);
       } catch (err) {
         console.error("Erro ao carregar Visão Cliente:", err);
       } finally {
         setLoading(false);
       }
-      }
+    }
 
     fetchDados();
   }, [corretorLocal, corretoraId, userId, userLevel]);
@@ -255,23 +263,29 @@ export default function VisaoCliente({
         </div>
 
         <select 
-            value={corretorLocal} 
-            onChange={(e) => setCorretorLocal(e.target.value)}
-            disabled={!isCorretora} // Trava o campo se não for nível Corretora
-            className={`ml-auto border border-slate-100 rounded-lg text-xs font-bold p-2 min-w-[200px] ${
-              !isCorretora ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-white text-slate-600'
-            }`}
-          >
-            {isCorretora && <option value="todos">Todos os Corretores</option>}
-            
-            {isCorretora ? (
-              (corretoresLista || []).map(c => (
-                <option key={c.id} value={c.id}>{c.nome}</option>
-              ))
-            ) : (
-              // Se for corretor, mostra apenas o nome dele na lista
-              <option value={userId}>{corretoresLista.find(c => c.id === userId)?.nome || 'Meu Usuário'}</option>
-            )}
+          value={corretorLocal} 
+          onChange={(e) => setCorretorLocal(e.target.value)}
+          disabled={userLevel?.toUpperCase() === 'CORRETOR'} 
+          className={`ml-auto border border-slate-100 rounded-lg text-xs font-bold p-2 min-w-[200px] ${
+            userLevel?.toUpperCase() === 'CORRETOR' ? 'bg-slate-50 text-slate-500 opacity-80' : 'bg-white text-slate-600'
+          }`}
+        >
+          {userLevel?.toUpperCase() !== 'CORRETOR' ? (
+            <>
+              <option value="todos">Todos os Corretores</option>
+              <option value="casa">ATENDIMENTO DIRETO (CORRETORA)</option>
+              {(corretoresLista || [])
+                .filter(c => c.nome?.toUpperCase() !== "ATENDIMENTO DIRETO (CORRETORA)")
+                .map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))
+              }
+            </>
+          ) : (
+            <option value={userId}>
+              {corretoresLista.find(c => c.id === userId)?.nome || 'Meu Usuário'}
+            </option>
+          )}
         </select>
 
         {loading && (

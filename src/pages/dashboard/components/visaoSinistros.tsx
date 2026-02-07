@@ -15,14 +15,17 @@ export default function VisaoSinistros({
   userLevel,
   userId
 }: VisaoSinistrosProps) {
-  // --- 1. ESTADOS ---
+  // --- 1. ESTADOS COM TRAVA INICIAL ---
   const [sinistrosRaw, setSinistrosRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estados de Filtro
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
-  const [corretorId, setCorretorId] = useState('todos');
+  
+  // Trava de Estado: O corretor já nasce com seu ID selecionado e sem permissão de ver "todos"
+  const [corretorId, setCorretorId] = useState(
+    userLevel?.toUpperCase() === 'CORRETOR' ? userId : 'todos'
+  );
 
   // --- 2. BUSCA DA DATA MAIS ANTIGA ---
   useEffect(() => {
@@ -47,7 +50,7 @@ export default function VisaoSinistros({
     buscarPrimeiroSinistro();
   }, [corretoraId]);
 
-  // --- 3. QUERY PRINCIPAL COM TRAVA DE SEGURANÇA ---
+  // --- 3. QUERY COM TRAVA DE SEGURANÇA NO SUPABASE ---
   useEffect(() => {
     async function fetchSinistros() {
       if (!corretoraId || !dataInicio) return;
@@ -63,9 +66,13 @@ export default function VisaoSinistros({
           `)
           .eq('corretora_id', corretoraId);
 
-        // Trava de Segurança
-        if (userLevel === 'corretor' && userId) {
+        // APLICANDO A TRAVA RÍGIDA
+        if (userLevel?.toUpperCase() === 'CORRETOR' && userId) {
+          // Força o filtro pelo ID do corretor logado, ignorando qualquer tentativa de burlar o estado
           query = query.eq('corretor_id', userId);
+        } else if (corretorId !== 'todos') {
+          // Para Administradores, filtra apenas se houver um corretor selecionado
+          query = query.eq('corretor_id', corretorId);
         }
 
         const { data, error } = await query;
@@ -80,7 +87,7 @@ export default function VisaoSinistros({
     }
 
     fetchSinistros();
-  }, [corretoraId, dataInicio, userLevel, userId]);
+  }, [corretoraId, dataInicio, userLevel, userId, corretorId]);
 
   // --- 4. LÓGICA DE PROCESSAMENTO (MEMO) ---
   const stats = useMemo(() => {
@@ -92,10 +99,6 @@ export default function VisaoSinistros({
     };
 
     sinistrosRaw.forEach((sin: any) => {
-      // Filtro local adicional para Admin (se selecionado corretor específico)
-      const itemCorretorId = sin.corretor_id || '';
-      if (userLevel !== 'corretor' && corretorId !== 'todos' && itemCorretorId !== corretorId) return;
-
       const dataBruta = sin.data_abertura || sin.criado_em || '';
       const dataRef = dataBruta.split(/[ T]/)[0];
 
@@ -118,7 +121,7 @@ export default function VisaoSinistros({
     });
 
     return s;
-  }, [sinistrosRaw, dataInicio, dataFim, corretorId, userLevel]);
+  }, [sinistrosRaw, dataInicio, dataFim]);
 
   function updateDetalhe(arr: any[], produto: string) {
     const exist = arr.find(d => d.produto === produto);
@@ -127,7 +130,10 @@ export default function VisaoSinistros({
   }
 
   const resetFiltros = () => {
-    setCorretorId('todos');
+    // Se for administrador, volta para 'todos'. Se for corretor, mantém o seu ID.
+    if (userLevel?.toUpperCase() !== 'CORRETOR') {
+      setCorretorId('todos');
+    }
     setDataFim(new Date().toISOString().split('T')[0]);
   };
 
@@ -160,23 +166,36 @@ export default function VisaoSinistros({
             <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="text-[10px] font-bold uppercase bg-transparent outline-none focus:text-amber-600 p-1" />
             <span className="text-slate-300">/</span>
             <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="text-[10px] font-bold uppercase bg-transparent outline-none focus:text-amber-600 p-1" />
-            
-            <span className="ml-3 text-[9px] font-black text-amber-600 uppercase bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-100 whitespace-nowrap">
-              ⚠️ Base: Data de Abertura
-            </span>
           </div>
 
-          {userLevel !== 'corretor' && (
-            <div className="flex items-center gap-2 px-4">
-              <User size={14} className="text-slate-400" />
-              <select value={corretorId} onChange={(e) => setCorretorId(e.target.value)} className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]">
-                <option value="todos">Todos os Corretores</option>
-                {corretoresLista.map(corr => (
-                  <option key={corr.id} value={corr.id}>{corr.nome}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="flex items-center gap-2 px-4">
+            <User size={14} className="text-slate-400" />
+            <select 
+              value={corretorId} 
+              onChange={(e) => setCorretorId(e.target.value)} 
+              disabled={userLevel?.toUpperCase() === 'CORRETOR'}
+              className={`text-[10px] font-black uppercase bg-transparent outline-none min-w-[160px] ${
+                userLevel?.toUpperCase() === 'CORRETOR' ? 'cursor-not-allowed opacity-60' : 'cursor-pointer focus:text-indigo-600'
+              }`}
+            >
+              {userLevel?.toUpperCase() !== 'CORRETOR' ? (
+                <>
+                  <option value="todos">Todos os Corretores</option>
+                  <option value="casa">ATENDIMENTO DIRETO (CORRETORA)</option>
+                  {corretoresLista
+                    .filter(c => c.nome?.toUpperCase() !== "ATENDIMENTO DIRETO (CORRETORA)")
+                    .map(corr => (
+                      <option key={corr.id} value={corr.id}>{corr.nome}</option>
+                    ))
+                  }
+                </>
+              ) : (
+                <option value={userId}>
+                  {corretoresLista.find(c => c.id === userId)?.nome || 'Minha Produção'}
+                </option>
+              )}
+            </select>
+          </div>
 
           <button onClick={resetFiltros} className="p-2.5 hover:bg-slate-50 rounded-full text-slate-400 hover:text-amber-600 transition-all">
             <RefreshCcw size={16} />

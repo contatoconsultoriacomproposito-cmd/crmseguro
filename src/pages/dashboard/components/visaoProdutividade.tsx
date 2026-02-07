@@ -10,7 +10,7 @@ import {
 
 import { supabase } from '../../../lib/supabaseClient';
 
-// Interface atualizada para evitar erros no componente pai
+// Interface para props
 interface VisaoProdutividadeProps {
   corretoraId: string; 
   corretoresLista: { id: string; nome: string }[];
@@ -25,21 +25,45 @@ export default function VisaoProdutividade({
   userId
 }: VisaoProdutividadeProps) {
 
+  const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [interacoesLocais, setInteracoesLocais] = useState<any[]>([]);
   
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
-  const [corretorLocal, setCorretorLocal] = useState('todos');
+  
+  // TRAVA DE SEGURANÇA: Inicia com o ID do usuário se for corretor
+  const [corretorLocal, setCorretorLocal] = useState(
+    userLevel?.toUpperCase() === 'CORRETOR' ? userId : 'todos'
+  );
 
-  // 1. BUSCA DATA INICIAL (Histórico de Interações)
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Sincroniza estado local se o userId chegar depois
+  useEffect(() => {
+    if (userLevel?.toUpperCase() === 'CORRETOR' && userId) {
+      setCorretorLocal(userId);
+    }
+  }, [userId, userLevel]);
+
+  // 1. BUSCA DATA INICIAL (Primeira interação do histórico)
   useEffect(() => {
     async function buscarPrimeiraInteracao() {
       if (!corretoraId) return;
-      const { data, error } = await supabase
+      
+      let query = supabase
         .from('tab_interacoes')
         .select('data_historico')
-        .eq('corretora_id', corretoraId)
+        .eq('corretora_id', corretoraId);
+
+      // Se for corretor, busca a primeira dele para o calendário não vir vazio
+      if (userLevel?.toUpperCase() === 'CORRETOR' && userId) {
+        query = query.eq('corretor_id', userId);
+      }
+
+      const { data, error } = await query
         .order('data_historico', { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -47,17 +71,21 @@ export default function VisaoProdutividade({
       if (!error && data) {
         setDataInicio(data.data_historico);
       } else {
+        // Fallback: últimos 30 dias
         setDataInicio(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
       }
     }
     buscarPrimeiraInteracao();
-  }, [corretoraId]);
+  }, [corretoraId, userLevel, userId]);
 
-  // 2. BUSCA DE DADOS COM TRAVA DE SEGURANÇA
+  // 2. BUSCA DE DADOS COM TRAVA DE VISÃO
   useEffect(() => {
     async function fetchProdutividade() {
       if (!dataInicio || !corretoraId) return;
       
+      // Força o filtro final baseado no nível de acesso
+      const filtroCorretorFinal = userLevel?.toUpperCase() === 'CORRETOR' ? userId : corretorLocal;
+
       setLoading(true);
       try {
         let query = supabase
@@ -70,16 +98,11 @@ export default function VisaoProdutividade({
           .gte('data_historico', dataInicio)
           .lte('data_historico', dataFim);
 
-        // Lógica de Segurança: Corretor só vê suas próprias interações
-        if (userLevel === 'corretor' && userId) {
-          query = query.eq('corretor_id', userId);
-        } else {
-          // Lógica para Admin/Dono
-          if (corretorLocal === 'casa') {
-            query = query.eq('corretor_id', corretoraId);
-          } else if (corretorLocal !== 'todos') {
-            query = query.eq('corretor_id', corretorLocal);
-          }
+        if (filtroCorretorFinal === 'casa') {
+          // No SeguroCRM, o atendimento direto costuma ser o próprio ID da corretora ou nulo
+          query = query.eq('corretor_id', corretoraId);
+        } else if (filtroCorretorFinal !== 'todos' && filtroCorretorFinal) {
+          query = query.eq('corretor_id', filtroCorretorFinal);
         }
 
         const { data, error } = await query;
@@ -102,6 +125,7 @@ export default function VisaoProdutividade({
     const evolucaoTemporal: Record<string, number> = {};
 
     interacoesLocais.forEach(inter => {
+      // Normalização de string para contagem
       const acao = (inter.tipo_acao || '').toLowerCase()
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -113,11 +137,13 @@ export default function VisaoProdutividade({
       else if (acao.includes('visita')) counts.visita++;
       else counts.outros++;
 
+      // Ranking de Clientes
       const nomeCliente = inter.tab_clientes?.nome || "Cliente não Identificado";
       const cId = inter.cliente_id || 'sem-id';
       if (!rankingClientes[cId]) rankingClientes[cId] = { nome: nomeCliente, qtd: 0 };
       rankingClientes[cId].qtd += 1;
 
+      // Timeline do Gráfico
       const dataRef = inter.data_historico;
       if (dataRef) evolucaoTemporal[dataRef] = (evolucaoTemporal[dataRef] || 0) + 1;
     });
@@ -134,9 +160,9 @@ export default function VisaoProdutividade({
       
       {/* BARRA DE FILTROS */}
       <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl">
+        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
           <Filter size={16} className="text-slate-400" />
-          <span className="text-[10px] font-black uppercase text-slate-500">Produtividade:</span>
+          <span className="text-[10px] font-black uppercase text-slate-500">Parâmetros de Produtividade:</span>
         </div>
         
         <div className="flex items-center gap-3">
@@ -157,26 +183,35 @@ export default function VisaoProdutividade({
           </div>
         </div>
 
-        {/* Só exibe seletor se não for corretor restrito */}
-        {userLevel !== 'corretor' && (
-          <div className="flex items-center gap-2 px-4 border-l border-slate-100 ml-auto">
-            <User size={14} className="text-slate-400" />
-            <select 
-              value={corretorLocal} 
-              onChange={(e) => setCorretorLocal(e.target.value)} 
-              className="text-[10px] font-black uppercase bg-transparent outline-none cursor-pointer focus:text-indigo-600 min-w-[160px]"
-            >
-              <option value="todos">Todos os Corretores</option>
-              <option value="casa">ATENDIMENTO DIRETO (CASA)</option>
-              {(corretoresLista || [])
-                .filter(c => c.nome.toUpperCase() !== "ATENDIMENTO DIRETO (CASA)")
-                .map(c => (
-                  <option key={c.id} value={c.id}>{c.nome}</option>
-                ))
-              }
-            </select>
-          </div>
-        )}
+        {/* SELECTOR COM TRAVA DE VISÃO */}
+        <div className="flex items-center gap-2 px-4 border-l border-slate-100 ml-auto">
+          <User size={14} className="text-slate-400" />
+          <select 
+            value={corretorLocal} 
+            onChange={(e) => setCorretorLocal(e.target.value)} 
+            disabled={userLevel?.toUpperCase() === 'CORRETOR'}
+            className={`text-[10px] font-black uppercase bg-transparent outline-none min-w-[160px] ${
+              userLevel?.toUpperCase() === 'CORRETOR' ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-slate-700 hover:text-indigo-600'
+            }`}
+          >
+            {userLevel?.toUpperCase() !== 'CORRETOR' ? (
+              <>
+                <option value="todos">Todos os Corretores</option>
+                <option value="casa">ATENDIMENTO DIRETO (CORRETORA)</option>
+                {(corretoresLista || [])
+                  .filter(c => c.nome.toUpperCase() !== "ATENDIMENTO DIRETO (CORRETORA)")
+                  .map(c => (
+                    <option key={c.id} value={c.id}>{c.nome}</option>
+                  ))
+                }
+              </>
+            ) : (
+              <option value={userId}>
+                {corretoresLista.find(c => c.id === userId)?.nome || 'Meu Usuário'}
+              </option>
+            )}
+          </select>
+        </div>
 
         {loading && <Loader2 size={18} className="animate-spin text-indigo-500 ml-2" />}
       </div>
@@ -196,38 +231,40 @@ export default function VisaoProdutividade({
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm flex flex-col min-h-[450px]">
           <h3 className="text-sm font-black uppercase text-slate-500 mb-8 flex items-center gap-2">
-            <Calendar size={18} className="text-indigo-500"/> Volume de Atendimento Diário
+            <Calendar size={18} className="text-indigo-500"/> Evolução Diária de Atendimentos
           </h3>
           <div className="flex-1 w-full min-h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats.timeline}>
-                <defs>
-                  <linearGradient id="colorIndigo" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis 
-                  dataKey="name" 
-                  tick={{fontSize: 10, fontWeight: 800, fill: '#94a3b8'}} 
-                  axisLine={false} 
-                  tickFormatter={(val) => val.split('-').reverse().slice(0,2).join('/')} 
-                />
-                <YAxis hide />
-                <Tooltip 
-                  contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}}
-                  labelFormatter={(lbl) => `Data: ${lbl.split('-').reverse().join('/')}`}
-                />
-                <Area type="monotone" dataKey="total" name="Ações" stroke="#6366f1" strokeWidth={4} fill="url(#colorIndigo)" animationDuration={1500} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {isMounted && (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={stats.timeline}>
+                  <defs>
+                    <linearGradient id="colorIndigo" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    tick={{fontSize: 10, fontWeight: 800, fill: '#94a3b8'}} 
+                    axisLine={false} 
+                    tickFormatter={(val) => val.split('-').reverse().slice(0,2).join('/')} 
+                  />
+                  <YAxis hide />
+                  <Tooltip 
+                    contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}}
+                    labelFormatter={(lbl) => `Data: ${lbl.split('-').reverse().join('/')}`}
+                  />
+                  <Area type="monotone" dataKey="total" name="Ações" stroke="#6366f1" strokeWidth={4} fill="url(#colorIndigo)" animationDuration={1500} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
           <h3 className="text-sm font-black uppercase text-slate-500 mb-8 flex items-center gap-2">
-            <Users size={18} className="text-indigo-500"/> Clientes mais Atendidos
+            <Users size={18} className="text-indigo-500"/> Top 5 Clientes em Atendimento
           </h3>
           <div className="space-y-4">
             {stats.topClientes.length > 0 ? stats.topClientes.map((item, idx) => (
@@ -246,7 +283,7 @@ export default function VisaoProdutividade({
             )) : (
               <div className="flex flex-col items-center justify-center py-20 text-slate-400 opacity-50">
                 <TrendingUp size={40} className="mb-4" />
-                <p className="text-xs font-black uppercase italic tracking-widest">Aguardando dados...</p>
+                <p className="text-xs font-black uppercase italic tracking-widest">Nenhuma interação registrada.</p>
               </div>
             )}
           </div>
@@ -256,12 +293,13 @@ export default function VisaoProdutividade({
   );
 }
 
+// Subcomponente ActionCard
 function ActionCard({ icon, label, val, color, bg }: any) {
   return (
     <div className="bg-white p-5 rounded-[32px] border border-slate-100 text-center space-y-2 hover:shadow-xl hover:shadow-slate-100 transition-all duration-300 hover:-translate-y-1 group">
       <div className={`inline-flex p-3 rounded-2xl ${bg} ${color} shadow-sm group-hover:scale-110 transition-transform`}>{icon}</div>
       <div>
-        <p className="text-2xl font-black text-slate-800 tracking-tight">{val}</p>
+        <p className="text-2xl font-black text-slate-800 tracking-tight">{val || 0}</p>
         <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{label}</p>
       </div>
     </div>

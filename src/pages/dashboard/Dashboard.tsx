@@ -58,7 +58,7 @@ export default function Dashboard() {
               .order('nome');
             
             setCorretores([
-              { id: 'casa', nome: "ATENDIMENTO DIRETO (CASA)" },
+              { id: 'casa', nome: "ATENDIMENTO DIRETO (CORRETORA)" },
               ...(lista || [])
             ]);
           }
