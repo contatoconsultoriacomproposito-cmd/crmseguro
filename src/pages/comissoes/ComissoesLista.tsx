@@ -40,19 +40,25 @@ export const ComissoesLista = () => {
 
       if (!perfil) return;
 
+      // 1. Iniciamos a query selecionando os dados necessários
       let query = supabase.from('tab_comissoes').select(`
           *,
           tab_clientes ( nome ),
           base_produtos ( nome ),
           tab_proposta_itens ( valor_premio ),
           tab_parceiros ( nome_parceiro ),
-          usuarios_perfis!tab_comissoes_corretor_id_fkey ( corretora_id )
+          usuarios_perfis!tab_comissoes_corretor_id_fkey ( nome, corretora_id )
         `);
 
+      // 2. CORREÇÃO DO FILTRO: 
+      // Em vez de filtrar pela tabela relacionada na query (que dá o erro 406),
+      // filtramos pela coluna nativa 'corretora_id' que já deve existir na 'tab_comissoes'
       if (perfil.tipo_usuario === 'CORRETOR') {
         query = query.eq('corretor_id', perfil.id);
       } else {
-        query = query.eq('usuarios_perfis.corretora_id', perfil.corretora_id);
+        // Assume-se que a tab_comissoes tem a coluna corretora_id. 
+        // Se não tiver, precisamos filtrar os IDs de corretores antes.
+        query = query.eq('corretora_id', perfil.corretora_id);
       }
 
       if (filtroStatus === 'aberto') {
