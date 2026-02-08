@@ -1,22 +1,31 @@
 import { useEffect, useState } from "react";
 import { 
   Search, Plus, Pencil, Trash2, Building2, User, Phone,
-  AlertTriangle, Loader2, FileSpreadsheet
+  AlertTriangle, Loader2, FileSpreadsheet, Users2, ArrowLeftRight
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import * as XLSX from 'xlsx';
+import { toast, Toaster } from 'react-hot-toast';
 
 export default function ClientesLista() {
   const navigate = useNavigate();
   const [clientes, setClientes] = useState<any[]>([]);
+  const [corretores, setCorretores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [busca, setBusca] = useState("");
+  const [filtroCorretor, setFiltroCorretor] = useState<string>("todos");
   const [userProfile, setUserProfile] = useState<any>(null);
   
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [confirmarExclusao, setConfirmarExclusao] = useState<any | null>(null);
+
+  // Estados para Gestor de Carteiras
+  const [showGestor, setShowGestor] = useState(false);
+  const [transferDe, setTransferDe] = useState("");
+  const [transferPara, setTransferPara] = useState("");
+  const [transferindo, setTransferindo] = useState(false);
 
   useEffect(() => {
     async function getInitialData() {
@@ -24,7 +33,7 @@ export default function ClientesLista() {
       if (user) {
         const { data: perfil } = await supabase
           .from('usuarios_perfis')
-          .select('id, corretora_id, tipo_usuario')
+          .select('id, corretora_id, tipo_usuario, nome')
           .eq('id', user.id)
           .single();
         
@@ -37,8 +46,18 @@ export default function ClientesLista() {
   useEffect(() => {
     if (userProfile?.corretora_id) {
       carregarClientes();
+      carregarCorretores();
     }
   }, [userProfile]);
+
+  async function carregarCorretores() {
+    const { data } = await supabase
+      .from('usuarios_perfis')
+      .select('id, nome')
+      .eq('corretora_id', userProfile.corretora_id)
+      .eq('tipo_usuario', 'CORRETOR');
+    setCorretores(data || []);
+  }
 
   async function carregarClientes() {
     if (!userProfile?.corretora_id) return;
@@ -64,18 +83,50 @@ export default function ClientesLista() {
     }
   }
 
+  async function handleTransferenciaCarteira() {
+    if (!transferDe || !transferPara || transferDe === transferPara) return;
+    
+    setTransferindo(true);
+    try {
+      const { error } = await supabase
+        .from("tab_clientes")
+        .update({ 
+            corretor_id: transferPara,
+            updated_at: new Date().toISOString()
+        })
+        .eq("corretora_id", userProfile.corretora_id)
+        .eq("corretor_id", transferDe);
+
+      if (error) throw error;
+      
+      // SUBSTITUIÇÃO DO ALERT AQUI:
+      toast.success("Carteira transferida com sucesso!", {
+        style: {
+          borderRadius: '16px',
+          background: '#333',
+          color: '#fff',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          textTransform: 'uppercase'
+        },
+      });
+
+      setShowGestor(false);
+      setTransferDe("");
+      setTransferPara("");
+      carregarClientes();
+    } catch (error) {
+      console.error("Erro na transferência:", error);
+      toast.error("Falha ao transferir carteira."); // Toast de erro
+    } finally {
+      setTransferindo(false);
+    }
+  }
+
   const exportarExcel = () => {
     setExporting(true);
     try {
-      const camposOmitidos = [
-        'google_event_id_sinistro', 
-        'google_event_id_comercial', 
-        'corretor_id', 
-        'corretora_id', 
-        'id',
-        'usuarios_perfis'
-      ];
-
+      const camposOmitidos = ['google_event_id_sinistro', 'google_event_id_comercial', 'corretor_id', 'corretora_id', 'id', 'usuarios_perfis'];
       const dadosParaExportar = clientesFiltrados.map(cliente => {
         const filtrado: any = {};
         Object.keys(cliente).forEach(key => {
@@ -129,6 +180,9 @@ export default function ClientesLista() {
   }
 
   const clientesFiltrados = clientes.filter((c) => {
+    const atendeFiltroCorretor = filtroCorretor === "todos" || c.corretor_id === filtroCorretor;
+    if (!atendeFiltroCorretor) return false;
+
     if (!busca) return true;
     const termo = busca.toLowerCase().trim();
     const termoApenasNumeros = termo.replace(/\D/g, "");
@@ -158,6 +212,16 @@ export default function ClientesLista() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {userProfile?.tipo_usuario === 'CORRETORA' && (
+            <button 
+              onClick={() => setShowGestor(true)}
+              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white p-3 rounded-2xl font-black uppercase text-[10px] shadow-sm transition-all active:scale-95"
+            >
+              <Users2 size={18} />
+              Gestor de Carteiras
+            </button>
+          )}
+
           <button 
             onClick={exportarExcel}
             disabled={loading || exporting}
@@ -176,18 +240,35 @@ export default function ClientesLista() {
         </div>
       </div>
 
-      {/* BUSCA */}
-      <div className="max-w-7xl mx-auto relative mb-6">
-        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-          <Search size={20} className="text-slate-400" />
+      {/* FILTROS E BUSCA */}
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 mb-6">
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+            <Search size={20} className="text-slate-400" />
+          </div>
+          <input
+            type="text"
+            placeholder="Pesquisar por CPF/CNPJ, Nome, Telefone..."
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="w-full pl-12 pr-4 py-4 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-zinc-100 font-medium"
+          />
         </div>
-        <input
-          type="text"
-          placeholder="Pesquisar por CPF/CNPJ, Nome, Telefone..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="w-full pl-12 pr-4 py-4 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-zinc-100 font-medium"
-        />
+
+        {userProfile?.tipo_usuario === 'CORRETORA' && (
+          <select
+            value={filtroCorretor}
+            onChange={(e) => setFiltroCorretor(e.target.value)}
+            className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl px-4 py-4 shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 min-w-[200px]"
+          >
+            <option value="todos">Todos os Corretores</option>
+            {/* Opção Corretora para o filtro de visualização */}
+            <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
+            {corretores.map(cor => (
+              <option key={cor.id} value={cor.id}>{cor.nome}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* TABELA */}
@@ -243,7 +324,7 @@ export default function ClientesLista() {
                     </td>
                     <td className="p-5">
                       <span className="bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase">
-                        {cliente.usuarios_perfis?.nome || "GERAL"}
+                        {cliente.corretor_id === cliente.corretora_id ? "DIRETO CORRETORA" : (cliente.usuarios_perfis?.nome || "GERAL")}
                       </span>
                     </td>
                     <td className="p-5 text-right">
@@ -268,7 +349,67 @@ export default function ClientesLista() {
         </div>
       </div>
 
-      {/* MODAL DE EXCLUSÃO */}
+      {/* MODAL GESTOR DE CARTEIRAS */}
+      {showGestor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 rounded-[40px] p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-zinc-800 transform animate-in zoom-in-95 duration-200">
+            <div className="w-20 h-20 bg-amber-50 dark:bg-amber-500/10 rounded-3xl flex items-center justify-center text-amber-600 dark:text-amber-400 mx-auto mb-6 border border-amber-100/50">
+              <ArrowLeftRight size={40} />
+            </div>
+            <h2 className="text-xl font-black text-center text-slate-800 dark:text-zinc-100 mb-2 uppercase italic">Gestor de Carteiras</h2>
+            <p className="text-center text-slate-500 dark:text-zinc-400 text-[10px] mb-8 font-black uppercase tracking-widest">Transferir clientes entre corretores</p>
+            
+            <div className="space-y-4 mb-8">
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Retirar De:</label>
+                <select 
+                  value={transferDe} 
+                  onChange={(e) => setTransferDe(e.target.value)}
+                  className="w-full p-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold uppercase"
+                >
+                  <option value="">Selecione a origem</option>
+                  {/* Opção Corretora (Atendimento Direto) */}
+                  <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
+                  {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
+
+              <div className="flex justify-center text-slate-300">
+                <ArrowLeftRight size={20} className="rotate-90" />
+              </div>
+
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Transferir Para:</label>
+                <select 
+                  value={transferPara} 
+                  onChange={(e) => setTransferPara(e.target.value)}
+                  className="w-full p-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold uppercase"
+                >
+                  <option value="">Selecione o destino</option>
+                  {/* Opção Corretora (Atendimento Direto) */}
+                  <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
+                  {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button 
+                disabled={transferindo || !transferDe || !transferPara || transferDe === transferPara}
+                onClick={handleTransferenciaCarteira} 
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-30 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+              >
+                {transferindo ? "Transferindo..." : "Executar Transferência"}
+              </button>
+              <button onClick={() => setShowGestor(false)} className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+     {/* MODAL DE EXCLUSÃO (MANTIDO) */}
       {confirmarExclusao && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-zinc-900 rounded-[40px] p-8 max-w-sm w-full shadow-2xl border border-slate-200 dark:border-zinc-800 transform animate-in zoom-in-95 duration-200">
@@ -294,6 +435,9 @@ export default function ClientesLista() {
           </div>
         </div>
       )}
+
+      {/* AQUI É O LUGAR EXATO: Antes de fechar a div principal */}
+      <Toaster position="bottom-right" reverseOrder={false} />
     </div>
   );
 }
