@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { 
   Search, Edit3, Loader2, Calendar, Hash, ShieldCheck, ArrowRight, Users, Handshake, ShoppingCart , Download, 
-  FileSpreadsheet, DollarSign, RefreshCw, CheckCircle2, XCircle, Clock
+  FileSpreadsheet, DollarSign, RefreshCw, CheckCircle2, XCircle, Clock, RefreshCcw, MinusCircle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatarDataBR } from "../../utils/dateUtils";
@@ -649,9 +649,18 @@ return (
               <span className="px-2.5 py-1 bg-red-100 text-red-600 text-[9px] font-black rounded-lg uppercase flex items-center gap-1">
                 <XCircle size={10} /> Não Renovada
               </span>
+            ) : item.status_renovacao === 'RENOVAÇÃO AUTOMÁTICA' ? (
+              <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 border border-indigo-100 text-[9px] font-black rounded-lg uppercase flex items-center gap-1">
+                <RefreshCcw size={10} /> Automática
+              </span>
+            ) : item.status_renovacao === 'NÃO SE APLICA' ? (
+              <span className="px-2.5 py-1 bg-slate-100 text-slate-400 text-[9px] font-black rounded-lg uppercase flex items-center gap-1">
+                <MinusCircle size={10} /> N/A
+              </span>
             ) : (
+              /* Este cobre o novo padrão "A RENOVAR" */
               <span className="px-2.5 py-1 bg-amber-50 text-amber-600 border border-amber-200 text-[9px] font-black rounded-lg uppercase flex items-center gap-1">
-                <Clock size={10} /> Pendente
+                <Clock size={10} /> A Renovar
               </span>
             )}
           </div>

@@ -36,6 +36,7 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
       inicioVigencia: string, 
       fimVigencia: string,
       periodicidade: Periodicidade,
+      status_renovacao: string, // <--- Adicionado aqui
       dataRenovacao: string,
       horarioRenovacao: string,
       notificacaoAtiva: boolean
@@ -72,11 +73,17 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         break;
     }
 
+    // 2. LÓGICA DE STATUS AUTOMÁTICO NA TROCA DE PERIODICIDADE
+    const statusSugerido = 
+      tipo === 'ÚNICO' ? 'NÃO SE APLICA' : 
+      tipo === 'MENSAL' ? 'RENOVAÇÃO AUTOMÁTICA' : 'A RENOVAR';
+
     setDadosItens(prev => ({
       ...prev,
       [idItem]: {
         ...prev[idItem],
         periodicidade: tipo,
+        status_renovacao: statusSugerido, // <--- Agora o TS aceita
         inicioVigencia: dataInicio,
         fimVigencia: dataFim,
         dataRenovacao: dataFim,
@@ -151,6 +158,7 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
             data_inicio_vigencia,
             data_fim_vigencia,
             periodicidade,
+            status_renovacao,
             data_renovacao,
             horario_renovacao,
             notificacao_ativa,
@@ -172,6 +180,8 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
           inicial[item.id] = { 
             apolice: item.numero_apolice || "", 
             periodicidade: pDefault,
+            // 3. CAPTURA O STATUS ATUAL DO BANCO OU DEFINE O PADRÃO
+            status_renovacao: item.status_renovacao || (pDefault === 'ÚNICO' ? 'NÃO SE APLICA' : 'A RENOVAR'),
             inicioVigencia: item.data_inicio_vigencia || dataBase,
             fimVigencia: item.data_fim_vigencia || "",
             dataRenovacao: item.data_renovacao || item.data_fim_vigencia || "",
@@ -227,9 +237,11 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
               data_inicio_vigencia: dados?.inicioVigencia || null,
               data_fim_vigencia: (periodicidadeParaBanco === 'ÚNICO') ? null : (dados?.fimVigencia || null),
               periodicidade: periodicidadeParaBanco,
+              status_renovacao: dados?.status_renovacao, 
               data_venda: form.dataVenda,
               data_renovacao: dados?.dataRenovacao || null,
-              horario_renovacao: dados?.horarioRenovacao || "09:00",
+              // CORREÇÃO AQUI: De 'horario_renovacao' para 'horarioRenovacao'
+              horario_renovacao: dados?.horarioRenovacao || "09:00", 
               notificacao_ativa: dados?.notificacaoAtiva ?? true
             })
             .eq('id', item.id);
@@ -327,6 +339,34 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
                   ))}
                 </div>
               </div>
+
+              {/* Novo campo: Status da Renovação */}
+              <div className="col-span-2">
+                <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">Configuração de Renovação</label>
+                <select
+                  className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm outline-none font-bold bg-white focus:border-indigo-300"
+                  value={dadosItens[item.id]?.status_renovacao || "A RENOVAR"}
+                  disabled={dadosItens[item.id]?.periodicidade === 'ÚNICO'}
+                  onChange={(e) => setDadosItens({
+                    ...dadosItens,
+                    [item.id]: { ...dadosItens[item.id], status_renovacao: e.target.value }
+                  })}
+                >
+                  {dadosItens[item.id]?.periodicidade === 'ÚNICO' ? (
+                    <option value="NÃO SE APLICA">NÃO SE APLICA (VIGÊNCIA ÚNICA)</option>
+                  ) : (
+                    <>
+                      <option value="A RENOVAR">A RENOVAR (MANUAL)</option>
+                      <option value="RENOVAÇÃO AUTOMÁTICA">RENOVAÇÃO AUTOMÁTICA</option>
+                      {dadosItens[item.id]?.periodicidade === 'PERSONALIZADO' && (
+                        <option value="NÃO SE APLICA">NÃO SE APLICA</option>
+                      )}
+                    </>
+                  )}
+                </select>
+              </div>
+
+
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
