@@ -135,70 +135,72 @@ export default function AgendaCorretor() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     
-    // 1. Trava de segurança: Se não tem código ou já está em curso, aborta.
     if (!code || processingCode.current) return;
 
     try {
+      console.log("🚀 [Agenda] Iniciando troca de token com o código:", code);
       processingCode.current = true; 
       setLoadingGoogle(true);
       
-      const { error } = await supabase.functions.invoke('google-token-exchange', {
+      const { data, error } = await supabase.functions.invoke('google-token-exchange', {
         body: { code, redirect_uri: `${window.location.origin}/agenda` }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ [Agenda] Erro na Edge Function:", error);
+        throw error;
+      }
 
-      // 2. Limpeza imediata da URL para evitar que o usuário dê F5 e tente reusar o 'code'
+      console.log("✅ [Agenda] Token trocado com sucesso:", data);
+
       window.history.replaceState({}, document.title, window.location.pathname);
       
-      // 3. Atualização de estado e feedback visual moderno
       setGoogleConectado(true);
+      
+      // Força a atualização dos dados
+      await verificarConexaoGoogle();
       await fetchCompromissos();
       
-      toast.success("Google Agenda conectado!", {
-        description: "Seus compromissos agora estão sincronizados com sua conta Google.",
-      });
+      toast.success("Google Agenda conectado!");
 
     } catch (err: any) {
-      console.error("Erro na troca de token:", err);
-      
-      // Se for erro 400, geralmente é porque o 'code' já foi usado na montagem anterior do React
-      // Nesse caso, limpamos a URL silenciosamente sem assustar o usuário com erro.
+      console.error("orange ❌ [Agenda] Falha crítica:", err);
+      // Se for erro 400, o código expirou ou já foi usado
       if (err.message?.includes('400')) {
         window.history.replaceState({}, document.title, window.location.pathname);
       } else {
-        toast.error("Falha na conexão", {
-          description: "Não conseguimos vincular sua conta. Tente novamente em instantes.",
-        });
+        toast.error("Falha na conexão com Google");
       }
     } finally {
       setLoadingGoogle(false);
-      // Mantemos a trava como true para esta instância do componente.
+      console.log("🏁 [Agenda] Finalizado processo de conexão.");
     }
-  }, [fetchCompromissos]);
+  }, [fetchCompromissos, verificarConexaoGoogle]);
 
   useEffect(() => {
     let isMounted = true;
     
     const init = async () => {
-      // 1. Processa o retorno do Google se houver 'code' na URL
       const params = new URLSearchParams(window.location.search);
-      if (params.get("code")) {
-        await processarRetornoGoogle();
-      }
-      
-      if (!isMounted) return;
+      const code = params.get("code");
 
-      // 2. Carrega os compromissos e status da conta
-      await Promise.all([
-        fetchCompromissos(),
-        verificarConexaoGoogle()
-      ]);
+      if (code) {
+        // Se tem código na URL, processa a troca de token
+        await processarRetornoGoogle();
+      } else {
+        // Fluxo normal: apenas carrega os dados
+        if (!isMounted) return;
+        await Promise.all([
+          fetchCompromissos(),
+          verificarConexaoGoogle()
+        ]);
+      }
     };
 
     init();
     return () => { isMounted = false; };
-  }, [fetchCompromissos, verificarConexaoGoogle, processarRetornoGoogle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Array vazio para rodar apenas uma vez no load da página
 
   async function handleGoogleAuth() {
   if (googleConectado) {
@@ -266,7 +268,6 @@ export default function AgendaCorretor() {
   async function handleEventChange(info: any) {
     const { extendedProps } = info.event;
     const clienteId = extendedProps.clienteId;
-    // 'en-CA' garante o formato YYYY-MM-DD
     const novaData = info.event.start.toLocaleDateString('en-CA'); 
     const novoHorario = info.event.start.toLocaleTimeString('pt-BR', { hour12: false });
 
@@ -275,15 +276,35 @@ export default function AgendaCorretor() {
         ? { data_retorno: novaData, horario_retorno: novoHorario }
         : { data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario };
 
+      // 1. Atualiza o Banco de Dados do CRM
       const { error } = await supabase.from('tab_clientes').update(updateData).eq('id', clienteId);
-      
       if (error) throw error;
+
+      // 2. DISPARA A SINCRONIZAÇÃO PARA O GOOGLE (O "Empurrão" Manual)
+      if (googleConectado) {
+        console.log("🔄 Solicitando sincronização com Google Agenda...");
+        const { data: syncData, error: syncError } = await supabase.functions.invoke('clever-processor', {
+          body: { 
+            clienteId: clienteId, 
+            origem: extendedProps.origem 
+          }
+        });
+
+        if (syncError) {
+          console.error("❌ Erro na Edge Function:", syncError);
+          toast.error("CRM atualizado, mas houve erro no Google Agenda.");
+        } else {
+          console.log("✅ Sincronização Google concluída:", syncData);
+          toast.success("Agenda sincronizada com sucesso!");
+        }
+      } else {
+        toast.success("Agenda do CRM atualizada!");
+      }
+
     } catch (err) {
       console.error("Erro ao atualizar data:", err);
-      toast.error("Erro ao iniciar conexão", {
-        description: "Tente novamente em alguns segundos."
-      });
-      info.revert(); // Só reverte se o banco falhar
+      toast.error("Falha ao salvar alteração");
+      info.revert(); 
     }
   }
 
