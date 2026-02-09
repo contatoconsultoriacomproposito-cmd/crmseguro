@@ -8,6 +8,9 @@ import ConfigPerfil from "./pages/configuracao/configPerfil"
 // Layouts
 import DashboardLayout from "./layouts/DashboardLayout"
 
+// IA CONSULTOR
+import { ConsultorIA } from "./ConsultorIA"
+
 // PÁGINAS PÚBLICAS
 import HomePage from "./pages/homepage/HomePage"
 import PortalParceiro from "./pages/portal/PortalParceiro"
@@ -72,6 +75,11 @@ export default function App() {
   // --- ROTAS PARA USUÁRIOS LOGADOS (PRIVADO) ---
   return (
     <NotificationProvider>
+
+      {/* O componente de IA deve ficar FORA do Routes para não causar o erro de invariant */}
+      <ConsultorIA />
+
+
       <Routes>
         {/* Rota do Portal também acessível para usuários logados (fora do layout do dashboard) */}
         <Route path="/portal/:slug" element={<PortalParceiro />} />
@@ -123,7 +131,7 @@ export default function App() {
 
           {/* CATCH-ALL LOGADO */}
           <Route path="*" element={<Navigate to="/dashboard" />} />
-          
+
         </Route>
       </Routes>
     </NotificationProvider>

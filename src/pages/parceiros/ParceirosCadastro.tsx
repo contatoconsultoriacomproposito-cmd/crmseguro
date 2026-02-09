@@ -330,7 +330,7 @@ export default function ParceirosCadastro() {
                     className="w-full h-12 pl-12 pr-10 rounded-xl bg-white border-2 border-slate-200 font-bold text-xs text-slate-700 focus:border-blue-600 focus:ring-4 focus:ring-blue-600/5 outline-none appearance-none cursor-pointer disabled:opacity-60 transition-all"
                     value={form.corretor_id} onChange={e => setForm({...form, corretor_id: e.target.value})}>
                     <option value="">SELECIONE O RESPONSÁVEL</option>
-                    <option value={perfilLogado?.corretora_id} className="text-blue-600 font-bold">🏢 ATENDIMENTO DIRETO (CASA)</option>
+                    <option value={perfilLogado?.corretora_id} className="text-blue-600 font-bold">🏢 ATENDIMENTO DIRETO (CORRETORA)</option>
                     {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
                   <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />

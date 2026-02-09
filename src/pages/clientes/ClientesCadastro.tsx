@@ -623,7 +623,7 @@ useEffect(() => {
                     {/* OPÇÃO NOVA: Permite que a corretora seja a responsável direta */}
                     {perfilUsuarioLogado?.tipo_usuario === "CORRETORA" && (
                       <option value={perfilUsuarioLogado.id} className="font-bold text-blue-600">
-                        DIRETO COM A CORRETORA (Sem corretor)
+                        ATENDIMENTO DIRETO (CORRETORA)
                       </option>
                     )}
 
