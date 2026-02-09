@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
-import { X, DollarSign, Percent, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { X, DollarSign, Percent, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const formatarMoeda = (valor: string | number) => {
@@ -36,13 +36,14 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
   const [dadosBase, setDadosBase] = useState<any>(null);
   const [comissaoExistente, setComissaoExistente] = useState<any>(null);
 
-  // Estados de exibição/input (O que o usuário vê e digita)
   const [inputVenda, setInputVenda] = useState('');
   const [inputVencimento, setInputVencimento] = useState('');
   const [inputRecebimento, setInputRecebimento] = useState('');
   const [inputPagamentoParceiro, setInputPagamentoParceiro] = useState('');
   const [valorExibicao, setValorExibicao] = useState('');
   const [valorRepasseExibicao, setValorRepasseExibicao] = useState('');
+
+  const [erros, setErros] = useState<string[]>([]);
 
   const fetchDadosIniciais = useCallback(async () => {
     setCarregando(true);
@@ -56,7 +57,7 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
             id, proposta_id, seguradora_id,
             base_seguradoras (nome),
             tab_propostas (
-              data_emissao, cliente_id, corretor_id, parceiro_id,
+              data_emissao, cliente_id, corretor_id, parceiro_id, corretora_id,
               tab_parceiros (nome_parceiro)
             )
           )
@@ -79,10 +80,11 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
         ...item,
         nome_seguradora: opcao?.base_seguradoras?.nome || 'NÃO LOCALIZADA',
         nome_produto: item.base_produtos?.nome || 'PRODUTO NÃO DEFINIDO',
-        proposta_id: opcao?.proposta_id,
+        proposta_id: item.proposta_id || opcao?.proposta_id, // Adicionado item.proposta_id como fallback
         cliente_id: proposta?.cliente_id,
         corretor_id: proposta?.corretor_id,
-        seguradora_id: opcao?.seguradora_id,
+        corretora_id: proposta?.corretora_id,
+        seguradora_id: item.seguradora_id || opcao?.seguradora_id,
         parceiro_id: proposta?.parceiro_id,
         nome_parceiro: proposta?.tab_parceiros?.nome_parceiro || null
       });
@@ -121,47 +123,84 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
     return valorComissaoPrincipal > 0 ? ((valorRepasse / valorComissaoPrincipal) * 100).toFixed(2) : "0.00";
   };
 
-  const handleSalvar = async () => {
-    if (salvando) return;
+const handleSalvar = async () => {
+    if (salvando || !dadosBase) return;
+    setErros([]);
 
-    // Validação antes de enviar para o banco
-    const dataPagamentoFinal = validarDataSegura(inputPagamentoParceiro) ? inputPagamentoParceiro : null;
-    const dataRecebimentoFinal = validarDataSegura(inputRecebimento) ? inputRecebimento : null;
+    // 1. Validação Visual
+    const novosErros: string[] = [];
+    if (!inputVenda) novosErros.push('data_venda');
+    if (!inputVencimento) novosErros.push('data_vencimento');
+    const valorNum = desformatarMoeda(valorExibicao);
+    if (valorNum <= 0) novosErros.push('valor_comissao');
+
+    if (novosErros.length > 0) {
+      setErros(novosErros);
+      toast.error("Preencha os campos obrigatórios.");
+      return;
+    }
 
     setSalvando(true);
+
     try {
+      // 2. Obter Sessão e Perfil
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sessão inválida.");
+
+      const { data: perfil, error: errPerfil } = await supabase
+        .from('usuarios_perfis')
+        .select('corretora_id')
+        .eq('id', session.user.id)
+        .single();
+
+      if (errPerfil || !perfil?.corretora_id) {
+        throw new Error("Perfil sem corretora vinculada.");
+      }
+
+      const parseUUID = (id: any) => (id && id !== "" ? id : null);
+
+      // 3. Montagem do Payload obedecendo a 'WITH CHECK' (auth.uid() = corretor_id)
       const payload = {
-        item_id: itemId,
-        proposta_id: dadosBase?.proposta_id || null,
-        cliente_id: dadosBase?.cliente_id || null,
-        corretor_id: dadosBase?.corretor_id || null,
-        produto_id: dadosBase?.produto_id || null,
-        seguradora_id: dadosBase?.seguradora_id || null,
-        nome_seguradora: dadosBase?.nome_seguradora || 'NÃO INFORMADA',
-        data_venda: inputVenda || null,
-        data_vencimento_comissao: inputVencimento || null,
-        valor_comissao: desformatarMoeda(valorExibicao),
-        percentual_comissao: parseFloat(calcularPercentual()),
-        data_recebimento: dataRecebimentoFinal,
-        status_comissao: dataRecebimentoFinal ? 'RECEBIDA' : 'PENDENTE',
-        parceiro_id: dadosBase?.parceiro_id || null,
-        valor_repasse: desformatarMoeda(valorRepasseExibicao),
-        percentual_repasse: parseFloat(calcularPercentualRepasse()),
-        data_pagamento_parceiro: dataPagamentoFinal,
-        status_repasse: dataPagamentoFinal ? 'PAGO' : 'PENDENTE'
+        proposta_id: parseUUID(dadosBase.proposta_id),
+        item_id: parseUUID(itemId),
+        cliente_id: parseUUID(dadosBase.cliente_id),
+        // OBRIGATÓRIO pela Policy: deve ser o ID do usuário logado
+        corretor_id: session.user.id, 
+        produto_id: parseUUID(dadosBase.produto_id),
+        seguradora_id: parseUUID(dadosBase.seguradora_id),
+        corretora_id: perfil.corretora_id,
+        nome_seguradora: (dadosBase.nome_seguradora || 'NÃO INFORMADA').substring(0, 100),
+        data_venda: inputVenda,
+        data_vencimento_comissao: inputVencimento,
+        valor_comissao: valorNum,
+        percentual_comissao: parseFloat(calcularPercentual()) || 0,
+        data_recebimento: validarDataSegura(inputRecebimento) ? inputRecebimento : null,
+        status_comissao: inputRecebimento ? 'RECEBIDA' : 'PENDENTE',
+        parceiro_id: parseUUID(dadosBase.parceiro_id),
+        valor_repasse: desformatarMoeda(valorRepasseExibicao) || 0,
+        percentual_repasse: parseFloat(calcularPercentualRepasse()) || 0,
+        data_pagamento_parceiro: validarDataSegura(inputPagamentoParceiro) ? inputPagamentoParceiro : null,
+        status_repasse: inputPagamentoParceiro ? 'PAGO' : 'PENDENTE'
       };
 
-      const { error } = comissaoExistente 
+      // 4. Execução
+      const { error } = comissaoExistente?.id
         ? await supabase.from('tab_comissoes').update(payload).eq('id', comissaoExistente.id)
         : await supabase.from('tab_comissoes').insert([payload]);
 
       if (error) throw error;
 
-      toast.success("Dados financeiros atualizados!");
+      toast.success("Dados financeiros salvos!");
       onSuccess();
       onClose();
+
     } catch (err: any) {
-      toast.error("Erro ao salvar no banco.");
+      console.error("Erro RLS:", err);
+      // Explicação clara baseada na Policy encontrada
+      const msg = err.code === '42501' 
+        ? "A política de segurança exige que o Corretor seja você mesmo (auth.uid)." 
+        : err.message;
+      toast.error(msg);
     } finally {
       setSalvando(false);
     }
@@ -169,7 +208,6 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
 
   if (carregando) return null;
 
-  // Lógica visual apenas para o texto do botão, sem travar o input
   const labelBotao = salvando ? "Sincronizando..." : comissaoExistente ? "Atualizar Lançamento" : "Salvar Lançamento";
 
   return (
@@ -203,7 +241,6 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
             </div>
           </div>
 
-          {/* SEÇÃO DO PARCEIRO */}
           {dadosBase?.parceiro_id && (
             <div className="mb-8 p-6 rounded-[2.5rem] bg-blue-50/50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/20">
               <div className="flex items-center gap-3 mb-6">
@@ -245,25 +282,46 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
             </div>
           )}
 
-          {/* Form Principal */}
           <div className="grid grid-cols-2 gap-6 mb-8 text-left">
             <div className="space-y-4">
               <div>
-                <label className="text-[10px] font-black text-zinc-400 uppercase ml-2 mb-1 block">Data da Venda</label>
-                <input type="date" value={inputVenda} onChange={(e) => setInputVenda(e.target.value)} className="w-full p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 text-zinc-800 dark:text-zinc-200" />
+                <label className={`text-[10px] font-black uppercase ml-2 mb-1 flex items-center gap-1 ${erros.includes('data_venda') ? 'text-red-500' : 'text-zinc-400'}`}>
+                  {erros.includes('data_venda') && <AlertCircle size={10} />} Data da Venda *
+                </label>
+                <input 
+                  type="date" 
+                  value={inputVenda} 
+                  onChange={(e) => setInputVenda(e.target.value)} 
+                  className={`w-full p-4 rounded-2xl border bg-white dark:bg-zinc-900 text-sm font-bold outline-none transition-all ${erros.includes('data_venda') ? 'border-red-500 ring-2 ring-red-500/20' : 'border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500'} text-zinc-800 dark:text-zinc-200`} 
+                />
               </div>
               <div>
-                <label className="text-[10px] font-black text-zinc-400 uppercase ml-2 mb-1 block">Valor Comissão (R$)</label>
+                <label className={`text-[10px] font-black uppercase ml-2 mb-1 flex items-center gap-1 ${erros.includes('valor_comissao') ? 'text-red-500' : 'text-zinc-400'}`}>
+                  {erros.includes('valor_comissao') && <AlertCircle size={10} />} Valor Comissão (R$) *
+                </label>
                 <div className="relative">
-                  <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                  <input type="text" placeholder="R$ 0,00" value={valorExibicao} onChange={(e) => setValorExibicao(formatarMoeda(e.target.value))} className="w-full pl-10 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-black outline-none focus:ring-2 focus:ring-green-500 text-zinc-800 dark:text-zinc-200" />
+                  <DollarSign className={`absolute left-4 top-1/2 -translate-y-1/2 ${erros.includes('valor_comissao') ? 'text-red-500' : 'text-zinc-400'}`} size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="R$ 0,00" 
+                    value={valorExibicao} 
+                    onChange={(e) => setValorExibicao(formatarMoeda(e.target.value))} 
+                    className={`w-full pl-10 p-4 rounded-2xl border bg-white dark:bg-zinc-900 text-sm font-black outline-none transition-all ${erros.includes('valor_comissao') ? 'border-red-500 ring-2 ring-red-500/20' : 'border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-green-500'} text-zinc-800 dark:text-zinc-200`} 
+                  />
                 </div>
               </div>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="text-[10px] font-black text-zinc-400 uppercase ml-2 mb-1 block">Vencimento Comissão</label>
-                <input type="date" value={inputVencimento} onChange={(e) => setInputVencimento(e.target.value)} className="w-full p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 text-zinc-800 dark:text-zinc-200" />
+                <label className={`text-[10px] font-black uppercase ml-2 mb-1 flex items-center gap-1 ${erros.includes('data_vencimento') ? 'text-red-500' : 'text-zinc-400'}`}>
+                  {erros.includes('data_vencimento') && <AlertCircle size={10} />} Vencimento Comissão *
+                </label>
+                <input 
+                  type="date" 
+                  value={inputVencimento} 
+                  onChange={(e) => setInputVencimento(e.target.value)} 
+                  className={`w-full p-4 rounded-2xl border bg-white dark:bg-zinc-900 text-sm font-bold outline-none transition-all ${erros.includes('data_vencimento') ? 'border-red-500 ring-2 ring-red-500/20' : 'border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500'} text-zinc-800 dark:text-zinc-200`} 
+                />
               </div>
               <div>
                 <label className="text-[10px] font-black text-zinc-400 uppercase ml-2 mb-1 block">Percentual s/ Prêmio</label>
@@ -274,7 +332,6 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
             </div>
           </div>
 
-          {/* Seção Liquidação */}
           <div className="mb-8 p-6 rounded-3xl bg-green-500/5 border-2 border-dashed border-green-500/20 text-left">
             <label className="flex items-center gap-2 text-[10px] font-black text-green-600 uppercase mb-3">
                 <CheckCircle2 size={16} /> Data de Recebimento (Liquidação Corretora)

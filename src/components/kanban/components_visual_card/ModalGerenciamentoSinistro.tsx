@@ -76,8 +76,9 @@ export const ModalGerenciamentoSinistro = ({ sinistroId, onClose, onSuccess }: P
     setErro(null);
 
     try {
+      const isFinalizando = novaEtapa === 'Conclusão';
+
       // 1. Gravação na tab_sinistros_ocorrencias
-      // Usamos uma estrutura limpa para evitar erros de constraint
       const { error: errOco } = await supabase
         .from('tab_sinistros_ocorrencias')
         .insert({
@@ -89,42 +90,32 @@ export const ModalGerenciamentoSinistro = ({ sinistroId, onClose, onSuccess }: P
           data_ocorrencia: new Date().toISOString().split('T')[0]
         });
 
-      if (errOco) {
-        console.error("Erro no Insert da Ocorrência:", errOco);
-        throw new Error(`Erro ao gravar histórico: ${errOco.message}`);
-      }
+      if (errOco) throw new Error(`Erro ao gravar histórico: ${errOco.message}`);
 
       // 2. Atualização na tab_clientes (Para disparar o Webhook da Agenda)
       if (sinistro?.cliente_id) {
         const { error: errCli } = await supabase
           .from('tab_clientes')
           .update({
-            data_retorno_sinistro: dataRetorno || null,
-            horario_retorno_sinistro: horarioRetorno || null
+            data_retorno_sinistro: isFinalizando ? null : (dataRetorno || null),
+            horario_retorno_sinistro: isFinalizando ? null : (horarioRetorno || null)
           })
           .eq('id', sinistro.cliente_id);
         
-        if (errCli) {
-          console.error("Erro no Update do Cliente:", errCli);
-          throw new Error(`Erro ao atualizar cliente: ${errCli.message}`);
-        }
+        if (errCli) throw new Error(`Erro ao atualizar agenda do cliente: ${errCli.message}`);
       }
 
-      // 3. Atualização da etapa mestre do Sinistro
-      const isFinalizando = novaEtapa === 'Conclusão';
-        if (sinistro?.cliente_id) {
-            const { error: errCli } = await supabase
-              .from('tab_clientes')
-              .update({
-                // Se estiver concluindo, limpamos a agenda para a notificação sumir
-                // Se não, enviamos a nova data de retorno
-                data_retorno_sinistro: isFinalizando ? null : (dataRetorno || null),
-                horario_retorno_sinistro: isFinalizando ? null : (horarioRetorno || null)
-              })
-              .eq('id', sinistro.cliente_id);
-            
-            if (errCli) throw new Error(`Erro ao atualizar cliente: ${errCli.message}`);
-          }
+      // 3. ATUALIZAÇÃO DA TABELA MESTRA (tab_sinistros) - CORREÇÃO DOS BUGS
+      const { error: errSin } = await supabase
+        .from('tab_sinistros')
+        .update({
+          etapa_atual: novaEtapa, // Atualiza a bolinha no timeline
+          status: isFinalizando ? 'Encerrado' : 'Aberto', // Finaliza o sinistro
+          data_conclusao: isFinalizando ? new Date().toISOString() : null // Grava data de fim
+        })
+        .eq('id', sinistroId);
+
+      if (errSin) throw new Error(`Erro ao atualizar status do sinistro: ${errSin.message}`);
 
       setSalvo(true);
       setTimeout(() => {
