@@ -33,6 +33,7 @@ export default function AgendaCorretor() {
 
   const [googleConectado, setGoogleConectado] = useState(false);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
+  const [tipoUsuario, setTipoUsuario] = useState<string | null>(null); // Estado para o tipo de usuário
   const processingCode = useRef(false);
 
   const fetchCompromissos = useCallback(async () => {
@@ -49,11 +50,14 @@ export default function AgendaCorretor() {
 
       if (!perfil) return;
 
+      // Sincroniza o tipo de usuário no estado para uso no HTML
+      setTipoUsuario(perfil.tipo_usuario);
+
       // BUSCA ÚNICA NA TAB_CLIENTES (Pega comercial e sinistro de uma vez)
       const { data: clientes } = await supabase
         .from('tab_clientes')
         .select('id, nome, razao_social, tipo_cliente, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban')
-        .or(`data_retorno.not.is.null,data_retorno_sinistro.not.is.null`) // Filtra quem tem qualquer retorno
+        .or(`data_retorno.not.is.null,data_retorno_sinistro.not.is.null`)
         .eq('corretora_id', perfil.corretora_id)
         .match(perfil.tipo_usuario === 'CORRETOR' ? { corretor_id: perfil.id } : {});
 
@@ -62,10 +66,9 @@ export default function AgendaCorretor() {
       clientes?.forEach(cli => {
         const nomeTitulo = cli.tipo_cliente === 'PJ' ? (cli.razao_social || 'Empresa') : (cli.nome || 'Cliente');
 
-        // 1. Adiciona Evento Comercial (se existir)
         if (cli.data_retorno) {
           eventosFormatados.push({
-            id: `${cli.id}_comercial`, // ID único para a agenda
+            id: `${cli.id}_comercial`,
             title: nomeTitulo,
             start: `${cli.data_retorno}T${cli.horario_retorno || '09:00:00'}`,
             extendedProps: { 
@@ -77,10 +80,9 @@ export default function AgendaCorretor() {
           });
         }
 
-        // 2. Adiciona Evento de Sinistro (se existir)
         if (cli.data_retorno_sinistro) {
           eventosFormatados.push({
-            id: `${cli.id}_sinistro`, // ID único para a agenda
+            id: `${cli.id}_sinistro`,
             title: `[SINISTRO] ${nomeTitulo}`,
             start: `${cli.data_retorno_sinistro}T${cli.horario_retorno_sinistro || '09:00:00'}`,
             extendedProps: { 
@@ -101,33 +103,58 @@ export default function AgendaCorretor() {
     }
   }, []);
 
-  // Função unificada e estável para verificar a conexão
   const verificarConexaoGoogle = useCallback(async () => {
     try {
-      // Força a busca do usuário atual
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        console.log("Usuário não logado");
-        return;
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      // Busca o perfil com um filtro de tempo ou apenas garantindo que não venha do cache
-      const { data: perfil, error: perfilError } = await supabase
+      const { data: perfil, error } = await supabase
         .from("usuarios_perfis")
-        .select("google_connected")
+        .select("google_connected, tipo_usuario")
         .eq("id", user.id)
-        .single(); // Mudamos para single() para garantir que o registro exista
+        .single();
 
-      if (perfilError) {
-        console.error("Erro ao buscar perfil:", perfilError);
-        return;
-      }
+      if (error) return;
 
-      console.log("Status da conexão no banco:", perfil.google_connected);
       setGoogleConectado(!!perfil.google_connected);
-      
+      setTipoUsuario(perfil.tipo_usuario);
     } catch (err) {
       console.error("Erro crítico na verificação:", err);
+    }
+  }, []);
+
+  const sincronizarClientesExistentes = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: perfil } = await supabase
+        .from("usuarios_perfis")
+        .select("id, tipo_usuario, corretora_id")
+        .eq("id", user.id)
+        .single();
+
+      if (!perfil) return;
+
+      const { data: clientes } = await supabase
+        .from('tab_clientes')
+        .select('*')
+        .or(`corretor_id.eq.${perfil.id},corretora_id.eq.${perfil.id}`) 
+        .or(`data_retorno.not.is.null,data_retorno_sinistro.not.is.null`);
+
+      if (!clientes || clientes.length === 0) return;
+
+      toast.info(`Sincronizando ${clientes.length} agendamentos...`);
+
+      for (const cliente of clientes) {
+        await supabase.functions.invoke('sync-to-google-calendar', {
+          body: { record: cliente }
+        });
+      }
+
+      toast.success("Google Agenda populada com sucesso!");
+    } catch (err) {
+      console.error("Erro na carga inicial:", err);
     }
   }, []);
 
@@ -138,57 +165,41 @@ export default function AgendaCorretor() {
     if (!code || processingCode.current) return;
 
     try {
-      console.log("🚀 [Agenda] Iniciando troca de token com o código:", code);
       processingCode.current = true; 
       setLoadingGoogle(true);
       
-      const { data, error } = await supabase.functions.invoke('google-token-exchange', {
+      const { error } = await supabase.functions.invoke('google-token-exchange', {
         body: { code, redirect_uri: `${window.location.origin}/agenda` }
       });
 
-      if (error) {
-        console.error("❌ [Agenda] Erro na Edge Function:", error);
-        throw error;
-      }
-
-      console.log("✅ [Agenda] Token trocado com sucesso:", data);
+      if (error) throw error;
 
       window.history.replaceState({}, document.title, window.location.pathname);
-      
       setGoogleConectado(true);
       
-      // Força a atualização dos dados
       await verificarConexaoGoogle();
       await fetchCompromissos();
+      await sincronizarClientesExistentes(); 
       
       toast.success("Google Agenda conectado!");
 
     } catch (err: any) {
-      console.error("orange ❌ [Agenda] Falha crítica:", err);
-      // Se for erro 400, o código expirou ou já foi usado
-      if (err.message?.includes('400')) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      } else {
-        toast.error("Falha na conexão com Google");
-      }
+      console.error("Erro no retorno Google:", err);
+      toast.error("Falha na conexão");
     } finally {
       setLoadingGoogle(false);
-      console.log("🏁 [Agenda] Finalizado processo de conexão.");
     }
-  }, [fetchCompromissos, verificarConexaoGoogle]);
+  }, [fetchCompromissos, verificarConexaoGoogle, sincronizarClientesExistentes]);
 
   useEffect(() => {
     let isMounted = true;
-    
     const init = async () => {
       const params = new URLSearchParams(window.location.search);
       const code = params.get("code");
 
       if (code) {
-        // Se tem código na URL, processa a troca de token
         await processarRetornoGoogle();
       } else {
-        // Fluxo normal: apenas carrega os dados
         if (!isMounted) return;
         await Promise.all([
           fetchCompromissos(),
@@ -196,74 +207,52 @@ export default function AgendaCorretor() {
         ]);
       }
     };
-
     init();
     return () => { isMounted = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Array vazio para rodar apenas uma vez no load da página
+  }, [fetchCompromissos, verificarConexaoGoogle, processarRetornoGoogle]);
 
   async function handleGoogleAuth() {
-  if (googleConectado) {
-    if (!confirm("Deseja realmente desvincular sua conta Google? Novas interações não serão mais sincronizadas.")) return;
-    
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
+    if (googleConectado) {
+      if (!confirm("Deseja realmente desvincular sua conta Google? Novas interações não serão mais sincronizadas.")) return;
       
-      if (user) {
-        // 1. DESVÍNCULO EXPLÍCITO: Atualiza a flag e remove os tokens
-        const { error: errorPerfil } = await supabase
-          .from("usuarios_perfis")
-          .update({ 
-            google_connected: false,      // A TRAVA MESTRE
-            google_access_token: null, 
-            google_refresh_token: null, 
-            google_calendar_id: null 
-          })
-          .eq("id", user.id);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { error: errorPerfil } = await supabase
+            .from("usuarios_perfis")
+            .update({ 
+              google_connected: false,
+              google_access_token: null, 
+              google_refresh_token: null, 
+              google_calendar_id: null 
+            })
+            .eq("id", user.id);
 
-        if (errorPerfil) throw errorPerfil;
+          if (errorPerfil) throw errorPerfil;
 
-        // 2. LIMPEZA DE SEGURANÇA: Remove os IDs de eventos dos clientes deste corretor
-        // Isso impede que a Edge Function encontre IDs antigos e tente sincronizar
-        await supabase
-          .from('tab_clientes')
-          .update({
-            google_event_id_comercial: null,
-            google_event_id_sinistro: null
-          })
-          .eq('corretor_id', user.id);
+          await supabase
+            .from('tab_clientes')
+            .update({
+              google_event_id_comercial: null,
+              google_event_id_sinistro: null
+            })
+            .eq('corretor_id', user.id);
 
-        // 3. ATUALIZAÇÃO DA INTERFACE
-        setGoogleConectado(false);
-        
-        toast.success("Conta desvinculada!", {
-          description: "A sincronização com o Google Agenda foi interrompida."
-        });
+          setGoogleConectado(false);
+          toast.success("Conta desvinculada!");
+        }
+      } catch (error) {
+        console.error("Erro ao desvincular:", error);
+        toast.error("Erro ao desvincular");
       }
-    } catch (error) {
-      console.error("Erro ao desvincular:", error);
-      toast.error("Erro ao desvincular", {
-          description: "Não foi possível salvar as alterações no banco de dados."
-        });
+      return;
     }
-    return;
+
+    const GOOGLE_CLIENT_ID = "453100726787-a198m31oepdghl4c7b3o4pkle7hvqnkn.apps.googleusercontent.com";
+    const REDIRECT_URI = `${window.location.origin}/agenda`;
+    const googleOAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly')}&access_type=offline&prompt=consent`;
+    window.location.href = googleOAuthUrl;
   }
-
-  // Lógica de Conexão (Inalterada, mas encapsulada)
-  const GOOGLE_CLIENT_ID = "453100726787-a198m31oepdghl4c7b3o4pkle7hvqnkn.apps.googleusercontent.com";
-  const REDIRECT_URI = `${window.location.origin}/agenda`;
-  
-  const googleOAuthUrl = 
-    `https://accounts.google.com/o/oauth2/v2/auth` +
-    `?client_id=${GOOGLE_CLIENT_ID}` +
-    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-    `&response_type=code` +
-    `&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly')}` +
-    `&access_type=offline` +
-    `&prompt=consent`;
-
-  window.location.href = googleOAuthUrl;
-}
 
   async function handleEventChange(info: any) {
     const { extendedProps } = info.event;
@@ -276,34 +265,16 @@ export default function AgendaCorretor() {
         ? { data_retorno: novaData, horario_retorno: novoHorario }
         : { data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario };
 
-      // 1. Atualiza o Banco de Dados do CRM
-      const { error } = await supabase.from('tab_clientes').update(updateData).eq('id', clienteId);
-      if (error) throw error;
+      const { error: dbError } = await supabase
+        .from('tab_clientes')
+        .update(updateData)
+        .eq('id', clienteId);
 
-      // 2. DISPARA A SINCRONIZAÇÃO PARA O GOOGLE (O "Empurrão" Manual)
-      if (googleConectado) {
-        console.log("🔄 Solicitando sincronização com Google Agenda...");
-        const { data: syncData, error: syncError } = await supabase.functions.invoke('clever-processor', {
-          body: { 
-            clienteId: clienteId, 
-            origem: extendedProps.origem 
-          }
-        });
-
-        if (syncError) {
-          console.error("❌ Erro na Edge Function:", syncError);
-          toast.error("CRM atualizado, mas houve erro no Google Agenda.");
-        } else {
-          console.log("✅ Sincronização Google concluída:", syncData);
-          toast.success("Agenda sincronizada com sucesso!");
-        }
-      } else {
-        toast.success("Agenda do CRM atualizada!");
-      }
-
-    } catch (err) {
-      console.error("Erro ao atualizar data:", err);
-      toast.error("Falha ao salvar alteração");
+      if (dbError) throw dbError;
+      toast.success("Data atualizada!");
+    } catch (err: any) {
+      console.error("Erro ao salvar:", err);
+      toast.error("Falha ao sincronizar alteração");
       info.revert(); 
     }
   }
@@ -324,63 +295,61 @@ export default function AgendaCorretor() {
 
   return (
     <div className="flex flex-col gap-6 mt-4">
-      <div className="flex flex-col md:flex-row items-center justify-between p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-sm">
-        <div className="flex items-center gap-5">
-          {/* Ícone com as cores do Google se conectado, ou cinza se não */}
-          <div className={`p-4 rounded-2xl transition-all duration-500 ${
-            googleConectado 
-              ? 'bg-blue-50 text-blue-600 shadow-inner' 
-              : 'bg-zinc-100 text-zinc-400'
-          }`}>
-            <CalendarCheck size={32} />
+      {/* CORREÇÃO AQUI: Bloco do Google renderizado apenas para ADM/CORRETORA */}
+      {(tipoUsuario === 'ADMIN' || tipoUsuario === 'CORRETORA') && (
+        <div className="flex flex-col md:flex-row items-center justify-between p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-sm">
+          <div className="flex items-center gap-5">
+            <div className={`p-4 rounded-2xl transition-all duration-500 ${
+              googleConectado ? 'bg-blue-50 text-blue-600 shadow-inner' : 'bg-zinc-100 text-zinc-400'
+            }`}>
+              <CalendarCheck size={32} />
+            </div>
+            
+            <div>
+              <h2 className="text-xl font-black text-zinc-900 dark:text-white flex items-center gap-2">
+                Google Agenda (Empresa)
+                {googleConectado && <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
+              </h2>
+              <p className="text-sm text-zinc-500 font-medium">
+                {googleConectado ? "Sincronização master ativa" : "Conecte a conta da corretora."}
+              </p>
+            </div>
           </div>
-          
-          <div>
-            <h2 className="text-xl font-black text-zinc-900 dark:text-white flex items-center gap-2">
-              Google Agenda
-              {googleConectado && (
-                <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              )}
-            </h2>
-            <p className="text-sm text-zinc-500 font-medium">
-              {googleConectado ? "Sincronização ativa e segura" : "Conecte sua conta para sincronizar."}
-            </p>
-          </div>
-        </div>
 
-        <button 
-          onClick={handleGoogleAuth} 
-          disabled={loadingGoogle}
-          className={`group relative flex items-center gap-3 px-6 py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-95 ${
-            googleConectado 
-              ? 'bg-white dark:bg-zinc-800 text-red-500 border border-red-100 dark:border-red-900/30 hover:bg-red-50 shadow-sm' 
-              : 'bg-white dark:bg-white text-zinc-700 border border-zinc-200 shadow-md hover:shadow-lg hover:border-zinc-300'
-          }`}
-        >
-          {loadingGoogle ? (
-            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-blue-600" />
-          ) : (
-            googleConectado ? (
-              <>
-                <Link2Off size={18} className="group-hover:rotate-12 transition-transform" />
-                DESVINCULAR CONTA
-              </>
+          <button 
+            onClick={handleGoogleAuth} 
+            disabled={loadingGoogle}
+            className={`group relative flex items-center gap-3 px-6 py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-95 ${
+              googleConectado 
+                ? 'bg-white dark:bg-zinc-800 text-red-500 border border-red-100 dark:border-red-900/30 hover:bg-red-50' 
+                : 'bg-white dark:bg-white text-zinc-700 border border-zinc-200 shadow-md hover:shadow-lg'
+            }`}
+          >
+            {loadingGoogle ? (
+              <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-blue-600" />
             ) : (
-              <>
-                {/* Logo do Google em SVG para ficar "autêntico" */}
-                <svg width="18" height="18" viewBox="0 0 18 18">
-                  <path d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.91c1.7-1.56 2.69-3.86 2.69-6.62z" fill="#4285F4"/>
-                  <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.83.86-3.05.86-2.34 0-4.33-1.58-5.04-3.7H.95v2.33A8.99 8.99 0 0 0 9 18z" fill="#34A853"/>
-                  <path d="M3.96 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.95a8.99 8.99 0 0 0 0 8.08l3.01-2.33z" fill="#FBBC05"/>
-                  <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A8.96 8.96 0 0 0 9 0A8.99 8.99 0 0 0 .95 4.96L3.96 7.29c.7-2.12 2.7-3.71 5.04-3.71z" fill="#EA4335"/>
-                </svg>
-                <span className="tracking-tight">CONECTAR COM GOOGLE</span>
-              </>
-            )
-          )}
-        </button>
-      </div>
+              googleConectado ? (
+                <>
+                  <Link2Off size={18} />
+                  DESVINCULAR CONTA MASTER
+                </>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 18 18">
+                    <path d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.91c1.7-1.56 2.69-3.86 2.69-6.62z" fill="#4285F4"/>
+                    <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.83.86-3.05.86-2.34 0-4.33-1.58-5.04-3.7H.95v2.33A8.99 8.99 0 0 0 9 18z" fill="#34A853"/>
+                    <path d="M3.96 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.95a8.99 8.99 0 0 0 0 8.08l3.01-2.33z" fill="#FBBC05"/>
+                    <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A8.96 8.96 0 0 0 9 0A8.99 8.99 0 0 0 .95 4.96L3.96 7.29c.7-2.12 2.7-3.71 5.04-3.71z" fill="#EA4335"/>
+                  </svg>
+                  <span className="tracking-tight">CONECTAR MASTER</span>
+                </>
+              )
+            )}
+          </button>
+        </div>
+      )}
 
+      {/* Calendário: Sempre visível para todos */}
       <div className="p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl overflow-hidden">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}

@@ -514,7 +514,11 @@ serve(async (req) => {
       }
     }
 
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`
+    // 1. Defina o modelo que o scanner confirmou como disponível
+    const MODELO = "gemini-3-flash-preview"; 
+
+    // 2. Use a URL v1beta (que suporta as funções mais novas)
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODELO}:generateContent?key=${apiKey}`;
 
     const response = await fetch(API_URL, {
       method: 'POST',
