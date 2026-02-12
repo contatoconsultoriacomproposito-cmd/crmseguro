@@ -665,10 +665,10 @@ export default function HomePage() {
     {/* CARDS DE ASSINATURA DO CRM */}
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       {[
-        { p: "Mensal", v: "119,97", c: "69,97", best: false },
-        { p: "Trimestral", v: "109,97", c: "59,97", best: false },
-        { p: "Semestral", v: "99,97", c: "49,97", best: false },
-        { p: "Anual", v: "79,97", c: "39,97", best: true },
+        { p: "Mensal", v: "59,97", c: "39,97", best: false },
+        { p: "Trimestral", v: "49,97", c: "29,97", best: false },
+        { p: "Semestral", v: "39,97", c: "19,97", best: false },
+        { p: "Anual", v: "29,97", c: "9,97", best: true },
       ].map((item, i) => (
         <motion.div
           key={i}
@@ -737,7 +737,7 @@ export default function HomePage() {
         </div>
         <div className="text-center px-6 border-l border-zinc-100">
           <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Opcional e a partir de</p>
-          <p className="text-2xl font-black text-zinc-900">R$ 150<span className="text-sm text-zinc-400">/mês</span></p>
+          <p className="text-2xl font-black text-zinc-900">R$ 80<span className="text-sm text-zinc-400">/mês</span></p>
         </div>
       </motion.div>
 
@@ -756,7 +756,7 @@ export default function HomePage() {
         </div>
         <div className="text-center px-6 border-l border-zinc-100">
           <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Opcional e a partir de</p>
-          <p className="text-2xl font-black text-zinc-900">R$ 150<span className="text-sm text-zinc-400">/mês</span></p>
+          <p className="text-2xl font-black text-zinc-900">R$ 80<span className="text-sm text-zinc-400">/mês</span></p>
         </div>
       </motion.div>
 

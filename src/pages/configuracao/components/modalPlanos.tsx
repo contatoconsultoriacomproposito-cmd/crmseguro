@@ -14,34 +14,34 @@ const PLANOS_CONFIG = {
   mensal: {
     nome: "Mensal",
     meses: 1,
-    valorBase: 119.97,
-    valorAdd: 69.97,
-    siteMensal: 300.00,
-    manychatMensal: 300.00
+    valorBase: 59.97,
+    valorAdd: 39.97,
+    siteMensal: 150.00,
+    manychatMensal: 150.00
   },
   trimestral: {
     nome: "Trimestral",
     meses: 3,
-    valorBase: 109.97,
-    valorAdd: 59.97,
-    siteMensal: 250.00,
-    manychatMensal: 250.00
+    valorBase: 49.97,
+    valorAdd: 29.97,
+    siteMensal: 100.00,
+    manychatMensal: 100.00
   },
   semestral: {
     nome: "Semestral",
     meses: 6,
-    valorBase: 99.97,
-    valorAdd: 49.97,
-    siteMensal: 200.00,
-    manychatMensal: 200.00
+    valorBase: 39.97,
+    valorAdd: 19.97,
+    siteMensal: 90.00,
+    manychatMensal: 90.00
   },
   anual: {
     nome: "Anual",
     meses: 12,
-    valorBase: 79.97,
-    valorAdd: 39.97,
-    siteMensal: 150.00,
-    manychatMensal: 150.00
+    valorBase: 29.97,
+    valorAdd: 9.97,
+    siteMensal: 80.00,
+    manychatMensal: 80.00
   }
 };
 
