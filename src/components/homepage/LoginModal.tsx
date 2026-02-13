@@ -20,12 +20,15 @@ export default function LoginModal({ onClose, onSwitch }: any) {
     }
 
     setLoading(true);
+    setResetSent(false); // Limpa estado anterior antes de tentar novo envio
+    
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
 
     if (error) {
       setError(error.message);
+      setResetSent(false);
     } else {
       setResetSent(true);
       setError(null);

@@ -11,11 +11,12 @@ import DashboardLayout from "./layouts/DashboardLayout"
 // IA CONSULTOR
 import { ConsultorIA } from "./ConsultorIA"
 
-// PÁGINAS PÚBLICAS
+// PÁGINAS PÚBLICAS E AUTH
 import HomePage from "./pages/homepage/HomePage"
 import PortalParceiro from "./pages/portal/PortalParceiro"
 import TermosUso from "./pages/juridico/TermosUso"
 import PoliticaPrivacidade from "./pages/juridico/PoliticaPrivacidade"
+import ResetPassword from "./components/homepage/ResetPassword"
 
 // Páginas Privadas - Corretores e parceiros
 import CorretoresCadastro from "./pages/corretores/CorretoresCadastro"
@@ -58,81 +59,81 @@ export default function App() {
     return null 
   }
 
-  // --- ROTAS PARA USUÁRIOS NÃO LOGADOS (PÚBLICO) ---
-  if (!user) {
-    return (
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        {/* Rota do Portal acessível sem login */}
-        <Route path="/portal/:slug" element={<PortalParceiro />} /> 
-        <Route path="/termos" element={<TermosUso />} />
-        <Route path="/privacidade" element={<PoliticaPrivacidade />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    )
-  }
-
-  // --- ROTAS PARA USUÁRIOS LOGADOS (PRIVADO) ---
   return (
     <NotificationProvider>
-
-      {/* O componente de IA deve ficar FORA do Routes para não causar o erro de invariant */}
-      <ConsultorIA />
-
+      {/* O componente de IA só aparece para usuários logados, exceto na tela de reset */}
+      {user && window.location.pathname !== "/reset-password" && <ConsultorIA />}
 
       <Routes>
-        {/* Rota do Portal também acessível para usuários logados (fora do layout do dashboard) */}
+        {/* --- ROTAS PÚBLICAS (Sempre acessíveis) --- */}
+        <Route path="/termos" element={<TermosUso />} />
+        <Route path="/privacidade" element={<PoliticaPrivacidade />} />
         <Route path="/portal/:slug" element={<PortalParceiro />} />
+        
+        {/* Rota de Reset: Crucial estar fora dos condicionais de 'user' */}
+        <Route path="/reset-password" element={<ResetPassword />} />
 
-        <Route element={<DashboardLayout />}>
-          
-          {/* INÍCIO */}
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/" element={<Navigate to="/dashboard" />} />
+        {/* --- LÓGICA DE ACESSO CONDICIONAL --- */}
+        {!user ? (
+          <>
+            <Route path="/" element={<HomePage />} />
+            {/* Catch-all para deslogados: volta para Home */}
+            <Route path="*" element={<Navigate to="/" />} />
+          </>
+        ) : (
+          <>
+            {/* Rota do Portal também acessível para usuários logados */}
+            <Route path="/portal/:slug" element={<PortalParceiro />} />
 
-          {/* MÓDULO: AGENDA */}
-          <Route path="/agenda" element={<AgendaCorretor />} />
-          
-          {/* MÓDULO: CORRETORES E PARCEIROS */}
-          <Route path="/corretores/cadastro" element={<CorretoresCadastro />} />
-          <Route path="/corretores/lista" element={<CorretoresLista />} />
-          <Route path="/corretores/editar/:id" element={<CorretoresCadastro />} />
-          <Route path="/parceiros/cadastro" element={<ParceirosCadastro />} />
-          <Route path="/parceiros/editar/:id" element={<ParceirosCadastro />} />
-          <Route path="/parceiros/triagem" element={<ParceirosTriagem />} />
+            <Route element={<DashboardLayout />}>
+              {/* INÍCIO */}
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/" element={<Navigate to="/dashboard" />} />
 
-          {/* MÓDULO: CLIENTES */}
-          <Route path="/clientes/cadastro" element={<ClientesCadastro />} />
-          <Route path="/clientes/lista" element={<ClientesLista />} />
-          <Route path="/clientes/editar/:id" element={<ClientesCadastro />} />
+              {/* MÓDULO: AGENDA */}
+              <Route path="/agenda" element={<AgendaCorretor />} />
+              
+              {/* MÓDULO: CORRETORES E PARCEIROS */}
+              <Route path="/corretores/cadastro" element={<CorretoresCadastro />} />
+              <Route path="/corretores/lista" element={<CorretoresLista />} />
+              <Route path="/corretores/editar/:id" element={<CorretoresCadastro />} />
+              <Route path="/parceiros/cadastro" element={<ParceirosCadastro />} />
+              <Route path="/parceiros/editar/:id" element={<ParceirosCadastro />} />
+              <Route path="/parceiros/triagem" element={<ParceirosTriagem />} />
 
-          {/* MÓDULO: PROPOSTAS E PRODUTOS */}
-          <Route path="/propostas/criar" element={<PropostasCadastro key="nova" />} />
-          <Route path="/propostas/lista" element={<PropostasLista />} />
-          <Route path="/propostas/editar/:id" element={<PropostasCadastro key="editar" />} />
-          <Route path="/propostas/produtos" element={<ProdutosLista />} />
+              {/* MÓDULO: CLIENTES */}
+              <Route path="/clientes/cadastro" element={<ClientesCadastro />} />
+              <Route path="/clientes/lista" element={<ClientesLista />} />
+              <Route path="/clientes/editar/:id" element={<ClientesCadastro />} />
 
-          {/* MÓDULO: SEGURADORAS */}
-          <Route path="/seguradoras" element={<SeguradorasLista />} />
+              {/* MÓDULO: PROPOSTAS E PRODUTOS */}
+              <Route path="/propostas/criar" element={<PropostasCadastro key="nova" />} />
+              <Route path="/propostas/lista" element={<PropostasLista />} />
+              <Route path="/propostas/editar/:id" element={<PropostasCadastro key="editar" />} />
+              <Route path="/propostas/produtos" element={<ProdutosLista />} />
 
-          {/* MÓDULO: KANBAN */}
-          <Route path="/kanban/atendimento" element={<KanbanAtendimentos />} />
-          <Route path="/kanban/venda" element={<KanbanVendas />} />
-          <Route path="/kanban/perda" element={<KanbanPerdas />} />
+              {/* MÓDULO: SEGURADORAS */}
+              <Route path="/seguradoras" element={<SeguradorasLista />} />
 
-          {/* MÓDULO: COMISSÕES */}
-          <Route path="/comissoes/lista" element={<ComissoesLista />} />
+              {/* MÓDULO: KANBAN */}
+              <Route path="/kanban/atendimento" element={<KanbanAtendimentos />} />
+              <Route path="/kanban/venda" element={<KanbanVendas />} />
+              <Route path="/kanban/perda" element={<KanbanPerdas />} />
 
-          {/* MÓDULO: SINISTROS */}
-          <Route path="/sinistros/lista" element={<RelatorioSinistros />} />
+              {/* MÓDULO: COMISSÕES */}
+              <Route path="/comissoes/lista" element={<ComissoesLista />} />
 
-          {/* MÓDULO: CONFIGURAÇÕES */}
-          <Route path="/configuracao/perfil" element={<ConfigPerfil />} />
+              {/* MÓDULO: SINISTROS */}
+              <Route path="/sinistros/lista" element={<RelatorioSinistros />} />
 
-          {/* CATCH-ALL LOGADO */}
-          <Route path="*" element={<Navigate to="/dashboard" />} />
+              {/* MÓDULO: CONFIGURAÇÕES */}
+              <Route path="/configuracao/perfil" element={<ConfigPerfil />} />
 
-        </Route>
+              {/* CATCH-ALL LOGADO */}
+              <Route path="*" element={<Navigate to="/dashboard" />} />
+            </Route>
+          </>
+        )}
       </Routes>
     </NotificationProvider>
   )
