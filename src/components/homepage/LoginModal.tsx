@@ -10,54 +10,78 @@ export default function LoginModal({ onClose, onSwitch }: any) {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [resetSent, setResetSent] = useState(false); // Passo 1: Estado para feedback
+  const [resetSent, setResetSent] = useState(false)
 
-  // Passo 2: Função de recuperação
   async function handleForgotPassword() {
     if (!email) {
-      setError("Por favor, digite seu e-mail para recuperar a senha.");
-      return;
-    }
-
-    setLoading(true);
-    setResetSent(false); // Limpa estado anterior antes de tentar novo envio
-    
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-
-    if (error) {
-      setError(error.message);
-      setResetSent(false);
-    } else {
-      setResetSent(true);
-      setError(null);
-    }
-    setLoading(false);
-  }
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setResetSent(false) // Limpa feedback de reset ao tentar logar
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      setLoading(false)
-      setError(
-        error.message.includes("Invalid login credentials")
-          ? "E-mail ou senha incorretos."
-          : error.message
-      )
+      setError("Por favor, digite seu e-mail para recuperar a senha.")
       return
     }
 
-    navigate("/dashboard")
+    setLoading(true)
+    setResetSent(false)
+    
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+
+    if (error) {
+      setError(error.message)
+      setResetSent(false)
+    } else {
+      setResetSent(true)
+      setError(null)
+    }
+    setLoading(false)
+  }
+
+async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setResetSent(false)
+
+    try {
+      // 1. Tenta o login no Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (authError) throw authError
+
+      if (authData?.user) {
+        // 2. BUSCA O PERFIL IMEDIATAMENTE
+        const { data: perfil, error: perfilError } = await supabase
+          .from("usuarios_perfis")
+          .select("ativo")
+          .eq("id", authData.user.id)
+          .single()
+
+        // 3. SE INATIVO: O deslogue precisa ser "atômico" antes de liberar o loading
+        if (perfilError || !perfil?.ativo) {
+          // Desloga antes de qualquer outra ação para o App.tsx voltar ao estado !user
+          await supabase.auth.signOut()
+          
+          // Limpa o estado e mostra o erro
+          setError("Sua conta está inativa. Para regularizar seu acesso, entre em contato com nossa equipe de suporte.")
+          setLoading(false)
+          return // INTERROMPE aqui, nunca chegará no navigate
+        }
+
+        // 4. SE ATIVO: Segue o fluxo
+        navigate("/dashboard")
+      }
+    } catch (err: any) {
+      // Apenas uma sugestão: tente deslogar, mas foque na mensagem de erro do login
+      await supabase.auth.signOut().catch(() => {}); 
+      setLoading(false)
+      setError(
+        err.message.includes("Invalid login credentials")
+          ? "E-mail ou senha incorretos."
+          : "Sua conta está inativa ou houve um erro de acesso." // Ajustado para ser mais genérico e cobrir o erro do RLS
+      )
+    }
   }
 
   return (
@@ -92,7 +116,6 @@ export default function LoginModal({ onClose, onSwitch }: any) {
             </button>
           </div>
 
-          {/* PASSO 4: Mensagem de Sucesso (Feedback Visual) */}
           {resetSent && (
             <motion.div 
               initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
@@ -105,7 +128,7 @@ export default function LoginModal({ onClose, onSwitch }: any) {
           {error && (
             <motion.div 
               initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-              className="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl text-red-600 dark:text-red-400 text-sm font-medium text-center"
+              className="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl text-red-600 dark:text-red-400 text-sm font-semibold text-center leading-relaxed"
             >
               {error}
             </motion.div>
@@ -135,8 +158,6 @@ export default function LoginModal({ onClose, onSwitch }: any) {
                 <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
                   Senha
                 </label>
-                
-                {/* PASSO 3: Ação no botão de Esqueci a Senha */}
                 <button 
                   type="button" 
                   onClick={handleForgotPassword}

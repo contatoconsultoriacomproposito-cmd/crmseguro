@@ -88,7 +88,7 @@ export default function App() {
             <Route element={<DashboardLayout />}>
               {/* INÍCIO */}
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/" element={<Navigate to="/dashboard" />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
               {/* MÓDULO: AGENDA */}
               <Route path="/agenda" element={<AgendaCorretor />} />
@@ -130,7 +130,7 @@ export default function App() {
               <Route path="/configuracao/perfil" element={<ConfigPerfil />} />
 
               {/* CATCH-ALL LOGADO */}
-              <Route path="*" element={<Navigate to="/dashboard" />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </>
         )}

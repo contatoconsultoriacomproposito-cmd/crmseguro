@@ -23,29 +23,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('*')
       .eq('id', userId)
       .single()
+
+    // SE O USUÁRIO ESTIVER INATIVO, DESLOGAMOS AQUI NO NÍVEL DO CONTEXTO
+    if (data && data.ativo === false) {
+      await supabase.auth.signOut()
+      setUser(null)
+      setUserProfile(null)
+      return null
+    }
+
     setUserProfile(data)
+    return data
   }
 
   useEffect(() => {
     // Checagem inicial
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getUser().then(async ({ data }) => {
       const currentUser = data.user
-      setUser(currentUser)
       if (currentUser) {
-        fetchProfile(currentUser.id).finally(() => setLoading(false))
-      } else {
-        setLoading(false)
+        setUser(currentUser)
+        await fetchProfile(currentUser.id)
       }
+      setLoading(false) // Só libera o app após a checa do perfil
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null
-      setUser(currentUser)
-      if (currentUser) {
-        fetchProfile(currentUser.id)
-      } else {
+      
+      if (event === 'SIGNED_IN' && currentUser) {
+        const perfil = await fetchProfile(currentUser.id)
+        // Se fetchProfile retornar null (inativo), o setUser(null) já foi feito lá dentro
+        if (perfil) setUser(currentUser)
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
         setUserProfile(null)
       }
+      
+      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
