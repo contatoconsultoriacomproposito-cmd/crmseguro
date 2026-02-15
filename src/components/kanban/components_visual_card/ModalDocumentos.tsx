@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Paperclip, Loader2, CheckCircle2, Eye, Trash2, Plus } from 'lucide-react';
+import { X, FileText, Paperclip, Loader2, CheckCircle2, Eye, Trash2, Plus, AlertCircle } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 
 interface ModalDocumentosProps {
@@ -11,6 +11,7 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
   const [documentos, setDocumentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<{ title: string; message: string } | null>(null);
 
   const tiposObrigatorios = [
     { id: 'RG_CNH', label: 'Documento Pessoal (RG/CNH)' },
@@ -45,34 +46,67 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>, tipo: string) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setErrorMessage(null);
 
     try {
       setUploading(tipo);
-      
-      // Criamos um nome único para o arquivo para evitar sobrescrita
+
+      // 1. Validar Limites da Corretora
+      const { data: config, error: configErr } = await supabase
+        .from('tab_corretora_config')
+        .select('storage_usado_bytes, storage_limite_mb, storage_max_file_size_mb, liberar_excedente')
+        .eq('id', cliente.corretora_id)
+        .single();
+
+      if (configErr) throw new Error("Falha ao validar plano de armazenamento.");
+
+      // Validação 1: Tamanho máximo por arquivo
+      const maxFileBytes = (config.storage_max_file_size_mb || 5) * 1024 * 1024;
+      if (file.size > maxFileBytes) {
+        setErrorMessage({
+          title: "Arquivo muito grande",
+          message: `O limite para este arquivo é de ${config.storage_max_file_size_mb}MB. Por favor, reduza o tamanho ou entre em contato.`
+        });
+        return;
+      }
+
+      // Validação 2: Limite Total (apenas se liberar_excedente for FALSE)
+      if (!config.liberar_excedente) {
+        const limiteBytes = (config.storage_limite_mb || 50) * 1024 * 1024;
+        const usoFuturo = (config.storage_usado_bytes || 0) + file.size;
+
+        if (usoFuturo > limiteBytes) {
+          setErrorMessage({
+            title: "Limite de Armazenamento Atingido",
+            message: "Você excedeu o espaço do seu plano atual. Para adquirir mais armazenamento, contate nosso suporte: bruce.segurocrm@gmail.com"
+          });
+          return;
+        }
+      }
+
+      // 2. Processo de Upload
       const fileExt = file.name.split('.').pop();
       const fileName = `${crypto.randomUUID()}.${fileExt}`;
-      const filePath = `${cliente.id}/${fileName}`; // Organizado por ID do cliente
+      const filePath = `${cliente.id}/${fileName}`;
 
-      // 1. Upload para o Storage
       const { error: uploadError } = await supabase.storage
         .from('documentos_clientes')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      // 2. Pegar URL Pública
       const { data: { publicUrl } } = supabase.storage
         .from('documentos_clientes')
         .getPublicUrl(filePath);
 
-      // 3. Salvar referência no Banco (incluindo o storage_path)
+      // 3. Registrar no Banco
       const { error: dbError } = await supabase.from('tab_documentos').insert([{
         cliente_id: cliente.id,
         nome_arquivo: file.name,
         url_arquivo: publicUrl,
         tipo: tipo,
-        storage_path: filePath, // Agora com a coluna correta
+        storage_path: filePath,
+        tamanho_bytes: file.size,
         corretora_id: cliente.corretora_id,
         corretor_id: cliente.corretor_id
       }]);
@@ -81,7 +115,10 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
 
       await buscarDocumentos();
     } catch (error: any) {
-      alert("Erro no upload: " + error.message);
+      setErrorMessage({
+        title: "Erro no upload",
+        message: error.message || "Ocorreu um erro ao processar seu arquivo."
+      });
     } finally {
       setUploading(null);
     }
@@ -91,14 +128,12 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
     if (!confirm("Deseja excluir este documento permanentemente?")) return;
     
     try {
-      // 1. Deletar o arquivo físico do Storage
       if (storagePath) {
         await supabase.storage
           .from('documentos_clientes')
           .remove([storagePath]);
       }
 
-      // 2. Deletar o registro da tabela
       const { error } = await supabase
         .from('tab_documentos')
         .delete()
@@ -106,7 +141,6 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
 
       if (error) throw error;
 
-      // Atualiza o estado local para sumir da tela na hora
       setDocumentos(prev => prev.filter(d => d.id !== idDoc));
     } catch (error: any) {
       alert("Erro ao deletar: " + error.message);
@@ -117,7 +151,7 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-zinc-900 rounded-[32px] w-full max-w-2xl shadow-2xl border border-slate-100 dark:border-zinc-800 overflow-hidden">
         
-        {/* Header do Modal */}
+        {/* Header */}
         <div className="px-8 py-6 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between bg-slate-50/50 dark:bg-zinc-800/50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
@@ -134,6 +168,22 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
         </div>
 
         <div className="p-8 max-h-[70vh] overflow-y-auto">
+          {/* Mensagem de Erro / Limite Excedido */}
+          {errorMessage && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-2xl flex items-start gap-3 relative">
+              <div className="mt-0.5 text-red-500">
+                <AlertCircle size={18} />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-[11px] font-black text-red-700 dark:text-red-400 uppercase tracking-tight">{errorMessage.title}</h4>
+                <p className="text-[11px] text-red-600 dark:text-red-500 leading-snug mt-0.5">{errorMessage.message}</p>
+              </div>
+              <button onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-red-600 transition-colors">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <Loader2 className="animate-spin mb-2" size={32} />
@@ -141,7 +191,7 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
             </div>
           ) : (
             <>
-              {/* Grid de Documentos Obrigatórios */}
+              {/* Grid de Obrigatórios */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {tiposObrigatorios.map((tipo) => {
                   const doc = documentos.find(d => d.tipo === tipo.id);
@@ -173,25 +223,26 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
                 })}
               </div>
 
-              {/* Seção de Outros Documentos */}
+              {/* Seção Outros */}
               <div className="mt-8">
                 <h3 className="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-[0.2em] flex items-center gap-2">
                   <Paperclip size={14} /> Outros Documentos
                 </h3>
                 <div className="space-y-2">
-                    {documentos.filter(d => d.tipo === 'OUTROS').map(doc => (
-                        <div key={doc.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl border border-slate-100 dark:border-zinc-800">
-                            <span className="text-xs font-medium text-slate-600 dark:text-zinc-300 truncate max-w-[200px]">{doc.nome_arquivo}</span>
-                            <div className="flex gap-2">
-                                <a href={doc.url_arquivo} target="_blank" rel="noreferrer" className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-md transition-colors"><Eye size={16} /></a>
-                                <button onClick={() => deletarDocumento(doc.id, doc.storage_path)} className="p-1.5 text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md transition-colors"><Trash2 size={16} /></button>
-                            </div>
-                        </div>
-                    ))}
-                    <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-bold text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-all">
-                        <input type="file" className="hidden" onChange={(e) => handleUpload(e, 'OUTROS')} />
-                        + Adicionar outro documento
-                    </label>
+                  {documentos.filter(d => d.tipo === 'OUTROS').map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl border border-slate-100 dark:border-zinc-800">
+                      <span className="text-xs font-medium text-slate-600 dark:text-zinc-300 truncate max-w-[200px]">{doc.nome_arquivo}</span>
+                      <div className="flex gap-2">
+                        <a href={doc.url_arquivo} target="_blank" rel="noreferrer" className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-md transition-colors"><Eye size={16} /></a>
+                        <button onClick={() => deletarDocumento(doc.id, doc.storage_path)} className="p-1.5 text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md transition-colors"><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-bold text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-all">
+                    <input type="file" className="hidden" onChange={(e) => handleUpload(e, 'OUTROS')} disabled={!!uploading} />
+                    {uploading === 'OUTROS' ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
+                    Adicionar outro documento
+                  </label>
                 </div>
               </div>
             </>

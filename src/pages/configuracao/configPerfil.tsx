@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { 
   Building2, Save, MapPin, Phone, Mail, Loader2, 
-  CheckCircle2, Globe, ShieldCheck, CreditCard, Upload, X, ImageIcon, Instagram, Facebook, User, UserCheck, ShieldAlert, FileText
+  CheckCircle2, Globe, ShieldCheck, Upload, X, ImageIcon, Instagram, Facebook, User, UserCheck, ShieldAlert, FileText
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../auth/AuthContext";
@@ -11,18 +11,20 @@ import { ModalPlanos } from './components/modalPlanos';
 import { useNavigate } from "react-router-dom";
 
 export default function ConfigCorretora() {
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  
   const [activeTab, setActiveTab] = useState<"perfil" | "plano" | "pessoal">("perfil");
   const [loading, setLoading] = useState(false);
-  const [loadingData, setLoadingData] = useState(true);
+  const [fetchingConfig, setFetchingConfig] = useState(true);
   const [loadingCNPJ, setLoadingCNPJ] = useState(false);
   const [loadingCEP, setLoadingCEP] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [isModalPlanosOpen, setIsModalPlanosOpen] = useState(false);
   const [assinaturaDb, setAssinaturaDb] = useState<any>(null);
-  const isAuthorized = userProfile?.tipo_usuario === "CORRETORA";
+  const [usoStorage, setUsoStorage] = useState({ bytes: 0, mb: 0, percentual: 0 });
+  const [isSyncingStorage, setIsSyncingStorage] = useState(false);
 
   const [form, setForm] = useState({
     razao_social: "",
@@ -57,72 +59,166 @@ export default function ConfigCorretora() {
     email_responsavel: ""
   });
 
-  // 1. CARREGAR CONFIGURAÇÕES
   const fetchConfig = useCallback(async () => {
-    if (!user) return;
+    if (!user?.id) return;
     try {
       const { data: corretora, error: errC } = await supabase
         .from("tab_corretora_config")
         .select(`*, usuarios_perfis ( created_at )`)
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
       if (errC) throw errC;
+      if (!corretora) {
+        setFetchingConfig(false);
+        return;
+      }
 
-      const dataCriacao = new Date(corretora.usuarios_perfis.created_at);
+      const { storage_usado_bytes, ...dadosLimpos } = corretora;
+      const dataCriacaoRaw = corretora.usuarios_perfis?.created_at;
+      const dataCriacao = dataCriacaoRaw ? new Date(dataCriacaoRaw) : new Date();
+      
       const expiracaoFree = new Date(dataCriacao);
       expiracaoFree.setDate(expiracaoFree.getDate() + 7);
 
-      const dataFinalExpiracao = corretora.data_expiracao || expiracaoFree.toISOString();
-      let statusCalculado = corretora.status_pagamento;
-      if (corretora.plano === 'FREE' && new Date() > expiracaoFree) {
-        statusCalculado = "PENDENTE DE CONTRATAÇÃO";
+      setForm(prev => ({
+        ...prev,
+        ...dadosLimpos,
+        data_expiracao: corretora.data_expiracao || expiracaoFree.toISOString(),
+        status_pagamento: corretora.status_pagamento || "ATIVO",
+        capital_social: corretora.capital_social?.toString() || "",
+      }));
+    } catch (err) {
+      console.error("Erro fetchConfig:", err);
+    } finally {
+      setFetchingConfig(false);
+    }
+  }, [user?.id]);
+
+  const fetchAssinatura = useCallback(async () => {
+    if (!userProfile?.corretora_id) return;
+    try {
+      const { data, error } = await supabase
+        .from('tab_planos')
+        .select('*')
+        .eq('corretora_id', userProfile.corretora_id)
+        .order('data_inicio', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      if (data?.[0]) setAssinaturaDb(data[0]);
+    } catch (err) {
+      console.error("Erro fetchAssinatura:", err);
+    }
+  }, [userProfile?.corretora_id]);
+
+  const fetchUsoStorage = useCallback(async () => {
+    if (!userProfile?.corretora_id) return;
+    try {
+      await supabase.rpc('sync_corretora_storage_usage', { p_corretora_id: userProfile.corretora_id });
+      const { data, error } = await supabase
+        .from('tab_corretora_config')
+        .select('storage_usado_bytes')
+        .eq('id', userProfile.corretora_id)
+        .maybeSingle();
+
+      if (error) throw error;
+      const bytes = Number(data?.storage_usado_bytes || 0);
+      const mb = bytes / (1024 * 1024);
+      setUsoStorage({ 
+        bytes, 
+        mb, 
+        percentual: Math.min((mb / 50) * 100, 100) 
+      });
+    } catch (err) {
+      console.error("Erro fetchUsoStorage:", err);
+    }
+  }, [userProfile?.corretora_id]);
+
+  // CORREÇÃO AQUI: Usando .list() para obter o tamanho do arquivo
+  const repairStorageSizes = async () => {
+    if (!userProfile?.corretora_id) return;
+    setIsSyncingStorage(true);
+    try {
+      const { data: docs, error: fetchErr } = await supabase
+        .from('tab_documentos')
+        .select('id, storage_path')
+        .eq('corretora_id', userProfile.corretora_id)
+        .eq('tamanho_bytes', 0);
+
+      if (fetchErr) throw fetchErr;
+      if (!docs || docs.length === 0) {
+        alert("Todos os arquivos já estão sincronizados!");
+        return;
       }
 
-      setForm({
-        ...corretora,
-        data_expiracao: dataFinalExpiracao,
-        status_pagamento: statusCalculado,
-        capital_social: corretora.capital_social?.toString() || "",
-        opcao_pelo_mei: !!corretora.opcao_pelo_mei,
-        opcao_pelo_simples: !!corretora.opcao_pelo_simples,
-      });
+      for (const doc of docs) {
+        const pathParts = doc.storage_path.split('/');
+        const fileName = pathParts.pop();
+        const folderPath = pathParts.join('/');
 
-    } catch (err) {
-      console.error("Erro ao carregar:", err);
+        const { data: files, error: storageErr } = await supabase
+          .storage
+          .from('documentos_clientes')
+          .list(folderPath || undefined, {
+            search: fileName
+          });
+
+        const fileInfo = files?.find(f => f.name === fileName);
+
+        if (!storageErr && fileInfo) {
+          await supabase
+            .from('tab_documentos')
+            .update({ tamanho_bytes: fileInfo.metadata.size })
+            .eq('id', doc.id);
+        }
+      }
+
+      await fetchUsoStorage();
+      alert("Sincronização concluída!");
+    } catch (err: any) {
+      console.error("Erro ao reparar:", err);
+      alert("Erro na sincronização: " + err.message);
     } finally {
-      setLoadingData(false);
+      setIsSyncingStorage(false);
     }
-  }, [user]);
-
-  // 2. BUSCAR ASSINATURA DETALHADA
-  const fetchAssinatura = useCallback(async () => {
-    // ALTERAÇÃO: Usar userProfile?.corretora_id em vez de user.id
-    if (!userProfile?.corretora_id) return;
-
-    const { data, error } = await supabase
-      .from('tab_planos')
-      .select('*')
-      .eq('corretora_id', userProfile.corretora_id) // VILÃO ENCONTRADO AQUI
-      .order('data_inicio', { ascending: false })
-      .limit(1)
-      .maybeSingle(); // Usamos maybeSingle para evitar erro caso não exista plano
-
-    if (data) setAssinaturaDb(data);
-    if (error) console.error("Erro ao buscar assinatura:", error.message);
-  }, [userProfile?.corretora_id]); // Dependência atualizada
-
-  useEffect(() => { fetchConfig(); }, [fetchConfig]);
+  };
 
   useEffect(() => {
-    if (activeTab === "plano") fetchAssinatura();
-  }, [activeTab, fetchAssinatura]);
+    if (user?.id) fetchConfig();
+  }, [user?.id, fetchConfig]);
+
+  useEffect(() => {
+    if (activeTab === "plano" && userProfile?.corretora_id) {
+      fetchAssinatura();
+      fetchUsoStorage();
+    }
+  }, [activeTab, userProfile?.corretora_id, fetchAssinatura, fetchUsoStorage]);
+
+  if (authLoading || (fetchingConfig && !form.razao_social)) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-white dark:bg-zinc-950">
+        <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+        <p className="text-slate-500 font-medium animate-pulse">Autenticando sessão segura...</p>
+      </div>
+    );
+  }
+
+  if (!userProfile || userProfile.tipo_usuario !== "CORRETORA") {
+    return (
+      <div className="max-w-md mx-auto mt-20 p-8 bg-white dark:bg-zinc-900 rounded-[32px] border border-red-100 text-center">
+        <ShieldAlert className="text-red-600 mx-auto mb-4" size={48} />
+        <h2 className="text-xl font-bold mb-2">Acesso Restrito</h2>
+        <button onClick={() => navigate(-1)} className="mt-4 bg-slate-100 px-6 py-2 rounded-xl">Voltar</button>
+      </div>
+    );
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
     let finalValue: any = type === "checkbox" ? checked : value;
     if (name === "cnpj") finalValue = maskCNPJ(value);
-    if (name === "whatsapp_comercial" || name === "ddd_telefone_1" || name === "telefone_responsavel") finalValue = maskPhone(value);
+    if (["whatsapp_comercial", "ddd_telefone_1", "telefone_responsavel"].includes(name)) finalValue = maskPhone(value);
     setForm(prev => ({ ...prev, [name]: finalValue }));
   };
 
@@ -130,15 +226,17 @@ export default function ConfigCorretora() {
     try {
       setUploading(true);
       if (!e.target.files || e.target.files.length === 0) return;
-      if (!user) return;
       const file = e.target.files[0];
       const fileExt = file.name.split('.').pop()?.toLowerCase();
-      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+      const fileName = `${user?.id}-${Math.random()}.${fileExt}`;
+      
       const { error: uploadError } = await supabase.storage.from('logo_corretoras').upload(fileName, file);
       if (uploadError) throw uploadError;
+
       const { data: { publicUrl } } = supabase.storage.from('logo_corretoras').getPublicUrl(fileName);
-      setForm(prev => ({ ...prev, logotipo_url: publicUrl.trim().toLowerCase() }));
-    } catch (error: any) { alert('Erro ao fazer upload: ' + error.message); } 
+      setForm(prev => ({ ...prev, logotipo_url: publicUrl }));
+      await fetchUsoStorage();
+    } catch (error: any) { alert('Erro no upload: ' + error.message); } 
     finally { setUploading(false); }
   }
 
@@ -152,20 +250,18 @@ export default function ConfigCorretora() {
         ...prev,
         razao_social: (data.razao_social || "").toUpperCase(),
         nome_fantasia: (data.nome_fantasia || "").toUpperCase(),
-        descricao_identificador_matriz_filial: (data.descricao_identificador_matriz_filial || "").toUpperCase(),
         natureza_juridica: (data.natureza_juridica || "").toUpperCase(),
         porte: (data.porte || "").toUpperCase(),
         capital_social: data.capital_social?.toString() || "",
         ddd_telefone_1: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : "",
-        opcao_pelo_mei: data.opcao_pelo_mei || false,
-        opcao_pelo_simples: data.opcao_pelo_simples || false,
+        opcao_pelo_mei: !!data.opcao_pelo_mei,
+        opcao_pelo_simples: !!data.opcao_pelo_simples,
         cep: data.cep || prev.cep,
         logradouro: (data.logradouro || "").toUpperCase(),
         bairro: (data.bairro || "").toUpperCase(),
         municipio: (data.municipio || "").toUpperCase(),
         uf: (data.uf || "").toUpperCase(),
         numero: data.numero || "",
-        complemento: (data.complemento || "").toUpperCase(),
       }));
     } catch { alert("Erro ao buscar CNPJ."); }
     finally { setLoadingCNPJ(false); }
@@ -196,17 +292,13 @@ export default function ConfigCorretora() {
     const payload: any = {};
     const lowercaseFields = ["logotipo_url", "website", "instagram", "facebook", "email_corporativo", "email_responsavel"];
     
-    // CORREÇÃO: Filtramos o payload para não enviar objetos de join (como usuarios_perfis)
     Object.keys(form).forEach(key => {
-      if (key === "usuarios_perfis") return; 
-
+      if (["usuarios_perfis", "storage_usado_bytes"].includes(key)) return; 
       const value = (form as any)[key];
       if (typeof value === "string" && value.trim() === "") {
         payload[key] = null;
       } else if (key === "capital_social") {
         payload[key] = value ? parseFloat(value.toString().replace(",", ".")) : null;
-      } else if (typeof value === "boolean") {
-        payload[key] = value;
       } else if (lowercaseFields.includes(key)) {
         payload[key] = typeof value === "string" ? value.toLowerCase().trim() : value;
       } else {
@@ -214,46 +306,16 @@ export default function ConfigCorretora() {
       }
     });
 
-    payload.id = userProfile?.corretora_id || user.id;
+    payload.id = userProfile?.corretora_id;
 
     try {
       const { error } = await supabase.from("tab_corretora_config").upsert(payload);
       if (error) throw error;
-      
       window.dispatchEvent(new CustomEvent("logoUpdated", { detail: payload.logotipo_url }));
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
-    } catch (err: any) {
-      alert(`Erro ao salvar: ${err.message || "Verifique o console"}`);
-    } finally { setLoading(false); }
-  }
-
-  // Renderização do bloqueio
-  if (!isAuthorized && !loadingData) {
-    return (
-      <div className="max-w-md mx-auto mt-20 p-8 bg-white dark:bg-zinc-900 rounded-[32px] border border-red-100 dark:border-red-900/30 text-center shadow-xl">
-        <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <ShieldAlert className="text-red-600" size={32} />
-        </div>
-        <h2 className="text-xl font-bold mb-2 text-slate-900 dark:text-white">Acesso Restrito</h2>
-        <p className="text-zinc-500 mb-6">Apenas administradores da corretora podem gerenciar as configurações e assinaturas.</p>
-        <button 
-          onClick={() => navigate(-1)} 
-          className="bg-slate-100 dark:bg-zinc-800 px-6 py-2 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 transition-all"
-        >
-          Voltar
-        </button>
-      </div>
-    );
-  }
-
-  if (loadingData) {
-    return (
-      <div className="h-96 flex flex-col items-center justify-center">
-        <Loader2 className="animate-spin text-blue-600 mb-2" size={32} />
-        <p className="text-slate-500 animate-pulse">Carregando dados da corretora...</p>
-      </div>
-    );
+    } catch (err: any) { alert(`Erro: ${err.message}`); } 
+    finally { setLoading(false); }
   }
 
   return (
@@ -310,7 +372,7 @@ export default function ConfigCorretora() {
                   </div>
                 </div>
               </div>
-              <div className="md:col-span-2"><Input label="Capital Social" name="capital_social" type="number" value={form.capital_social} onChange={handleChange} readOnly /></div>
+              <div className="md:col-span-2"><Input label="Capital Social" name="capital_social" value={form.capital_social} onChange={handleChange} readOnly /></div>
               <div className="md:col-span-2"><Input label="Porte" name="porte" value={form.porte} onChange={handleChange} readOnly /></div>
             </div>
           </Section>
@@ -337,7 +399,7 @@ export default function ConfigCorretora() {
               <Input label="Website" name="website" icon={<Globe size={14}/>} value={form.website} onChange={handleChange} />
               <Input label="Instagram" name="instagram" icon={<Instagram size={14}/>} value={form.instagram} onChange={handleChange} />
               <Input label="Facebook" name="facebook" icon={<Facebook size={14}/>} value={form.facebook} onChange={handleChange} />
-              <Input label="Registro SUSEP" name="registro_susep" required value={form.registro_susep} onChange={handleChange} placeholder="Obrigatório para PJ" icon={<FileText size={14}/>} />
+              <Input label="Registro SUSEP" name="registro_susep" value={form.registro_susep} onChange={handleChange} placeholder="Obrigatório para PJ" icon={<FileText size={14}/>} />
             </div>
           </Section>
 
@@ -376,76 +438,102 @@ export default function ConfigCorretora() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-600 shadow-inner">
-                  <CreditCard size={28} />
+                  <ShieldCheck size={28} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-black text-xl text-slate-900 dark:text-white uppercase">Plano {form.plano}</h3>
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${form.status_pagamento === 'ATIVO' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                      {form.status_pagamento}
+                    <h3 className="font-black text-xl text-slate-900 dark:text-white uppercase">
+                      Plano {assinaturaDb?.plano_nome || form.plano || 'FREE'}
+                    </h3>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${(form?.status_pagamento || 'PENDENTE') === 'ATIVO' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                      {form?.status_pagamento || 'STATUS INDEFINIDO'}
                     </span>
                   </div>
                   <p className="text-slate-500 text-sm mt-0.5">
-                    {form.plano === 'FREE' 
-                      ? (form.status_pagamento === 'ATIVO' ? 'Você está no período de teste de 7 dias.' : 'Seu período de teste expirou. Contrate um plano para continuar.')
-                      : `Sua assinatura ${form.plano} está ${form.status_pagamento.toLowerCase()}.`}
+                    {form?.plano === 'FREE' ? 'Período de teste de 7 dias.' : 'Assinatura profissional identificada.'}
                   </p>
                 </div>
               </div>
               <button type="button" onClick={() => setIsModalPlanosOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-2xl font-bold text-sm transition-all shadow-lg shadow-blue-500/20 active:scale-95">
-                {form.plano === 'FREE' ? 'Escolher Plano Pro' : 'Gerenciar Assinatura'}
+                {form?.plano === 'FREE' ? 'Escolher Plano Pro' : 'Gerenciar Plano'}
               </button>
             </div>
 
-            {assinaturaDb && assinaturaDb.status_assinatura === 'PENDENTE' && (
-              <div className="mt-8 p-6 bg-amber-50/30 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/20 rounded-2xl border-dashed">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-2 h-2 bg-amber-500 rounded-full animate-ping" />
-                  <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-500 tracking-wider">Upgrade solicitado: Aguardando Pagamento</span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {assinaturaDb ? (
+              <div className="mt-8 p-6 bg-slate-50/50 dark:bg-zinc-800/30 border border-slate-100 dark:border-zinc-800 rounded-2xl">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Novo Plano</p>
-                    <p className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase">{assinaturaDb.plano_nome}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Valor</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Investimento</p>
                     <p className="text-sm font-black text-slate-700 dark:text-slate-200">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(assinaturaDb.valor_total)}
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(assinaturaDb?.valor_total || 0))}
                     </p>
                   </div>
+                  
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Usuários Extras</p>
-                    <p className="text-sm font-black text-slate-700 dark:text-slate-200">+{assinaturaDb.qtd_usuarios_adicionais}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Usuários Extras</p>
+                    <p className="text-sm font-black text-slate-700 dark:text-slate-200">+{assinaturaDb?.qtd_usuarios_adicionais || 0} contas</p>
                   </div>
+
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Site OnePage</p>
-                    <p className={`text-sm font-black ${assinaturaDb.possui_site ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      {assinaturaDb.possui_site ? '✅ INCLUSO' : '❌ NÃO INCLUSO'}
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Site Corporativo</p>
+                    <p className={`text-sm font-black ${assinaturaDb?.possui_site ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {assinaturaDb?.possui_site ? 'ATIVADO' : 'NÃO INCLUSO'}
                     </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Armazenamento IA</p>
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm font-black text-blue-600">
+                        {usoStorage.mb.toFixed(2)} MB <span className="text-slate-400 font-medium">/ {assinaturaDb?.storage_limite_mb || 50} MB</span>
+                      </p>
+                      
+                      <div className="w-full h-1.5 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full transition-all duration-700 ${usoStorage.percentual > 90 ? 'bg-red-500' : 'bg-blue-600'}`}
+                          style={{ width: `${usoStorage.percentual}%` }}
+                        />
+                      </div>
+                      
+                      <p className="text-[9px] text-slate-400 leading-tight">
+                        Soma total da corretora e corretores vinculados.
+                      </p>
+
+                      <button 
+                        onClick={repairStorageSizes}
+                        disabled={isSyncingStorage}
+                        className="mt-2 flex items-center justify-start gap-2 text-[10px] font-bold uppercase tracking-tighter text-blue-500 hover:text-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {isSyncingStorage ? <Loader2 className="animate-spin" size={12} /> : <Save size={12} />}
+                        {isSyncingStorage ? "Sincronizando..." : "Atualizar Tamanho Real"}
+                      </button>
+                    </div>
                   </div>
                 </div>
+              </div>
+            ) : (
+              <div className="mt-8 p-6 border border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl text-center">
+                <p className="text-sm text-slate-400 italic">Carregando detalhes do plano...</p>
               </div>
             )}
 
             <div className="mt-6 pt-6 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between text-xs text-slate-400">
-               <div className="flex items-center gap-2">
-                <div className={`w-1.5 h-1.5 rounded-full ${form.status_pagamento === 'ATIVO' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                <span>{form.plano === 'FREE' ? 'Seu período de teste expira em:' : 'Data de renovação/expiração:'}</span>
+              <div className="flex items-center gap-2">
+                <div className={`w-1.5 h-1.5 rounded-full ${(form?.status_pagamento || 'PENDENTE') === 'ATIVO' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                <span>Próxima renovação:</span>
                 <span className="font-bold text-slate-600 dark:text-slate-300 ml-1">
-                  {new Date(form.data_expiracao).toLocaleDateString('pt-BR')}
+                  {form?.data_expiracao ? new Date(form.data_expiracao).toLocaleDateString('pt-BR') : '--/--/----'}
                 </span>
               </div>
             </div>
           </div>
-          <ModalPlanos isOpen={isModalPlanosOpen} onClose={() => { setIsModalPlanosOpen(false); fetchConfig(); fetchAssinatura(); }} planoAtual={form.plano} />
+          <ModalPlanos isOpen={isModalPlanosOpen} onClose={() => { setIsModalPlanosOpen(false); fetchConfig(); fetchAssinatura(); }} planoAtual={form?.plano || 'FREE'} />
         </div>
       )}
     </div>
   );
 }
 
-// COMPONENTES AUXILIARES (FOCADOS EM PRECISÃO)
 function Section({ title, icon, children }: any) {
   return (
     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[24px] shadow-sm overflow-hidden">
@@ -465,7 +553,7 @@ function Input({ label, icon, className = "", ...props }: any) {
         {icon && <span className="absolute left-4 text-slate-400">{icon}</span>}
         <input 
           {...props} 
-          value={props.value ?? ""} 
+          value={props.value ?? ""}
           className={`w-full h-11 ${icon ? 'pl-11' : 'px-4'} rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all ${className}`} 
         />
       </div>
