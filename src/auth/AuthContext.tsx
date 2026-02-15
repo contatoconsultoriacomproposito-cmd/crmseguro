@@ -1,83 +1,111 @@
-import { createContext, useContext, useEffect, useState } from "react"
+// src/auth/AuthContext.tsx
+import { createContext, useContext, useEffect, useState, useRef } from "react"
 import type { User } from "@supabase/supabase-js"
 import { supabase } from "../lib/supabaseClient"
 
 interface AuthContextData {
-  user: User | null
-  userProfile: any | null // Dados da tabela usuarios_perfis
+  user: User | null | undefined // undefined = inicializando, null = deslogado
+  userProfile: any | null
   loading: boolean
   signOut: () => Promise<void>
-  refreshProfile: () => Promise<void> // Para atualizar após mudar config
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  // Mudança Crucial: user começa como undefined para evitar que o App.tsx redirecione antes da hora
+  const [user, setUser] = useState<User | null | undefined>(undefined)
   const [userProfile, setUserProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
+  
+  // Ref para evitar que o onAuthStateChange atropele o init() no F5
+  const isInitializing = useRef(true)
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('usuarios_perfis')
-      .select('*')
-      .eq('id', userId)
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('usuarios_perfis')
+        .select('*')
+        .eq('id', userId)
+        .single()
+      if (error) return null
+      return data
+    } catch {
+      return null
+    }
+  }
 
-    // SE O USUÁRIO ESTIVER INATIVO, DESLOGAMOS AQUI NO NÍVEL DO CONTEXTO
-    if (data && data.ativo === false) {
+  const handleUserSession = async (sessionUser: User | null) => {
+    if (!sessionUser) {
+      setUser(null)
+      setUserProfile(null)
+      setLoading(false)
+      return
+    }
+
+    const profile = await fetchProfile(sessionUser.id)
+
+    if (profile && profile.ativo === false) {
       await supabase.auth.signOut()
       setUser(null)
       setUserProfile(null)
-      return null
+    } else {
+      setUser(sessionUser)
+      setUserProfile(profile)
     }
-
-    setUserProfile(data)
-    return data
+    
+    setLoading(false)
+    isInitializing.current = false
   }
 
   useEffect(() => {
-    // Checagem inicial
-    supabase.auth.getUser().then(async ({ data }) => {
-      const currentUser = data.user
-      if (currentUser) {
-        setUser(currentUser)
-        await fetchProfile(currentUser.id)
-      }
-      setLoading(false) // Só libera o app após a checa do perfil
-    })
+    // 1. Busca imediata da sessão (Executa uma única vez no F5)
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      await handleUserSession(session?.user ?? null)
+    }
 
+    init()
+
+    // 2. Listener de eventos de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUser = session?.user ?? null
-      
-      if (event === 'SIGNED_IN' && currentUser) {
-        const perfil = await fetchProfile(currentUser.id)
-        // Se fetchProfile retornar null (inativo), o setUser(null) já foi feito lá dentro
-        if (perfil) setUser(currentUser)
+      // Ignora eventos iniciais redundantes enquanto o init() está rodando
+      if (isInitializing.current && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+        return
+      }
+
+      if (event === 'SIGNED_IN') {
+        await handleUserSession(session?.user ?? null)
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setUserProfile(null)
+        setLoading(false)
       }
-      
-      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
   async function signOut() {
-    await supabase.auth.signOut()
-    setUser(null)
-    setUserProfile(null)
+    try {
+      await supabase.auth.signOut()
+    } finally {
+      setUser(null)
+      setUserProfile(null)
+    }
   }
 
   const refreshProfile = async () => {
-    if (user) await fetchProfile(user.id)
+    if (user) {
+      const data = await fetchProfile(user.id)
+      setUserProfile(data)
+    }
   }
 
   return (
     <AuthContext.Provider value={{ user, userProfile, loading, signOut, refreshProfile }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   )
 }

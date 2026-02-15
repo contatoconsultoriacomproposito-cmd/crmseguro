@@ -7,17 +7,16 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 // Cliente para o Dashboard (Onde o login do corretor fica salvo)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storageKey: 'sb-corretor-auth', // Chave exclusiva
+    storageKey: 'sb-corretor-auth',
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: false // 🔥 Desativado para matar o loop no F5
   }
 });
 
 // Cliente Público / Cadastro (Não olha para a sessão do dashboard)
 export const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storageKey: 'sb-public-temp', // Chave diferente para não conflitar com o login ativo
-    persistSession: false, 
+    persistSession: false,
     autoRefreshToken: false,
     detectSessionInUrl: false
   }
