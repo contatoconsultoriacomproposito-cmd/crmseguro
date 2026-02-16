@@ -1,5 +1,4 @@
-// src/auth/AuthContext.tsx
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState, useCallback } from "react"
 import type { User } from "@supabase/supabase-js"
 import { supabase } from "../lib/supabaseClient"
 
@@ -11,137 +10,128 @@ interface AuthContextData {
   refreshProfile: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextData>(
-  {} as AuthContextData
-)
+const AuthContext = createContext<AuthContextData>({} as AuthContextData)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // ==============================
-  // Buscar perfil (não bloqueia auth)
-  // ==============================
-  const fetchProfile = async (userId: string) => {
+  const handleSignOut = useCallback(async () => {
+    console.log("🚨 [AUTH] Executando handleSignOut...");
+    try {
+      await supabase.auth.signOut();
+      localStorage.removeItem("sb-corretor-auth");
+      console.log("✅ [AUTH] Storage limpo com sucesso.");
+    } catch (e) {
+      console.error("❌ [AUTH] Erro ao deslogar:", e);
+    } finally {
+      setUser(null);
+      setUserProfile(null);
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    console.log(`🔍 [AUTH] Buscando perfil para ID: ${userId}`);
     const { data, error } = await supabase
       .from("usuarios_perfis")
       .select("*")
       .eq("id", userId)
-      .maybeSingle()
+      .maybeSingle();
 
     if (error) {
-      console.error("Erro ao buscar perfil:", error)
-      return null
+      console.error("❌ [AUTH] Erro no fetchProfile:", error);
+      return null;
     }
+    return data;
+  }, []);
 
-    return data
-  }
-
-  // ==============================
-  // Inicialização à prova de recovery travado
-  // ==============================
   useEffect(() => {
-  let mounted = true
+  let mounted = true;
+  // FLAG CRÍTICA: Impede que o evento onAuthStateChange interfira no boot inicial
+  let isInitializing = true; 
+
+  console.log("🚀 [AUTH] Boot iniciado...");
 
   async function initialize() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        console.log("⚠️ [AUTH] Sem sessão inicial.");
+        if (mounted) setLoading(false);
+        isInitializing = false;
+        return;
+      }
 
-    if (!mounted) return
+      console.log("2️⃣ [AUTH] Validando no servidor...");
+      const { data: { user: verifiedUser }, error: userError } = await supabase.auth.getUser();
 
-    if (!session?.user) {
-      setUser(null)
-      setUserProfile(null)
-      setLoading(false)
-      return
+      if (userError || !verifiedUser) {
+        console.error("❌ [AUTH] Token inválido!");
+        if (mounted) await handleSignOut();
+        isInitializing = false;
+        return;
+      }
+
+      const profile = await fetchProfile(verifiedUser.id);
+
+      if (mounted) {
+        if (profile?.ativo === false) {
+          await handleSignOut();
+        } else {
+          setUser(verifiedUser);
+          setUserProfile(profile);
+          console.log("✅ [AUTH] Boot finalizado com sucesso.");
+        }
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error("💥 [AUTH] Erro no boot:", error);
+      if (mounted) {
+        await handleSignOut();
+        setLoading(false);
+      }
+    } finally {
+      isInitializing = false; // Libera o onAuthStateChange
     }
-
-    setUser(session.user)
-    setLoading(false)
-
-    const profile = await fetchProfile(session.user.id)
-
-    if (!mounted) return
-
-    if (profile?.ativo === false) {
-      await supabase.auth.signOut()
-      return
-    }
-
-    setUserProfile(profile)
   }
 
-  initialize()
+  initialize();
 
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange(
-    async (_event, session) => {
-      if (!mounted) return
-
-      if (!session?.user) {
-        setUser(null)
-        setUserProfile(null)
-        return
-      }
-
-      setUser(session.user)
-
-      const profile = await fetchProfile(session.user.id)
-
-      if (!mounted) return
-
-      if (profile?.ativo === false) {
-        await supabase.auth.signOut()
-        return
-      }
-
-      setUserProfile(profile)
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // SE ESTIVER INICIALIZANDO, IGNORA O EVENTO (O initialize já vai cuidar disso)
+    if (isInitializing) {
+      console.log(`⏳ [AUTH] Evento ${event} ignorado durante o boot.`);
+      return;
     }
-  )
+
+    console.log(`🔔 [AUTH] Evento Pós-Boot: ${event}`);
+    if (!mounted) return;
+
+    if (event === 'SIGNED_OUT') {
+      await handleSignOut();
+    } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      if (session?.user) {
+        setUser(session.user);
+        const profile = await fetchProfile(session.user.id);
+        setUserProfile(profile);
+      }
+    }
+  });
 
   return () => {
-    mounted = false
-    subscription.unsubscribe()
-  }
-}, [])
-
-
-  // ==============================
-  // Logout
-  // ==============================
-  async function signOut() {
-    await supabase.auth.signOut()
-    setUser(null)
-    setUserProfile(null)
-  }
-
-  // ==============================
-  // Atualizar perfil manualmente
-  // ==============================
-  async function refreshProfile() {
-    if (!user) return
-    const profile = await fetchProfile(user.id)
-    setUserProfile(profile)
-  }
+    mounted = false;
+    subscription.unsubscribe();
+  };
+}, [fetchProfile, handleSignOut]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        userProfile,
-        loading,
-        signOut,
-        refreshProfile,
-      }}
-    >
+    <AuthContext.Provider value={{ user, userProfile, loading, signOut: handleSignOut, refreshProfile: async () => {} }}>
       {children}
     </AuthContext.Provider>
   )
 }
 
-export function useAuth() {
-  return useContext(AuthContext)
-}
+export function useAuth() { return useContext(AuthContext) }

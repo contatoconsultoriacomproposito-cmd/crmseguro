@@ -43,6 +43,7 @@ import { ComissoesLista } from "./pages/comissoes/ComissoesLista"
 // ===============================
 function PrivateWrapper() {
   const { user, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -52,8 +53,9 @@ function PrivateWrapper() {
     )
   }
 
+  // Se não houver user, mandamos para a home e salvamos de onde ele veio
   if (!user) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/" state={{ from: location }} replace />
   }
 
   return <Outlet />
@@ -75,13 +77,13 @@ function PublicOnlyWrapper() {
     )
   }
 
+  // Se já está logado e tenta ir para a Home (/), jogamos para o Dashboard
   if (user) {
     return <Navigate to="/dashboard" replace />
   }
 
   return <Outlet />
 }
-
 
 
 // ===============================
