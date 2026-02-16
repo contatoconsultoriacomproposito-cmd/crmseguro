@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../auth/AuthContext';
+import { toast } from 'sonner';
 
 // Importação dos modais
-import { ModalInclusaoAcao } from '../components/kanban/ModalInclusaoAcao';
-import { ModalGerenciamentoSinistro } from '../components/kanban/components_visual_card/ModalGerenciamentoSinistro';
 import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
+import ModalContato from '../pages/agenda/modalcontatos';
 
 interface Notificacao {
   id: string;
@@ -31,6 +31,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const { user } = useAuth();
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [modalAtivo, setModalAtivo] = useState<{ tipo: string, id: string } | null>(null);
+  const [clienteParaModal, setClienteParaModal] = useState<any>(null);
 
   const carregarNotificacoes = useCallback(async () => {
     if (!user) return;
@@ -187,22 +188,20 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    if (n.tipo === 'SINISTRO') {
-      const { data } = await supabase
-        .from('tab_sinistros')
-        .select('id')
-        .eq('cliente_id', n.ref_id)
-        .eq('status', 'Aberto')
-        .maybeSingle();
+    // MANOBRA: Comercial e Sinistro agora buscam o cliente para o ModalContato
+    if (n.tipo === 'COMERCIAL' || n.tipo === 'SINISTRO') {
+      const { data: cliente } = await supabase
+        .from('tab_clientes')
+        .select('*')
+        .eq('id', n.ref_id)
+        .single();
 
-      if (data) {
-        setModalAtivo({ tipo: 'SINISTRO', id: data.id });
+      if (cliente) {
+        setClienteParaModal(cliente);
+        setModalAtivo({ tipo: 'CONTATO_GERAL', id: n.ref_id });
       } else {
-        alert("Sinistro não encontrado ou já encerrado.");
-        carregarNotificacoes();
+        toast.error("Cliente não encontrado.");
       }
-    } else {
-      setModalAtivo({ tipo: 'COMERCIAL', id: n.ref_id });
     }
   };
 
@@ -237,22 +236,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }}>
       {children}
       
-      {/* RENDERIZAÇÃO DOS MODAIS CONDICIONAIS */}
-      {modalAtivo?.tipo === 'COMERCIAL' && (
-        <ModalInclusaoAcao 
-          clienteId={modalAtivo.id}
-          onClose={() => setModalAtivo(null)}
-          onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
-        />
-      )}
       
-      {modalAtivo?.tipo === 'SINISTRO' && (
-        <ModalGerenciamentoSinistro 
-          sinistroId={modalAtivo.id}
-          onClose={() => setModalAtivo(null)}
-          onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
-        />
-      )}
       
       {modalAtivo?.tipo === 'RENOVACAO' && (
         <ModalGerenciamentoRenovacao 
@@ -261,6 +245,23 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
         />
       )}
+
+      {modalAtivo?.tipo === 'CONTATO_GERAL' && clienteParaModal && (
+        <ModalContato 
+          isOpen={true}
+          cliente={clienteParaModal}
+          onClose={() => {
+            setModalAtivo(null);
+            setClienteParaModal(null);
+          }}
+          onSuccess={() => {
+            carregarNotificacoes();
+            setModalAtivo(null);
+            setClienteParaModal(null);
+          }}
+        />
+      )}
+
     </NotificationContext.Provider>
   );
 };
