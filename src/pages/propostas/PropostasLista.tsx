@@ -85,7 +85,7 @@ export default function PropostasLista() {
   XLSX.writeFile(wb, `Relatorio_Propostas_${new Date().getTime()}.xlsx`);
 };
 
-  const exportarPDF = () => {
+const exportarPDF = () => {
   const doc = new jsPDF({ orientation: 'landscape' });
   
   doc.setFontSize(14);
@@ -94,13 +94,20 @@ export default function PropostasLista() {
   const totalGeral = propostasFiltradas.reduce((sum, p) => sum + (Number(p.valor_total_proposta) || 0), 0);
 
   const tableData = propostasFiltradas.map(p => {
+    // Extração de nomes de produtos
     const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
       opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
     ))).filter(Boolean).join(', ');
 
+    // Extração dos números de cotação (Resolvendo o erro de Cannot find name)
+    const numCotacao = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+      opt.tab_proposta_itens?.map((i: any) => i.numero_cotacao)
+    ))).filter(Boolean).join(' / ');
+
     return [
       p.numero_proposta,
       p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
+      numCotacao || "-", // Nova Coluna
       p.tab_proposta_opcoes?.length || 0,
       produtosNomes || "-",
       p.status,
@@ -109,13 +116,14 @@ export default function PropostasLista() {
   });
 
   autoTable(doc, {
-    head: [['Nº Proposta', 'Cliente', 'Cot.', 'Produtos Cotados', 'Status', 'Valor']],
+    // Adicionado 'Nº Cotação' no cabeçalho
+    head: [['Nº Proposta', 'Cliente', 'Nº Cotação', 'Cot.', 'Produtos Cotados', 'Status', 'Valor']],
     body: tableData,
     foot: [[
-      { content: 'TOTALIZADOR GERAL', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
+      { content: 'TOTALIZADOR GERAL', colSpan: 6, styles: { halign: 'right', fontStyle: 'bold' } },
       { content: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalGeral), styles: { fontStyle: 'bold' } }
     ]],
-    showFoot: 'lastPage', // ESTA LINHA resolve o problema: mostra o rodapé apenas na última página
+    showFoot: 'lastPage',
     startY: 20,
     theme: 'grid',
     styles: { 
@@ -123,12 +131,13 @@ export default function PropostasLista() {
       cellPadding: 2 
     },
     columnStyles: {
-      0: { cellWidth: 35 },
-      1: { cellWidth: 60 },
-      2: { cellWidth: 12, halign: 'center' },
-      3: { cellWidth: 80 },
-      4: { cellWidth: 30 },
-      5: { cellWidth: 40, halign: 'right' }
+      0: { cellWidth: 25 }, // Nº Proposta
+      1: { cellWidth: 45 }, // Cliente
+      2: { cellWidth: 35 }, // Nº Cotação (Nova)
+      3: { cellWidth: 10, halign: 'center' }, // Cot.
+      4: { cellWidth: 85 }, // Produtos
+      5: { cellWidth: 25 }, // Status
+      6: { cellWidth: 35, halign: 'right' } // Valor
     },
     headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
     footStyles: { fillColor: [241, 245, 249], textColor: 51, fontSize: 9 }
