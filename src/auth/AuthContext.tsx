@@ -17,9 +17,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userProfile, setUserProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   
-  // Refs para controle de fluxo e evitar loops
+  // Refs para controle de fluxo síncrono
   const isLoggingOut = useRef(false)
   const hasInitialized = useRef(false)
+  const activeUserIdRef = useRef<string | null>(null) // 🛡️ Trava mestre contra re-fetch
 
   const handleSignOut = useCallback(async () => {
     if (isLoggingOut.current) return
@@ -35,8 +36,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       setUser(null)
       setUserProfile(null)
+      activeUserIdRef.current = null // Limpa a trava
       
-      // Só redireciona se estiver em página privada
       if (window.location.pathname !== "/" && !window.location.pathname.startsWith("/portal")) {
         console.log("✅ [AUTH] Redirecionando para Home...")
         window.location.href = "/"
@@ -71,7 +72,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile])
 
   useEffect(() => {
-    // Se já inicializou uma vez, não permite reiniciar o efeito (Trava de Loop)
     if (hasInitialized.current) return
     hasInitialized.current = true
 
@@ -106,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (profile?.ativo === false) {
             await handleSignOut()
           } else {
+            activeUserIdRef.current = verifiedUser.id // 🔑 Ativa a trava aqui
             setUser(verifiedUser)
             setUserProfile(profile)
             console.log("✅ [AUTH] Boot concluído com sucesso.")
@@ -123,17 +124,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initialize()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Ignora eventos durante o boot inicial
       if (isInitializing) return
-
-      console.log(`🔔 [AUTH] Evento: ${event}`)
       if (!mounted) return
 
       if (event === 'SIGNED_OUT') {
+        activeUserIdRef.current = null
         await handleSignOut()
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      } 
+      else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user) {
-          // Só atualiza se o usuário mudou de fato
+          // 🛡️ TRAVA DEFINITIVA COM REF:
+          // Comparamos o ID da sessão com o ID guardado na Ref (que não atrasa como o estado)
+          if (activeUserIdRef.current === session.user.id) {
+            console.log("⏭️ [AUTH] Trava Ref: Usuário já ativo. Ignorando re-fetch silencioso.")
+            setLoading(false)
+            return
+          }
+
+          console.log(`🔔 [AUTH] Evento: ${event} - Usuário novo/diferente. Atualizando perfil...`)
+          activeUserIdRef.current = session.user.id // Atualiza a trava
+          
           setUser(session.user)
           const profile = await fetchProfile(session.user.id)
           setUserProfile(profile)
@@ -146,7 +156,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false
       subscription.unsubscribe()
     }
-    // REMOVIDO 'user' da lista de dependências para matar o loop infinito
   }, [fetchProfile, handleSignOut]) 
 
   return (
