@@ -50,10 +50,15 @@ export default function PropostasLista() {
 
   const exportarExcel = () => {
     const dadosParaExportar = propostasFiltradas.map(p => {
-      // Lógica de extração idêntica à da tabela visual
+      // 1. Extração dos Produtos (já existe)
       const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
         opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
       ))).filter(Boolean).join(', ');
+
+      // 2. ADICIONE ESTA LINHA: Extração dos Números de Cotação
+      const numerosCotacao = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+        opt.tab_proposta_itens?.map((i: any) => i.numero_cotacao)
+      ))).filter(Boolean).join(' / ');
 
       const qtdeCotacoes = p.tab_proposta_opcoes?.length || 0;
 
@@ -61,8 +66,9 @@ export default function PropostasLista() {
         "Proposta": p.numero_proposta,
         "Cliente": p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
         "Corretor": p.usuarios_perfis?.nome,
-        "Cotações": qtdeCotacoes, // Nova Coluna
-        "Produtos Cotados": produtosNomes || "NÃO INFORMADO", // Nova Coluna
+        "Nº Cotação": numerosCotacao || "NÃO INFORMADO", // 👈 AGORA A VARIÁVEL EXISTE AQUI
+        "Cotações": qtdeCotacoes,
+        "Produtos Cotados": produtosNomes || "NÃO INFORMADO",
         "Periodicidade": Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
           opt.tab_proposta_itens?.map((i: any) => i.periodicidade)
         ))).join(' / '), 
@@ -73,11 +79,11 @@ export default function PropostasLista() {
       };
     });
 
-    const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Propostas");
-    XLSX.writeFile(wb, `Relatorio_Propostas_${new Date().getTime()}.xlsx`);
-  };
+  const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Propostas");
+  XLSX.writeFile(wb, `Relatorio_Propostas_${new Date().getTime()}.xlsx`);
+};
 
   const exportarPDF = () => {
   const doc = new jsPDF({ orientation: 'landscape' });
@@ -184,6 +190,7 @@ export default function PropostasLista() {
           tab_proposta_opcoes (
             id,
             tab_proposta_itens (
+              numero_cotacao,
               periodicidade,
               base_produtos (nome)
             )
@@ -543,6 +550,7 @@ export default function PropostasLista() {
               <tr className="bg-slate-50/50">
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Proposta</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Cliente</th>
+                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Nº Cotação</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 text-center">Cotações</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Produtos Cotados</th>
                 <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Status</th>
@@ -580,6 +588,26 @@ export default function PropostasLista() {
                       </div>
                       <div className="text-[10px] text-slate-400 mt-1 font-medium italic">
                         Corretor: {p.usuarios_perfis?.nome}
+                      </div>
+                    </td>
+
+                    {/* 🚀 INSERIR ESTE BLOCO ABAIXO: */}
+                    <td className="p-5 border-b border-slate-50">
+                      <div className="flex flex-wrap gap-1 max-w-[180px]">
+                        {(() => {
+                          // Extrai todos os números de cotação dos itens de todas as opções
+                          const numeros = Array.from(new Set(
+                            p.tab_proposta_opcoes?.flatMap((opt: any) => 
+                              opt.tab_proposta_itens?.map((i: any) => i.numero_cotacao)
+                            )
+                          )).filter(Boolean);
+
+                          return numeros.length > 0 ? numeros.map((num: any, idx) => (
+                            <span key={idx} className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 text-[10px] font-bold">
+                              {num}
+                            </span>
+                          )) : <span className="text-[10px] text-slate-300 italic font-medium uppercase">Não gerado</span>;
+                        })()}
                       </div>
                     </td>
 
