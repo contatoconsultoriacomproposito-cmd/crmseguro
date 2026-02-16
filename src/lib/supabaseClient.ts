@@ -1,23 +1,74 @@
 // src/lib/supabaseClient.ts
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js"
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// ===============================
+// 🔐 Validação de variáveis
+// ===============================
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-// Cliente para o Dashboard (Onde o login do corretor fica salvo)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storageKey: 'sb-corretor-auth',
-    persistSession: true,
-    detectSessionInUrl: false // 🔥 Desativado para matar o loop no F5
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Supabase URL ou Anon Key não configuradas.")
+}
+
+// ===============================
+// 🧠 Singleton global (à prova de HMR)
+// ===============================
+declare global {
+  interface Window {
+    __supabase?: SupabaseClient
   }
-});
+}
 
-// Cliente Público / Cadastro (Não olha para a sessão do dashboard)
-export const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false
+function createSupabase() {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storageKey: "sb-corretor-auth",
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+    },
+    realtime: {
+      params: { eventsPerSecond: 10 },
+    },
+    global: {
+      headers: {
+        "X-Client-Info": "segurocrm-dashboard",
+      },
+    },
+  })
+}
+
+export const supabase =
+  window.__supabase ?? (window.__supabase = createSupabase())
+
+// ===============================
+// 🌎 Cliente Público isolado
+// ===============================
+export const supabasePublic = createClient(
+  supabaseUrl,
+  supabaseAnonKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   }
-});
+)
+
+// ===============================
+// 🚨 Helper 401 seguro
+// ===============================
+export async function safeQuery<T>(
+  promise: Promise<{ data: T | null; error: any }>
+): Promise<{ data: T | null; error: any }> {
+  const result = await promise
+
+  if (result.error?.status === 401) {
+    await supabase.auth.signOut()
+    window.location.replace("/login")
+  }
+
+  return result
+}
