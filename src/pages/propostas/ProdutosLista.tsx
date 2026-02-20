@@ -54,6 +54,8 @@ export default function ProdutosLista() {
   const [dataVendaFim, setDataVendaFim] = useState("");       // Novo
   const [selectedPeriodicidades, setSelectedPeriodicidades] = useState<string[]>([]); //novo
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]); // ADICIONE ESTA LINHA
+  const [selectedProdutos, setSelectedProdutos] = useState<string[]>([]);
+  const [listaProdutosUnicos, setListaProdutosUnicos] = useState<string[]>([]); // Para preencher o select/filtro
   
   
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -218,6 +220,8 @@ export default function ProdutosLista() {
         });
 
           setItens(formatado || []);
+          const prods = Array.from(new Set(formatado?.map(i => i.produto))).sort();
+          setListaProdutosUnicos(prods as string[]);
         } catch (error) {
           console.error("Erro ao carregar itens:", error);
         } finally {
@@ -255,6 +259,7 @@ export default function ProdutosLista() {
         (i.numero_apolice?.toLowerCase() || "").includes(filter.toLowerCase());
 
       const matchCorretor = selectedCorretores.length === 0 || selectedCorretores.includes(i.corretor_id);
+      const matchProdutoFiltro = selectedProdutos.length === 0 || selectedProdutos.includes(i.produto);
 
       const matchParceiro = selectedParceiros.length === 0 || 
         (selectedParceiros.includes("venda_direta") && !i.parceiro_id) || 
@@ -275,9 +280,9 @@ export default function ProdutosLista() {
 
       const matchStatus = selectedStatuses.length === 0 || selectedStatuses.includes(i.status);
 
-      return matchTexto && matchCorretor && matchParceiro && matchDataRenovacao && matchDataVenda && matchPeriodicidade && matchStatus;
+      return matchTexto && matchCorretor && matchParceiro && matchDataRenovacao && matchDataVenda && matchPeriodicidade && matchStatus && matchProdutoFiltro;
     });
-  }, [filter, dataInicio, dataFim, dataVendaInicio, dataVendaFim, selectedCorretores, selectedParceiros, selectedPeriodicidades, selectedStatuses, itens]);
+  }, [filter, dataInicio, dataFim, dataVendaInicio, dataVendaFim, selectedCorretores, selectedParceiros, selectedPeriodicidades, selectedStatuses, selectedProdutos, itens]);
 
   const exportarExcel = () => {
   // 1. Mapeia os dados normais
@@ -399,7 +404,7 @@ return (
 
         {/* FILTROS AVANÇADOS */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-5">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
                 <Users size={12}/> Corretores
@@ -484,14 +489,32 @@ return (
                 </div>
               </div>
             </div>
+
+            {/* FILTRO DE PRODUTOS - ADICIONADO AQUI */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-black text-indigo-500 uppercase flex items-center gap-1">
+                <ShoppingCart size={12}/> Produtos
+              </label>
+              <select 
+                multiple
+                className="w-full h-24 text-[11px] font-bold rounded-lg border-slate-200 bg-slate-50 p-2 outline-none focus:ring-2 focus:ring-blue-500/10"
+                value={selectedProdutos}
+                onChange={(e) => setSelectedProdutos(Array.from(e.target.selectedOptions, opt => opt.value))}
+              >
+                {listaProdutosUnicos.map(prod => (
+                  <option key={prod} value={prod}>{prod.toUpperCase()}</option>
+                ))}
+              </select>
+            </div>  
           </div>
 
-          {(selectedCorretores.length > 0 || selectedParceiros.length > 0 || selectedPeriodicidades.length > 0 || selectedStatuses.length > 0 || dataInicio || dataFim || dataVendaInicio || dataVendaFim) && (
+          {(selectedCorretores.length > 0 || selectedParceiros.length > 0 ||  selectedProdutos.length > 0 || selectedPeriodicidades.length > 0 || selectedStatuses.length > 0 || dataInicio || dataFim || dataVendaInicio || dataVendaFim) && (
             <div className="flex justify-end border-t border-slate-50 pt-3">
               <button 
                 onClick={() => {
                   if(userProfile?.tipo_usuario !== 'CORRETOR') setSelectedCorretores([]);
                   setSelectedParceiros([]);
+                  setSelectedProdutos([]);
                   setDataInicio("");
                   setDataFim("");
                   setDataVendaInicio("");
