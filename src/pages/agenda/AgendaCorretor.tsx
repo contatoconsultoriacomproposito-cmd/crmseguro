@@ -36,72 +36,96 @@ export default function AgendaCorretor() {
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null); // Estado para o tipo de usuário
   const processingCode = useRef(false);
 
-  const fetchCompromissos = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+const fetchCompromissos = useCallback(async () => {
+  try {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      const { data: perfil } = await supabase
-        .from("usuarios_perfis")
-        .select("id, tipo_usuario, corretora_id")
-        .eq("id", user.id)
-        .maybeSingle();
+    // 1️⃣ BUSCA O PERFIL DO USUÁRIO LOGADO
+    const { data: perfil, error: errorPerfil } = await supabase
+      .from("usuarios_perfis")
+      .select("id, tipo_usuario, corretora_id")
+      .eq("id", user.id)
+      .maybeSingle();
 
-      if (!perfil) return;
-
-      // Sincroniza o tipo de usuário no estado para uso no HTML
-      setTipoUsuario(perfil.tipo_usuario);
-
-      // BUSCA ÚNICA NA TAB_CLIENTES (Pega comercial e sinistro de uma vez)
-      const { data: clientes } = await supabase
-        .from('tab_clientes')
-        .select('id, nome, razao_social, tipo_cliente, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban')
-        .or(`data_retorno.not.is.null,data_retorno_sinistro.not.is.null`)
-        .eq('corretora_id', perfil.corretora_id)
-        .match(perfil.tipo_usuario === 'CORRETOR' ? { corretor_id: perfil.id } : {});
-
-      const eventosFormatados: EventoAgenda[] = [];
-
-      clientes?.forEach(cli => {
-        const nomeTitulo = cli.tipo_cliente === 'PJ' ? (cli.razao_social || 'Empresa') : (cli.nome || 'Cliente');
-
-        if (cli.data_retorno) {
-          eventosFormatados.push({
-            id: `${cli.id}_comercial`,
-            title: nomeTitulo,
-            start: `${cli.data_retorno}T${cli.horario_retorno || '09:00:00'}`,
-            extendedProps: { 
-              clienteId: cli.id, 
-              tipo: cli.tipo_cliente, 
-              fase: cli.fase_kanban || 'Lead', 
-              origem: 'COMERCIAL' 
-            }
-          });
-        }
-
-        if (cli.data_retorno_sinistro) {
-          eventosFormatados.push({
-            id: `${cli.id}_sinistro`,
-            title: `[SINISTRO] ${nomeTitulo}`,
-            start: `${cli.data_retorno_sinistro}T${cli.horario_retorno_sinistro || '09:00:00'}`,
-            extendedProps: { 
-              clienteId: cli.id, 
-              tipo: cli.tipo_cliente, 
-              fase: 'Acompanhamento', 
-              origem: 'SINISTRO' 
-            }
-          });
-        }
-      });
-
-      setEventos(eventosFormatados);
-    } catch (err) {
-      console.error("Erro Agenda:", err);
-    } finally {
-      setLoading(false);
+    if (errorPerfil || !perfil) {
+      console.error("Perfil não encontrado");
+      return;
     }
-  }, []);
+
+    setTipoUsuario(perfil.tipo_usuario);
+
+    // 2️⃣ MONTAGEM DA QUERY DINÂMICA
+    // Selecionamos os campos necessários de tab_clientes
+    let query = supabase
+      .from('tab_clientes')
+      .select('id, nome, razao_social, tipo_cliente, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban, corretora_id, corretor_id');
+
+    // Filtro Base: Garante que o cliente pertença à corretora do usuário
+    // IMPORTANTE: Para o Admin, perfil.corretora_id deve ser o ID da própria conta master.
+    query = query.eq('corretora_id', perfil.corretora_id);
+
+    // Filtro de Datas: Somente clientes que possuam algum agendamento (Comercial ou Sinistro)
+    query = query.or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
+
+    // 3️⃣ LÓGICA DE HIERARQUIA (O ponto chave)
+    // Se for um corretor comum, restringimos a busca apenas aos clientes vinculados a ele.
+    // Se for ADMIN ou CORRETORA, não aplicamos este filtro, permitindo ver todos da corretora_id.
+    if (perfil.tipo_usuario === 'CORRETOR') {
+      query = query.eq('corretor_id', perfil.id);
+    }
+
+    const { data: clientes, error: errorClientes } = await query;
+
+    if (errorClientes) throw errorClientes;
+
+    // 4️⃣ FORMATAÇÃO DOS EVENTOS PARA O CALENDÁRIO
+    const eventosFormatados: EventoAgenda[] = [];
+
+    clientes?.forEach(cli => {
+      const nomeTitulo = cli.tipo_cliente === 'PJ' 
+        ? (cli.razao_social || 'Empresa Sem Razão') 
+        : (cli.nome || 'Cliente Sem Nome');
+
+      // Agendamento Comercial
+      if (cli.data_retorno) {
+        eventosFormatados.push({
+          id: `${cli.id}_comercial`,
+          title: nomeTitulo,
+          start: `${cli.data_retorno}T${cli.horario_retorno || '09:00:00'}`,
+          extendedProps: { 
+            clienteId: cli.id, 
+            tipo: cli.tipo_cliente, 
+            fase: cli.fase_kanban || 'Lead', 
+            origem: 'COMERCIAL' 
+          }
+        });
+      }
+
+      // Agendamento de Sinistro
+      if (cli.data_retorno_sinistro) {
+        eventosFormatados.push({
+          id: `${cli.id}_sinistro`,
+          title: `[SINISTRO] ${nomeTitulo}`,
+          start: `${cli.data_retorno_sinistro}T${cli.horario_retorno_sinistro || '09:00:00'}`,
+          extendedProps: { 
+            clienteId: cli.id, 
+            tipo: cli.tipo_cliente, 
+            fase: 'Acompanhamento', 
+            origem: 'SINISTRO' 
+          }
+        });
+      }
+    });
+
+    setEventos(eventosFormatados);
+  } catch (err) {
+    console.error("Erro ao carregar compromissos da agenda:", err);
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   const verificarConexaoGoogle = useCallback(async () => {
     try {
@@ -123,40 +147,71 @@ export default function AgendaCorretor() {
     }
   }, []);
 
-  const sincronizarClientesExistentes = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+const sincronizarClientesExistentes = useCallback(async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      const { data: perfil } = await supabase
-        .from("usuarios_perfis")
-        .select("id, tipo_usuario, corretora_id")
-        .eq("id", user.id)
-        .single();
+    // 1️⃣ BUSCA O PERFIL DO USUÁRIO PARA DEFINIR O ESCOPO
+    const { data: perfil, error: perfilError } = await supabase
+      .from("usuarios_perfis")
+      .select("id, tipo_usuario, corretora_id")
+      .eq("id", user.id)
+      .single();
 
-      if (!perfil) return;
-
-      const { data: clientes } = await supabase
-        .from('tab_clientes')
-        .select('*')
-        .or(`corretor_id.eq.${perfil.id},corretora_id.eq.${perfil.id}`) 
-        .or(`data_retorno.not.is.null,data_retorno_sinistro.not.is.null`);
-
-      if (!clientes || clientes.length === 0) return;
-
-      toast.info(`Sincronizando ${clientes.length} agendamentos...`);
-
-      for (const cliente of clientes) {
-        await supabase.functions.invoke('sync-to-google-calendar', {
-          body: { record: cliente }
-        });
-      }
-
-      toast.success("Google Agenda populada com sucesso!");
-    } catch (err) {
-      console.error("Erro na carga inicial:", err);
+    if (perfilError || !perfil) {
+      console.error("Erro ao carregar perfil para sincronização");
+      return;
     }
-  }, []);
+
+    // 2️⃣ MONTAGEM DA QUERY DE CARGA INICIAL
+    // Filtramos obrigatoriamente pela corretora_id do perfil logado
+    let query = supabase
+      .from('tab_clientes')
+      .select('*')
+      .eq('corretora_id', perfil.corretora_id);
+
+    // Filtramos apenas clientes que possuam alguma data de retorno preenchida
+    query = query.or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
+
+    // 3️⃣ LÓGICA DE HIERARQUIA
+    // Se for CORRETOR, sincroniza apenas os dele.
+    // Se for ADMIN/CORRETORA, sincroniza TODOS os clientes da empresa.
+    if (perfil.tipo_usuario === 'CORRETOR') {
+      query = query.eq('corretor_id', perfil.id);
+    }
+
+    const { data: clientes, error: queryError } = await query;
+
+    if (queryError) throw queryError;
+
+    if (!clientes || clientes.length === 0) {
+      toast.info("Nenhum agendamento encontrado para sincronizar.");
+      return;
+    }
+
+    // 4️⃣ EXECUÇÃO DA SINCRONIZAÇÃO EM MASSA
+    toast.info(`Iniciando sincronização de ${clientes.length} agendamentos...`);
+
+    // Percorre todos os clientes encontrados
+    for (const cliente of clientes) {
+      // Invocamos a Edge Function passando o objeto completo do cliente (record)
+      // A Edge Function usará o cliente.corretora_id para buscar o token master
+      const { error: invokeError } = await supabase.functions.invoke('sync-to-google-calendar', {
+        body: { record: cliente }
+      });
+
+      if (invokeError) {
+        console.error(`Falha ao sincronizar cliente ${cliente.id}:`, invokeError);
+      }
+    }
+
+    toast.success("Google Agenda populada com sucesso!");
+  } catch (err) {
+    console.error("Erro crítico na sincronização inicial:", err);
+    toast.error("Erro ao sincronizar clientes com o Google.");
+  }
+}, []);
 
   const processarRetornoGoogle = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
@@ -250,20 +305,31 @@ export default function AgendaCorretor() {
 
     const GOOGLE_CLIENT_ID = "453100726787-a198m31oepdghl4c7b3o4pkle7hvqnkn.apps.googleusercontent.com";
     const REDIRECT_URI = `${window.location.origin}/agenda`;
-    const googleOAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly')}&access_type=offline&prompt=consent`;
+    const googleOAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly openid email')}&access_type=offline&prompt=select_account consent`;
     window.location.href = googleOAuthUrl;
   }
 
   async function handleEventChange(info: any) {
     const { extendedProps } = info.event;
     const clienteId = extendedProps.clienteId;
+    
+    // Formatação de data robusta
     const novaData = info.event.start.toLocaleDateString('en-CA'); 
-    const novoHorario = info.event.start.toLocaleTimeString('pt-BR', { hour12: false });
+    
+    // Formatação de hora corrigida (sem o erro de Range do 'second')
+    const novoHorario = info.event.start.toLocaleTimeString('pt-BR', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit', // Alterado de '00' para '2-digit'
+      hour12: false 
+    });
 
     try {
-      const updateData = extendedProps.origem === 'COMERCIAL' 
-        ? { data_retorno: novaData, horario_retorno: novoHorario }
-        : { data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario };
+      const isSinistro = extendedProps.origem === 'SINISTRO';
+      
+      const updateData = isSinistro 
+        ? { data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario }
+        : { data_retorno: novaData, horario_retorno: novoHorario };
 
       const { error: dbError } = await supabase
         .from('tab_clientes')
@@ -271,10 +337,11 @@ export default function AgendaCorretor() {
         .eq('id', clienteId);
 
       if (dbError) throw dbError;
-      toast.success("Data atualizada!");
+      
+      toast.success(`${isSinistro ? 'Sinistro' : 'Retorno'} atualizado!`);
     } catch (err: any) {
-      console.error("Erro ao salvar:", err);
-      toast.error("Falha ao sincronizar alteração");
+      console.error("Erro ao salvar alteração:", err);
+      toast.error("Falha ao salvar alteração");
       info.revert(); 
     }
   }
