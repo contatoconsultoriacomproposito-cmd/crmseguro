@@ -9,6 +9,7 @@ import { buscarCNPJ, buscarCEP } from "../../services/brasilApi";
 import { maskCNPJ, maskPhone } from "../../utils/masks";
 import { ModalPlanos } from './components/modalPlanos';
 import { useNavigate } from "react-router-dom";
+import { ModalSite } from "./components/modalSite";
 
 export default function ConfigCorretora() {
   const { user, userProfile, loading: authLoading } = useAuth();
@@ -25,6 +26,7 @@ export default function ConfigCorretora() {
   const [assinaturaDb, setAssinaturaDb] = useState<any>(null);
   const [usoStorage, setUsoStorage] = useState({ bytes: 0, mb: 0, percentual: 0 });
   const [isSyncingStorage, setIsSyncingStorage] = useState(false);
+  const [isModalSiteOpen, setIsModalSiteOpen] = useState(false);
 
   const [form, setForm] = useState({
     razao_social: "",
@@ -224,20 +226,50 @@ export default function ConfigCorretora() {
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     try {
-      setUploading(true);
       if (!e.target.files || e.target.files.length === 0) return;
+      setUploading(true);
+
       const file = e.target.files[0];
       const fileExt = file.name.split('.').pop()?.toLowerCase();
-      const fileName = `${user?.id}-${Math.random()}.${fileExt}`;
+      const fileName = `${userProfile?.corretora_id}-${Date.now()}.${fileExt}`;
       
-      const { error: uploadError } = await supabase.storage.from('logo_corretoras').upload(fileName, file);
+      // 1. Upload para o Storage
+      const { error: uploadError } = await supabase.storage
+        .from('logo_corretoras')
+        .upload(fileName, file, { upsert: true });
+
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage.from('logo_corretoras').getPublicUrl(fileName);
+      // 2. Pegar a URL pública
+      const { data: { publicUrl } } = supabase.storage
+        .from('logo_corretoras')
+        .getPublicUrl(fileName);
+
+      // 3. ALTERAÇÃO AQUI: Salva direto no banco de dados (como no ModalSite)
+      const { error: dbError } = await supabase
+        .from("tab_corretora_config")
+        .upsert({ 
+          id: userProfile?.corretora_id, 
+          logotipo_url: publicUrl 
+        });
+
+      if (dbError) throw dbError;
+
+      // 4. Atualiza o estado local e dispara o evento global
       setForm(prev => ({ ...prev, logotipo_url: publicUrl }));
+      window.dispatchEvent(new CustomEvent("logoUpdated", { detail: publicUrl }));
+      
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+      
       await fetchUsoStorage();
-    } catch (error: any) { alert('Erro no upload: ' + error.message); } 
-    finally { setUploading(false); }
+      
+    } catch (error: any) { 
+      console.error("Erro no upload:", error);
+      alert('Erro no upload: ' + error.message); 
+    } finally { 
+      setUploading(false); 
+    }
   }
 
   async function handleBuscarCNPJ() {
@@ -334,6 +366,7 @@ export default function ConfigCorretora() {
       <div className="flex gap-2 p-1 bg-slate-100 dark:bg-zinc-900 w-fit rounded-2xl mb-8">
         <TabButton active={activeTab === "perfil"} onClick={() => setActiveTab("perfil")} icon={<Building2 size={18} />} label="Dados da Empresa" />
         <TabButton active={activeTab === "pessoal"} onClick={() => setActiveTab("pessoal")} icon={<Phone size={18} />} label="Dados do Responsável" />
+        <TabButton active={false} onClick={() => setIsModalSiteOpen(true)} icon={<Globe size={18} />} label="Site Corporativo" />
         <TabButton active={activeTab === "plano"} onClick={() => setActiveTab("plano")} icon={<ShieldCheck size={18} />} label="Assinatura" />
       </div>
 
@@ -530,6 +563,11 @@ export default function ConfigCorretora() {
           <ModalPlanos isOpen={isModalPlanosOpen} onClose={() => { setIsModalPlanosOpen(false); fetchConfig(); fetchAssinatura(); }} planoAtual={form?.plano || 'FREE'} />
         </div>
       )}
+      <ModalSite 
+        isOpen={isModalSiteOpen} 
+        onClose={() => setIsModalSiteOpen(false)} 
+        corretoraId={userProfile?.corretora_id} 
+      />
     </div>
   );
 }
