@@ -69,13 +69,14 @@ export function ModalSite({ isOpen, onClose, corretoraId }: ModalSiteProps) {
 
         const file = e.target.files[0];
         const fileExt = file.name.split('.').pop();
-        const fileName = `${corretoraId}-${Math.random()}.${fileExt}`;
+        // Dica: Use Date.now() em vez de Math.random() para evitar cache do navegador
+        const fileName = `${corretoraId}-${Date.now()}.${fileExt}`;
         const filePath = `${fileName}`;
 
         // 1. Upload para o Storage
         const { error: uploadError } = await supabase.storage
         .from('logo_corretoras')
-        .upload(fileName, file, { upsert: true }); // <--- Adicione o upsert aqui
+        .upload(fileName, file, { upsert: true });
 
         if (uploadError) throw uploadError;
 
@@ -84,8 +85,11 @@ export function ModalSite({ isOpen, onClose, corretoraId }: ModalSiteProps) {
         .from('logo_corretoras')
         .getPublicUrl(filePath);
 
-        // 3. Atualizar o estado do form para salvar no banco depois
+        // 3. Atualizar o estado do form local
         setForm({ ...form, logotipo_url: publicUrl });
+
+        // --- ADIÇÃO AQUI: Disparar o evento global para atualizar o CRM instantaneamente ---
+        window.dispatchEvent(new CustomEvent("logoUpdated", { detail: publicUrl }));
 
     } catch (err: any) {
         alert('Erro no upload: ' + err.message);
@@ -358,93 +362,114 @@ return (
           ) : (
             <>
               {/* --- SESSÃO: IDENTIDADE VISUAL --- */}
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <h3 className="text-[11px] font-bold text-blue-600 uppercase tracking-[2px] flex items-center gap-2">
                   <Palette size={14} /> Identidade & Link
                 </h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50 dark:bg-zinc-800/20 p-5 rounded-3xl border border-slate-100 dark:border-zinc-800/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8 bg-slate-50/50 dark:bg-zinc-800/20 p-6 rounded-3xl border border-slate-100 dark:border-zinc-800/50">
+                  
+                  {/* NOME DE EXIBIÇÃO */}
                   <div className="flex flex-col">
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 ml-1">Nome de Exibição</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Nome de Exibição</label>
                     <input 
                       required
-                      className="h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                      className="h-12 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                       value={form.nome_exibicao}
                       onChange={e => setForm({...form, nome_exibicao: e.target.value})}
                       placeholder="Ex: Imbi Seguros"
                     />
                   </div>
 
+                  {/* SLUG CORRIGIDO (MAIS ESPAÇO) */}
                   <div className="flex flex-col">
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 ml-1">Slug (URL Única)</label>
-                    <div className="relative flex items-center">
-                      <span className="absolute left-4 text-[10px] font-bold text-slate-400">segurocrm.site/</span>
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Slug (URL Única)</label>
+                    <div className="flex items-center h-12 border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                      <span className="px-4 text-[9px] font-bold text-slate-400 bg-slate-100/80 dark:bg-zinc-900 h-full flex items-center border-r border-slate-100 dark:border-zinc-800 whitespace-nowrap tracking-tight">
+                        crm-site-weld.vercel.app/
+                      </span>
                       <input 
                         required
-                        className="w-full h-11 pl-[85px] pr-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-xs font-bold text-blue-600 outline-none"
+                        className="flex-1 h-full px-4 text-xs font-bold text-blue-600 outline-none bg-transparent"
                         value={form.slug}
                         onChange={e => setForm({...form, slug: e.target.value})}
                       />
                     </div>
                   </div>
 
+                  {/* COR DA IDENTIDADE */}
                   <div className="flex flex-col">
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 ml-1">Cor da Identidade</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Cor da Identidade</label>
                     <div className="flex gap-2">
                       <input 
                         type="color" 
-                        className="w-12 h-11 rounded-xl border border-slate-200 cursor-pointer overflow-hidden"
+                        className="w-14 h-12 rounded-xl border border-slate-200 cursor-pointer overflow-hidden p-1 bg-white"
                         value={form.cor_primaria}
                         onChange={e => setForm({...form, cor_primaria: e.target.value})}
                       />
                       <input 
-                        className="flex-1 h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm font-mono uppercase"
+                        className="flex-1 h-12 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500/20 outline-none"
                         value={form.cor_primaria}
                         onChange={e => setForm({...form, cor_primaria: e.target.value})}
                       />
                     </div>
                   </div>
 
-                  <div className="flex flex-col">
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 ml-1">Status Global</label>
-                    <button 
-                      type="button"
-                      onClick={() => setForm({...form, status_site: !form.status_site})}
-                      className={`h-11 px-4 rounded-xl border transition-all flex items-center justify-between ${form.status_site ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}
-                    >
-                      <span className="text-xs font-bold uppercase">{form.status_site ? 'Site Ativo' : 'Site Offline'}</span>
-                      <div className={`w-2.5 h-2.5 rounded-full ${form.status_site ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                    </button>
+                  {/* STATUS COM BOTÃO "VER SITE" ROBUSTO */}
+                  <div className="flex flex-col relative">
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Status Global</label>
+                    <div className="flex flex-col gap-3">
+                      <button 
+                        type="button"
+                        onClick={() => setForm({...form, status_site: !form.status_site})}
+                        className={`h-12 px-4 rounded-xl border transition-all flex items-center justify-between ${form.status_site ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}
+                      >
+                        <span className="text-xs font-bold uppercase">{form.status_site ? 'Site Ativo' : 'Site Offline'}</span>
+                        <div className={`w-2.5 h-2.5 rounded-full ${form.status_site ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                      </button>
+
+                      {form.status_site && form.slug && (
+                        <a 
+                          href={`https://crm-site-weld.vercel.app/${form.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 h-9 px-4 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-95"
+                        >
+                          <Globe size={14} />
+                          Ver Site Online
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
+
                 {/* LOGOTIPO */}
-                <div className="flex flex-col md:col-span-2 border-t border-slate-100 dark:border-zinc-800 pt-4 mt-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Logotipo da Corretora</label>
-                <div className="flex items-center gap-4">
-                    <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-800 flex items-center justify-center bg-white dark:bg-zinc-950 overflow-hidden group relative">
-                    {form.logotipo_url ? (
-                        <img src={form.logotipo_url} alt="Logo" className="w-full h-full object-contain p-2" />
-                    ) : (
-                        <ImageIcon size={24} className="text-slate-300" />
-                    )}
-                    {uploading && (
+                <div className="flex flex-col border-t border-slate-100 dark:border-zinc-800 pt-8 mt-4">
+                  <label className="text-[10px] font-black uppercase text-slate-400 mb-4 ml-1">Logotipo da Corretora</label>
+                  <div className="flex items-center gap-6">
+                    <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-800 flex items-center justify-center bg-white dark:bg-zinc-950 overflow-hidden group relative shadow-inner">
+                      {form.logotipo_url ? (
+                        <img src={form.logotipo_url} alt="Logo" className="w-full h-full object-contain p-3" />
+                      ) : (
+                        <ImageIcon size={28} className="text-slate-300" />
+                      )}
+                      {uploading && (
                         <div className="absolute inset-0 bg-white/80 dark:bg-zinc-900/80 flex items-center justify-center">
-                        <Loader2 className="animate-spin text-blue-600" size={20} />
+                          <Loader2 className="animate-spin text-blue-600" size={24} />
                         </div>
-                    )}
+                      )}
                     </div>
                     
-                    <div className="flex-1">
-                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-xl text-xs font-bold text-slate-700 dark:text-zinc-300 cursor-pointer transition-all">
+                    <div className="flex-1 space-y-2">
+                      <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 rounded-xl text-xs font-bold text-slate-700 dark:text-zinc-300 cursor-pointer transition-all border border-slate-200 dark:border-zinc-700 shadow-sm">
                         <Upload size={14} />
-                        {form.logotipo_url ? 'Alterar Logo' : 'Selecionar Logo'}
+                        {form.logotipo_url ? 'Alterar Logotipo' : 'Selecionar Logotipo'}
                         <input type="file" className="hidden" accept="image/*" onChange={handleUploadLogo} disabled={uploading} />
-                    </label>
-                    <p className="text-[10px] text-slate-400 mt-2">Recomendado: PNG ou SVG com fundo transparente.</p>
+                      </label>
+                      <p className="text-[10px] text-slate-400 leading-relaxed">Formatos: PNG ou SVG (preferencialmente sem fundo).<br/>Tamanho máximo: 2MB.</p>
                     </div>
+                  </div>
                 </div>
-                </div>
-
               </div>
 
               {/* --- SESSÃO: TOPO (NAVBAR & CONTATOS) --- */}

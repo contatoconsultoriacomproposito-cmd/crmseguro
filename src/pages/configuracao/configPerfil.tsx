@@ -197,6 +197,24 @@ export default function ConfigCorretora() {
     }
   }, [activeTab, userProfile?.corretora_id, fetchAssinatura, fetchUsoStorage]);
 
+  // Dentro do seu export default function ConfigCorretora() { ... }
+
+  useEffect(() => {
+    const handleLogoUpdate = (event: any) => {
+      const newUrl = event.detail;
+      if (newUrl) {
+        setForm(prev => ({ ...prev, logotipo_url: newUrl }));
+      }
+    };
+
+    // Escuta o evento disparado tanto pela função handleUpload interna quanto pela handleUploadLogo do ModalSite
+    window.addEventListener("logoUpdated", handleLogoUpdate);
+
+    return () => {
+      window.removeEventListener("logoUpdated", handleLogoUpdate);
+    };
+  }, []);
+
   if (authLoading || (fetchingConfig && !form.razao_social)) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-white dark:bg-zinc-950">
