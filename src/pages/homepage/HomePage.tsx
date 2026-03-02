@@ -4,8 +4,8 @@ import {
   ShieldCheck, Check, MessageCircle, Menu, X, 
   Star, ChevronLeft, ChevronRight, 
   LayoutDashboard, Users, Zap, 
-  FileSpreadsheet, BarChart3, Wallet, Globe,
-  ArrowRight, Instagram, Facebook, MapPin, CalendarCheck2, BotMessageSquare, ArrowUpRight, Clock, Info
+  FileSpreadsheet, BarChart3, Wallet, Database,
+  ArrowRight, Instagram, Facebook, MapPin, CalendarCheck2, BotMessageSquare, ArrowUpRight, Clock,
 } from "lucide-react";
 
 import LoginModal from "../../components/homepage/LoginModal";
@@ -14,12 +14,9 @@ import { Link } from "react-router-dom";
 
 export default function HomePage() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isFreeTrialModalOpen, setIsFreeTrialModalOpen] = useState(false);
-  
-  
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -86,11 +83,18 @@ export default function HomePage() {
             <a href="#beneficios" className="hover:text-blue-600 transition-colors">BENEFÍCIOS</a>
             <a href="#site-integrado" className="hover:text-blue-600 transition-colors">SITE INTEGRADO</a>
             <a href="#precos" className="hover:text-blue-600 transition-colors">PLANOS</a>
-            <button onClick={() => setIsLoginOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-xl shadow-blue-500/20 transition-all hover:-translate-y-1 active:scale-95">
+            
+            {/* Botão de Login continua igual */}
+            <button onClick={() => setIsLoginOpen(true)} className="text-zinc-600 hover:text-blue-600 transition-all">
               LOGIN
-              </button>
-            <button onClick={() => setIsRegisterOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-xl shadow-blue-500/20 transition-all hover:-translate-y-1 active:scale-95">
-              CRIAR CONTA
+            </button>
+
+            {/* ALTERAÇÃO AQUI: Troquei setIsRegisterOpen por setIsFreeTrialModalOpen */}
+            <button 
+              onClick={() => setIsFreeTrialModalOpen(true)} 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-xl shadow-blue-500/20 transition-all hover:-translate-y-1 active:scale-95"
+            >
+              TESTE GRÁTIS
             </button>
           </div>
 
@@ -100,7 +104,7 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* --- MENU MOBILE (ESTILO 2026) --- */}
+{/* --- MENU MOBILE (ESTILO 2026) --- */}
 <AnimatePresence>
   {isMenuOpen && (
     <motion.div 
@@ -201,17 +205,17 @@ export default function HomePage() {
         </h1>
       </motion.div>
 
-      {/* Subtítulo com Respiro (Inspirado no Pipedrive) */}
+      {/* Subtítulo com Respiro */}
       <motion.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.3 }}
         className="text-lg md:text-xl text-zinc-500 max-w-2xl mb-12 leading-relaxed"
       >
-        Abandone as planilhas. Centralize seus leads, apólices e renovações em uma plataforma <span className="text-zinc-900 font-semibold">elegante e intuitiva.</span>
+        Abandone as planilhas. Centralize seus leads, apólices e renovações com <span className="text-zinc-900 font-semibold">Inteligência Artificial SDR inclusa.</span>
       </motion.p>
 
-      {/* CTAs Limpos */}
+      {/* CTAs Limpos - AQUI LÊ A VARIÁVEL */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -234,25 +238,24 @@ export default function HomePage() {
       </motion.div>
     </div>
 
-    {/* DISPOSIÇÃO DE IMAGEM ESTILO PIPEDRIVE (Mockup flutuante com perspectiva) */}
+    {/* Mockup com Perspectiva */}
     <motion.div 
       initial={{ opacity: 0, y: 40 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.7, duration: 1 }}
       className="relative max-w-6xl mx-auto group"
     >
-      {/* Sombra de Profundidade */}
       <div className="absolute -inset-4 bg-gradient-to-b from-blue-100/50 to-transparent blur-3xl rounded-[50px] opacity-50" />
       
       <div className="relative overflow-hidden rounded-2xl border border-zinc-200 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] bg-white p-2">
         <img 
           src="/img/kanban.png" 
-          alt="Interface do Sistema" 
+          alt="Interface do Sistema SeguroCRM" 
           className="w-full h-auto rounded-xl" 
         />
       </div>
 
-      {/* Floating Card (Detalhe Pipedrive) */}
+      {/* Floating Card: Status IA */}
       <motion.div 
         animate={{ y: [0, -10, 0] }}
         transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
@@ -263,8 +266,8 @@ export default function HomePage() {
             <Check size={20} strokeWidth={3} />
           </div>
           <div className="text-left">
-            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">Status</p>
-            <p className="text-sm text-zinc-900 font-black italic">Apólice Emitida!</p>
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">Status IA</p>
+            <p className="text-sm text-zinc-900 font-black italic">Lead Qualificado!</p>
           </div>
         </div>
       </motion.div>
@@ -369,7 +372,7 @@ export default function HomePage() {
   </div>
 </section>
 
-{/* --- SESSÃO SITE INTEGRADO: PREMIUM & CONECTADO --- */}
+{/* --- SESSÃO SITE INTEGRADO: PREMIUM & CONECTADO COM IA --- */}
 <section id="site-integrado" className="py-32 bg-white">
   <div className="max-w-7xl mx-auto px-6">
     <div className="relative bg-[#0A0A0B] rounded-[64px] p-8 lg:p-24 overflow-hidden shadow-[0_48px_100px_-20px_rgba(0,0,0,0.3)]">
@@ -382,7 +385,7 @@ export default function HomePage() {
 
       <div className="flex flex-col lg:flex-row items-center gap-20 relative z-10">
         
-        {/* TEXTO: FOCO EM AUTORIDADE */}
+        {/* TEXTO: FOCO EM IA E CONVERSÃO */}
         <div className="lg:w-1/2 text-white">
           <motion.div
             initial={{ opacity: 0, x: -30 }}
@@ -395,25 +398,25 @@ export default function HomePage() {
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
               </span>
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100">
-                Incluso em todos os planos
+                Site + IA ChatSDR Inclusos
               </span>
             </div>
             
             <h2 className="text-5xl lg:text-7xl font-black tracking-tighter mb-8 leading-[0.85]">
-              Sua vitrine <br /> 
-              <span className="text-blue-500 italic">profissional.</span>
+              Venda enquanto <br /> 
+              <span className="text-blue-500 italic">você dorme.</span>
             </h2>
 
             <p className="text-zinc-400 text-xl mb-12 font-medium leading-relaxed max-w-lg">
-              Não é apenas um site. É uma <span className="text-white">máquina de captura</span> que trabalha 24h por dia, totalmente conectada ao seu funil de vendas.
+              Seu novo site vem com o <span className="text-white font-bold text-blue-400">ChatSDR nativo</span>: uma IA treinada para qualificar leads e agendar reuniões direto no seu CRM.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-14">
               {[
-                { t: "Setup Instantâneo", d: "Ativo em até 24h" },
-                { t: "SEO de Elite", d: "Google-friendly" },
-                { t: "SSL Grátis", d: "Segurança total" },
-                { t: "Conversão", d: "Foco em Leads" }
+                { t: "IA ChatSDR", d: "Atendimento 24/7" },
+                { t: "Foco em Lead", d: "Captura ultra-rápida" },
+                { t: "Domínio Próprio", d: "Sua marca, sua casa" },
+                { t: "100% Integrado", d: "Cai direto no Kanban" }
               ].map((item, i) => (
                 <div key={i} className="flex flex-col gap-1 border-l border-white/10 pl-4">
                   <span className="text-white font-bold text-lg">{item.t}</span>
@@ -423,15 +426,15 @@ export default function HomePage() {
             </div>
 
             <button 
-              onClick={() => setIsRegisterOpen(true)}
+              onClick={() => setIsFreeTrialModalOpen(true)}
               className="group w-full sm:w-auto bg-blue-600 text-white px-10 py-6 rounded-[24px] font-black text-lg shadow-2xl shadow-blue-600/20 hover:bg-blue-500 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
             >
-              GARANTIR MINHA PRESENÇA DIGITAL <ArrowRight className="group-hover:translate-x-1 transition-transform" />
+              ATIVAR MEU SITE COM IA <ArrowRight className="group-hover:translate-x-1 transition-transform" />
             </button>
           </motion.div>
         </div>
 
-        {/* VISUAL: COMPOSIÇÃO MULTICAMADAS */}
+        {/* VISUAL: MOCKUP COM INDICADOR DE IA */}
         <div className="lg:w-1/2 relative">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -448,46 +451,46 @@ export default function HomePage() {
                   <div className="w-2 h-2 rounded-full bg-green-500/50" />
                 </div>
                 <div className="mx-auto bg-white/5 rounded-lg text-[9px] text-zinc-500 px-8 py-1.5 font-medium border border-white/5 tracking-tight">
-                  suacorretora.com.br
+                  corretora-inteligente.ai
                 </div>
               </div>
               <img 
                 src="img/kanban1.jpg" 
-                alt="Site Corretor Moderno" 
+                alt="Interface do Site com IA" 
                 className="w-full h-auto rounded-b-[26px] grayscale hover:grayscale-0 transition-all duration-1000" 
               />
             </div>
 
-            {/* Floating Card: O Lead chegando (Layer Superior) */}
+            {/* Floating Card: IA ChatSDR Ativa */}
             <motion.div 
               animate={{ y: [0, -20, 0] }}
               transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute -top-10 -right-4 lg:-right-10 z-30 bg-white p-6 rounded-[32px] shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] border border-zinc-100 hidden md:block"
+              className="absolute -top-10 -right-4 lg:-right-10 z-30 bg-blue-600 text-white p-6 rounded-[32px] shadow-[0_40px_80px_-15px_rgba(37,99,235,0.4)] border border-blue-400/30 hidden md:block"
             >
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center text-green-600">
-                  <Users size={28} />
+                <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                  <BotMessageSquare size={28} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Novo Lead</p>
-                  <p className="text-lg font-bold text-zinc-900 leading-none">Ricardo M. <span className="text-zinc-400 font-medium text-sm">· Seguro Auto</span></p>
+                  <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest">ChatSDR Ativo</p>
+                  <p className="text-lg font-bold leading-none italic">IA Qualificando Lead...</p>
                 </div>
               </div>
             </motion.div>
 
-            {/* Floating Card: A Notificação (Layer Inferior) */}
+            {/* Floating Card: Conversão Instantânea */}
             <motion.div 
               animate={{ x: [0, 20, 0] }}
               transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-              className="absolute -bottom-12 -left-4 lg:-left-20 z-20 bg-blue-600 text-white p-8 rounded-[32px] shadow-2xl hidden md:block"
+              className="absolute -bottom-12 -left-4 lg:-left-20 z-20 bg-white p-8 rounded-[48px] shadow-2xl hidden md:block border border-zinc-100"
             >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <Zap fill="white" size={24} />
+                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
+                  <Zap fill="currentColor" size={24} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest leading-none mb-1">Status do Site</p>
-                  <p className="text-xl font-black">100% Online</p>
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">Resultado</p>
+                  <p className="text-xl font-black text-zinc-900">+42% Conversão</p>
                 </div>
               </div>
             </motion.div>
@@ -652,174 +655,111 @@ export default function HomePage() {
       <motion.span 
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
-        className="text-blue-600 font-black uppercase text-[10px] tracking-[0.3em] mb-4 block"
+        className="text-blue-600 font-black uppercase text-[10px] tracking-[0.4em] mb-4 block"
       >
-        Licenciamento Flexível
+        Licenciamento Profissional 2026
       </motion.span>
-      <h2 className="text-5xl lg:text-7xl font-black text-zinc-900 tracking-tighter leading-none mb-6">
-        O preço de um café <br />
-        <span className="text-zinc-400">para escalar sua corretora.</span>
+      <h2 className="text-5xl lg:text-7xl font-black text-zinc-900 tracking-tighter leading-[0.9] mb-6">
+        CRM, Site e IA <br />
+        <span className="text-zinc-400">em um único ecossistema.</span>
       </h2>
+      <p className="text-zinc-500 font-medium max-w-2xl mx-auto text-lg leading-relaxed">
+        Usuários ilimitados e Site Corretor com ChatSDR já inclusos em todos os ciclos. 
+        <br /><span className="text-blue-600 font-bold italic text-sm">Sem taxas de ativação ou custos ocultos.</span>
+      </p>
     </div>
 
-    {/* CARDS DE ASSINATURA DO CRM */}
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    {/* CARDS DE ASSINATURA CONFORME PLANOS_CONFIG */}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
       {[
-        { p: "Mensal", v: "59,97", c: "39,97", best: false },
-        { p: "Trimestral", v: "49,97", c: "29,97", best: false },
-        { p: "Semestral", v: "39,97", c: "19,97", best: false },
-        { p: "Anual", v: "29,97", c: "9,97", best: true },
+        { p: "Mensal", v: "89,97", desc: "Flexibilidade total", best: false },
+        { p: "Trimestral", v: "79,97", desc: "Otimização de custos", best: false },
+        { p: "Semestral", v: "69,97", desc: "Planejamento ideal", best: false },
+        { p: "Anual", v: "49,97", desc: "Foco em alta performance", best: true },
       ].map((item, i) => (
         <motion.div
           key={i}
-          whileHover={{ y: -8 }}
-          className={`relative p-8 rounded-[40px] transition-all duration-500 ${
+          whileHover={{ y: -10 }}
+          className={`relative p-8 rounded-[48px] transition-all duration-500 group ${
             item.best 
-            ? 'bg-zinc-900 text-white shadow-2xl shadow-blue-900/20 scale-105 z-10' 
-            : 'bg-white border border-zinc-200 text-zinc-900'
+            ? 'bg-zinc-900 text-white shadow-[0_40px_80px_-15px_rgba(37,99,235,0.25)] scale-105 z-10 border-blue-500/30' 
+            : 'bg-white border border-zinc-200 text-zinc-900 hover:shadow-xl'
           }`}
         >
           {item.best && (
-            <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black px-6 py-2 rounded-full tracking-widest uppercase">
-              Economia Máxima
-            </span>
+            <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[9px] font-black px-8 py-2.5 rounded-full tracking-[0.2em] uppercase shadow-lg">
+              Melhor Custo-Benefício
+            </div>
           )}
           
-          <p className={`font-black uppercase tracking-widest text-[11px] mb-8 ${item.best ? 'text-blue-400' : 'text-zinc-400'}`}>
-            Plano {item.p}
-          </p>
+          <div className="mb-10">
+            <p className={`font-black uppercase tracking-widest text-[10px] mb-1 ${item.best ? 'text-blue-400' : 'text-blue-600'}`}>
+              Plano {item.p}
+            </p>
+            <p className="text-[11px] font-medium opacity-50 uppercase tracking-tighter">{item.desc}</p>
+          </div>
           
           <div className="mb-8">
-            <span className="text-sm font-bold opacity-50">R$</span>
-            <span className="text-6xl font-black tracking-tighter">{item.v.split(',')[0]}</span>
-            <span className="text-xl font-bold">,{item.v.split(',')[1]}</span>
-            <span className="text-sm font-medium opacity-50"> /mês</span>
+            <span className="text-sm font-bold opacity-40">R$</span>
+            <span className="text-7xl font-black tracking-tighter leading-none">{item.v.split(',')[0]}</span>
+            <span className="text-xl font-black opacity-60">,{item.v.split(',')[1]}</span>
+            <span className={`block text-[10px] font-bold mt-2 uppercase tracking-widest ${item.best ? 'text-zinc-500' : 'text-zinc-400'}`}>por mês</span>
           </div>
 
-          <div className="space-y-4 mb-10">
-            <div className={`flex justify-between text-xs font-bold py-4 border-b ${item.best ? 'border-white/10' : 'border-zinc-100'}`}>
-              <span className="opacity-60 text-[10px] uppercase tracking-tight text-left">1 Acesso Master incluso</span>
-              <Check size={14} className="text-blue-500" />
+          <div className="space-y-1 mb-10">
+            <div className={`flex justify-between items-center py-4 border-b ${item.best ? 'border-white/10' : 'border-zinc-100'}`}>
+              <span className="text-[10px] font-black uppercase tracking-tight">Usuários Ilimitados</span>
+              <Check size={16} className="text-emerald-500" />
             </div>
-            <div className={`flex justify-between text-xs font-bold py-4 border-b ${item.best ? 'border-white/10' : 'border-zinc-100'}`}>
-              <span className="opacity-60 text-[10px] uppercase">Corretor Adicional</span>
-              <span>R$ {item.c}</span>
+            <div className={`flex justify-between items-center py-4 border-b ${item.best ? 'border-white/10' : 'border-zinc-100'}`}>
+              <span className="text-[10px] font-black uppercase tracking-tight">Site Corretor Premium</span>
+              <Check size={16} className="text-emerald-500" />
+            </div>
+            <div className={`flex justify-between items-center py-4 border-b ${item.best ? 'border-white/10' : 'border-zinc-100'}`}>
+              <span className="text-[10px] font-black uppercase tracking-tight">IA ChatSDR Ativo</span>
+              <Check size={16} className="text-emerald-500" />
             </div>
           </div>
 
           <button 
             onClick={() => setIsFreeTrialModalOpen(true)}
-            className={`w-full py-5 rounded-2xl font-black text-sm transition-all ${
-              item.best ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-900'
+            className={`w-full py-5 rounded-[24px] font-black text-xs tracking-widest uppercase transition-all active:scale-95 ${
+              item.best 
+              ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30' 
+              : 'bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-900'
             }`}
           >
-            ASSINAR AGORA
+            Começar Agora
           </button>
         </motion.div>
       ))}
     </div>
 
-    {/* SEÇÃO DE ADD-ONS (SITE E MANYCHAT) */}
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-      
-      {/* ADD-ON 1: SITE INTEGRADO */}
-      <motion.div 
-        initial={{ opacity: 0, x: -20 }}
-        whileInView={{ opacity: 1, x: 0 }}
-        className="p-8 rounded-[40px] bg-white border border-zinc-200 flex flex-col md:flex-row items-center gap-8 group hover:border-blue-500 transition-colors duration-500"
-      >
-        <div className="w-16 h-16 bg-zinc-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500">
-          <Globe size={32} />
-        </div>
-        <div className="flex-grow text-center md:text-left">
-          <h4 className="text-xl font-black text-zinc-900">Site Corretor Premium</h4>
-          <p className="text-sm text-zinc-500 font-medium">Hospedagem, domínio e integração total.</p>
-        </div>
-        <div className="text-center px-6 border-l border-zinc-100">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Opcional e a partir de</p>
-          <p className="text-2xl font-black text-zinc-900">R$ 80<span className="text-sm text-zinc-400">/mês</span></p>
-        </div>
-      </motion.div>
-
-      {/* ADD-ON 2: MANYCHAT */}
-      <motion.div 
-        initial={{ opacity: 0, x: 20 }}
-        whileInView={{ opacity: 1, x: 0 }}
-        className="p-8 rounded-[40px] bg-white border border-zinc-200 flex flex-col md:flex-row items-center gap-8 group hover:border-blue-500 transition-colors duration-500"
-      >
-        <div className="w-16 h-16 bg-zinc-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500">
-          <BotMessageSquare size={32} />
-        </div>
-        <div className="flex-grow text-center md:text-left">
-          <h4 className="text-xl font-black text-zinc-900">Gestão Manychat</h4>
-          <p className="text-sm text-zinc-500 font-medium italic">Setup e automação de funil inclusos.</p>
-        </div>
-        <div className="text-center px-6 border-l border-zinc-100">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Opcional e a partir de</p>
-          <p className="text-2xl font-black text-zinc-900">R$ 80<span className="text-sm text-zinc-400">/mês</span></p>
-        </div>
-      </motion.div>
-
-    </div>
-
-    {/* NOTA DE RODAPÉ DOS PREÇOS */}
-    <div className="mt-8 flex justify-center">
-      <div className="flex items-center gap-3 bg-white px-6 py-3 rounded-full border border-zinc-100 shadow-sm">
-        <Info size={14} className="text-blue-500" />
-        <p className="text-[11px] font-medium text-zinc-400">
-          Valores referentes apenas ao <b>SeguroCRM</b>. Ferramentas de terceiros (Manychat PRO, etc) são pagas separadamente.
+    {/* SEÇÃO DE STORAGE ADICIONAL */}
+    <div className="max-w-4xl mx-auto p-8 rounded-[40px] bg-white border border-zinc-200 shadow-sm flex flex-col md:flex-row items-center gap-8">
+      <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shrink-0">
+        <Database size={32} />
+      </div>
+      <div className="flex-grow text-center md:text-left">
+        <h4 className="text-xl font-black text-zinc-900 tracking-tight">Escalabilidade de Dados</h4>
+        <p className="text-sm text-zinc-500 font-medium">
+          Todos os planos iniciam com 50MB de storage. Se sua corretora crescer, você expande o armazenamento de arquivos e apólices de forma modular.
         </p>
+      </div>
+      <div className="text-center px-8 md:border-l border-zinc-100">
+        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Storage Extra</p>
+        <p className="text-xl font-black text-zinc-900">Sob demanda</p>
       </div>
     </div>
 
-    {/* NOVO: MODAL DE CONVITE AO TESTE GRÁTIS */}
-    <AnimatePresence>
-      {isFreeTrialModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsFreeTrialModalOpen(false)}
-            className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm"
-          />
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="relative bg-white rounded-[48px] p-8 lg:p-12 max-w-lg w-full shadow-2xl text-center"
-          >
-            <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 mx-auto mb-8">
-              <Zap size={40} fill="currentColor" />
-            </div>
-            <h3 className="text-3xl font-black text-zinc-900 tracking-tighter mb-4">
-              Experimente 7 dias <br/><span className="text-blue-600 text-2xl font-black">Totalmente Grátis</span>
-            </h3>
-            <p className="text-zinc-500 font-medium mb-10 leading-relaxed">
-              Você terá acesso completo a todas as funcionalidades do SeguroCRM para validar sua operação. Sem compromisso.
-            </p>
-            
-            <div className="space-y-3">
-              <button 
-                onClick={() => {
-                  setIsFreeTrialModalOpen(false);
-                  setIsRegisterOpen(true);
-                }}
-                className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20"
-              >
-                ATIVAR MEU TESTE GRÁTIS
-              </button>
-              <button 
-                onClick={() => setIsFreeTrialModalOpen(false)}
-                className="w-full bg-transparent text-zinc-400 py-2 rounded-2xl font-bold text-xs hover:text-zinc-600 transition-all uppercase tracking-widest"
-              >
-                Fechar
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+    <div className="mt-12 flex justify-center">
+      <div className="flex items-center gap-3 bg-zinc-900/5 px-6 py-3 rounded-full border border-zinc-200/50">
+        <ShieldCheck size={14} className="text-blue-600" />
+        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+          Processamento seguro e suporte consultivo via WhatsApp para sua configuração inicial.
+        </p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -924,24 +864,26 @@ export default function HomePage() {
   </div>
 </footer>
 
-<AnimatePresence>
+      <AnimatePresence>
         {isLoginOpen && (
           <LoginModal 
             onClose={() => setIsLoginOpen(false)} 
-            onSwitch={() => { setIsLoginOpen(false); setIsRegisterOpen(true); }} 
+            onSwitch={() => { setIsLoginOpen(false); setIsFreeTrialModalOpen(true); }} 
           />
         )}
         
-        {isRegisterOpen && (
+        {/* ALTERAÇÃO AQUI: Trocamos isRegisterOpen por isFreeTrialModalOpen */}
+        {isFreeTrialModalOpen && (
           <RegistroModal 
-            onClose={() => setIsRegisterOpen(false)} 
-            onSwitch={() => { setIsRegisterOpen(false); setIsLoginOpen(true); }} 
+            isOpen={isFreeTrialModalOpen} // Adicionado o prop isOpen se o componente pedir
+            onClose={() => setIsFreeTrialModalOpen(false)} 
+            onSwitch={() => { setIsFreeTrialModalOpen(false); setIsLoginOpen(true); }} 
           />
         )}
       </AnimatePresence>
+
+        
+
     </div>
   );
 }
-
-
-

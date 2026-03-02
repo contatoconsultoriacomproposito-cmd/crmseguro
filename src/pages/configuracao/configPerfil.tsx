@@ -115,76 +115,55 @@ export default function ConfigCorretora() {
   }, [userProfile?.corretora_id]);
 
   const fetchUsoStorage = useCallback(async () => {
-    if (!userProfile?.corretora_id) return;
-    try {
-      await supabase.rpc('sync_corretora_storage_usage', { p_corretora_id: userProfile.corretora_id });
-      const { data, error } = await supabase
-        .from('tab_corretora_config')
-        .select('storage_usado_bytes')
-        .eq('id', userProfile.corretora_id)
-        .maybeSingle();
+  if (!userProfile?.corretora_id) return;
+  try {
+    // ALTERAÇÃO PONTUAL: Removido o .toString() para evitar conflito de tipo UUID no RPC
+    const { error: rpcError } = await supabase.rpc('sync_corretora_storage_usage', { 
+      p_corretora_id: userProfile.corretora_id 
+    });
 
-      if (error) throw error;
-      const bytes = Number(data?.storage_usado_bytes || 0);
-      const mb = bytes / (1024 * 1024);
-      setUsoStorage({ 
-        bytes, 
-        mb, 
-        percentual: Math.min((mb / 50) * 100, 100) 
-      });
-    } catch (err) {
-      console.error("Erro fetchUsoStorage:", err);
+    if (rpcError) {
+      console.warn("Erro ao sincronizar via RPC:", rpcError);
     }
-  }, [userProfile?.corretora_id]);
+
+    const { data, error } = await supabase
+      .from('tab_corretora_config')
+      .select('storage_usado_bytes')
+      .eq('id', userProfile.corretora_id)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const bytes = Number(data?.storage_usado_bytes || 0);
+    const mb = bytes / (1024 * 1024);
+    // O limite vem da assinatura ou assume 50MB como padrão do Plano IA
+    const limitePlano = assinaturaDb?.storage_limite_mb || 50;
+
+    setUsoStorage({ 
+      bytes, 
+      mb, 
+      percentual: Math.min((mb / limitePlano) * 100, 100) 
+    });
+  } catch (err) {
+    console.error("Erro fetchUsoStorage:", err);
+  }
+}, [userProfile?.corretora_id, assinaturaDb?.storage_limite_mb]);
 
   // CORREÇÃO AQUI: Usando .list() para obter o tamanho do arquivo
   const repairStorageSizes = async () => {
-    if (!userProfile?.corretora_id) return;
-    setIsSyncingStorage(true);
-    try {
-      const { data: docs, error: fetchErr } = await supabase
-        .from('tab_documentos')
-        .select('id, storage_path')
-        .eq('corretora_id', userProfile.corretora_id)
-        .eq('tamanho_bytes', 0);
-
-      if (fetchErr) throw fetchErr;
-      if (!docs || docs.length === 0) {
-        alert("Todos os arquivos já estão sincronizados!");
-        return;
-      }
-
-      for (const doc of docs) {
-        const pathParts = doc.storage_path.split('/');
-        const fileName = pathParts.pop();
-        const folderPath = pathParts.join('/');
-
-        const { data: files, error: storageErr } = await supabase
-          .storage
-          .from('documentos_clientes')
-          .list(folderPath || undefined, {
-            search: fileName
-          });
-
-        const fileInfo = files?.find(f => f.name === fileName);
-
-        if (!storageErr && fileInfo) {
-          await supabase
-            .from('tab_documentos')
-            .update({ tamanho_bytes: fileInfo.metadata.size })
-            .eq('id', doc.id);
-        }
-      }
-
-      await fetchUsoStorage();
-      alert("Sincronização concluída!");
-    } catch (err: any) {
-      console.error("Erro ao reparar:", err);
-      alert("Erro na sincronização: " + err.message);
-    } finally {
-      setIsSyncingStorage(false);
-    }
-  };
+  if (!userProfile?.corretora_id) return;
+  setIsSyncingStorage(true);
+  try {
+    // Agora apenas chamamos a RPC, que já faz todo o trabalho pesado no servidor
+    await fetchUsoStorage();
+    alert("O uso de armazenamento foi sincronizado com sucesso com os arquivos reais!");
+  } catch (err: any) {
+    console.error("Erro ao reparar:", err);
+    alert("Erro na sincronização: " + err.message);
+  } finally {
+    setIsSyncingStorage(false);
+  }
+};
 
   useEffect(() => {
     if (user?.id) fetchConfig();
@@ -268,7 +247,8 @@ export default function ConfigCorretora() {
         .from("tab_corretora_config")
         .upsert({ 
           id: userProfile?.corretora_id, 
-          logotipo_url: publicUrl 
+          logotipo_url: publicUrl,
+          logo_tamanho_bytes: file.size 
         });
 
       if (dbError) throw dbError;

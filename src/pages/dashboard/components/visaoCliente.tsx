@@ -337,30 +337,38 @@ export default function VisaoCliente({
               <p className="text-lg font-black text-slate-700 leading-none">PF: {stats.tipo.pf}</p>
               <p className="text-lg font-black text-slate-700 mt-1">PJ: {stats.tipo.pj}</p>
             </div>
-            {/* AJUSTE 1: Definida altura fixa no container pai do mini-gráfico */}
-            <div style={{ width: 80, height: 80, minWidth: 80, minHeight: 80 }}>
+            <div style={{ width: 80, height: 80 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie 
-                    data={[{v: stats.tipo.pf}, {v: stats.tipo.pj}]} 
+                    data={[{v: stats.tipo.pf || 0}, {v: stats.tipo.pj || 0}]} 
                     innerRadius={20} 
                     outerRadius={35} 
                     dataKey="v"
-                    isAnimationActive={false} // Desabilita animação para evitar flicker no resize
+                    isAnimationActive={false}
                   >
-                    <Cell fill="#6366f1" /><Cell fill="#f59e0b" />
+                    <Cell fill="#6366f1" />
+                    <Cell fill="#f59e0b" />
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
             </div>
         </div>
+
         <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[24px]">
           <p className="text-[12px] font-black text-emerald-600 uppercase mb-3">Tributação PJ (Período)</p>
           <div className="flex gap-6">
-            <div><p className="text-2xl font-black text-emerald-900">{stats.simples.sim}</p><p className="text-[10px] font-black uppercase text-emerald-500">Simples</p></div>
-            <div className="border-l border-emerald-200 pl-6"><p className="text-2xl font-black text-emerald-900">{stats.mei.sim}</p><p className="text-[10px] font-black uppercase text-emerald-500">MEI</p></div>
+            <div>
+              <p className="text-2xl font-black text-emerald-900">{stats.simples.sim}</p>
+              <p className="text-[10px] font-black uppercase text-emerald-500">Simples</p>
+            </div>
+            <div className="border-l border-emerald-200 pl-6">
+              <p className="text-2xl font-black text-emerald-900">{stats.mei.sim}</p>
+              <p className="text-[10px] font-black uppercase text-emerald-500">MEI</p>
+            </div>
           </div>
         </div>
+
         <div className="bg-slate-50 border border-slate-200 p-6 rounded-[24px]">
           <p className="text-[12px] font-black text-slate-400 uppercase mb-2">Cap. Social Médio (Período)</p>
           <p className="text-xl font-black text-slate-800">
@@ -372,48 +380,78 @@ export default function VisaoCliente({
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><PieIcon size={18} className="text-indigo-500" /> Gênero e Idades</h3>
-          {/* AJUSTE 2: Altura definida via style no container pai */}
-          <div className="h-[250px] w-full"> {/* Altura fixa para o container pai */}
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={chartData.sexo} innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
-                  {chartData.sexo.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }} />
-              </PieChart>
-            </ResponsiveContainer>
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
+            <PieIcon size={18} className="text-indigo-500" /> Gênero e Idades
+          </h3>
+          <div className="h-[250px] w-full" style={{ minHeight: '250px' }}>
+            {chartData.sexo.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie 
+                    data={chartData.sexo} 
+                    innerRadius={50} 
+                    outerRadius={80} 
+                    dataKey="value" 
+                    nameKey="name"
+                    isAnimationActive={false}
+                  >
+                    {chartData.sexo.map((_, i) => (
+                      <Cell key={`cell-gender-${i}`} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-[10px] font-black text-slate-300 uppercase italic">
+                Sem dados de gênero
+              </div>
+            )}
           </div>
-          {/* ... (Idades mantêm-se iguais) */}
+          
           <div className="grid grid-cols-5 gap-1 mt-4">
-             {chartData.idades.map(id => (
-               <div key={id.name} className="text-center bg-slate-50 p-2 rounded-xl">
-                 <p className="text-xs font-black text-indigo-600">{id.value}</p>
-                 <p className="text-[9px] font-black text-slate-400 uppercase">{id.name}</p>
-               </div>
-             ))}
+            {chartData.idades.map(id => (
+              <div key={id.name} className="text-center bg-slate-50 p-2 rounded-xl">
+                <p className="text-xs font-black text-indigo-600">{id.value}</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase">{id.name}</p>
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><BarIcon size={18} className="text-emerald-500" /> Fase no Kanban</h3>
-          {/* AJUSTE 3: Altura definida no container pai */}
-          <div className="h-[300px] w-full"> {/* Ajuste a altura conforme seu layout */}
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData.fases}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" tick={{fontSize: 9, fontWeight: 900, fill: '#64748b'}} axisLine={false} tickLine={false} />
-                <YAxis hide />
-                <Tooltip cursor={{fill: 'transparent'}} />
-                <Bar dataKey="value" fill="#10b981" radius={[8, 8, 0, 0]} barSize={35} />
-              </BarChart>
-            </ResponsiveContainer>
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
+            <BarIcon size={18} className="text-emerald-500" /> Fase no Kanban
+          </h3>
+          <div className="h-[300px] w-full" style={{ minHeight: '300px' }}>
+            {chartData.fases.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData.fases} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    tick={{fontSize: 9, fontWeight: 900, fill: '#64748b'}} 
+                    axisLine={false} 
+                    tickLine={false} 
+                  />
+                  <YAxis hide />
+                  <Tooltip cursor={{fill: 'transparent'}} />
+                  <Bar dataKey="value" fill="#10b981" radius={[8, 8, 0, 0]} barSize={35} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-[10px] font-black text-slate-300 uppercase italic">
+                Sem leads no período
+              </div>
+            )}
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2"><Globe size={18} className="text-amber-500" /> Top Origens</h3>
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
+            <Globe size={18} className="text-amber-500" /> Top Origens
+          </h3>
           <div className="space-y-4">
             {Object.entries(stats.origem).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([label, val]) => (
               <div key={label}>
@@ -429,7 +467,9 @@ export default function VisaoCliente({
                 </div>
               </div>
             ))}
-            {totalFiltrados === 0 && !loading && <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Sem dados no período</p>}
+            {totalFiltrados === 0 && !loading && (
+              <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Sem dados no período</p>
+            )}
           </div>
         </div>
       </div>
@@ -437,12 +477,14 @@ export default function VisaoCliente({
       {/* GEOLOCALIZAÇÃO E UNIDADES */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-8 flex items-center gap-2"><Navigation size={18} className="text-rose-500" /> Geolocalização (Período)</h3>
+          <h3 className="text-sm font-black uppercase text-slate-500 mb-8 flex items-center gap-2">
+            <Navigation size={18} className="text-rose-500" /> Geolocalização (Período)
+          </h3>
           <div className="grid grid-cols-2 gap-8">
             <div className="space-y-3">
               <p className="text-[11px] font-black text-rose-500 uppercase tracking-widest mb-2 border-b border-rose-100 pb-1">Municípios</p>
               {chartData.municipios.map((m) => (
-                <div key={m.name} className="flex justify-between p-3 bg-rose-50/30 border border-rose-100 rounded-xl">
+                <div key={`muni-${m.name}`} className="flex justify-between p-3 bg-rose-50/30 border border-rose-100 rounded-xl">
                   <span className="text-xs font-black text-slate-700 uppercase truncate">{m.name}</span>
                   <span className="text-xs font-black text-rose-600">{m.value}</span>
                 </div>
@@ -452,7 +494,7 @@ export default function VisaoCliente({
             <div className="space-y-3">
               <p className="text-[11px] font-black text-indigo-500 uppercase tracking-widest mb-2 border-b border-indigo-100 pb-1">Bairros</p>
               {Object.entries(stats.bairro).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([name, val]) => (
-                <div key={name} className="flex justify-between p-3 bg-indigo-50/30 border border-indigo-100 rounded-xl">
+                <div key={`bair-${name}`} className="flex justify-between p-3 bg-indigo-50/30 border border-indigo-100 rounded-xl">
                   <span className="text-xs font-black text-slate-700 uppercase truncate">{name}</span>
                   <span className="text-xs font-black text-indigo-600">{val}</span>
                 </div>
@@ -472,7 +514,7 @@ export default function VisaoCliente({
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {Object.entries(stats.matriz).length > 0 ? Object.entries(stats.matriz).map(([name, val]) => (
-              <div key={name} className="bg-white p-5 rounded-[24px] border border-slate-200 shadow-sm flex items-center gap-4">
+              <div key={`matriz-${name}`} className="bg-white p-5 rounded-[24px] border border-slate-200 shadow-sm flex items-center gap-4">
                 <div className="h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center border border-indigo-100">
                   <Hash size={16} className="text-indigo-500" />
                 </div>
@@ -489,6 +531,6 @@ export default function VisaoCliente({
           </div>
         </div>
       </div>
-    </div>
+    </div> // FECHAMENTO DA DIV PRINCIPAL (A que faltava)
   );
 }

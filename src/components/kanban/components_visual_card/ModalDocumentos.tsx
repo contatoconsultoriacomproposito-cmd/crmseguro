@@ -71,15 +71,17 @@ export const ModalDocumentos = ({ cliente, onClose }: ModalDocumentosProps) => {
       }
 
       // Validação 2: Limite Total (apenas se liberar_excedente for FALSE)
-      if (!config.liberar_excedente) {
+      if (config.liberar_excedente === false) {
         const limiteBytes = (config.storage_limite_mb || 50) * 1024 * 1024;
-        const usoFuturo = (config.storage_usado_bytes || 0) + file.size;
+        const usoAtual = Number(config.storage_usado_bytes || 0);
+        const usoFuturo = usoAtual + file.size;
 
         if (usoFuturo > limiteBytes) {
           setErrorMessage({
             title: "Limite de Armazenamento Atingido",
-            message: "Você excedeu o espaço do seu plano atual. Para adquirir mais armazenamento, contate nosso suporte: bruce.segurocrm@gmail.com"
+            message: `Seu plano de ${config.storage_limite_mb}MB está cheio (${(usoAtual / (1024 * 1024)).toFixed(2)}MB usados). Faça um upgrade para continuar.`
           });
+          setUploading(null);
           return;
         }
       }

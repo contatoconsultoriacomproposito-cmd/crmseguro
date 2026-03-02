@@ -75,7 +75,8 @@ export default function PortalParceiro() {
         nome_arquivo: arquivo.name,
         url_arquivo: publicUrl,
         tipo: tipo,
-        storage_path: path
+        storage_path: path,
+        tamanho_bytes: arquivo.size
       }]);
 
       if (dbError) throw dbError;
