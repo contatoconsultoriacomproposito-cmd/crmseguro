@@ -238,11 +238,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       
       
       
+      {/* --- CÓDIGO CORRIGIDO --- */}
       {modalAtivo?.tipo === 'RENOVACAO' && (
         <ModalGerenciamentoRenovacao 
+          isOpen={true} // Adicione esta linha para satisfazer a nova ModalProps
           itemId={modalAtivo.id}
           onClose={() => setModalAtivo(null)}
-          onSuccess={() => { carregarNotificacoes(); setModalAtivo(null); }}
+          onSuccess={() => { 
+            carregarNotificacoes(); 
+            setModalAtivo(null); 
+          }}
         />
       )}
 
