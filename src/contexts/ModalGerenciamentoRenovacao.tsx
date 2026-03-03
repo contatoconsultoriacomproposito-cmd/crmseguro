@@ -23,46 +23,41 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
 
   useEffect(() => {
     async function buscarDetalhes() {
-      try {
-        setLoading(true);
-        // Refatoramos a query para garantir que o caminho até o cliente_id seja sólido
-        const { data, error } = await supabase
-          .from('tab_proposta_itens')
-          .select(`
-            id, 
-            data_renovacao, 
-            horario_renovacao, 
-            data_inicio_vigencia, 
-            data_fim_vigencia,
-            base_produtos (nome),
-            tab_proposta_opcoes ( 
-              tab_propostas ( 
-                cliente_id, 
-                tab_clientes (nome) 
-              ) 
-            )
-          `)
-          .eq('id', itemId)
-          .maybeSingle();
+  try {
+    setLoading(true);
+    // A mudança chave é usar o seletor aninhado garantindo que pegamos o objeto correto
+    const { data, error } = await supabase
+      .from('tab_proposta_itens')
+      .select(`
+        id, 
+        data_renovacao, 
+        horario_renovacao, 
+        data_inicio_vigencia, 
+        data_fim_vigencia,
+        base_produtos (nome),
+        tab_proposta_opcoes!inner ( 
+          tab_propostas!inner ( 
+            cliente_id, 
+            tab_clientes!inner (nome) 
+          ) 
+        )
+      `)
+      .eq('id', itemId)
+      .single(); // Mudamos de maybeSingle para single para garantir a estrutura
 
-        if (error) throw error;
-        if (!data) {
-          toast.error("Item não encontrado");
-          onClose();
-          return;
-        }
+    if (error) throw error;
 
-        setDados(data);
-        setNovaData(data.data_renovacao || '');
-        setNovoHorario(data.horario_renovacao?.slice(0, 5) || '09:00');
-      } catch (err) {
-        console.error("Erro ao carrergar dados do modal:", err);
-        toast.error("Erro ao carregar dados");
-        onClose();
-      } finally {
-        setLoading(false);
-      }
-    }
+    setDados(data);
+    setNovaData(data.data_renovacao || '');
+    setNovoHorario(data.horario_renovacao?.slice(0, 5) || '09:00');
+  } catch (err) {
+    console.error("Erro ao carregar dados do modal:", err);
+    toast.error("Erro ao carregar dados: verifique o vínculo deste item.");
+    onClose();
+  } finally {
+    setLoading(false);
+  }
+}
     
     if (itemId) buscarDetalhes();
   }, [itemId]);
@@ -75,13 +70,16 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
     
     setSaving(true);
     try {
+      // O banco espera '09:00:00', mas o input type="time" retorna '09:00'
+      const horarioFormatado = novoHorario.length === 5 ? `${novoHorario}:00` : novoHorario;
+
       const { error } = await supabase
         .from('tab_proposta_itens')
         .update({ 
           data_renovacao: novaData, 
-          horario_renovacao: novoHorario,
+          horario_renovacao: horarioFormatado, // Agora com segundos
           notificacao_ativa: true,
-          status_renovacao: 'PENDENTE'
+          status_renovacao: 'A RENOVAR' // Ajustado para bater com seu CHECK CONSTRAINT do SQL
         })
         .eq('id', itemId);
 
@@ -92,7 +90,7 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
       onClose();
     } catch (err) {
       console.error("Erro no update:", err);
-      toast.error("Erro ao reagendar");
+      toast.error("Erro ao reagendar: Verifique o formato dos dados.");
     } finally {
       setSaving(false);
     }
