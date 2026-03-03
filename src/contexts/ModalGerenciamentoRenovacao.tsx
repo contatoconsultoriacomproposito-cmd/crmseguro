@@ -7,12 +7,13 @@ import { ptBR } from 'date-fns/locale';
 import ModalRenovacao from '../pages/propostas/ModalRenovacao';
 
 interface ModalProps {
-  itemId: string;
+  itemId: string | undefined;
   onClose: () => void;
   onSuccess: () => void;
+  isOpen: boolean;
 }
 
-export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onClose, onSuccess }) => {
+export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onClose, onSuccess, isOpen }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dados, setDados] = useState<any>(null);
@@ -23,46 +24,54 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
 
   useEffect(() => {
     async function buscarDetalhes() {
-  try {
-    setLoading(true);
-    // A mudança chave é usar o seletor aninhado garantindo que pegamos o objeto correto
-    const { data, error } = await supabase
-      .from('tab_proposta_itens')
-      .select(`
-        id, 
-        data_renovacao, 
-        horario_renovacao, 
-        data_inicio_vigencia, 
-        data_fim_vigencia,
-        base_produtos (nome),
-        tab_proposta_opcoes!inner ( 
-          tab_propostas!inner ( 
-            cliente_id, 
-            tab_clientes!inner (nome) 
-          ) 
-        )
-      `)
-      .eq('id', itemId)
-      .single(); // Mudamos de maybeSingle para single para garantir a estrutura
+      if (!itemId) return;
+      
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('tab_proposta_itens')
+          .select(`
+            id, 
+            data_renovacao, 
+            horario_renovacao, 
+            data_inicio_vigencia, 
+            data_fim_vigencia,
+            base_produtos (nome),
+            tab_proposta_opcoes!inner ( 
+              tab_propostas!inner ( 
+                cliente_id, 
+                tab_clientes!inner (nome) 
+              ) 
+            )
+          `)
+          .eq('id', itemId)
+          .single();
 
-    if (error) throw error;
+        if (error) throw error;
 
-    setDados(data);
-    setNovaData(data.data_renovacao || '');
-    setNovoHorario(data.horario_renovacao?.slice(0, 5) || '09:00');
-  } catch (err) {
-    console.error("Erro ao carregar dados do modal:", err);
-    toast.error("Erro ao carregar dados: verifique o vínculo deste item.");
-    onClose();
-  } finally {
-    setLoading(false);
-  }
-}
+        setDados(data);
+        setNovaData(data.data_renovacao || '');
+        setNovoHorario(data.horario_renovacao?.slice(0, 5) || '09:00');
+      } catch (err) {
+        console.error("Erro ao carregar dados do modal:", err);
+        toast.error("Erro ao carregar dados: verifique o vínculo deste item.");
+        onClose();
+      } finally {
+        setLoading(false);
+      }
+    }
     
-    if (itemId) buscarDetalhes();
-  }, [itemId]);
+    if (isOpen && itemId) {
+      buscarDetalhes();
+    }
+  }, [itemId, isOpen]);
 
   const handleReagendar = async () => {
+    if (!itemId) {
+      toast.error("ID do item não encontrado.");
+      return;
+    }
+
     if (!novaData) {
       toast.error("Selecione uma data para o reagendamento");
       return;
@@ -70,24 +79,23 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
     
     setSaving(true);
     try {
-      // O banco espera '09:00:00', mas o input type="time" retorna '09:00'
       const horarioFormatado = novoHorario.length === 5 ? `${novoHorario}:00` : novoHorario;
 
       const { error } = await supabase
         .from('tab_proposta_itens')
         .update({ 
           data_renovacao: novaData, 
-          horario_renovacao: horarioFormatado, // Agora com segundos
+          horario_renovacao: horarioFormatado,
           notificacao_ativa: true,
-          status_renovacao: 'A RENOVAR' // Ajustado para bater com seu CHECK CONSTRAINT do SQL
+          status_renovacao: 'A RENOVAR'
         })
         .eq('id', itemId);
 
       if (error) throw error;
       
       toast.success("Reagendado com sucesso!");
-      onSuccess();
-      onClose();
+      onSuccess(); // Primeiro comunica o sucesso (atualiza a lista)
+      onClose();   // Depois fecha o modal
     } catch (err) {
       console.error("Erro no update:", err);
       toast.error("Erro ao reagendar: Verifique o formato dos dados.");
@@ -96,18 +104,29 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
     }
   };
 
-  if (loading) return null;
+  // Se o modal não estiver aberto, não renderiza nada
+  if (!isOpen) return null;
 
-  // Lógica segura para extrair o cliente_id e nome, tratando se vier como array ou objeto único
+  // Enquanto carrega, mostra apenas o fundo para evitar saltos visuais
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-[998] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="bg-white dark:bg-zinc-900 w-full max-w-md h-64 rounded-[24px] flex items-center justify-center">
+          <RefreshCw className="animate-spin text-zinc-400" />
+        </div>
+      </div>
+    );
+  }
+
   const vinculoRaw = dados?.tab_proposta_opcoes;
   const infoProposta = Array.isArray(vinculoRaw) 
     ? vinculoRaw[0]?.tab_propostas 
     : vinculoRaw?.tab_propostas;
 
   const itemOriginalParaVinculo = {
-    id_item: itemId,
-    cliente: infoProposta?.tab_clientes?.nome || 'Cliente não identificado',
-    cliente_id: infoProposta?.cliente_id
+    id_item: itemId ?? '', // Se for undefined, envia string vazia
+    cliente: String(infoProposta?.tab_clientes?.nome || 'Cliente não identificado'),
+    cliente_id: String(infoProposta?.cliente_id || '')
   };
 
   return (
@@ -161,7 +180,6 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
               </div>
             </div>
 
-            {/* BOTÃO DE VÍNCULO - ONDE DISPARAVA O ERRO */}
             <button 
               type="button"
               onClick={() => {
@@ -226,15 +244,14 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
         </div>
       </div>
 
-      {/* Modal de Renovação (Vinculação) */}
       {showVinculoModal && (
-        <ModalRenovacao 
-          isOpen={showVinculoModal}
-          onClose={() => setShowVinculoModal(false)}
-          itemOriginal={itemOriginalParaVinculo}
-          onSuccess={() => {
-            onSuccess();
-            onClose();
+      <ModalRenovacao 
+        isOpen={showVinculoModal}
+        onClose={() => setShowVinculoModal(false)}
+        itemOriginal={itemOriginalParaVinculo} // Agora o TS aceita, pois as propriedades são strings
+        onSuccess={() => {
+          onSuccess();
+          onClose();
           }}
         />
       )}

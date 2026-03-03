@@ -4,6 +4,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
+import { ModalGerenciamentoRenovacao } from '../../contexts/ModalGerenciamentoRenovacao';
 import { toast } from 'sonner';
 
 // IMPORTAÇÃO CORRIGIDA: Apenas o cliente estável
@@ -20,8 +21,8 @@ interface EventoAgenda {
     clienteId: string;
     tipo: 'PF' | 'PJ';
     fase: string;
-    origem: 'COMERCIAL' | 'SINISTRO';
-    sinistroId?: string;
+    origem: 'COMERCIAL' | 'SINISTRO' | 'RENOVACAO'; // Adicionado RENOVACAO
+    itemId?: string; // ID do item da proposta para ações futuras
   };
 }
 
@@ -30,11 +31,12 @@ export default function AgendaCorretor() {
   const [loading, setLoading] = useState(true);
   const [modalAberto, setModalAberto] = useState(false);
   const [clienteSelecionado, setClienteSelecionado] = useState<any>(null);
-
   const [googleConectado, setGoogleConectado] = useState(false);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [tipoUsuario, setTipoUsuario] = useState<string | null>(null); // Estado para o tipo de usuário
   const processingCode = useRef(false);
+  const [modalRenovAberto, setModalRenovAberto] = useState(false);
+  const [itemRenovacaoSelecionado, setItemRenovacaoSelecionado] = useState<any>(null);
 
 const fetchCompromissos = useCallback(async () => {
   try {
@@ -42,86 +44,120 @@ const fetchCompromissos = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1️⃣ BUSCA O PERFIL DO USUÁRIO LOGADO
-    const { data: perfil, error: errorPerfil } = await supabase
+    const { data: perfil } = await supabase
       .from("usuarios_perfis")
       .select("id, tipo_usuario, corretora_id")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (errorPerfil || !perfil) {
-      console.error("Perfil não encontrado");
-      return;
-    }
-
+    if (!perfil) return;
     setTipoUsuario(perfil.tipo_usuario);
 
-    // 2️⃣ MONTAGEM DA QUERY DINÂMICA
-    // Selecionamos os campos necessários de tab_clientes
-    let query = supabase
+    // --- BUSCA A: CLIENTES (Comercial e Sinistro) ---
+    let queryCli = supabase
       .from('tab_clientes')
-      .select('id, nome, razao_social, tipo_cliente, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban, corretora_id, corretor_id');
+      .select('id, nome, razao_social, tipo_cliente, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban, corretora_id, corretor_id')
+      .eq('corretora_id', perfil.corretora_id)
+      .or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
 
-    // Filtro Base: Garante que o cliente pertença à corretora do usuário
-    // IMPORTANTE: Para o Admin, perfil.corretora_id deve ser o ID da própria conta master.
-    query = query.eq('corretora_id', perfil.corretora_id);
-
-    // Filtro de Datas: Somente clientes que possuam algum agendamento (Comercial ou Sinistro)
-    query = query.or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
-
-    // 3️⃣ LÓGICA DE HIERARQUIA (O ponto chave)
-    // Se for um corretor comum, restringimos a busca apenas aos clientes vinculados a ele.
-    // Se for ADMIN ou CORRETORA, não aplicamos este filtro, permitindo ver todos da corretora_id.
     if (perfil.tipo_usuario === 'CORRETOR') {
-      query = query.eq('corretor_id', perfil.id);
+      queryCli = queryCli.eq('corretor_id', perfil.id);
     }
 
-    const { data: clientes, error: errorClientes } = await query;
+    // --- BUSCA B: RENOVAÇÕES (tab_proposta_itens) ---
+    let queryRenov = supabase
+      .from('tab_proposta_itens')
+      .select(`
+        id, 
+        data_renovacao, 
+        horario_renovacao, 
+        status_renovacao,
+        base_produtos (nome),
+        tab_proposta_opcoes!inner (
+          tab_propostas!inner (
+            corretora_id,
+            corretor_id,
+            tab_clientes!inner (id, nome, razao_social, tipo_cliente)
+          )
+        )
+      `)
+      .eq('tab_proposta_opcoes.tab_propostas.corretora_id', perfil.corretora_id)
+      .eq('status_renovacao', 'A RENOVAR')
+      .not('data_renovacao', 'is', null);
 
-    if (errorClientes) throw errorClientes;
+    // Disparamos as duas buscas em paralelo para performance máxima
+    const [resClientes, resRenovacoes] = await Promise.all([queryCli, queryRenov]);
 
-    // 4️⃣ FORMATAÇÃO DOS EVENTOS PARA O CALENDÁRIO
+    if (resClientes.error) throw resClientes.error;
+    if (resRenovacoes.error) throw resRenovacoes.error;
+
     const eventosFormatados: EventoAgenda[] = [];
 
-    clientes?.forEach(cli => {
-      const nomeTitulo = cli.tipo_cliente === 'PJ' 
-        ? (cli.razao_social || 'Empresa Sem Razão') 
-        : (cli.nome || 'Cliente Sem Nome');
-
-      // Agendamento Comercial
+    // Formatação de Clientes (Comercial e Sinistro)
+    resClientes.data?.forEach(cli => {
+      const nomeTitulo = cli.tipo_cliente === 'PJ' ? (cli.razao_social || 'PJ') : (cli.nome || 'PF');
+      
       if (cli.data_retorno) {
         eventosFormatados.push({
           id: `${cli.id}_comercial`,
           title: nomeTitulo,
           start: `${cli.data_retorno}T${cli.horario_retorno || '09:00:00'}`,
-          extendedProps: { 
-            clienteId: cli.id, 
-            tipo: cli.tipo_cliente, 
-            fase: cli.fase_kanban || 'Lead', 
-            origem: 'COMERCIAL' 
-          }
+          extendedProps: { clienteId: cli.id, tipo: cli.tipo_cliente, fase: cli.fase_kanban || 'Lead', origem: 'COMERCIAL' }
         });
       }
-
-      // Agendamento de Sinistro
       if (cli.data_retorno_sinistro) {
         eventosFormatados.push({
           id: `${cli.id}_sinistro`,
           title: `[SINISTRO] ${nomeTitulo}`,
           start: `${cli.data_retorno_sinistro}T${cli.horario_retorno_sinistro || '09:00:00'}`,
-          extendedProps: { 
-            clienteId: cli.id, 
-            tipo: cli.tipo_cliente, 
-            fase: 'Acompanhamento', 
-            origem: 'SINISTRO' 
-          }
+          extendedProps: { clienteId: cli.id, tipo: cli.tipo_cliente, fase: 'Sinistro', origem: 'SINISTRO' }
         });
       }
     });
+    // Formatação de Renovações
+  resRenovacoes.data?.forEach(renov => {
+    // O Supabase retorna relacionamentos como Arrays ou Objetos dependendo da query
+    // Vamos garantir o acesso ao primeiro item caso venha como array
+    const propRelacionamento = renov.tab_proposta_opcoes as any;
+    const infoOpcao = Array.isArray(propRelacionamento) ? propRelacionamento[0] : propRelacionamento;
+    
+    const infoProposta = Array.isArray(infoOpcao?.tab_propostas) 
+      ? infoOpcao?.tab_propostas[0] 
+      : infoOpcao?.tab_propostas;
+
+    const infoCli = Array.isArray(infoProposta?.tab_clientes)
+      ? infoProposta?.tab_clientes[0]
+      : infoProposta?.tab_clientes;
+
+    const corretorIdItem = infoProposta?.corretor_id;
+
+    // Filtro de hierarquia
+    if (perfil.tipo_usuario === 'CORRETOR' && corretorIdItem !== perfil.id) return;
+
+    // Resolução do erro 'nome' does not exist on type...
+    const nomeTitulo = infoCli?.tipo_cliente === 'PJ' 
+      ? (infoCli?.razao_social || 'PJ') 
+      : (infoCli?.nome || 'PF');
+
+    const produto = (renov.base_produtos as any)?.nome || 'Seguro';
+
+    eventosFormatados.push({
+      id: `${renov.id}_renov`,
+      title: `[RENOV] ${nomeTitulo} - ${produto}`,
+      start: `${renov.data_renovacao}T${renov.horario_renovacao || '09:00:00'}`,
+      extendedProps: { 
+        clienteId: infoCli?.id, 
+        tipo: infoCli?.tipo_cliente, 
+        fase: 'Renovação', 
+        origem: 'RENOVACAO',
+        itemId: renov.id 
+      }
+    });
+  });
 
     setEventos(eventosFormatados);
   } catch (err) {
-    console.error("Erro ao carregar compromissos da agenda:", err);
+    console.error("Erro na agenda:", err);
   } finally {
     setLoading(false);
   }
@@ -309,139 +345,244 @@ const sincronizarClientesExistentes = useCallback(async () => {
     window.location.href = googleOAuthUrl;
   }
 
-  async function handleEventChange(info: any) {
+ async function handleEventChange(info: any) {
     const { extendedProps } = info.event;
     const clienteId = extendedProps.clienteId;
+    const itemId = extendedProps.itemId; // ID específico da renovação (se houver)
+    const origem = extendedProps.origem;
     
-    // Formatação de data robusta
+    // Formatação de data e hora para o padrão do banco (YYYY-MM-DD e HH:mm:ss)
     const novaData = info.event.start.toLocaleDateString('en-CA'); 
-    
-    // Formatação de hora corrigida (sem o erro de Range do 'second')
     const novoHorario = info.event.start.toLocaleTimeString('pt-BR', { 
       hour: '2-digit', 
       minute: '2-digit', 
-      second: '2-digit', // Alterado de '00' para '2-digit'
+      second: '2-digit', 
       hour12: false 
     });
 
     try {
-      const isSinistro = extendedProps.origem === 'SINISTRO';
-      
-      const updateData = isSinistro 
-        ? { data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario }
-        : { data_retorno: novaData, horario_retorno: novoHorario };
+      if (origem === 'RENOVACAO') {
+        // --- ATUALIZAÇÃO NA TABELA DE ITENS DA PROPOSTA ---
+        if (!itemId) throw new Error("ID do item não encontrado para renovação");
 
-      const { error: dbError } = await supabase
-        .from('tab_clientes')
-        .update(updateData)
-        .eq('id', clienteId);
+        const { error: dbError } = await supabase
+          .from('tab_proposta_itens')
+          .update({ 
+            data_renovacao: novaData, 
+            horario_renovacao: novoHorario 
+          })
+          .eq('id', itemId);
 
-      if (dbError) throw dbError;
-      
-      toast.success(`${isSinistro ? 'Sinistro' : 'Retorno'} atualizado!`);
+        if (dbError) throw dbError;
+        toast.success(`Renovação reagendada para ${novaData}`);
+
+      } else {
+        // --- ATUALIZAÇÃO NA TABELA DE CLIENTES (COMERCIAL OU SINISTRO) ---
+        const isSinistro = origem === 'SINISTRO';
+        
+        const updateData = isSinistro 
+          ? { data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario }
+          : { data_retorno: novaData, horario_retorno: novoHorario };
+
+        const { error: dbError } = await supabase
+          .from('tab_clientes')
+          .update(updateData)
+          .eq('id', clienteId);
+
+        if (dbError) throw dbError;
+        toast.success(`${isSinistro ? 'Sinistro' : 'Retorno'} atualizado!`);
+      }
     } catch (err: any) {
       console.error("Erro ao salvar alteração:", err);
       toast.error("Falha ao salvar alteração");
-      info.revert(); 
+      info.revert(); // Volta o evento para a posição original em caso de erro
     }
   }
 
-  async function abrirDetalhesCliente(id: string) {
-    const { data } = await supabase.from('tab_clientes').select('*').eq('id', id).single();
+  // --- FUNÇÃO PARA ABRIR CLIENTE (COMERCIAL/SINISTRO) ---
+  const abrirDetalhesCliente = useCallback(async (id: string) => {
+    if (!id) {
+      toast.error("ID do cliente não encontrado.");
+      return;
+    }
+    const { data, error: errCli } = await supabase
+      .from('tab_clientes')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (errCli) {
+      console.error("Erro ao buscar cliente:", errCli);
+      return;
+    }
+
     if (data) {
       setClienteSelecionado(data);
       setModalAberto(true);
     }
+  }, []);
+
+
+
+const handleEventClick = useCallback(async (info: any) => {
+    const { origem, clienteId, itemId } = info.event.extendedProps;
+
+    if (origem === 'RENOVACAO') {
+      const { data, error: errRenov } = await supabase
+        .from('tab_proposta_itens')
+        .select(`
+          *,
+          base_produtos(nome),
+          tab_proposta_opcoes(
+            tab_propostas(
+              tab_clientes(*)
+            )
+          )
+        `)
+        .eq('id', itemId)
+        .single();
+
+      if (errRenov) {
+        console.error("Erro ao buscar renovação:", errRenov);
+        toast.error("Erro ao carregar dados da renovação");
+        return;
+      }
+
+      if (data) {
+        setItemRenovacaoSelecionado(data);
+        setModalRenovAberto(true);
+      }
+    } else {
+      // Abre o modal de contato para Comercial/Sinistro
+      abrirDetalhesCliente(clienteId);
+    }
+  }, [abrirDetalhesCliente]);
+
+  // Bloqueio de carregamento
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[80vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+// ADICIONE ESTE BLOCO AQUI PARA RESOLVER O ALERTA DO TS:
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[80vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-[80vh]">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-    </div>
-  );
-
-  return (
-    <div className="flex flex-col gap-6 mt-4">
-      {/* CORREÇÃO AQUI: Bloco do Google renderizado apenas para ADM/CORRETORA */}
-      {(tipoUsuario === 'ADMIN' || tipoUsuario === 'CORRETORA') && (
-        <div className="flex flex-col md:flex-row items-center justify-between p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-sm">
-          <div className="flex items-center gap-5">
-            <div className={`p-4 rounded-2xl transition-all duration-500 ${
-              googleConectado ? 'bg-blue-50 text-blue-600 shadow-inner' : 'bg-zinc-100 text-zinc-400'
-            }`}>
-              <CalendarCheck size={32} />
-            </div>
-            
-            <div>
-              <h2 className="text-xl font-black text-zinc-900 dark:text-white flex items-center gap-2">
-                Google Agenda (Empresa)
-                {googleConectado && <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
-              </h2>
-              <p className="text-sm text-zinc-500 font-medium">
-                {googleConectado ? "Sincronização master ativa" : "Conecte a conta da corretora."}
-              </p>
-            </div>
+return (
+  <div className="flex flex-col gap-6 mt-4">
+    {/* Bloco do Google renderizado apenas para ADM/CORRETORA */}
+    {(tipoUsuario === 'ADMIN' || tipoUsuario === 'CORRETORA') && (
+      <div className="flex flex-col md:flex-row items-center justify-between p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-sm">
+        <div className="flex items-center gap-5">
+          <div className={`p-4 rounded-2xl transition-all duration-500 ${
+            googleConectado ? 'bg-blue-50 text-blue-600 shadow-inner' : 'bg-zinc-100 text-zinc-400'
+          }`}>
+            <CalendarCheck size={32} />
           </div>
-
-          <button 
-            onClick={handleGoogleAuth} 
-            disabled={loadingGoogle}
-            className={`group relative flex items-center gap-3 px-6 py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-95 ${
-              googleConectado 
-                ? 'bg-white dark:bg-zinc-800 text-red-500 border border-red-100 dark:border-red-900/30 hover:bg-red-50' 
-                : 'bg-white dark:bg-white text-zinc-700 border border-zinc-200 shadow-md hover:shadow-lg'
-            }`}
-          >
-            {loadingGoogle ? (
-              <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-blue-600" />
-            ) : (
-              googleConectado ? (
-                <>
-                  <Link2Off size={18} />
-                  DESVINCULAR CONTA MASTER
-                </>
-              ) : (
-                <>
-                  <svg width="18" height="18" viewBox="0 0 18 18">
-                    <path d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.91c1.7-1.56 2.69-3.86 2.69-6.62z" fill="#4285F4"/>
-                    <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.83.86-3.05.86-2.34 0-4.33-1.58-5.04-3.7H.95v2.33A8.99 8.99 0 0 0 9 18z" fill="#34A853"/>
-                    <path d="M3.96 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.95a8.99 8.99 0 0 0 0 8.08l3.01-2.33z" fill="#FBBC05"/>
-                    <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A8.96 8.96 0 0 0 9 0A8.99 8.99 0 0 0 .95 4.96L3.96 7.29c.7-2.12 2.7-3.71 5.04-3.71z" fill="#EA4335"/>
-                  </svg>
-                  <span className="tracking-tight">CONECTAR MASTER</span>
-                </>
-              )
-            )}
-          </button>
+          
+          <div>
+            <h2 className="text-xl font-black text-zinc-900 dark:text-white flex items-center gap-2">
+              Google Agenda (Empresa)
+              {googleConectado && <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
+            </h2>
+            <p className="text-sm text-zinc-500 font-medium">
+              {googleConectado ? "Sincronização master ativa" : "Conecte a conta da corretora."}
+            </p>
+          </div>
         </div>
-      )}
 
-      {/* Calendário: Sempre visível para todos */}
-      <div className="p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl overflow-hidden">
-        <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
-          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' }}
-          locale={ptBrLocale}
-          events={eventos}
-          height="75vh"
-          editable={true}
-          eventDrop={handleEventChange}
-          eventContent={(info) => {
-            const isSinistro = info.event.extendedProps.origem === 'SINISTRO';
-            return (
-              <div className={`flex flex-col p-2 rounded-xl border-l-4 shadow-sm hover:scale-[1.02] transition-transform ${
-                isSinistro ? 'bg-red-50 border-red-500 text-red-700' : 'bg-blue-50 border-blue-500 text-blue-700'
-              }`}>
-                <span className="text-[9px] font-black uppercase tracking-wider opacity-70">{info.event.extendedProps.fase}</span>
-                <span className="text-[11px] font-bold truncate">{info.event.title}</span>
-              </div>
-            );
-          }}
-          eventClick={(info) => abrirDetalhesCliente(info.event.extendedProps.clienteId)}
-        />
-        <ModalContato isOpen={modalAberto} onClose={() => setModalAberto(false)} cliente={clienteSelecionado} onSuccess={fetchCompromissos} />
+        <button 
+          onClick={handleGoogleAuth} 
+          disabled={loadingGoogle}
+          className={`group relative flex items-center gap-3 px-6 py-3.5 rounded-xl font-bold text-sm transition-all duration-300 active:scale-95 ${
+            googleConectado 
+              ? 'bg-white dark:bg-zinc-800 text-red-500 border border-red-100 dark:border-red-900/30 hover:bg-red-50' 
+              : 'bg-white dark:bg-white text-zinc-700 border border-zinc-200 shadow-md hover:shadow-lg'
+          }`}
+        >
+          {loadingGoogle ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-blue-600" />
+          ) : (
+            googleConectado ? (
+              <>
+                <Link2Off size={18} />
+                DESVINCULAR CONTA MASTER
+              </>
+            ) : (
+              <>
+                <svg width="18" height="18" viewBox="0 0 18 18">
+                  <path d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.91c1.7-1.56 2.69-3.86 2.69-6.62z" fill="#4285F4"/>
+                  <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.83.86-3.05.86-2.34 0-4.33-1.58-5.04-3.7H.95v2.33A8.99 8.99 0 0 0 9 18z" fill="#34A853"/>
+                  <path d="M3.96 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.95a8.99 8.99 0 0 0 0 8.08l3.01-2.33z" fill="#FBBC05"/>
+                  <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A8.96 8.96 0 0 0 9 0A8.99 8.99 0 0 0 .95 4.96L3.96 7.29c.7-2.12 2.7-3.71 5.04-3.71z" fill="#EA4335"/>
+                </svg>
+                <span className="tracking-tight">CONECTAR MASTER</span>
+              </>
+            )
+          )}
+        </button>
       </div>
+    )}
+
+    {/* Calendário */}
+    <div className="p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl overflow-hidden">
+      <FullCalendar
+        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+        initialView="dayGridMonth"
+        headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' }}
+        locale={ptBrLocale}
+        events={eventos}
+        height="75vh"
+        editable={true}
+        eventDrop={handleEventChange}
+        eventClick={handleEventClick}
+        eventContent={(info) => {
+          const { origem, fase } = info.event.extendedProps;
+          
+          let colorClasses = "bg-blue-50 border-blue-500 text-blue-700"; 
+          if (origem === 'SINISTRO') colorClasses = "bg-red-50 border-red-500 text-red-700";
+          if (origem === 'RENOVACAO') colorClasses = "bg-amber-50 border-amber-500 text-amber-700";
+
+          return (
+            <div className={`flex flex-col p-2 rounded-xl border-l-4 shadow-sm hover:scale-[1.02] transition-transform ${colorClasses}`}>
+              <span className="text-[9px] font-black uppercase tracking-wider opacity-70">{fase}</span>
+              <span className="text-[11px] font-bold truncate">{info.event.title}</span>
+            </div>
+          );
+        }}
+      />
+      
+      {/* Modais */}
+      <ModalContato 
+        isOpen={modalAberto} 
+        onClose={() => setModalAberto(false)} 
+        cliente={clienteSelecionado} 
+        onSuccess={fetchCompromissos} 
+      />
+
+      <ModalGerenciamentoRenovacao 
+        isOpen={modalRenovAberto}
+        onClose={() => {
+          setModalRenovAberto(false);
+          // Pequeno delay para limpar o item após a animação de saída do modal
+          setTimeout(() => setItemRenovacaoSelecionado(null), 300);
+        }}
+        itemId={itemRenovacaoSelecionado?.id}
+        onSuccess={() => {
+          setModalRenovAberto(false);
+          setItemRenovacaoSelecionado(null);
+          fetchCompromissos();
+          toast.success("Agenda atualizada!");
+        }}
+      />
     </div>
-  );
+  </div>
+);
 }
