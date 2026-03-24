@@ -210,16 +210,23 @@ useEffect(() => {
     }
 
     // NOVA VALIDAÇÃO DE DUPLICIDADE
-    if (!isEditing && tipoCliente === "PF" && form.cpf) { 
+    if (!isEditing && tipoCliente === "PF" && form.cpf) {
+      // Determinamos quem é a corretora "mãe" para filtrar a busca
+      const idCorretoraMae = perfilUsuarioLogado?.tipo_usuario === "CORRETORA" 
+        ? perfilUsuarioLogado.id 
+        : perfilUsuarioLogado?.corretora_id;
+
       const { data: existente } = await supabase
         .from("tab_clientes")
-        .select("id")
+        .select("id, tipo_cliente")
         .eq("cpf", form.cpf)
+        .eq("corretora_id", idCorretoraMae) // Só importa se for na mesma corretora
+        .eq("tipo_cliente", "PF")           // Só bloqueia se for outra ficha de Pessoa Física
         .maybeSingle();
 
       if (existente) {
-        setLoading(false); // Importante para destravar o botão de salvar
-        alert("Atenção: Já existe um cliente cadastrado com este CPF.");
+        setLoading(false);
+        alert("Atenção: Já existe um cadastro de Pessoa Física com este CPF nesta corretora.");
         return;
       }
     }
