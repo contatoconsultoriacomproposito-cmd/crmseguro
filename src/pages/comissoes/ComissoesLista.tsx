@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
-import { Search, Calendar, ArrowDownCircle, CheckCircle, AlertTriangle, Check, Eye, Wallet, RefreshCcw, Landmark, ArrowUpRight, ArrowDownLeft, Equal, PlusCircle, Building2, XCircle } from 'lucide-react';
+import { Search, Calendar, ArrowDownCircle, CheckCircle, AlertTriangle, Check, Eye, Wallet, RefreshCcw, Landmark, ArrowUpRight, ArrowDownLeft, Equal, PlusCircle, Building2, XCircle, Ban } from 'lucide-react';
 
 interface ProvisaoItem {
   id: string;
@@ -13,7 +13,7 @@ interface ProvisaoItem {
   valor_direito_corretor: number | string;
   valor_direito_parceiro: number | string;
   valor_direito_corretora_mae: number | string;
-  status_recebimento_seguradora: 'RECEBIDO' | 'PREVISTO';
+  status_recebimento_seguradora: 'RECEBIDO' | 'PREVISTO' | 'CANCELADO';
   status_repasse_corretor: 'PAGO' | 'PENDENTE'; 
   repasse_id: string | null; 
   
@@ -69,13 +69,13 @@ export const ComissoesLista = () => {
   const [vendaDe, setVendaDe] = useState('');
   const [vendaAte, setVendaAte] = useState('');
   
-  const [vencimentoDe, setVencimentoDe] = useState('2026-04-01'); // Seus defaults sugeridos
+  const [vencimentoDe, setVencimentoDe] = useState('2026-04-01'); 
   const [vencimentoAte, setVencimentoAte] = useState('2026-06-30');
   
   const [baixaDe, setBaixaDe] = useState('');
   const [baixaAte, setBaixaAte] = useState('');
   
-  const [statusFiltro, setStatusFiltro] = useState<'TODOS' | 'PREVISTO' | 'RECEBIDO'>('TODOS');
+  const [statusFiltro, setStatusFiltro] = useState<'TODOS' | 'PREVISTO' | 'RECEBIDO' | 'CANCELADO'>('TODOS');
   const [provisoes, setProvisoes] = useState<ProvisaoItem[]>([]);
   
   // Estados do painel de Conta Corrente
@@ -304,17 +304,61 @@ export const ComissoesLista = () => {
     }
   };
 
+  const cancelarProvisoesFuturasContrato = async (regraId: string, nomeCliente: string) => {
+    if (!regraId) return;
+    if (!window.confirm(`Deseja realmente CANCELAR todas as parcelas PREVISTAS do contrato de ${nomeCliente.toUpperCase()}?\n\nEsta ação mudará o status das parcelas futuras para CANCELADO. O histórico de parcelas já RECEBIDAS não será afetado.`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('tab_financeiro_provisoes')
+        .update({
+          status_recebimento_seguradora: 'CANCELADO',
+          updated_at: new Date().toISOString()
+        })
+        .eq('regra_id', regraId)
+        .eq('status_recebimento_seguradora', 'PREVISTO');
+
+      if (error) {
+        console.error("Erro interno do Supabase:", error.message);
+        throw error;
+}
+
+      toast.success("Provisões futuras canceladas com sucesso!");
+      setModalDetalhe(false);
+      // Limpa seleções antigas em lote que possam ter sido canceladas
+      setSelecionadasLote([]);
+      await carregarDadosIniciais();
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao cancelar provisões futuras.");
+    }
+  };
+
   const obterNomeCliente = (cliente: any) => {
     if (!cliente) return '—';
     return cliente.razao_social || cliente.nome || cliente.nome_fantasia || '—';
   };
 
-  // Indicadores dos Cards superiores
-  const totalGeradoMae = provisoes.reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretora_mae), 0);
-  const totalProvisionadoCorretor = provisoes.reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretor), 0);
-  const totalRecebidoCorretor = provisoes.filter(p => p.status_recebimento_seguradora === 'RECEBIDO').reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretor), 0);
-  const totalAReceberCorretor = provisoes.filter(p => p.status_recebimento_seguradora === 'PREVISTO').reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretor), 0);
-  const somaLoteAtual = provisoes.filter(p => selecionadasLote.includes(p.id)).reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretor), 0);
+  // INDICADORES DOS CARDS SUPERIORES FILTRANDO APENAS REGISTROS NÃO CANCELADOS
+  const totalGeradoMae = provisoes
+    .filter(p => p.status_recebimento_seguradora !== 'CANCELADO')
+    .reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretora_mae), 0);
+
+  const totalProvisionadoCorretor = provisoes
+    .filter(p => p.status_recebimento_seguradora !== 'CANCELADO')
+    .reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretor), 0);
+
+  const totalRecebidoCorretor = provisoes
+    .filter(p => p.status_recebimento_seguradora === 'RECEBIDO')
+    .reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretor), 0);
+
+  const totalAReceberCorretor = provisoes
+    .filter(p => p.status_recebimento_seguradora === 'PREVISTO')
+    .reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretor), 0);
+
+  const somaLoteAtual = provisoes
+    .filter(p => selecionadasLote.includes(p.id))
+    .reduce((acc, curr) => acc + parseToNumber(curr.valor_direito_corretor), 0);
 
   // Filtro textual e Ordenação Alfabética Rigorosa
   const provisoesFiltradasEOrdenadas = provisoes
@@ -488,7 +532,7 @@ export const ComissoesLista = () => {
               <XCircle size={14} /> Limpar Datas
             </button>
             <div className="bg-zinc-100 dark:bg-zinc-950 p-1 rounded-xl flex gap-1">
-              {(['TODOS', 'PREVISTO', 'RECEBIDO'] as const).map((t) => (
+              {(['TODOS', 'PREVISTO', 'RECEBIDO', 'CANCELADO'] as const).map((t) => (
                 <button key={t} onClick={() => setStatusFiltro(t)} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${statusFiltro === t ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-400'}`}>{t}</button>
               ))}
             </div>
@@ -566,12 +610,12 @@ export const ComissoesLista = () => {
                 <tr><td colSpan={11} className="p-8 text-center uppercase tracking-wider font-black text-zinc-400">Nenhuma provisão encontrada.</td></tr>
               ) : (
                 provisoesFiltradasEOrdenadas.map((p: ProvisaoItem) => (
-                  <tr key={p.id} className={`${selecionadasLote.includes(p.id) ? 'bg-blue-50/50' : 'hover:bg-zinc-50/80'}`}>
+                  <tr key={p.id} className={`${selecionadasLote.includes(p.id) ? 'bg-blue-50/50' : 'hover:bg-zinc-50/80'} ${p.status_recebimento_seguradora === 'CANCELADO' ? 'opacity-50 bg-zinc-100/40 dark:bg-zinc-950/10 line-through text-zinc-400' : ''}`}>
                     <td className="p-4 text-center">
                       <input 
                         type="checkbox"
                         checked={selecionadasLote.includes(p.id)}
-                        disabled={p.status_recebimento_seguradora === 'RECEBIDO'}
+                        disabled={p.status_recebimento_seguradora === 'RECEBIDO' || p.status_recebimento_seguradora === 'CANCELADO'}
                         onChange={() => setSelecionadasLote(prev => prev.includes(p.id) ? prev.filter(item => item !== p.id) : [...prev, p.id])}
                         className="w-4 h-4 rounded cursor-pointer disabled:opacity-30"
                       />
@@ -585,7 +629,10 @@ export const ComissoesLista = () => {
                     <td className="p-4 text-center text-zinc-800 dark:text-zinc-200">{p.data_vencimento_previsto.split('-').reverse().join('/')}</td>
                     <td className="p-4 text-center font-bold text-blue-600 bg-blue-50/30">{p.data_recebimento ? p.data_recebimento.split('-').reverse().join('/') : '—'}</td>
                     <td className="p-4 text-center">
-                      <span className={`px-3 py-1 rounded-md text-[9px] font-black uppercase ${p.status_recebimento_seguradora === 'RECEBIDO' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      <span className={`px-3 py-1 rounded-md text-[9px] font-black uppercase ${
+                        p.status_recebimento_seguradora === 'RECEBIDO' ? 'bg-emerald-100 text-emerald-700' : 
+                        p.status_recebimento_seguradora === 'CANCELADO' ? 'bg-rose-100 text-rose-700 font-extrabold line-none' : 'bg-amber-100 text-amber-700'
+                      }`}>
                         {p.status_recebimento_seguradora}
                       </span>
                     </td>
@@ -595,10 +642,21 @@ export const ComissoesLista = () => {
                           <button onClick={() => reverterBaixaParcela(p)} title="Estornar parcela" className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50">
                             <RefreshCcw size={15} />
                           </button>
+                        ) : p.status_recebimento_seguradora === 'PREVISTO' ? (
+                          <>
+                            <button onClick={() => executarBaixaIndividualDireta(p.id)} title="Baixar contra o Caixa" className="p-1.5 rounded-lg text-zinc-400 hover:text-emerald-600 hover:bg-zinc-100">
+                              <Check size={16} />
+                            </button>
+                            <button 
+                              onClick={() => cancelarProvisoesFuturasContrato(p.tab_comissoes_regras?.id || '', obterNomeCliente(p.tab_comissoes_regras?.tab_clientes))} 
+                              title="Cancelar Contrato (Cessar parcelas futuras)" 
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-zinc-100"
+                            >
+                              <Ban size={15} />
+                            </button>
+                          </>
                         ) : (
-                          <button onClick={() => executarBaixaIndividualDireta(p.id)} title="Baixar contra o Caixa" className="p-1.5 rounded-lg text-zinc-400 hover:text-emerald-600 hover:bg-zinc-100">
-                            <Check size={16} />
-                          </button>
+                          <span className="text-[10px] text-zinc-400 font-mono">N/A</span>
                         )}
                         <button 
                           onClick={() => { setItemDetalhado(p); setModalDetalhe(true); }}
@@ -694,6 +752,18 @@ export const ComissoesLista = () => {
                 </div>
               )}
             </div>
+
+            {/* BOTÃO INTEGRADO DENTRO DO MODAL RAIO-X PARA CANCELAR CONTRATO INTEGRAL */}
+            {itemDetalhado.status_recebimento_seguradora !== 'CANCELADO' && (
+              <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <button 
+                  onClick={() => cancelarProvisoesFuturasContrato(itemDetalhado.tab_comissoes_regras?.id || '', obterNomeCliente(itemDetalhado.tab_comissoes_regras?.tab_clientes))}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase rounded-xl tracking-wider shadow-sm hover:bg-rose-100 transition-colors"
+                >
+                  <Ban size={14} /> Cancelar Contrato (Parar Provisões Futuras)
+                </button>
+              </div>
+            )}
 
             <button onClick={() => setModalDetalhe(false)} className="w-full py-2.5 bg-zinc-900 text-white font-black text-[10px] uppercase rounded-xl tracking-wider shadow-sm hover:bg-zinc-800">
               Fechar Diagnóstico
