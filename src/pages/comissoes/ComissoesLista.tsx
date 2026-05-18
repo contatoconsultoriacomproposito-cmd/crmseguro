@@ -204,8 +204,6 @@ export const ComissoesLista = () => {
             corretor_id: userUuid,
             data_pagamento: new Date().toISOString().split('T')[0],
             valor_informado_pago: 0,
-            valor_total_parcelas: 0,
-            saldo_diferenca: 0,
             observacao: "CAIXA INICIAL AUTOMÁTICO"
           })
           .select().single();
@@ -254,8 +252,6 @@ export const ComissoesLista = () => {
             corretor_id: userUuid,
             data_pagamento: new Date().toISOString().split('T')[0],
             valor_informado_pago: 0,
-            valor_total_parcelas: 0,
-            saldo_diferenca: 0,
             observacao: "CAIXA INDIVIDUAL AUTOMÁTICO"
           })
           .select().single();
@@ -321,11 +317,10 @@ export const ComissoesLista = () => {
       if (error) {
         console.error("Erro interno do Supabase:", error.message);
         throw error;
-}
+      }
 
       toast.success("Provisões futuras canceladas com sucesso!");
       setModalDetalhe(false);
-      // Limpa seleções antigas em lote que possam ter sido canceladas
       setSelecionadasLote([]);
       await carregarDadosIniciais();
     } catch (err) {
@@ -391,8 +386,6 @@ export const ComissoesLista = () => {
           corretor_id: userUuid,
           data_pagamento: dataAporte,
           valor_informado_pago: valorAporte,
-          valor_total_parcelas: 0,
-          saldo_diferenca: 0,
           observacao: observacaoAporte || "APORTE DE REPASSE EM CONTA CORRENTE"
         });
 
@@ -407,8 +400,7 @@ export const ComissoesLista = () => {
       toast.error("Erro ao lançar aporte.");
     }
   };
-
-  return (
+return (
     <div className="p-6 space-y-6 text-left bg-zinc-50/50 dark:bg-zinc-950 min-h-screen relative">
       
       {/* BOTÃO SUPERIOR DE APORTE */}
