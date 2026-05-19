@@ -284,6 +284,7 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
                 <SubNavItem to="/clientes/lista" label="Ver Listagem" icon={<List size={16} />} />
                 {/* NOVO ITEM ABAIXO */}
                 <SubNavItem to="/clientes/acoes" label="Relatório de Ações" icon={<History size={16} className="text-orange-500" />} />
+                <SubNavItem to="/clientes/campanhas" label="Campanhas & Datas" icon={<Activity size={16} className="text-emerald-500" />} />
               </div>
             )}
           </div>
