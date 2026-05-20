@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Phone, MessageCircle, Calendar, Save, CheckCircle, MessageSquare, Activity, History, AlertCircle } from 'lucide-react';
+import { X, Phone, MessageCircle, Calendar, Save, CheckCircle, MessageSquare, Activity, History, AlertCircle, Building2, User } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { formatarDataBR } from '../../utils/dateUtils';
 
@@ -30,6 +30,9 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
   const [relatoSinistro, setRelatoSinistro] = useState('');
   const [dataRetornoSinistro, setDataRetornoSinistro] = useState('');
   const [historicoTotal, setHistoricoTotal] = useState<any[]>([]);
+
+  // Verifica dinamicamente se o cliente é PJ
+  const isPJ = cliente?.tipo_pessoa === 'PJ' || !!cliente?.cnpj || !!cliente?.razao_social;
 
   useEffect(() => {
     if (isOpen && cliente) {
@@ -75,14 +78,9 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
 
   function finalizarSucesso() {
     setSalvo(true);
-
-    // 1. Aguarda 1.5s para o usuário ler o "Sucesso!"
     setTimeout(() => {
-      onClose(); // Inicia o fechamento visual do modal
-
-      // 2. Aguarda a animação de fechamento (300ms) para limpar tudo
+      onClose();
       setTimeout(() => {
-        // Limpeza de Estados
         setSalvo(false);
         setLoading(false);
         setAbaAtiva('COMERCIAL');
@@ -90,9 +88,6 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
         setSinistroSelecionadoId(''); setEtapaSinistro(''); setRelatoSinistro('');
         setDataRetornoSinistro(''); setHorarioRetornoSinistro('');
         setErro(null);
-
-        // 3. SÓ AGORA avisa o pai para atualizar a lista/dashboard
-        // Isso evita o "flicker" (piscar) e garante que o modal já sumiu
         onSuccess(); 
       }, 300);
     }, 1500);
@@ -113,7 +108,7 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
         tipo_acao: tipoAcao,
         relato: textoAcao,
         data_historico: new Date().toLocaleDateString('en-CA'),
-        horario_historico: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        get horario_historico() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
       }]);
 
       await supabase.from('tab_clientes').update({
@@ -177,9 +172,46 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
         {/* HEADER COM TABS */}
         <div className="bg-slate-50 dark:bg-zinc-800/50 p-6 border-b dark:border-zinc-800">
           <div className="flex justify-between items-start mb-6">
-            <div>
-              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-widest">{cliente.fase_kanban || 'LEAD'}</span>
-              <h2 className="text-xl font-black text-slate-800 dark:text-white mt-1">{cliente.nome || cliente.razao_social}</h2>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-widest">
+                  {cliente.fase_kanban || 'LEAD'}
+                </span>
+                
+                {/* BOTÃO/TAG ELEGANTE DE PF / PJ */}
+                {isPJ ? (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 text-[10px] font-black uppercase border border-purple-100 dark:border-purple-900/30">
+                    <Building2 size={10} /> Empresa / PJ
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 text-[10px] font-black uppercase border border-slate-200 dark:border-zinc-700">
+                    <User size={10} /> Pessoa Física / PF
+                  </span>
+                )}
+              </div>
+
+              {/* EXIBIÇÃO DE NOME BASEADO NO TIPO DE CLIENTE */}
+              {isPJ ? (
+                <>
+                  <h2 className="text-xl font-black text-slate-800 dark:text-white leading-tight">
+                    {cliente.nome_fantasia || cliente.razao_social || cliente.nome}
+                  </h2>
+                  {(cliente.razao_social && cliente.nome_fantasia) && (
+                    <p className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wide">
+                      Razão Social: {cliente.razao_social}
+                    </p>
+                  )}
+                  {cliente.nome && cliente.nome !== cliente.nome_fantasia && (
+                    <p className="text-xs font-medium text-slate-500 dark:text-zinc-400">
+                      Contato: <span className="font-bold">{cliente.nome}</span>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <h2 className="text-xl font-black text-slate-800 dark:text-white leading-tight">
+                  {cliente.nome}
+                </h2>
+              )}
             </div>
             <button onClick={onClose} className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-full transition-colors"><X size={24} /></button>
           </div>
@@ -198,9 +230,7 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
         </div>
 
         <div className="overflow-y-auto p-6">
-          {/* LOGICA DE EXIBIÇÃO: SE SALVO, MOSTRA SUCESSO. SE NÃO, MOSTRA ABAS. */}
           {salvo ? (
-            /* TELA DE SUCESSO - PRIORIDADE MÁXIMA */
             <div className="py-12 text-center animate-in zoom-in duration-300">
                 <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle size={32} />
@@ -209,11 +239,9 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
                 <p className="text-xs text-slate-500 font-bold uppercase">Registros atualizados no banco.</p>
               </div>
             ) : (
-              /* SÓ RENDERIZA O CONTEÚDO SE NÃO ESTIVER SALVO */
             <div className="space-y-6">
               {erro && <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold flex items-center gap-2 animate-shake"><AlertCircle size={14}/> {erro}</div>}
               
-              {/* ABA COMERCIAL */}
               {abaAtiva === 'COMERCIAL' && (
                 <div className="space-y-4 animate-in slide-in-from-left-4 duration-300">
                   <div className="grid grid-cols-2 gap-3 mb-4">
@@ -296,8 +324,8 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
                                 onChange={(e) => setHorarioRetornoSinistro(e.target.value)} 
                                 className="w-full bg-white dark:bg-zinc-800 border-none rounded-xl p-3 text-sm font-bold outline-none ring-1 ring-red-50 focus:ring-red-500" 
                               />
-                          </div>
-                        </div>  
+                            </div>
+                          </div>  
 
                           <button onClick={salvarSinistro} disabled={loading} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-100 dark:shadow-none">
                             {loading ? "Processando..." : <><Save size={16} /> {etapaSinistro === 'Conclusão' ? 'Finalizar Sinistro' : 'Atualizar Sinistro'}</>}

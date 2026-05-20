@@ -126,7 +126,7 @@ export default function CampanhasClientes() {
     }
   }
 
-  // NOVO: Handler para processar o upload do arquivo CSV/TXT alternativo
+  // CORRIGIDO: Handler para processar o upload do arquivo CSV/TXT alternativo livre de erros do TypeScript
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -136,6 +136,8 @@ export default function CampanhasClientes() {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      dynamicTyping: true,
+      delimitersToGuess: [';', ',', '\t'], 
       complete: (results) => {
         const dadosBrutos = results.data as any[];
 
@@ -144,33 +146,54 @@ export default function CampanhasClientes() {
           return;
         }
 
-        // Validação de cabeçalho (precisa das colunas nome e email)
-        const primeiraLinha = dadosBrutos[0];
-        if (!primeiraLinha.nome || !primeiraLinha.email) {
+        // Captura as chaves reais retornadas
+        const chaves = Object.keys(dadosBrutos[0]);
+        const chaveNome = chaves.find(k => k.toLowerCase().trim() === 'nome');
+        const chaveEmail = chaves.find(k => k.toLowerCase().trim() === 'email');
+        const chaveWhats = chaves.find(k => k.toLowerCase().trim() === 'telefone_whats');
+
+        // Validação estrita: se não achar, para aqui
+        if (!chaveNome || !chaveEmail) {
           setErroArquivo("O arquivo precisa conter obrigatoriamente as colunas 'nome' e 'email' na primeira linha.");
           return;
         }
 
-        // Mapeia os dados estruturando para o tipo Cliente esperado pelo sistema
-        const clientesMapeados: Cliente[] = dadosBrutos.map((item) => ({
-          id: crypto.randomUUID(), // Gera um ID único em memória
-          nome: item.nome.trim(),
-          tipo_cliente: 'PF', // Forçado como PF para rodar perfeitamente na Edge Function
-          nome_fantasia: null,
-          email: item.email.trim(),
-          telefone_whats: item.telefone_whats ? item.telefone_whats.trim() : null,
-          data_nascimento: null
-        }));
+        try {
+          // Guardamos em constantes garantindo ao TS que são strings válidas
+          const nomeKey = chaveNome as string;
+          const emailKey = chaveEmail as string;
+          const whatsKey = chaveWhats as string | undefined;
 
-        setClientes(clientesMapeados);
-        setIsListaImportada(true);
-        setTermoBusca(''); // Limpa buscas para exibir a lista completa carregada
-        
-        // Auto-seleciona todos os itens válidos importados do arquivo
-        const idsMapeados = clientesMapeados.filter(c => c.email && c.email.trim() !== '').map(c => c.id);
-        setIdsClientesSelecionados(idsMapeados);
-        
-        alert(`Sucesso! ${clientesMapeados.length} contatos foram carregados a partir do arquivo.`);
+          // Mapeia os dados estruturando e tratando nulos de forma segura
+          const clientesMapeados: Cliente[] = dadosBrutos
+            .filter(item => item[nomeKey] && item[emailKey]) // Usa as constantes tipadas
+            .map((item) => ({
+              id: crypto.randomUUID(), 
+              nome: String(item[nomeKey]).trim(),
+              tipo_cliente: 'PF', 
+              nome_fantasia: null,
+              email: String(item[emailKey]).trim(),
+              telefone_whats: whatsKey && item[whatsKey] ? String(item[whatsKey]).trim() : null,
+              data_nascimento: null
+            }));
+
+          if (clientesMapeados.length === 0) {
+            setErroArquivo("Nenhum registro válido com nome e e-mail foi encontrado.");
+            return;
+          }
+
+          setClientes(clientesMapeados);
+          setIsListaImportada(true);
+          setTermoBusca(''); 
+          
+          // Auto-seleciona todos os itens válidos importados do arquivo
+          const idsMapeados = clientesMapeados.filter(c => c.email && c.email.trim() !== '').map(c => c.id);
+          setIdsClientesSelecionados(idsMapeados);
+          
+          alert(`Sucesso! ${clientesMapeados.length} contatos foram carregados a partir do arquivo.`);
+        } catch (err: any) {
+          setErroArquivo(`Erro ao processar linhas do arquivo: ${err.message}`);
+        }
       },
       error: (error) => {
         setErroArquivo(`Erro ao ler o arquivo: ${error.message}`);
