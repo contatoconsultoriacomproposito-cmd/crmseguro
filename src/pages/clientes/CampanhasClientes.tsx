@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import Papa from 'papaparse'; // Adicionado para processamento do arquivo CSV
+import Papa from 'papaparse';
 
 interface Campanha {
   id: string;
@@ -8,7 +8,6 @@ interface Campanha {
   tipo_evento: 'fixo' | 'aniversario';
   mes_dia: string | null;
   mensagem_email: string | null;
-  mensagem_whatsapp: string | null;
   url_arte_storage: string | null;
 }
 
@@ -20,6 +19,15 @@ interface Cliente {
   email: string | null;
   telefone_whats: string | null;
   data_nascimento: string | null;
+}
+
+interface ArteStorage {
+  name: string;
+  id: string;
+  metadata: {
+    size: number;
+    mimetype: string;
+  };
 }
 
 export default function CampanhasClientes() {
@@ -37,7 +45,7 @@ export default function CampanhasClientes() {
   const [termoBusca, setTermoBusca] = useState('');
   const [idsClientesSelecionados, setIdsClientesSelecionados] = useState<string[]>([]);
 
-  // NOVO: Estados para controle da Lista Alternativa Importada via Arquivo
+  // Estados para controle da Lista Alternativa Importada via Arquivo
   const [isListaImportada, setIsListaImportada] = useState(false);
   const [erroArquivo, setErroArquivo] = useState<string | null>(null);
 
@@ -48,9 +56,13 @@ export default function CampanhasClientes() {
   const [tipoEvento, setTipoEvento] = useState<'fixo' | 'aniversario'>('fixo');
   const [mesDia, setMesDia] = useState('');
   const [msgEmail, setMsgEmail] = useState('');
-  const [msgWhats, setMsgWhats] = useState('');
   const [arteArquivo, setArteArquivo] = useState<File | null>(null);
   const [enviando, setEnviando] = useState(false);
+
+  // Estados para Gerenciamento do Storage de Artes
+  const [listaArtes, setListaArtes] = useState<ArteStorage[]>([]);
+  const [totalEspacoMB, setTotalEspacoMB] = useState(0);
+  const [carregandoArtes, setCarregandoArtes] = useState(false);
 
   async function buscarCampanhas() {
     try {
@@ -68,12 +80,96 @@ export default function CampanhasClientes() {
     }
   }
 
-  // Buscar clientes baseados no tipo de campanha selecionada
+  // Lista os arquivos salvos no Bucket de Artes do Supabase e calcula a volumetria
+  async function carregarGerenciadorStorage() {
+    try {
+      setCarregandoArtes(true);
+      const { data, error } = await supabase.storage
+        .from('artes-campanhas')
+        .list('', { limit: 100, sortBy: { column: 'name', order: 'desc' } });
+
+      if (error) throw error;
+
+      if (data) {
+        const arquivosValidos = data.filter(item => item.metadata) as unknown as ArteStorage[];
+        setListaArtes(arquivosValidos);
+        
+        const bytesTotais = arquivosValidos.reduce((acc, item) => acc + (item.metadata?.size || 0), 0);
+        setTotalEspacoMB(bytesTotais / (1024 * 1024));
+      }
+    } catch (error) {
+      console.error('Erro ao listar arquivos do storage:', error);
+    } finally {
+      setCarregandoArtes(false);
+    }
+  }
+
+  // Deleta uma imagem diretamente do bucket do storage e limpa os vínculos no banco
+  async function handleExcluirArteStorage(nomeArquivo: string) {
+    if (!confirm(`Deseja remover permanentemente o arquivo "${nomeArquivo}" do Storage?\nIsso liberará espaço na sua conta.`)) return;
+
+    try {
+      // 1. Gera a URL pública exata que estava associada à campanha para podermos procurá-la
+      const { data: urlData } = supabase.storage
+        .from('artes-campanhas')
+        .getPublicUrl(nomeArquivo);
+      const urlParaLimpar = urlData.publicUrl;
+
+      // 2. Remove o arquivo físico do Storage
+      const { error: storageError } = await supabase.storage
+        .from('artes-campanhas')
+        .remove([nomeArquivo]);
+
+      if (storageError) throw storageError;
+
+      // 3. Sincroniza o banco de dados: limpa o link de qualquer campanha que usava essa arte
+      const { error: dbError } = await supabase
+        .from('tab_campanhas')
+        .update({ url_arte_storage: null })
+        .eq('url_arte_storage', urlParaLimpar);
+
+      if (dbError) {
+        console.warn('Arquivo removido do Storage, mas houve um erro ao atualizar a tabela de campanhas:', dbError);
+      }
+
+      // 4. Se a campanha que o usuário está visualizando na tela foi afetada, limpa o estado dela também
+      if (campanhaSelecionada && campanhaSelecionada.url_arte_storage === urlParaLimpar) {
+        setCampanhaSelecionada(prev => prev ? { ...prev, url_arte_storage: null } : null);
+      }
+
+      alert('Arquivo removido do Storage e vínculos atualizados com sucesso!');
+      
+      // Recarrega as listas do painel sincronizadas
+      carregarGerenciadorStorage();
+      buscarCampanhas();
+    } catch (error) {
+      console.error('Erro ao deletar arquivo do storage:', error);
+      alert('Erro ao excluir arquivo.');
+    }
+  }
+
+  // Encontra a campanha vinculada a uma arte e abre o modal para edição/substituição
+  function handleEditarCampanhaPorArte(urlPublica: string) {
+    const campanhaCorrespondente = campanhas.find(c => c.url_arte_storage === urlPublica);
+    
+    if (campanhaCorrespondente) {
+      setCampanhaEmEdicao(campanhaCorrespondente);
+      setNomeEvento(campanhaCorrespondente.nome_evento);
+      setTipoEvento(campanhaCorrespondente.tipo_evento);
+      setMesDia(campanhaCorrespondente.mes_dia || '');
+      setMsgEmail(campanhaCorrespondente.mensagem_email || '');
+      setArteArquivo(null); 
+      setIsModalOpen(true);
+    } else {
+      alert("Esta imagem está salva no Storage, mas não está vinculada a nenhuma campanha ativa no momento.");
+    }
+  }
+
   async function buscarClientesElegiveis(campanha: Campanha) {
     try {
       setCarregandoClientes(true);
-      setIdsClientesSelecionados([]); // Reseta a seleção anterior
-      setIsListaImportada(false); // Reseta a flag de arquivo importado
+      setIdsClientesSelecionados([]); 
+      setIsListaImportada(false); 
       setErroArquivo(null);
       
       const { data: { user } } = await supabase.auth.getUser();
@@ -116,7 +212,6 @@ export default function CampanhasClientes() {
       const listaClientes = (data || []) as Cliente[];
       setClientes(listaClientes);
       
-      // Inicializa pré-selecionando todos que possuem e-mail válido
       const idsIniciais = listaClientes.filter(c => c.email && c.email.trim() !== '').map(c => c.id);
       setIdsClientesSelecionados(idsIniciais);
     } catch (error) {
@@ -126,7 +221,6 @@ export default function CampanhasClientes() {
     }
   }
 
-  // CORRIGIDO: Handler para processar o upload do arquivo CSV/TXT alternativo livre de erros do TypeScript
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -146,34 +240,28 @@ export default function CampanhasClientes() {
           return;
         }
 
-        // Captura as chaves reais retornadas
         const chaves = Object.keys(dadosBrutos[0]);
         const chaveNome = chaves.find(k => k.toLowerCase().trim() === 'nome');
         const chaveEmail = chaves.find(k => k.toLowerCase().trim() === 'email');
-        const chaveWhats = chaves.find(k => k.toLowerCase().trim() === 'telefone_whats');
 
-        // Validação estrita: se não achar, para aqui
         if (!chaveNome || !chaveEmail) {
-          setErroArquivo("O arquivo precisa conter obrigatoriamente as colunas 'nome' e 'email' na primeira linha.");
+          setErroArquivo("O arquivo precisa conter obrigatoriamente as colunas 'nome' e 'email'.");
           return;
         }
 
         try {
-          // Guardamos em constantes garantindo ao TS que são strings válidas
           const nomeKey = chaveNome as string;
           const emailKey = chaveEmail as string;
-          const whatsKey = chaveWhats as string | undefined;
 
-          // Mapeia os dados estruturando e tratando nulos de forma segura
           const clientesMapeados: Cliente[] = dadosBrutos
-            .filter(item => item[nomeKey] && item[emailKey]) // Usa as constantes tipadas
+            .filter(item => item[nomeKey] && item[emailKey]) 
             .map((item) => ({
               id: crypto.randomUUID(), 
               nome: String(item[nomeKey]).trim(),
               tipo_cliente: 'PF', 
               nome_fantasia: null,
               email: String(item[emailKey]).trim(),
-              telefone_whats: whatsKey && item[whatsKey] ? String(item[whatsKey]).trim() : null,
+              telefone_whats: null,
               data_nascimento: null
             }));
 
@@ -186,29 +274,26 @@ export default function CampanhasClientes() {
           setIsListaImportada(true);
           setTermoBusca(''); 
           
-          // Auto-seleciona todos os itens válidos importados do arquivo
           const idsMapeados = clientesMapeados.filter(c => c.email && c.email.trim() !== '').map(c => c.id);
           setIdsClientesSelecionados(idsMapeados);
           
-          alert(`Sucesso! ${clientesMapeados.length} contatos foram carregados a partir do arquivo.`);
+          alert(`Sucesso! ${clientesMapeados.length} contatos foram carregados do arquivo.`);
         } catch (err: any) {
           setErroArquivo(`Erro ao processar linhas do arquivo: ${err.message}`);
         }
       },
       error: (error) => {
-        setErroArquivo(`Erro ao ler o arquivo: ${error.message}`);
+        setErroArquivo(`Erro ao read o arquivo: ${error.message}`);
       }
     });
   };
 
-  // NOVO: Função para o usuário desfazer o upload e voltar a puxar do banco de dados
   function handleLimparListaImportada() {
     if (campanhaSelecionada) {
       buscarClientesElegiveis(campanhaSelecionada);
     }
   }
 
-  // Filtragem Inteligente no Front-end
   const clientesFiltrados = clientes.filter(cliente => {
     const nomeOriginal = cliente.nome || '';
     const nomeFantasia = cliente.nome_fantasia || '';
@@ -220,24 +305,20 @@ export default function CampanhasClientes() {
            email.toLowerCase().includes(termo);
   });
 
-  // Alternar seleção de um cliente específico
   function toggleSelecionarCliente(id: string) {
     setIdsClientesSelecionados(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   }
 
-  // Alternar seleção de todos da lista filtrada atual
   function toggleSelecionarTodos() {
     const clientesComEmailDestaLista = clientesFiltrados.filter(c => c.email && c.email.trim() !== '');
     const todosSelecionados = clientesComEmailDestaLista.every(c => idsClientesSelecionados.includes(c.id));
 
     if (todosSelecionados) {
-      // Remove da seleção apenas os que estão aparecendo na busca atual
       const idsRemover = clientesFiltrados.map(c => c.id);
       setIdsClientesSelecionados(prev => prev.filter(id => !idsRemover.includes(id)));
     } else {
-      // Adiciona à seleção os que possuem e-mail na busca atual
       const novosIds = clientesComEmailDestaLista.map(c => c.id);
       setIdsClientesSelecionados(prev => Array.from(new Set([...prev, ...novosIds])));
     }
@@ -249,7 +330,6 @@ export default function CampanhasClientes() {
     setTipoEvento('fixo');
     setMesDia('');
     setMsgEmail('');
-    setMsgWhats('');
     setArteArquivo(null);
     setIsModalOpen(true);
   }
@@ -261,7 +341,6 @@ export default function CampanhasClientes() {
     setTipoEvento(campanha.tipo_evento);
     setMesDia(campanha.mes_dia || '');
     setMsgEmail(campanha.mensagem_email || '');
-    setMsgWhats(campanha.mensagem_whatsapp || '');
     setArteArquivo(null); 
     setIsModalOpen(true);
   }
@@ -284,6 +363,7 @@ export default function CampanhasClientes() {
 
       alert('Campanha excluída com sucesso!');
       buscarCampanhas();
+      carregarGerenciadorStorage();
     } catch (error) {
       console.error('Erro ao deletar campanha:', error);
       alert('Erro ao excluir campanha.');
@@ -307,7 +387,21 @@ export default function CampanhasClientes() {
       let urlPublicaArte = campanhaEmEdicao ? campanhaEmEdicao.url_arte_storage : null;
 
       if (arteArquivo) {
-        const nomeArquivo = `${Date.now()}-${arteArquivo.name.replace(/\s+/g, '_')}`;
+        // 1. Separa o nome da extensão (Ex: "Seguro Condomínio" e ".png")
+        const pontoIndex = arteArquivo.name.lastIndexOf('.');
+        const apenasNome = pontoIndex !== -1 ? arteArquivo.name.substring(0, pontoIndex) : arteArquivo.name;
+        const extensao = pontoIndex !== -1 ? arteArquivo.name.substring(pontoIndex) : '';
+
+        // 2. Remove acentos, substitui espaços por '_' e remove caracteres especiais
+        const nomeSanitizado = apenasNome
+          .normalize('NFD')                     // Decompõe caracteres acentuados (í -> i + ´)
+          .replace(/[\u0300-\u036f]/g, '')     // Remove os acentos resultantes da decomposição
+          .replace(/[^a-zA-Z0-9-_]/g, '_')    // Substitui qualquer coisa que não for letra, número, hífen ou underline por '_'
+          .replace(/_+/g, '_');               // Evita underlines duplicados seguidos (___)
+
+        // 3. Monta o nome final seguro com o timestamp
+        const nomeArquivo = `${Date.now()}-${nomeSanitizado}${extensao.toLowerCase()}`;
+
         const { error: uploadError } = await supabase.storage
           .from('artes-campanhas')
           .upload(nomeArquivo, arteArquivo);
@@ -328,7 +422,6 @@ export default function CampanhasClientes() {
         tipo_evento: tipoEvento,
         mes_dia: tipoEvento === 'fixo' ? mesDia : null,
         mensagem_email: msgEmail,
-        mensagem_whatsapp: msgWhats,
         url_arte_storage: urlPublicaArte
       };
 
@@ -355,6 +448,7 @@ export default function CampanhasClientes() {
 
       setIsModalOpen(false);
       buscarCampanhas();
+      carregarGerenciadorStorage();
     } catch (error) {
       console.error('Erro ao processar campanha:', error);
       alert('Erro ao salvar as alterações da campanha.');
@@ -363,89 +457,59 @@ export default function CampanhasClientes() {
     }
   }
 
-  function handleDispararClienteIndividual(cliente: Cliente) {
-    if (!campanhaSelecionada?.mensagem_whatsapp) return;
-    if (!cliente.telefone_whats) return alert('Este cliente não possui WhatsApp cadastrado.');
-
-    const nomeTratado = cliente.tipo_cliente === 'PF' ? cliente.nome : (cliente.nome_fantasia || cliente.nome);
-    let mensagemCustomizada = campanhaSelecionada.mensagem_whatsapp.replace(/{nome}/gi, nomeTratado);
-    const textoCodificado = encodeURIComponent(mensagemCustomizada);
-    const numeroLimpo = cliente.telefone_whats.replace(/\D/g, '');
-
-    const url = `https://web.whatsapp.com/send?phone=55${numeroLimpo}&text=${textoCodificado}`;
-    window.open(url, '_blank');
-  }
-
-  function handleDispararWhatsappGeral() {
-    if (!campanhaSelecionada?.mensagem_whatsapp) return;
-    const textoCodificado = encodeURIComponent(campanhaSelecionada.mensagem_whatsapp);
-    const url = `https://web.whatsapp.com/send?text=${textoCodificado}`;
-    window.open(url, '_blank');
-  }
-
-  // Disparará APENAS para os clientes que foram explicitamente selecionados (Seja do Banco ou do CSV)
-const handleDispararEmail = async () => {
-  if (!campanhaSelecionada) return;
-  
-  if (idsClientesSelecionados.length === 0) {
-    alert("Selecione ao menos um cliente com e-mail válido.");
-    return;
-  }
-
-  setEnviando(true);
-
-  try {
-    // 1. Mapeia e higieniza os clientes selecionados (do banco ou da lista CSV)
-    const listaDisparo = clientes
-      .filter((c) => idsClientesSelecionados.includes(c.id))
-      .map((c) => ({
-        id: c.id,
-        email: c.email?.trim() || null,
-        nome: c.nome || "Cliente",
-        tipo_cliente: c.tipo_cliente || "PF",
-        nome_fantasia: c.nome_fantasia || ""
-      }));
-
-    // 2. Garante o objeto da campanha estruturado
-    const dadosCampanha = {
-      id: campanhaSelecionada.id,
-      nome_evento: campanhaSelecionada.nome_evento || "Informativo",
-      mensagem_email: campanhaSelecionada.mensagem_email || "",
-      url_arte_storage: campanhaSelecionada.url_arte_storage || null
-    };
-
-    console.log("📤 Enviando payload para a Edge Function:", { dadosCampanha, listaDisparo });
-
-    // 3. Invoca a função enviando em ambos os formatos (retrocompatibilidade total)
-    const { error } = await supabase.functions.invoke('disparar-emails', {
-      body: {
-        // Formato antigo que a função lia originalmente:
-        campanha: dadosCampanha,
-        clientes: listaDisparo,
-        
-        // Formato novo por garantia de propriedades soltas:
-        mensagem_email: dadosCampanha.mensagem_email,
-        nome_evento: dadosCampanha.nome_evento,
-        url_arte: dadosCampanha.url_arte_storage,
-        destinatarios: listaDisparo
-      },
-    });
-
-    if (error) throw error;
-
-    alert(`🚀 Sucesso! Campanha enviada para ${listaDisparo.length} destinatários.`);
+  const handleDispararEmail = async () => {
+    if (!campanhaSelecionada) return;
     
-  } catch (error: any) {
-    console.error("Erro detalhado ao disparar e-mails:", error);
-    alert(`Erro ao disparar: ${error.message || "Erro interno no servidor de e-mails."}`);
-  } finally {
-    setEnviando(false);
-  }
-};
+    if (idsClientesSelecionados.length === 0) {
+      alert("Selecione ao menos um cliente com e-mail válido.");
+      return;
+    }
+
+    setEnviando(true);
+
+    try {
+      const listaDisparo = clientes
+        .filter((c) => idsClientesSelecionados.includes(c.id))
+        .map((c) => ({
+          id: c.id,
+          email: c.email?.trim() || null,
+          nome: c.nome || "Cliente",
+          tipo_cliente: c.tipo_cliente || "PF",
+          nome_fantasia: c.nome_fantasia || ""
+        }));
+
+      const dadosCampanha = {
+        id: campanhaSelecionada.id,
+        nome_evento: campanhaSelecionada.nome_evento || "Informativo",
+        mensagem_email: campanhaSelecionada.mensagem_email || "",
+        url_arte_storage: campanhaSelecionada.url_arte_storage || null
+      };
+
+      const { error } = await supabase.functions.invoke('disparar-emails', {
+        body: {
+          campanha: dadosCampanha,
+          clientes: listaDisparo,
+          mensagem_email: dadosCampanha.mensagem_email,
+          nome_evento: dadosCampanha.nome_evento,
+          url_arte: dadosCampanha.url_arte_storage,
+          destinatarios: listaDisparo
+        },
+      });
+
+      if (error) throw error;
+
+      alert(`🚀 Sucesso! Campanha enviada para ${listaDisparo.length} destinatários.`);
+    } catch (error: any) {
+      console.error("Erro ao disparar e-mails:", error);
+      alert(`Erro ao disparar: ${error.message || "Erro interno no servidor."}`);
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   useEffect(() => {
     if (campanhaSelecionada) {
-      setTermoBusca(''); // Limpa a barra de busca ao mudar de campanha
+      setTermoBusca(''); 
       buscarClientesElegiveis(campanhaSelecionada);
     } else {
       setClientes([]);
@@ -457,17 +521,16 @@ const handleDispararEmail = async () => {
 
   useEffect(() => {
     buscarCampanhas();
+    carregarGerenciadorStorage();
   }, []);
 
-  // O retorno do componente (JSX) continuará abaixo...
-
-return (
+  return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Cabeçalho */}
       <div className="flex justify-between items-center border-b pb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Campanhas e Datas Comemorativas</h1>
-          <p className="text-sm text-gray-500">Gerencie o relacionamento periódico com seus clientes</p>
+          <p className="text-sm text-gray-500">Gerencie o relacionamento periódico por E-mail com seus clientes</p>
         </div>
       </div>
 
@@ -478,7 +541,7 @@ return (
           <div className="border-b pb-2 mb-4 flex justify-between items-center">
             <div>
               <h2 className="font-semibold text-lg text-gray-700">📅 Próximos Eventos</h2>
-              <p className="text-xs text-gray-400">Feriados e campaigns</p>
+              <p className="text-xs text-gray-400">Feriados e campanhas</p>
             </div>
             <button 
               onClick={abrirModalCadastro}
@@ -536,7 +599,7 @@ return (
           </div>
         </div>
 
-        {/* SEÇÃO 2: Clientes Elegíveis (MODIFICADO COM SUPORTE A UPLOAD DE CSV) */}
+        {/* SEÇÃO 2: Clientes Elegíveis */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col h-[600px]">
           <div className="border-b pb-2 mb-3 flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
@@ -547,14 +610,13 @@ return (
                 <button
                   onClick={handleLimparListaImportada}
                   className="text-[10px] bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded font-medium transition-all"
-                  title="Voltar para a lista automática sincronizada com o banco de dados"
+                  title="Voltar para a lista automática"
                 >
-                  ↩️ Restaurar Base do Sistema
+                  ↩️ Restaurar Base
                 </button>
               )}
             </div>
             
-            {/* NOVO COMPONENTE: Carregador de Lista Alternativa Externa */}
             {campanhaSelecionada && (
               <div className="mt-1 bg-gray-50 p-2 rounded-lg border border-gray-200/60">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
@@ -576,7 +638,6 @@ return (
             )}
           </div>
 
-          {/* Barra de Busca e Filtro de Seleção */}
           {campanhaSelecionada && clientes.length > 0 && (
             <div className="space-y-2 mb-3">
               <input 
@@ -588,12 +649,13 @@ return (
               />
               <div className="flex justify-between items-center text-[11px]">
                 <button 
+                  type="button"
                   onClick={toggleSelecionarTodos}
                   className="text-blue-600 hover:text-blue-800 font-semibold"
                 >
                   {clientesFiltrados.filter(c => c.email).every(c => idsClientesSelecionados.includes(c.id)) 
-                    ? '🔲 Desmarcar Todos Filtrados' 
-                    : '☑️ Selecionar Todos Filtrados'}
+                    ? '🔲 Desmarcar Todos' 
+                    : '☑️ Selecionar Todos'}
                 </button>
                 <span className="text-gray-400">{clientesFiltrados.length} encontrados</span>
               </div>
@@ -609,7 +671,7 @@ return (
                </div>
              ) : clientesFiltrados.length === 0 ? (
                <div className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg h-full flex items-center justify-center p-4">
-                 Nenhum cliente elegível corresponde à sua pesquisa.
+                 Nenhum cliente elegível correspondente.
                </div>
              ) : (
                clientesFiltrados.map((cliente) => {
@@ -627,14 +689,13 @@ return (
                      } ${temEmail ? 'cursor-pointer hover:border-blue-200' : 'opacity-60'}`}
                    >
                      <div className="flex items-start gap-2.5 min-w-0 flex-1 mr-2">
-                       {/* Checkbox Inteligente */}
                        <div className="mt-0.5 flex-shrink-0">
                          <input 
                            type="checkbox"
                            checked={estaSelecionado}
                            disabled={!temEmail}
-                           onChange={() => {}} // Tratado no clique do container pai
-                           className="h-3.5 w-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed"
+                           onChange={() => {}} 
+                           className="h-3.5 w-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
                          />
                        </div>
 
@@ -648,24 +709,8 @@ return (
                          <p className={`text-[11px] truncate ${!temEmail ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
                            {cliente.email || '⚠️ Sem e-mail (Disparo travado)'}
                          </p>
-                         <p className="text-[11px] text-gray-500 font-mono truncate">{cliente.telefone_whats ? `📱 ${cliente.telefone_whats}` : '⚠️ Sem WhatsApp'}</p>
                        </div>
                      </div>
-
-                     {cliente.telefone_whats && campanhaSelecionada?.mensagem_whatsapp && (
-                       <button
-                         onClick={(e) => {
-                           e.stopPropagation(); // Evita marcar/desmarcar o checkbox ao clicar no WhatsApp
-                           handleDispararClienteIndividual(cliente);
-                         }}
-                         title="Enviar WhatsApp personalizado"
-                         className="p-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition-all shadow-sm flex-shrink-0"
-                       >
-                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                           <path d="M13.601 2.326A7.85 7.85 0 0 0 12.435.417 7.45 7.45 0 0 0 8 .04a7.45 7.45 0 0 0-4.435.377 7.85 7.85 0 0 0-1.166 1.909 7.7 7.7 0 0 0-.418 2.45c0 1.254.304 2.482.879 3.567l-1.018 3.722 3.821-1.002c1.033.563 2.185.86 3.354.861h.003a7.43 7.43 0 0 0 4.432-.379 7.85 7.85 0 0 0 1.167-1.909 7.7 7.7 0 0 0 .418-2.451 7.7 7.7 0 0 0-.418-2.451m-2.108 8.042c-.136.383-.667.708-1.014.757-.347.049-.785.088-1.32-.083-.264-.085-.591-.205-.98-.372a7.35 7.35 0 0 1-3.153-2.77c-.255-.386-.454-.79-.563-1.14-.109-.351-.122-.633-.046-.864.076-.231.264-.478.4-.643.136-.165.182-.25.274-.43.09-.182.046-.343-.023-.483-.068-.141-.611-1.472-.837-2.015-.22-.529-.444-.457-.611-.457h-.52c-.176 0-.463.066-.704.331-.242.265-.926.906-.926 2.212s.95 2.57 1.082 2.749c.133.179 1.867 2.852 4.523 3.999.633.273 1.13.435 1.517.558.636.2 1.217.171 1.675.103.51-.076 1.564-.639 1.785-1.256.22-.617.22-1.144.155-1.256-.064-.113-.236-.182-.51-.319" />
-                         </svg>
-                       </button>
-                     )}
                    </div>
                  );
                })
@@ -675,70 +720,129 @@ return (
 
         {/* SEÇÃO 3: Painel de Controle */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col h-[600px]">
-           <h2 className="font-semibold text-lg text-gray-700 border-b pb-2 mb-4">⚡ Painel de Controle</h2>
+          <h2 className="font-semibold text-lg text-gray-700 border-b pb-2 mb-4">⚡ Painel de Controle</h2>
            
-           {!campanhaSelecionada ? (
-             <div className="flex-1 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-sm text-center p-4">
-               Selecione uma campanha na lista ao lado para gerenciar as ações.
-             </div>
-           ) : (
-             <div className="flex-1 flex flex-col justify-between overflow-y-auto space-y-4 pr-1">
+          {!campanhaSelecionada ? (
+            <div className="flex-1 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-sm text-center p-4">
+              Selecione uma campanha na lista ao lado para gerenciar as ações.
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col justify-between overflow-y-auto space-y-4 pr-1">
                
-               <div>
-                 <div className="flex justify-between items-center mb-2">
-                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Arte da Campanha</p>
-                   <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Dica: use {'{nome}'} no texto</span>
-                 </div>
-                 {campanhaSelecionada.url_arte_storage ? (
-                   <div className="w-full h-40 rounded-xl bg-gray-50 border overflow-hidden flex items-center justify-center shadow-inner">
-                     <img src={campanhaSelecionada.url_arte_storage} alt="Arte" className="max-w-full max-h-full object-contain p-2" />
-                   </div>
-                 ) : (
-                   <div className="w-full h-32 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-400 bg-gray-50/50">
-                     Nenhuma imagem vinculada.
-                   </div>
-                 )}
-               </div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Arte da Campanha</p>
+                </div>
+                {campanhaSelecionada.url_arte_storage ? (
+                  <div className="w-full h-40 rounded-xl bg-gray-50 border overflow-hidden flex items-center justify-center shadow-inner">
+                    <img 
+                      src={campanhaSelecionada.url_arte_storage} 
+                      alt="Arte Vinculada à Campanha" 
+                      className="max-w-full max-h-full object-contain p-2" 
+                      onError={async (e) => {
+                        // Se der erro de carregamento (ex: deletado por fora), trata graciosamente na interface
+                        e.currentTarget.style.display = 'none'; // Esconde a imagem quebrada
+                        
+                        // Opcional: Auto-limpa o banco de dados se detectar que o link está morto
+                        await supabase
+                          .from('tab_campanhas')
+                          .update({ url_arte_storage: null })
+                          .eq('id', campanhaSelecionada.id);
 
-               <div className="space-y-3 flex-1">
-                 <div>
-                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Mensagem WhatsApp Base</p>
-                   <div className="bg-zinc-50 border p-2.5 rounded-lg text-xs text-gray-700 font-mono whitespace-pre-wrap max-h-24 overflow-y-auto">
-                     {campanhaSelecionada.mensagem_whatsapp || <span className="italic text-gray-400">Texto não configurado</span>}
-                   </div>
-                 </div>
+                        setCampanhaSelecionada(prev => prev ? { ...prev, url_arte_storage: null } : null);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-32 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-400 bg-gray-50/50">
+                    Nenhuma imagem vinculada.
+                  </div>
+                )}
+              </div>
 
-                 <div>
-                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Texto do E-mail</p>
-                   <div className="bg-zinc-50 border p-2.5 rounded-lg text-xs text-gray-700 whitespace-pre-wrap max-h-24 overflow-y-auto">
-                     {campanhaSelecionada.mensagem_email || <span className="italic text-gray-400">Texto não configurado</span>}
-                   </div>
-                 </div>
-               </div>
+              <div className="space-y-3 flex-1">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Texto do E-mail</p>
+                  <div className="bg-zinc-50 border p-2.5 rounded-lg text-xs text-gray-700 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                    {campanhaSelecionada.mensagem_email || <span className="italic text-gray-400">Texto não configurado</span>}
+                  </div>
+                </div>
+              </div>
 
-               <div className="space-y-2 pt-4 border-t">
-                 <button 
-                   onClick={handleDispararWhatsappGeral}
-                   disabled={!campanhaSelecionada.mensagem_whatsapp}
-                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-sm"
-                 >
-                   💬 Compartilhar Texto Geral
-                 </button>
-                 <button 
-                   onClick={handleDispararEmail}
-                   className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-sm"
-                 >
-                   ✉️ Enviar para Selecionados ({clientes.filter(c => idsClientesSelecionados.includes(c.id)).length})
-                 </button>
-               </div>
+              <div className="space-y-2 pt-4 border-t">
+                <button 
+                  type="button"
+                  onClick={handleDispararEmail}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-sm"
+                >
+                  ✉️ Enviar para Selecionados ({clientes.filter(c => idsClientesSelecionados.includes(c.id)).length})
+                </button>
+              </div>
 
-             </div>
-           )}
+            </div>
+          )}
         </div>
-
       </div>
 
-      {/* MODAL DE CADASTRO / EDIÇÃO */}
+      {/* GERENCIADOR DE IMAGENS DO STORAGE (EDITAR E EXCLUIR) */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-4">
+        <div className="border-b pb-3 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+          <div>
+            <h2 className="font-bold text-lg text-gray-800">📦 Gerenciador do Storage de Artes</h2>
+            <p className="text-xs text-gray-500">Controle as mídias salvas e acesse de forma rápida a edição de sua campanha</p>
+          </div>
+          <div className="bg-blue-50 text-blue-700 font-semibold text-xs px-3 py-1.5 rounded-lg border border-blue-100 flex-shrink-0">
+            Espaço Ocupado: {totalEspacoMB.toFixed(2)} MB
+          </div>
+        </div>
+
+        {carregandoArtes ? (
+          <p className="text-sm text-gray-400 text-center py-4">Carregando mídias...</p>
+        ) : listaArtes.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4 border border-dashed rounded-xl bg-gray-50/50">Nenhum arquivo encontrado no Storage de artes.</p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {listaArtes.map((arte) => {
+              const urlPublica = supabase.storage.from('artes-campanhas').getPublicUrl(arte.name).data.publicUrl;
+              const tamanhoEmMB = (arte.metadata?.size || 0) / (1024 * 1024);
+
+              return (
+                <div key={arte.id || arte.name} className="border border-gray-100 bg-gray-50/50 rounded-xl p-2 relative flex flex-col justify-between group shadow-sm hover:shadow transition-all">
+                  <div className="w-full h-24 bg-white rounded-lg border overflow-hidden flex items-center justify-center mb-2">
+                    <img src={urlPublica} alt={arte.name} className="max-w-full max-h-full object-contain p-1" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-gray-700 truncate font-mono font-medium" title={arte.name}>{arte.name}</p>
+                    <p className="text-[9px] font-bold text-gray-400 mt-0.5">{tamanhoEmMB.toFixed(2)} MB</p>
+                  </div>
+                  
+                  {/* Botões Flutuantes de Ação Integrados */}
+                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <button
+                      type="button"
+                      onClick={() => handleEditarCampanhaPorArte(urlPublica)}
+                      className="p-1 bg-white hover:bg-amber-500 text-gray-600 hover:text-white border border-gray-200 rounded-md shadow-sm text-[10px]"
+                      title="Editar campanha desta arte"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExcluirArteStorage(arte.name)}
+                      className="p-1 bg-white hover:bg-red-500 text-gray-600 hover:text-white border border-gray-200 rounded-md shadow-sm text-[10px]"
+                      title="Excluir do Storage"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* MODAL DE CADASTRO / EDIÇÃO / SUBSTITUIÇÃO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -778,26 +882,48 @@ return (
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Mensagem do WhatsApp</label>
-                <textarea 
-                  value={msgWhats} onChange={(e) => setMsgWhats(e.target.value)}
-                  placeholder="Use {nome} para personalizar o texto dinamicamente."
-                  className="w-full mt-1 p-2 border rounded-lg outline-none h-20 text-xs font-mono"
-                />
-              </div>
-
-              <div>
                 <label className="block text-sm font-medium text-gray-700">Conteúdo do E-mail</label>
                 <textarea 
                   value={msgEmail} onChange={(e) => setMsgEmail(e.target.value)}
                   placeholder="Texto do e-mail comercial..."
-                  className="w-full mt-1 p-2 border rounded-lg outline-none h-20 text-xs"
+                  className="w-full mt-1 p-2 border rounded-lg outline-none h-28 text-xs"
                 />
               </div>
 
+              {/* Área de Visualização e Substituição Direta da Arte no Modal */}
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  {campanhaEmEdicao ? 'Substituir Arte da Campanha (Opcional)' : 'Arte da Campanha (Imagem)'}
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {campanhaEmEdicao?.url_arte_storage ? '🖼️ Arte Atual da Campanha' : 'Arte da Campanha (Imagem)'}
+                </label>
+                
+                {campanhaEmEdicao?.url_arte_storage && (
+                  <div className="w-full h-28 bg-gray-50 border rounded-lg overflow-hidden flex items-center justify-center p-2 mb-2">
+                    <img 
+                      src={campanhaEmEdicao.url_arte_storage} 
+                      alt="Miniatura Atual" 
+                      className="max-w-full max-h-full object-contain" 
+                      onError={async (e) => {
+                        // Se a imagem sumiu do storage, remove a visualização e limpa o estado
+                        e.currentTarget.style.display = 'none';
+                        
+                        // Corrige o banco de dados em background para remover o link morto
+                        await supabase
+                          .from('tab_campanhas')
+                          .update({ url_arte_storage: null })
+                          .eq('id', campanhaEmEdicao.id);
+
+                        // Atualiza o estado da campanha que está sendo editada no momento
+                        setCampanhaEmEdicao(prev => prev ? { ...prev, url_arte_storage: null } : null);
+                        
+                        // Atualiza também na lista geral para sumir o badge "Com Arte"
+                        setCampanhas(prev => prev.map(c => c.id === campanhaEmEdicao.id ? { ...c, url_arte_storage: null } : c));
+                      }}
+                    />
+                  </div>
+                )}
+
+                <label className="block text-xs text-gray-400 font-medium mb-1">
+                  {campanhaEmEdicao?.url_arte_storage ? 'Substituir arte por um novo arquivo:' : 'Selecione a imagem de fundo:'}
                 </label>
                 <input 
                   type="file" accept="image/*"
@@ -806,7 +932,7 @@ return (
                       setArteArquivo(e.target.files[0]);
                     }
                   }}
-                  className="w-full mt-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
                 />
               </div>
 
