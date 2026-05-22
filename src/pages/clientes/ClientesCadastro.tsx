@@ -32,7 +32,7 @@ export default function ClientesCadastro() {
   const [loadingCEP, setLoadingCEP] = useState(false);
   const [loadingCEPPF, setLoadingCEPPF] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  
+  const [isPreenchimentoManual, setIsPreenchimentoManual] = useState(false);
   const [corretores, setCorretores] = useState<Corretor[]>([]);
   const [mesmoEndereco, setMesmoEndereco] = useState(true);
 
@@ -156,31 +156,40 @@ useEffect(() => {
     const cnpjLimpo = form.cnpj.replace(/\D/g, "");
     if (cnpjLimpo.length !== 14) return alert("CNPJ inválido");
     setLoadingCNPJ(true);
+  
     try {
-        const data = await buscarCNPJ(cnpjLimpo);
-        setForm(prev => ({
-          ...prev,
-          razao_social: (data.razao_social || "").toUpperCase(),
-          nome_fantasia: (data.nome_fantasia || "").toUpperCase(),
-          porte: (data.porte || "").toUpperCase(),
-          capital_social: data.capital_social
-          ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(data.capital_social)
-          : "",
-          natureza_juridica: (data.natureza_juridica || "").toUpperCase(),
-          opcao_pelo_mei: data.opcao_pelo_mei || false,
-          opcao_pelo_simples: data.opcao_pelo_simples || false,
-          ddd_telefone_1: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : "",
-          descricao_identificador_matriz_filial: (data.descricao_identificador_matriz_filial || "").toUpperCase(),
-          cep: data.cep || prev.cep,
-          uf: (data.uf || prev.uf).toUpperCase(),
-          municipio: (data.municipio || prev.municipio).toUpperCase(),
-          logradouro: (data.logradouro || prev.logradouro).toUpperCase(),
-          bairro: (data.bairro || prev.bairro).toUpperCase(), 
-          numero: data.numero || prev.numero,
-          complemento: (data.complemento || prev.complemento).toUpperCase(),
-        }));
-    } catch { alert("Erro ao buscar CNPJ."); }
-    finally { setLoadingCNPJ(false); }
+      const data = await buscarCNPJ(cnpjLimpo);
+      setIsPreenchimentoManual(false); // Se a API voltou a funcionar, mantém a trava de segurança padrão
+      
+      setForm(prev => ({
+        ...prev,
+        razao_social: (data.razao_social || "").toUpperCase(),
+        nome_fantasia: (data.nome_fantasia || "").toUpperCase(),
+        porte: (data.porte || "").toUpperCase(),
+        capital_social: data.capital_social
+        ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(data.capital_social)
+        : "",
+        natureza_juridica: (data.natureza_juridica || "").toUpperCase(),
+        opcao_pelo_mei: data.opcao_pelo_mei || false,
+        opcao_pelo_simples: data.opcao_pelo_simples || false,
+        ddd_telefone_1: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : "",
+        descricao_identificador_matriz_filial: (data.descricao_identificador_matriz_filial || "").toUpperCase(),
+        cep: data.cep || prev.cep,
+        uf: (data.uf || prev.uf).toUpperCase(),
+        municipio: (data.municipio || prev.municipio).toUpperCase(),
+        logradouro: (data.logradouro || prev.logradouro).toUpperCase(),
+        bairro: (data.bairro || prev.bairro).toUpperCase(), 
+        numero: data.numero || prev.numero,
+        complemento: (data.complemento || prev.complemento).toUpperCase(),
+      }));
+    } catch (error) { 
+      // Em vez de apenas um alert genérico, avisamos e destravamos os campos!
+      console.error("Erro na busca automatizada de CNPJ:", error);
+      alert("Não foi possível consultar os dados automaticamente (Limite de requisições atingido ou instabilidade). Liberamos os campos para preenchimento manual.");
+      setIsPreenchimentoManual(true); 
+    } finally { 
+      setLoadingCNPJ(false); 
+    }
   }
 
   async function handleBuscarCEP(tipo: "PJ" | "PF") {
@@ -378,18 +387,117 @@ useEffect(() => {
           <Section icon={<Briefcase className="text-blue-500" />} title={tipoCliente === "PJ" ? "Dados Empresariais" : "Dados Pessoais"}>
             {tipoCliente === "PJ" ? (
               <div className="grid grid-cols-1 md:grid-cols-6 gap-5">
-                <div className="md:col-span-2"><ActionInput label="CNPJ" name="cnpj" value={form.cnpj} onChange={handleChange} onAction={handleBuscarCNPJ} loading={loadingCNPJ} placeholder="00.000.000/0000-00" /></div>
-                <div className="md:col-span-4"><Input label="Tipo (Matriz/Filial)" name="descricao_identificador_matriz_filial" value={form.descricao_identificador_matriz_filial} readOnly className="bg-slate-50 dark:bg-zinc-800/50 text-slate-400" /></div>
-                <div className="md:col-span-3"><Input label="Razão Social" name="razao_social" value={form.razao_social} onChange={handleChange} readOnly={!isEditing} className={!isEditing ? "bg-slate-50 dark:bg-zinc-800/50" : ""}/></div>
-                <div className="md:col-span-3"><Input label="Nome Fantasia" name="nome_fantasia" value={form.nome_fantasia} onChange={handleChange} readOnly={!isEditing} className={!isEditing ? "bg-slate-50 dark:bg-zinc-800/50" : ""}/></div>
-                <div className="md:col-span-4"><Input label="Natureza Jurídica" name="natureza_juridica" value={form.natureza_juridica} onChange={handleChange} readOnly className="bg-slate-50 dark:bg-zinc-800/50 text-slate-400"/></div>
-                <div className="md:col-span-2"><Input label="Porte" name="porte" value={form.porte} onChange={handleChange} readOnly className="bg-slate-50 dark:bg-zinc-800/50 text-slate-400"/></div>
-                <div className="md:col-span-2"><Input label="Capital Social" name="capital_social" type="text" value={form.capital_social} onChange={handleChange} readOnly className="bg-slate-50 dark:bg-zinc-800/50 text-slate-400"/></div>
-                <div className="md:col-span-4"><Input label="Telefone da Empresa (API)" name="ddd_telefone_1" value={form.ddd_telefone_1} onChange={handleChange} readOnly className="bg-slate-50 dark:bg-zinc-800/50 text-slate-400"/></div>
+                
+                {/* Banner de Aviso de Contingência Manual */}
+                {isPreenchimentoManual && (
+                  <div className="md:col-span-6 p-4 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 rounded-xl text-xs text-amber-700 dark:text-amber-400 font-medium animate-in fade-in slide-in-from-top-2 duration-300">
+                    ⚠️ <strong>Modo de Contingência Ativado:</strong> A consulta automática falhou ou atingiu o limite de requisições por minuto. Você pode digitar os dados da empresa manualmente para não travar o seu atendimento.
+                  </div>
+                )}
+
+                <div className="md:col-span-2">
+                  <ActionInput label="CNPJ" name="cnpj" value={form.cnpj} onChange={handleChange} onAction={handleBuscarCNPJ} loading={loadingCNPJ} placeholder="00.000.000/0000-00" />
+                </div>
+                
+                {/* Campo Tipo (Matriz/Filial): Deixamos aberto para escrita no modo emergencial */}
+                <div className="md:col-span-4">
+                  <Input 
+                    label="Tipo (Matriz/Filial)" 
+                    name="descricao_identificador_matriz_filial" 
+                    value={form.descricao_identificador_matriz_filial} 
+                    onChange={handleChange}
+                    readOnly={!isEditing && !isPreenchimentoManual} 
+                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""} 
+                  />
+                </div>
+                
+                {/* Razão Social e Nome Fantasia passam a respeitar o isPreenchimentoManual */}
+                <div className="md:col-span-3">
+                  <Input 
+                    label="Razão Social" 
+                    name="razao_social" 
+                    value={form.razao_social} 
+                    onChange={handleChange} 
+                    readOnly={!isEditing && !isPreenchimentoManual} 
+                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                  />
+                </div>
+                
+                <div className="md:col-span-3">
+                  <Input 
+                    label="Nome Fantasia" 
+                    name="nome_fantasia" 
+                    value={form.nome_fantasia} 
+                    onChange={handleChange} 
+                    readOnly={!isEditing && !isPreenchimentoManual} 
+                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                  />
+                </div>
+                
+                {/* Natureza Jurídica e Porte liberados sob demanda */}
+                <div className="md:col-span-4">
+                  <Input 
+                    label="Natureza Jurídica" 
+                    name="natureza_juridica" 
+                    value={form.natureza_juridica} 
+                    onChange={handleChange} 
+                    readOnly={!isEditing && !isPreenchimentoManual} 
+                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                  />
+                </div>
+                
+                <div className="md:col-span-2">
+                  <Input 
+                    label="Porte" 
+                    name="porte" 
+                    value={form.porte} 
+                    onChange={handleChange} 
+                    readOnly={!isEditing && !isPreenchimentoManual} 
+                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                  />
+                </div>
+                
+                {/* Capital Social e Telefone de Empresa liberados sob demanda */}
+                <div className="md:col-span-2">
+                  <Input 
+                    label="Capital Social" 
+                    name="capital_social" 
+                    type="text" 
+                    value={form.capital_social} 
+                    onChange={handleChange} 
+                    readOnly={!isEditing && !isPreenchimentoManual} 
+                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                  />
+                </div>
+                
+                <div className="md:col-span-4">
+                  <Input 
+                    label="Telefone da Empresa (API)" 
+                    name="ddd_telefone_1" 
+                    value={form.ddd_telefone_1} 
+                    onChange={handleChange} 
+                    readOnly={!isEditing && !isPreenchimentoManual} 
+                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                  />
+                </div>
+                
+                {/* Enquadramento checkboxes passam a ser clicáveis se liberado */}
                 <div className="md:col-span-6 flex items-center gap-8 p-4 bg-slate-50 dark:bg-zinc-800/30 rounded-xl border border-dashed border-slate-200 dark:border-zinc-700">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enquadramento:</span>
-                  <Checkbox label="Optante pelo MEI" name="opcao_pelo_mei" checked={form.opcao_pelo_mei}  readOnly />
-                  <Checkbox label="Simples Nacional" name="opcao_pelo_simples" checked={form.opcao_pelo_simples} readOnly />
+                  <Checkbox 
+                    label="Optante pelo MEI" 
+                    name="opcao_pelo_mei" 
+                    checked={form.opcao_pelo_mei}  
+                    onChange={handleChange}
+                    disabled={!isEditing && !isPreenchimentoManual} 
+                  />
+                  <Checkbox 
+                    label="Simples Nacional" 
+                    name="opcao_pelo_simples" 
+                    checked={form.opcao_pelo_simples} 
+                    onChange={handleChange}
+                    disabled={!isEditing && !isPreenchimentoManual} 
+                  />
                 </div>
               </div>
             ) : (
