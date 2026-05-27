@@ -13,6 +13,8 @@ interface Campanha {
   mensagem_whatsapp: string | null;
   url_arte_storage: string | null;
   total_enviados: number;
+  corretora_id: string;
+  corretor_id: string | null;
 }
 
 interface MarketingLead {
@@ -66,6 +68,7 @@ export default function PainelMarketingCampanhas() {
   const [idsLeadsSelecionados, setIdsLeadsSelecionados] = useState<string[]>([]);
   const [idsLinhasSelecionadas, setIdsLinhasSelecionadas] = useState<string[]>([]);
   const [linhaEmEdicao, setLinhaEmEdicao] = useState<string | null>(null);
+  const [filtroGrade, setFiltroGrade] = useState<'TODOS' | 'ENTREGUE' | 'FALHA' | 'ABRIU' | 'CLICOU'>('TODOS');
   const [emailEditadoValue, setEmailEditadoValue] = useState('');
 
   // --- INTELIGÊNCIA DE FILTRAGEM: ABA DE TEMPERATURA SELECIONADA ---
@@ -91,8 +94,10 @@ export default function PainelMarketingCampanhas() {
   const [arteArquivo, setArteArquivo] = useState<File | null>(null);
 
   // --- GERENCIAR ABAS E ARMAZENAR OS DADOS LIDOS DO CSV ---
-  const [modoPublico, setModoPublico] = useState<'base' | 'csv'>('base');
+  const [modoPublico, setModoPublico] = useState<'base' | 'csv' | 'crm'>('base');
   const [clientesListaImportada, setClientesListaImportada] = useState<any[]>([]);
+  const [clientesCRM, setClientesCRM] = useState<any[]>([]);
+  const [carregandoCRM, setCarregandoCRM] = useState<boolean>(false);
 
   // Métrica calculada do Storage
   const totalEspacoMB = listaArtes.reduce((acc, curr) => {
@@ -113,6 +118,7 @@ export default function PainelMarketingCampanhas() {
     if (campanhaSelecionada) {
       buscarLeadsElegiveis(campanhaSelecionada);
       buscarLogsAuditoria(campanhaSelecionada.id);
+      buscarClientesCRM(campanhaSelecionada);
     } else {
       setLeadsElegiveis([]);
       setDetalhesEnvios([]);
@@ -130,6 +136,50 @@ export default function PainelMarketingCampanhas() {
       setHistoricoCampanhasDoLead([]);
     }
   }, [leadParaVerHistorico]);
+
+  // --- MONITORAMENTO EM TEMPO REAL: DETALHES DE ENVIOS (REALTIME) ---
+  useEffect(() => {
+    if (!campanhaSelecionada) return;
+
+    // Conecta ao canal do Supabase escutando modificações na tabela de detalhes
+    const canalRealtime = supabase
+      .channel(`realtime-detalhes-${campanhaSelecionada.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Escuta INSERT, UPDATE e DELETE
+          schema: 'public',
+          table: 'tab_campanhas_emails_detalhe',
+          filter: `id_campanha=eq.${campanhaSelecionada.id}` // 🎯 Ajustado para id_campanha
+        },
+        (payload) => {
+          // 1. Se um registro foi atualizado (ex: webhook do Resend acusou abertura)
+          if (payload.eventType === 'UPDATE') {
+            const registroAtualizado = payload.new as LogEnvioDetalhe; // 🔒 Força a tipagem correta
+            setDetalhesEnvios((prev) =>
+              prev.map((item) => (item.id === registroAtualizado.id ? { ...item, ...registroAtualizado } : item))
+            );
+          }
+          // 2. Se um novo registro de envio entrou na fila
+          else if (payload.eventType === 'INSERT') {
+            const novoRegistro = payload.new as LogEnvioDetalhe; // 🔒 Força a tipagem correta
+            setDetalhesEnvios((prev) => [novoRegistro, ...prev]);
+          }
+          // 3. Se um registro foi deletado da grade
+          else if (payload.eventType === 'DELETE') {
+            const registroDeletado = payload.old as { id: string };
+            setDetalhesEnvios((prev) => prev.filter((item) => item.id !== registroDeletado.id));
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup: Desconecta do canal quando trocar de campanha ou sair da tela
+    return () => {
+      supabase.removeChannel(canalRealtime);
+    };
+  }, [campanhaSelecionada]);
+  
 
   // --- FUNÇÕES DE BUSCA DE DADOS (SUPABASE) ---
   async function buscarCampanhas() {
@@ -176,21 +226,72 @@ export default function PainelMarketingCampanhas() {
     }
   }
 
-  async function buscarLogsAuditoria(campanhaId: string) {
+  async function buscarClientesCRM(campanha: Campanha) {
     try {
-      setCarregandoDetalhes(true);
-      const { data, error } = await supabase
-        .from('tab_campanhas_emails_detalhe')
-        .select('*')
-        .eq('id_campanha', campanhaId)
-        .order('criado_em', { ascending: false });
+      setCarregandoCRM(true);
+      
+      // 1. Traz apenas clientes que possuem e-mail válido preenchido e pertencem à mesma corretora da campanha
+      let query = supabase
+        .from('tab_clientes')
+        .select('id, nome, email, telefone_whats, data_nascimento, tipo_cliente, nome_fantasia, corretor_id')
+        .eq('corretora_id', campanha.corretora_id) // 🔒 Bloqueia vazamento entre corretoras diferentes
+        .not('email', 'is', null)
+        .neq('email', '');
+
+      // 2. Se a campanha pertencer a um corretor específico, ele só vê os clientes DELE.
+      // Se for da corretora (mãe) e o corretor_id for nulo, traz apenas os clientes diretos da mãe.
+      if (campanha.corretor_id) {
+        query = query.eq('corretor_id', campanha.corretor_id);
+      } else {
+        query = query.is('corretor_id', null);
+      }
+
+      // Inteligência de Aniversário: filtra dinamicamente por mês e dia usando a data_nascimento nativa do CRM
+      if (campanha.tipo_evento === 'aniversario') {
+        const hoje = new Date();
+        const mesHoje = String(hoje.getMonth() + 1).padStart(2, '0');
+        const diaHoje = String(hoje.getDate()).padStart(2, '0');
+        
+        query = query.filter('data_nascimento', 'raw', `to_char(data_nascimento, 'MM-DD') = '${mesHoje}-${diaHoje}'`);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
-      setDetalhesEnvios(data || []);
+      setClientesCRM(data || []);
     } catch (err: any) {
-      toast.error('Erro ao buscar histórico da grade: ' + err.message);
+      console.error('Erro ao buscar clientes do CRM:', err);
+      toast.error('Erro ao carregar clientes do CRM');
     } finally {
-      setCarregandoDetalhes(false);
+      setCarregandoCRM(false);
+    }
+  }
+
+  async function buscarLogsAuditoria(campanhaId: string, emailLead?: string) {
+    try {
+      setCarregandoDetalhes?.(true);
+      
+      let query = supabase
+        .from('tab_campanhas_emails_detalhe')
+        .select('*')
+        .eq('id_campanha', campanhaId); // 🎯 Mudado de campanha_id para id_campanha
+
+      // 🎯 Se passar o e-mail (clique no CRM), filtra por ele. Se não passar, traz a grade inteira!
+      if (emailLead) {
+        query = query.eq('email_cliente', emailLead);
+      } else {
+        // Na grade geral, traz os disparos mais recentes primeiro
+        query = query.order('criado_em', { ascending: false });
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      setDetalhesEnvios?.(data || []); 
+    } catch (err) {
+      console.error('Erro ao buscar logs da grade:', err);
+    } finally {
+      setCarregandoDetalhes?.(false);
     }
   }
 
@@ -592,23 +693,34 @@ export default function PainelMarketingCampanhas() {
               <p className="text-[11px] text-gray-400">Filtre da sua base ou importe uma lista externa</p>
             </div>
             
-            {/* SELETOR DE MODO: BANCO VS CSV */}
-            <div className="flex bg-gray-100 p-0.5 rounded-lg text-[10px] font-bold">
+            {/* SELETOR DE MODO: BANCO VS CRM VS CSV */}
+            <div className="flex bg-gray-100 p-0.5 rounded-lg text-[10px] font-bold gap-0.5">
               <button
                 type="button"
-                onClick={() => setModoPublico?.('base')}
-                className={`px-2 py-1 rounded-md ${(!modoPublico || modoPublico === 'base') ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
+                onClick={() => setModoPublico('base')}
+                className={`px-2 py-1 rounded-md transition-all ${modoPublico === 'base' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
               >
                 Filtrar Base
               </button>
               <button
                 type="button"
-                onClick={() => setModoPublico?.('csv')}
-                className={`px-2 py-1 rounded-md ${modoPublico === 'csv' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
+                onClick={() => setModoPublico('crm')}
+                className={`px-2 py-1 rounded-md transition-all ${modoPublico === 'crm' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
+              >
+                Clientes CRM
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoPublico('csv')}
+                className={`px-2 py-1 rounded-md transition-all ${modoPublico === 'csv' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
               >
                 Importar CSV
               </button>
             </div>
+
+
+
+
           </div>
 
           {!campanhaSelecionada ? (
@@ -734,6 +846,81 @@ export default function PainelMarketingCampanhas() {
                   })}
                 </div>
               )}
+            </div>
+          ) : modoPublico === 'crm' ? (
+            /* ==========================================
+              MODO NOVO: CLIENTES DIRETOS DO CRM
+              ========================================== */
+            <div className="flex flex-col flex-1 min-h-0 space-y-3">
+              <div className="p-3 bg-purple-50 border border-purple-100 rounded-xl">
+                <span className="text-[11px] font-bold text-purple-700 uppercase block">Carteira Ativa do CRM</span>
+                <p className="text-[11px] text-purple-900 leading-relaxed">
+                  Listando clientes cadastrados que possuem e-mail válido.
+                </p>
+              </div>
+
+              <div className="flex-1 flex flex-col border border-gray-100 rounded-xl min-h-0 bg-gray-50/30 p-2">
+                {carregandoCRM ? (
+                  <p className="text-center text-xs text-gray-400 py-12 animate-pulse">Consultando tab_clientes...</p>
+                ) : clientesCRM.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-xs text-gray-400 text-center border border-dashed rounded-lg bg-white p-4">
+                    Nenhum cliente elegível encontrado no CRM para esta regra.
+                  </div>
+                ) : (
+                  <div className="flex flex-col h-full min-h-0">
+                    <div className="text-[10px] font-bold text-purple-600 uppercase pb-1 flex justify-between">
+                      <span>🤝 Contatos da Carteira</span>
+                      <span>Total: {clientesCRM.length}</span>
+                    </div>
+                    
+                    <div className="overflow-y-auto flex-1 space-y-1 pr-0.5 custom-scrollbar bg-white p-2 rounded-lg border">
+                      {clientesCRM.map((item: any) => {
+                        // Verificação de destaque visual: confere se este item é o selecionado na ficha
+                        const estaSelecionado = leadParaVerHistorico?.id === item.id;
+
+                        return (
+                          <div 
+                            key={item.id} 
+                            onClick={() => {
+                              // 1. Alimenta o estado nativo que aciona perfeitamente o histórico por e-mail
+                              setLeadParaVerHistorico({
+                                id: item.id,
+                                nome: item.nome || item.nome_fantasia || 'Sem Nome',
+                                email: item.email,
+                                email_total_aberturas: 0,
+                                email_total_cliques: 0,
+                                cliente_id: item.id,
+                                telefone_whats: item.telefone_whats || null,
+                                status_engajamento_email: 'valido',
+                                origem_lead: 'crm'
+                              });
+                              
+                              // Removida a chamada direta a buscarLogsAuditoria para eliminar o erro de coluna inexistente 🎯
+                            }}
+                            className={`flex justify-between items-center text-[11px] py-1.5 border-b last:border-0 border-gray-50 px-2 cursor-pointer transition-colors rounded ${
+                              estaSelecionado 
+                                ? 'bg-purple-100/70 border-l-4 border-purple-600 pl-1 font-semibold text-purple-900' 
+                                : 'hover:bg-purple-50/50 text-gray-700'
+                            }`}
+                          >
+                            <div className="truncate max-w-[150px]">
+                              <p className="truncate">{item.nome || item.nome_fantasia || 'Sem Nome'}</p>
+                              <p className={`text-[9px] font-mono truncate ${estaSelecionado ? 'text-purple-600' : 'text-gray-400'}`}>
+                                {item.email}
+                              </p>
+                            </div>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                              item.tipo_cliente === 'PJ' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'
+                            }`}>
+                              {item.tipo_cliente}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             
@@ -1086,11 +1273,23 @@ export default function PainelMarketingCampanhas() {
               <button
                 onClick={async () => {
                   if (confirm(`Tem certeza que deseja excluir os ${idsLinhasSelecionadas.length} registros selecionados?`)) {
-                    // Executa a exclusão para cada ID selecionado
-                    for (const id of idsLinhasSelecionadas) {
-                      await handleDeletarLinhaEnvio(id);
+                    try {
+                      // 🔥 Executa a exclusão em massa usando a cláusula 'in' nativa do Supabase
+                      const { error } = await supabase
+                        .from('tab_campanhas_emails_detalhe')
+                        .delete()
+                        .in('id', idsLinhasSelecionadas);
+
+                      if (error) throw error;
+
+                      // Atualiza o estado local removendo os itens deletados de uma vez só
+                      setDetalhesEnvios(prev => prev.filter(item => !idsLinhasSelecionadas.includes(item.id)));
+                      setIdsLinhasSelecionadas([]);
+                      toast.success('Registros excluídos com sucesso!');
+                    } catch (err) {
+                      console.error('Erro ao deletar lote:', err);
+                      toast.error('Erro ao excluir registros em lote.');
                     }
-                    setIdsLinhasSelecionadas([]);
                   }
                 }}
                 className="bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] px-3 py-1 rounded transition-colors shadow-sm"
@@ -1101,30 +1300,21 @@ export default function PainelMarketingCampanhas() {
           )}
         </div>
 
-        {/* FILTRO DE SEGMENTAÇÃO DE PÚBLICO */}
+        {/* 🎯 FILTRO DE MONITORAMENTO DA GRADE CORRIGIDO */}
         {campanhaSelecionada && detalhesEnvios.length > 0 && (
           <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-lg border border-gray-200 text-xs">
-            <span className="font-semibold text-gray-600">🎯 Filtrar Segmento:</span>
+            <span className="font-semibold text-gray-600">🎯 Filtrar Registros:</span>
             <select 
               id="filtroSegmento"
+              value={filtroGrade}
               className="p-1 px-2 border rounded bg-white font-medium text-gray-700 outline-none focus:border-blue-500"
-              onChange={(e) => {
-                const val = e.target.value;
-                // Aplica o filtro visual na tabela mudando o estado ou manipulando a exibição
-                const linhas = document.querySelectorAll('.linha-envio-registro');
-                linhas.forEach((linha: any) => {
-                  const tipo = linha.getAttribute('data-tipo-cliente');
-                  if (val === 'TODOS' || tipo === val) {
-                    linha.style.display = '';
-                  } else {
-                    linha.style.display = 'none';
-                  }
-                });
-              }}
+              onChange={(e) => setFiltroGrade(e.target.value as any)}
             >
-              <option value="TODOS">👥 Mostrar Todos os Clientes</option>
-              <option value="PF">👤 Apenas Pessoa Física (PF)</option>
-              <option value="PJ">🏢 Apenas Empresarial / Jurídica (PJ)</option>
+              <option value="TODOS">👥 Mostrar Todos os Disparos</option>
+              <option value="ENTREGUE">✅ Entrega: Entregue (Resend)</option>
+              <option value="FALHA">⚠️ Entrega: Bounce / Falha</option>
+              <option value="ABRIU">📩 Interação: Abriu E-mail</option>
+              <option value="CLICOU">💬 Interação: Clique Whats</option>
             </select>
           </div>
         )}
@@ -1164,14 +1354,23 @@ export default function PainelMarketingCampanhas() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-gray-700 text-sm">
-                {detalhesEnvios.map((detalhe) => {
-                  const isModoEdicaoLinha = linhaEmEdicao === detalhe.id;
+                {/* 🎯 FILTRAGEM DINÂMICA VIA REACT APLICADA AQUI */}
+                {detalhesEnvios
+                  .filter((detalhe) => {
+                    if (filtroGrade === 'TODOS') return true;
+                    if (filtroGrade === 'ENTREGUE') return detalhe.status_entrega === 'entregue';
+                    if (filtroGrade === 'FALHA') return detalhe.status_entrega !== 'entregue' && detalhe.status_entrega !== 'enviando';
+                    if (filtroGrade === 'ABRIU') return detalhe.abriu_email === true;
+                    if (filtroGrade === 'CLICOU') return detalhe.clicou_whatsapp === true;
+                    return true;
+                  })
+                  .map((detalhe) => {
+                    const isModoEdicaoLinha = linhaEmEdicao === detalhe.id;
 
                   return (
                     <tr 
                       key={detalhe.id} 
                       className="hover:bg-gray-50/50 transition-colors linha-envio-registro"
-                      data-tipo-cliente={detalhe.tipo_cliente} // Atributo usado pelo filtro
                     >
                       <td className="py-3.5 px-4 align-middle">
                         <input
