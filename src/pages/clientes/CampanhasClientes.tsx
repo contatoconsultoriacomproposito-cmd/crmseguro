@@ -1,557 +1,482 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
-import Papa from 'papaparse';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabaseClient'; // Ajuste o caminho conforme seu projeto
+import { toast } from 'sonner';
+import { useAuth } from "../../auth/AuthContext";
 
-// ==========================================
-// INTERFACES E TIPAGENS
-// ==========================================
+// --- INTERFACES PARA TIPAGEM TYPESCRIPT (Alinhado com seu Banco) ---
 interface Campanha {
   id: string;
   nome_evento: string;
   tipo_evento: 'fixo' | 'aniversario';
   mes_dia: string | null;
   mensagem_email: string | null;
+  mensagem_whatsapp: string | null;
   url_arte_storage: string | null;
+  total_enviados: number;
 }
 
-interface Cliente {
+interface MarketingLead {
   id: string;
-  nome: string;
-  tipo_cliente: 'PF' | 'PJ';
-  nome_fantasia: string | null;
-  email: string | null;
+  cliente_id: string | null;
+  nome: string | null;
+  email: string;
   telefone_whats: string | null;
-  data_nascimento: string | null;
+  status_engajamento_email: string;
+  origem_lead: string;
+  email_total_aberturas?: number; // Adicionado de acordo com a nova tabela populada
+  email_total_cliques?: number;   // Adicionado de acordo com a nova tabela populada
 }
 
-interface ArteStorage {
-  name: string;
-  id: string;
-  metadata: {
-    size: number;
-    mimetype: string;
-  };
-}
-
-interface DetalheEnvio {
+interface LogEnvioDetalhe {
   id: string;
   id_campanha: string;
   nome_cliente: string;
   email_cliente: string;
-  tipo_cliente: string;
+  tipo_cliente: string | null;
   nome_fantasia: string | null;
   status_entrega: string;
   abriu_email: boolean;
   clicou_whatsapp: boolean;
-  clicou_responder: boolean;
   criado_em: string;
+  // Para sabermos de qual campanha veio o log no histórico do lead
+  tab_campanhas?: { nome_evento: string }; 
 }
 
-interface ToastMessage {
-  id: string;
-  tipo: 'sucesso' | 'erro' | 'info';
-  texto: string;
+interface ArteStorage {
+  id?: string;
+  name: string;
+  metadata?: { size?: number } | null | Record<string, any>;
 }
 
-export default function CampanhasClientes() {
-  // ==========================================
-  // ESTADOS DO SISTEMA
-  // ==========================================
+// Tipo para controlar as abas de temperatura
+type FiltroTemperatura = 'todos' | 'frios' | 'mornos' | 'quentes';
+
+export default function PainelMarketingCampanhas() {
+  // --- ESTADOS GERAIS DO COMPONENTE ---
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
-  const [carregando, setCarregando] = useState(true);
   const [campanhaSelecionada, setCampanhaSelecionada] = useState<Campanha | null>(null);
+  const [leadsElegiveis, setLeadsElegiveis] = useState<MarketingLead[]>([]);
+  const [detalhesEnvios, setDetalhesEnvios] = useState<LogEnvioDetalhe[]>([]);
+  const [listaArtes, setListaArtes] = useState<ArteStorage[]>([]);
+  const { userProfile } = useAuth();
+  const idCorretorLogado = userProfile?.id;
+  const idCorretoraLogada = userProfile?.corretora_id;
   
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [carregandoClientes, setCarregandoClientes] = useState(false);
-  const [termoBusca, setTermoBusca] = useState('');
-  const [idsClientesSelecionados, setIdsClientesSelecionados] = useState<string[]>([]);
-  const [isListaImportada, setIsListaImportada] = useState(false);
-  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
+  // --- ESTADOS DE SELEÇÃO E CONTROLE ---
+  const [idsLeadsSelecionados, setIdsLeadsSelecionados] = useState<string[]>([]);
+  const [idsLinhasSelecionadas, setIdsLinhasSelecionadas] = useState<string[]>([]);
+  const [linhaEmEdicao, setLinhaEmEdicao] = useState<string | null>(null);
+  const [emailEditadoValue, setEmailEditadoValue] = useState('');
 
+  // --- INTELIGÊNCIA DE FILTRAGEM: ABA DE TEMPERATURA SELECIONADA ---
+  const [filtroTemperatura, setFiltroTemperatura] = useState<FiltroTemperatura>('todos');
+  const [leadParaVerHistorico, setLeadParaVerHistorico] = useState<MarketingLead | null>(null);
+  const [historicoCampanhasDoLead, setHistoricoCampanhasDoLead] = useState<LogEnvioDetalhe[]>([]);
+  const [carregandoHistoricoLead, setCarregandoHistoricoLead] = useState(false);
+
+  // --- ESTADOS DE LOADING E MODAL ---
+  const [carregandoCampanhas, setCarregandoCampanhas] = useState(false);
+  const [carregandoLeads, setCarregandoLeads] = useState(false);
+  const [carregandoDetalhes, setCarregandoDetalhes] = useState(false);
+  const [carregandoArtes, setCarregandoArtes] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [campanhaEmEdicao, setCampanhaEmEdicao] = useState<Campanha | null>(null); 
+
+  // --- ESTADOS DOS CAMPOS DO MODAL (Cadastro/Edição de Campanha) ---
+  const [campanhaEmEdicao, setCampanhaEmEdicao] = useState<Campanha | null>(null);
   const [nomeEvento, setNomeEvento] = useState('');
   const [tipoEvento, setTipoEvento] = useState<'fixo' | 'aniversario'>('fixo');
   const [mesDia, setMesDia] = useState('');
   const [msgEmail, setMsgEmail] = useState('');
   const [arteArquivo, setArteArquivo] = useState<File | null>(null);
-  const [enviando, setEnviando] = useState(false);
 
-  const [listaArtes, setListaArtes] = useState<ArteStorage[]>([]);
-  const [totalEspacoMB, setTotalEspacoMB] = useState(0);
-  const [carregandoArtes, setCarregandoArtes] = useState(false);
+  // --- GERENCIAR ABAS E ARMAZENAR OS DADOS LIDOS DO CSV ---
+  const [modoPublico, setModoPublico] = useState<'base' | 'csv'>('base');
+  const [clientesListaImportada, setClientesListaImportada] = useState<any[]>([]);
 
-  // Novos Estados para a Grade de Resultados Avançada
-  const [detalhesEnvios, setDetalhesEnvios] = useState<DetalheEnvio[]>([]);
-  const [carregandoDetalhes, setCarregandoDetalhes] = useState(false);
-  const [linhaEmEdicao, setLinhaEmEdicao] = useState<string | null>(null);
-  const [emailEditadoValue, setEmailEditadoValue] = useState('');
-  const [idsLinhasSelecionadas, setIdsLinhasSelecionadas] = useState<string[]>([]);
+  // Métrica calculada do Storage
+  const totalEspacoMB = listaArtes.reduce((acc, curr) => {
+    const size = curr.metadata && typeof curr.metadata === 'object' && 'size' in curr.metadata 
+      ? (curr.metadata as any).size 
+      : 0;
+    return acc + (size / (1024 * 1024));
+  }, 0);
 
-  // Estado customizado de Toasts (Substitutos elegantes dos Alerts)
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  // --- CARREGAMENTO INICIAL: CAMPANHAS E STORAGE ---
+  useEffect(() => {
+    buscarCampanhas();
+    buscarHistoricoStorage();
+  }, []);
 
-  // ==========================================
-  // FUNÇÃO DE TOAST CUSTOMIZADA
-  // ==========================================
-  const showToast = (texto: string, tipo: 'sucesso' | 'erro' | 'info' = 'sucesso') => {
-    const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, tipo, texto }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  };
+  // --- OBSERVER: CARREGA LEADS E LOGS QUANDO SELECIONA UMA CAMPANHA ---
+  useEffect(() => {
+    if (campanhaSelecionada) {
+      buscarLeadsElegiveis(campanhaSelecionada);
+      buscarLogsAuditoria(campanhaSelecionada.id);
+    } else {
+      setLeadsElegiveis([]);
+      setDetalhesEnvios([]);
+      setIdsLeadsSelecionados([]);
+      setIdsLinhasSelecionadas([]);
+      setLeadParaVerHistorico(null);
+    }
+  }, [campanhaSelecionada]);
 
-  // ==========================================
-  // MÉTODOS DE BUSCA E BANCO DE DADOS
-  // ==========================================
+  // --- OBSERVER: BUSCA HISTÓRICO ESPECÍFICO DO LEAD AO CLICAR EM SEU CARD ---
+  useEffect(() => {
+    if (leadParaVerHistorico) {
+      buscarHistoricoIndividualLead(leadParaVerHistorico.email);
+    } else {
+      setHistoricoCampanhasDoLead([]);
+    }
+  }, [leadParaVerHistorico]);
+
+  // --- FUNÇÕES DE BUSCA DE DADOS (SUPABASE) ---
   async function buscarCampanhas() {
     try {
-      setCarregando(true);
+      setCarregandoCampanhas(true);
       const { data, error } = await supabase
-        .from('tab_campanhas') 
-        .select('id, nome_evento, tipo_evento, mes_dia, mensagem_email, url_arte_storage')
-        .order('nome_evento', { ascending: true });
+        .from('tab_campanhas')
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      if (data) {
-        const campanhasMapeadas: Campanha[] = data.map((c) => ({
-          id: c.id,
-          nome_evento: c.nome_evento,
-          tipo_evento: (c.tipo_evento as 'fixo' | 'aniversario') || 'fixo',
-          mes_dia: c.mes_dia,
-          mensagem_email: c.mensagem_email,
-          url_arte_storage: c.url_arte_storage
-        }));
-        setCampanhas(campanhasMapeadas);
-      }
-    } catch (error: any) {
-      showToast('Erro ao buscar campanhas: ' + error.message, 'erro');
+      setCampanhas(data || []);
+    } catch (err: any) {
+      toast.error('Erro ao buscar campaigns: ' + err.message);
     } finally {
-      setCarregando(false);
+      setCarregandoCampanhas(false);
     }
   }
 
-  async function buscarDetalhesResultados(campanhaId: string) {
+  async function buscarLeadsElegiveis(campanha: Campanha) {
+    try {
+      setCarregandoLeads(true);
+      
+      // Filtra os válidos liberados pelas permissões e RLS
+      let query = supabase
+        .from('tab_marketing_leads')
+        .select('*')
+        .eq('status_engajamento_email', 'valido');
+
+      if (campanha.tipo_evento === 'aniversario') {
+        const hoje = new Date();
+        const mesDiaHoje = `${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+        query = query.eq('mes_dia', mesDiaHoje);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setLeadsElegiveis(data || []);
+    } catch (err: any) {
+      toast.error('Erro ao carregar leads: ' + err.message);
+    } finally {
+      setCarregandoLeads(false);
+    }
+  }
+
+  async function buscarLogsAuditoria(campanhaId: string) {
     try {
       setCarregandoDetalhes(true);
-      setIdsLinhasSelecionadas([]);
       const { data, error } = await supabase
         .from('tab_campanhas_emails_detalhe')
-        .select('id, id_campanha, nome_cliente, email_cliente, tipo_cliente, nome_fantasia, status_entrega, abriu_email, clicou_whatsapp, clicou_responder, criado_em')
+        .select('*')
         .eq('id_campanha', campanhaId)
         .order('criado_em', { ascending: false });
 
       if (error) throw error;
       setDetalhesEnvios(data || []);
-    } catch (error: any) {
-      showToast('Erro ao carregar detalhes de envios: ' + error.message, 'erro');
+    } catch (err: any) {
+      toast.error('Erro ao buscar histórico da grade: ' + err.message);
     } finally {
       setCarregandoDetalhes(false);
     }
   }
 
-  async function carregarGerenciadorStorage() {
+  async function buscarHistoricoIndividualLead(emailCliente: string) {
     try {
-      setCarregandoArtes(true);
-      const { data, error } = await supabase.storage
-        .from('artes-campanhas')
-        .list('', { limit: 100, sortBy: { column: 'name', order: 'desc' } });
+      setCarregandoHistoricoLead(true);
+      // Puxa as interações passadas do lead relacionando com o nome da campanha original
+      const { data, error } = await supabase
+        .from('tab_campanhas_emails_detalhe')
+        .select('*, tab_campanhas(nome_evento)')
+        .eq('email_cliente', emailCliente)
+        .order('criado_em', { ascending: false });
 
       if (error) throw error;
+      setHistoricoCampanhasDoLead(data || []);
+    } catch (err: any) {
+      console.error('Erro ao puxar dossiê do lead:', err);
+    } finally {
+      setCarregandoHistoricoLead(false);
+    }
+  }
 
-      if (data) {
-        const arquivosValidos = data.filter(item => item.metadata) as unknown as ArteStorage[];
-        setListaArtes(arquivosValidos);
-        const bytesTotais = arquivosValidos.reduce((acc, item) => acc + (item.metadata?.size || 0), 0);
-        setTotalEspacoMB(bytesTotais / (1024 * 1024));
-      }
-    } catch (error: any) {
-      showToast('Erro ao listar arquivos do storage: ' + error.message, 'erro');
+  async function buscarHistoricoStorage() {
+    try {
+      setCarregandoArtes(true);
+      const { data, error } = await supabase.storage.from('artes-campanhas').list();
+      if (error) throw error;
+      setListaArtes(data || []);
+    } catch (err: any) {
+      console.error('Erro ao ler bucket de mídias:', err);
     } finally {
       setCarregandoArtes(false);
     }
   }
 
-  // Lógica Avançada: Deleta o registro no banco e limpa fisicamente o arquivo do bucket do Storage
-  async function handleDeletarCampanhaCompleto(id: string, urlArte: string | null, e: React.MouseEvent) {
-    e.stopPropagation(); 
-    if (!confirm('Tem certeza que deseja excluir permanentemente esta campanha? Os dados de relatórios e a arte associada serão removidos.')) return;
+ 
+  // --- FILTRAGEM DOS LEADS EM MEMÓRIA BASEADO NA ABA DE TEMPERATURA ---
+  const leadsFiltradosPorTemperatura = leadsElegiveis.filter(lead => {
+    // 1. Procuramos na lista de logs se este e-mail específico abriu ou clicou em algo
+    const logsDoLead = detalhesEnvios.filter(log => log.email_cliente === lead.email);
+    
+    const abriu = logsDoLead.some(log => log.abriu_email === true);
+    const clicou = logsDoLead.some(log => log.clicou_whatsapp === true);
+    const entregue = logsDoLead.some(log => log.status_entrega === 'entregue');
+
+    // => QUENTES: Qualquer log onde ele clicou no whatsapp ou abriu o e-mail
+    if (filtroTemperatura === 'quentes') {
+      return abriu || clicou;
+    }
+    
+    // => MORNOS: Foi entregue com sucesso, mas NÃO abriu e NÃO clicou em nada
+    if (filtroTemperatura === 'mornos') {
+      return entregue && !abriu && !clicou;
+    }
+    
+    // => FRIOS: Não foi entregue (apenas enviado/válido) e NÃO interagiu com nada
+    if (filtroTemperatura === 'frios') {
+      return !entregue && !abriu && !clicou;
+    }
+    
+    return true; // Aba 'todos'
+  });
+
+  
+  // --- OPERAÇÕES DO SISTEMA (DISPAROS, REENVIOS E CRUDS) ---
+  // --- OPERAÇÕES DO SISTEMA (DISPAROS, REENVIOS E CRUDS) ---
+  async function handleDispararEmailOriginal() {
+    // 1. Validação segura usando as variáveis declaradas no topo do componente
+    if (!idCorretorLogado || !idCorretoraLogada) {
+      toast.error('Usuário não autenticado ou perfil não carregado.');
+      return;
+    }
+    
+    if (!campanhaSelecionada) {
+      toast.error('Selecione uma campanha para realizar o disparo.');
+      return;
+    }
+
+    // Define os alvos baseados no modo ativo (Se for CSV, pega a lista importada; se for Base, filtra a grid)
+    const destinatariosFinais = modoPublico === 'csv' 
+      ? clientesListaImportada 
+      : leadsElegiveis.filter(l => idsLeadsSelecionados.includes(l.id));
+
+    if (destinatariosFinais.length === 0) {
+      toast.error('Nenhum destinatário elegível selecionado para envio.');
+      return;
+    }
 
     try {
-      if (urlArte) {
-        const partesUrl = urlArte.split('/');
-        const nomeArquivoStorage = partesUrl[partesUrl.length - 1];
-        if (nomeArquivoStorage) {
-          await supabase.storage.from('artes-campanhas').remove([nomeArquivoStorage]);
-        }
+      setEnviando(true);
+
+      // Geração dinâmica da data (DD-MM)
+      const hoje = new Date();
+      const dia = String(hoje.getDate()).padStart(2, '0');
+      const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+      const dataAtualFormatada = `${dia}-${mes}`;
+
+      // 🛡️ CAPTURA BASEADA NA PROPRIEDADE REAL DO SEU BANCO DE DADOS
+      // Na sua tabela 'usuarios_perfis', o ID do corretor/corretora é a coluna 'id'
+      const idDoUsuarioLogado = userProfile?.id; 
+      const tipoUsuarioLogado = userProfile?.tipo_usuario; // 'CORRETOR' ou 'CORRETORA'
+
+      // Se não houver perfil carregado, avisa o sistema
+      if (!idDoUsuarioLogado) {
+        console.error("❌ Perfil do usuário não encontrado no estado do componente.");
+        toast.error("Erro de sessão: Perfil não identificado.");
+        return;
       }
 
-      const { error } = await supabase
-        .from('tab_campanhas') 
-        .delete()
-        .eq('id', id);
+      // Vinculação lógica inteligente:
+      // Se for um 'CORRETOR', o id dele vai em 'corretor_id'. 
+      // Se for a 'CORRETORA' mãe disparando, o 'corretor_id' pode ser null ou o id dela.
+      const idCorretorReal = tipoUsuarioLogado === 'CORRETOR' ? idDoUsuarioLogado : idDoUsuarioLogado;
+      const idCorretoraReal = userProfile?.corretora_id || idDoUsuarioLogado; // Fallback caso seja a própria corretora
+
+      // 2. Montagem do payload 100% dinâmico, tipado e sem variáveis perdidas
+      const payloadEnvio = {
+        id_template_origem: campanhaSelecionada.id, 
+        destinatarios: destinatariosFinais, 
+        userProfile: userProfile, 
+        campanha: {
+          nome_evento: campanhaSelecionada.nome_evento,
+          mensagem_email: campanhaSelecionada.mensagem_email,
+          url_arte_storage: campanhaSelecionada.url_arte_storage || null,
+          tipo_evento: campanhaSelecionada.tipo_evento || 'fixo',
+          mes_dia: dataAtualFormatada, 
+          corretora_id: idCorretoraReal, // 👈 Usa a constante calculada ali em cima!
+          corretor_id: idCorretorReal    // 👈 Usa a constante calculada ali em cima!
+        }
+      };
+
+      // Logs limpos de depuração (Corrigido também o log repetido do corretor_id)
+      console.log("📡 PAYLOAD PRONTO PARA REDE:");
+      console.log("➡️ corretor_id enviado:", payloadEnvio.campanha.corretor_id);
+      console.log("➡️ corretora_id enviado:", payloadEnvio.campanha.corretora_id);
+
+      // Invocação da Edge Function do Supabase
+      const { data, error } = await supabase.functions.invoke('disparar-emails', {
+        body: payloadEnvio
+      });
 
       if (error) throw error;
 
-      if (campanhaSelecionada?.id === id) {
-        setCampanhaSelecionada(null);
+      toast.success('🚀 Fila de disparos iniciada com sucesso!');
+      
+      if (data && data.id_campanha) {
+        buscarLogsAuditoria(data.id_campanha);
+      } else {
+        buscarLogsAuditoria(campanhaSelecionada.id);
+      }
+      
+      setIdsLeadsSelecionados([]);
+      
+    } catch (err: any) {
+      console.error('Erro no processamento do disparo:', err);
+      toast.error('Falha no processamento do disparo: ' + err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function handleSalvarCampanha(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      setEnviando(true);
+      let urlArte = campanhaEmEdicao?.url_arte_storage || null;
+
+      if (arteArquivo) {
+        const fileExt = arteArquivo.name.split('.').pop();
+        const fileName = `${crypto.randomUUID()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('artes-campanhas')
+          .upload(fileName, arteArquivo);
+
+        if (uploadError) throw uploadError;
+        urlArte = supabase.storage.from('artes-campanhas').getPublicUrl(fileName).data.publicUrl;
       }
 
-      showToast('Campanha e sua respectiva arte foram excluídas com sucesso!');
+      if (!idCorretorLogado || !idCorretoraLogada) {
+        toast.error('Erro de autenticação. Perfil não carregado.');
+        return;
+      }
+
+      const payload = {
+        nome_evento: nomeEvento,
+        tipo_evento: tipoEvento,
+        mes_dia: tipoEvento === 'fixo' ? mesDia : null,
+        mensagem_email: msgEmail,
+        url_arte_storage: urlArte,
+        updated_at: new Date().toISOString(),
+        corretora_id: idCorretoraLogada,
+        corretor_id: idCorretorLogado
+      };
+
+      if (campanhaEmEdicao) {
+        const { error } = await supabase.from('tab_campanhas').update(payload).eq('id', campanhaEmEdicao.id);
+        if (error) throw error;
+        toast.success('Campanha atualizada com sucesso!');
+      } else {
+        // CORREÇÃO: Removido o ID estático do insert
+        const { error } = await supabase.from('tab_campanhas').insert([payload]); 
+        if (error) throw error;
+        toast.success('Nova campanha gravada!');
+      }
+
+      setIsModalOpen(false);
       buscarCampanhas();
-      carregarGerenciadorStorage();
-    } catch (error: any) {
-      showToast('Erro ao excluir campanha: ' + error.message, 'erro');
+      buscarHistoricoStorage();
+    } catch (err: any) {
+      toast.error('Erro ao salvar configuração: ' + err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function handleReenviarEmailsGrade(linhasEspecificas?: LogEnvioDetalhe[]) {
+    try {
+      setEnviando(true);
+      const alvos = linhasEspecificas || detalhesEnvios.filter(d => idsLinhasSelecionadas.includes(d.id));
+      
+      if (alvos.length === 0) {
+        toast.warning('Nenhum e-mail selecionado para reenvio.');
+        return;
+      }
+
+      const { error } = await supabase.functions.invoke('disparar-emails', {
+        body: { 
+          campanhaId: campanhaSelecionada?.id, 
+          reenvio: true,
+          logsAlvo: alvos 
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success(`🔄 Reenvio processado para ${alvos.length} destinatário(s)`);
+      if (campanhaSelecionada) buscarLogsAuditoria(campanhaSelecionada.id);
+      setIdsLinhasSelecionadas([]);
+    } catch (err: any) {
+      toast.error('Erro ao reenviar: ' + err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function handleSalvarEdicaoEmailLinha(logId: string) {
+    try {
+      const { error } = await supabase
+        .from('tab_campanhas_emails_detalhe')
+        .update({ email_cliente: emailEditadoValue, status_entrega: 'corrigido_pendente' })
+        .eq('id', logId);
+
+      if (error) throw error;
+      toast.success('E-mail corrigido na grade de auditoria.');
+      setLinhaEmEdicao(null);
+      if (campanhaSelecionada) buscarLogsAuditoria(campanhaSelecionada.id);
+    } catch (err: any) {
+      toast.error('Erro ao atualizar e-mail: ' + err.message);
+    }
+  }
+
+  async function handleDeletarLinhaEnvio(logId: string) {
+    if (!window.confirm('Deseja remover este registro de histórico permanentemente?')) return;
+    try {
+      const { error } = await supabase.from('tab_campanhas_emails_detalhe').delete().eq('id', logId);
+      if (error) throw error;
+      toast.success('Registro removido.');
+      if (campanhaSelecionada) buscarLogsAuditoria(campanhaSelecionada.id);
+    } catch (err: any) {
+      toast.error('Erro ao deletar registro: ' + err.message);
     }
   }
 
   async function handleExcluirArteStorage(nomeArquivo: string) {
-    if (!confirm(`Deseja remover permanentemente o arquivo "${nomeArquivo}" do Storage?\nIsso liberará espaço na sua conta.`)) return;
-
+    if (!window.confirm(`Excluir o arquivo "${nomeArquivo}" permanentemente do Storage?`)) return;
     try {
-      const { data: urlData } = supabase.storage.from('artes-campanhas').getPublicUrl(nomeArquivo);
-      const urlParaLimpar = urlData.publicUrl;
-
-      const { error: storageError } = await supabase.storage.from('artes-campanhas').remove([nomeArquivo]);
-      if (storageError) throw storageError;
-
-      const { error: dbError } = await supabase
-        .from('tab_campanhas') 
-        .update({ url_arte_storage: null })
-        .eq('url_arte_storage', urlParaLimpar);
-
-      if (dbError) console.warn('Vínculo em tabelas falhou:', dbError);
-
-      if (campanhaSelecionada && campanhaSelecionada.url_arte_storage === urlParaLimpar) {
-        setCampanhaSelecionada(prev => prev ? { ...prev, url_arte_storage: null } : null);
-      }
-
-      showToast('Arquivo de mídia removido fisicamente do Storage!');
-      carregarGerenciadorStorage();
-      buscarCampanhas();
-    } catch (error: any) {
-      showToast('Erro ao excluir arquivo: ' + error.message, 'erro');
-    }
-  }
-
-  // Função para efetuar download forçado de arquivos de imagem direto no navegador
-  async function handleDownloadArte(url: string, nomeOriginal: string) {
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const urlBlob = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = urlBlob;
-      a.download = `arte-${nomeOriginal || 'campanha'}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(urlBlob);
-      showToast('Download iniciado!');
-    } catch (error) {
-      showToast('Falha ao baixar imagem, abrindo em nova aba.', 'info');
-      window.open(url, '_blank');
-    }
-  }
-
-  // ==========================================
-  // OPERAÇÕES DA GRADE DE RESULTADOS (LINHAS DE ENVIO)
-  // ==========================================
-  async function handleSalvarEdicaoEmailLinha(detalheId: string) {
-    if (!emailEditadoValue.trim() || !emailEditadoValue.includes('@')) {
-      showToast('Insira um e-mail com formato válido.', 'erro');
-      return;
-    }
-    try {
-      const { error } = await supabase
-        .from('tab_campanhas_emails_detalhe')
-        .update({ email_cliente: emailEditadoValue.trim(), status_entrega: 'enviando' })
-        .eq('id', detalheId);
-
+      const { error } = await supabase.storage.from('artes-campanhas').remove([nomeArquivo]);
       if (error) throw error;
-      showToast('E-mail corrigido com sucesso! Status resetado.');
-      setLinhaEmEdicao(null);
-      if (campanhaSelecionada) buscarDetalhesResultados(campanhaSelecionada.id);
-    } catch (error: any) {
-      showToast('Erro ao atualizar linha: ' + error.message, 'erro');
+      toast.success('Arquivo deletado do bucket.');
+      buscarHistoricoStorage();
+    } catch (err: any) {
+      toast.error('Erro ao excluir mídia: ' + err.message);
     }
   }
 
-  async function handleDeletarLinhaEnvio(detalheId: string) {
-    if (!confirm('Remover este registro de relatório?')) return;
-    try {
-      const { error } = await supabase.from('tab_campanhas_emails_detalhe').delete().eq('id', detalheId);
-      if (error) throw error;
-      showToast('Registro excluído da grade.');
-      if (campanhaSelecionada) buscarDetalhesResultados(campanhaSelecionada.id);
-    } catch (error: any) {
-      showToast('Erro ao excluir registro: ' + error.message, 'erro');
-    }
-  }
-
-  // Reenvio focado em Lote ou Individual baseado em Seleção da nova Grade Informativa
-  async function handleReenviarEmailsGrade(linhasEspecificas?: DetalheEnvio[]) {
-    if (!campanhaSelecionada) return;
-    
-    const alvos = linhasEspecificas || detalhesEnvios.filter(d => idsLinhasSelecionadas.includes(d.id));
-    
-    if (alvos.length === 0) {
-      showToast('Nenhum e-mail selecionado na grade para reenvio.', 'info');
-      return;
-    }
-
-    setEnviando(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const listaDisparo = alvos.map(a => ({
-        id: a.id, 
-        email: a.email_cliente.trim(),
-        nome: a.nome_cliente,
-        tipo_cliente: a.tipo_cliente,
-        nome_fantasia: a.nome_fantasia || ""
-      }));
-
-      const dadosCampanha = {
-        id: campanhaSelecionada.id,
-        nome_evento: campanhaSelecionada.nome_evento,
-        mensagem_email: campanhaSelecionada.mensagem_email || "",
-        url_arte_storage: campanhaSelecionada.url_arte_storage,
-        tipo_evento: campanhaSelecionada.tipo_evento,
-        mes_dia: campanhaSelecionada.mes_dia,
-        corretor_id: user?.id || null, 
-        corretora_id: (campanhaSelecionada as any).corretora_id || 'e8d1fdac-fc46-4646-b1f7-33aedee29f3a'
-      };
-
-      const { error } = await supabase.functions.invoke('disparar-emails', {
-        body: {
-          campanha: dadosCampanha,
-          clientes: listaDisparo,
-          mensagem_email: dadosCampanha.mensagem_email,
-          nome_evento: dadosCampanha.nome_evento,
-          url_arte_storage: dadosCampanha.url_arte_storage,
-          destinatarios: listaDisparo
-        },
-      });
-
-      if (error) throw error;
-
-      showToast(`Processamento de reenvio executado para ${listaDisparo.length} contatos.`);
-      buscarDetalhesResultados(campanhaSelecionada.id);
-    } catch (error: any) {
-      showToast('Erro no reenvio: ' + error.message, 'erro');
-    } finally {
-      setEnviando(false);
-    }
-  }
-
-  // ==========================================
-  // DISPARO ORIGINAL DA BASE / IMPORTAÇÃO
-  // ==========================================
-  const handleDispararEmailOriginal = async () => {
-    if (!campanhaSelecionada) return;
-    if (idsClientesSelecionados.length === 0) {
-      showToast("Selecione ao menos um cliente com e-mail válido para disparar.", 'erro');
-      return;
-    }
-
-    setEnviando(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const listaDisparo = clientes
-        .filter((c) => idsClientesSelecionados.includes(c.id))
-        .map((c) => ({
-          id: c.id,
-          email: c.email?.trim() || null,
-          nome: c.nome || "Cliente",
-          tipo_cliente: c.tipo_cliente || "PF",
-          nome_fantasia: c.nome_fantasia || ""
-        }));
-
-      const dadosCampanha = {
-        id: campaignIdFix(campanhaSelecionada.id),
-        nome_evento: campanhaSelecionada.nome_evento || "Informativo",
-        mensagem_email: campanhaSelecionada.mensagem_email || "",
-        url_arte_storage: campanhaSelecionada.url_arte_storage || null,
-        tipo_evento: campanhaSelecionada.tipo_evento || "fixo",
-        mes_dia: campanhaSelecionada.mes_dia || null,
-        corretor_id: user?.id || null, 
-        corretora_id: (campanhaSelecionada as any).corretora_id || 'e8d1fdac-fc46-4646-b1f7-33aedee29f3a'
-      };
-
-      // Função auxiliar preventiva para garantir IDs válidos em listas clonadas/importadas externamente
-      function campaignIdFix(id: string) { return id; }
-
-      const { error } = await supabase.functions.invoke('disparar-emails', {
-        body: {
-          campanha: dadosCampanha,
-          clientes: listaDisparo,
-          mensagem_email: dadosCampanha.mensagem_email,
-          nome_evento: dadosCampanha.nome_evento,
-          url_arte_storage: dadosCampanha.url_arte_storage,
-          destinatarios: listaDisparo
-        },
-      });
-
-      if (error) throw error;
-
-      showToast(`🚀 Sucesso! Campanha colocada na fila de envio para ${listaDisparo.length} alvos.`);
-      buscarDetalhesResultados(campanhaSelecionada.id);
-    } catch (error: any) {
-      showToast(`Erro ao disparar: ${error.message}`, 'erro');
-    } finally {
-      setEnviando(false);
-    }
-  };
-
-  // ==========================================
-  // GERENCIAMENTO DE LOGISTICA DOS CLIENTES
-  // ==========================================
-  async function buscarClientesElegiveis(campanha: Campanha) {
-    try {
-      setCarregandoClientes(true);
-      setIdsClientesSelecionados([]); 
-      setIsListaImportada(false); 
-      setErroArquivo(null);
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: perfil, error: perfilError } = await supabase
-        .from('usuarios_perfis')
-        .select('tipo_usuario, corretora_id, id')
-        .eq('id', user.id)
-        .single();
-
-      if (perfilError || !perfil) return;
-
-      let query = supabase
-        .from('tab_clientes')
-        .select('id, nome, tipo_cliente, nome_fantasia, email, telefone_whats, data_nascimento');
-
-      if (perfil.tipo_usuario === 'CORRETOR') {
-        query = query.eq('corretor_id', perfil.id);
-      } else {
-        query = query.eq('corretora_id', perfil.corretora_id);
-      }
-
-      if (campanha.tipo_evento === 'aniversario') {
-        const hoje = new Date();
-        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-        const dia = String(hoje.getDate()).padStart(2, '0');
-        const aniversarioHoje = `%-${mes}-${dia}`;
-        query = query.ilike('data_nascimento', aniversarioHoje);
-      } else {
-        query = query.order('nome', { ascending: true }).limit(50);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      
-      const listaClientes = (data || []) as Cliente[];
-      setClientes(listaClientes);
-      
-      const idsIniciais = listaClientes.filter(c => c.email && c.email.trim() !== '').map(c => c.id);
-      setIdsClientesSelecionados(idsIniciais);
-    } catch (error: any) {
-      showToast('Erro ao buscar clientes: ' + error.message, 'erro');
-    } finally {
-      setCarregandoClientes(false);
-    }
-  }
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setErroArquivo(null);
-
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: true,
-      delimitersToGuess: [';', ',', '\t'], 
-      complete: (results) => {
-        const dadosBrutos = results.data as any[];
-        if (dadosBrutos.length === 0) {
-          setErroArquivo("O arquivo importado está vazio.");
-          return;
-        }
-
-        const chaves = Object.keys(dadosBrutos[0]);
-        const chaveNome = chaves.find(k => k.toLowerCase().trim() === 'nome');
-        const chaveEmail = chaves.find(k => k.toLowerCase().trim() === 'email');
-
-        if (!chaveNome || !chaveEmail) {
-          setErroArquivo("O arquivo precisa conter as colunas 'nome' e 'email'.");
-          return;
-        }
-
-        try {
-          const nomeKey = chaveNome as string;
-          const emailKey = chaveEmail as string;
-
-          const clientesMapeados: Cliente[] = dadosBrutos
-            .filter(item => item[nomeKey] && item[emailKey]) 
-            .map((item) => ({
-              id: crypto.randomUUID(), 
-              nome: String(item[nomeKey]).trim(),
-              tipo_cliente: 'PF', 
-              nome_fantasia: null,
-              email: String(item[emailKey]).trim(),
-              telefone_whats: null,
-              data_nascimento: null
-            }));
-
-          if (clientesMapeados.length === 0) {
-            setErroArquivo("Nenhum registro válido com nome e e-mail foi encontrado.");
-            return;
-          }
-
-          setClientes(clientesMapeados);
-          setIsListaImportada(true);
-          setTermoBusca(''); 
-          setIdsClientesSelecionados(clientesMapeados.map(c => c.id));
-          showToast(`${clientesMapeados.length} contatos carregados do arquivo!`);
-        } catch (err: any) {
-          setErroArquivo(`Erro ao processar arquivo: ${err.message}`);
-        }
-      }
-    });
-  };
-
-  function handleLimparListaImportada() {
-    if (campanhaSelecionada) buscarClientesElegiveis(campanhaSelecionada);
-  }
-
-  const clientesFiltrados = clientes.filter(cliente => {
-    const nomeOriginal = cliente.nome || '';
-    const nomeFantasia = cliente.nome_fantasia || '';
-    const email = cliente.email || '';
-    const termo = termoBusca.toLowerCase();
-    return nomeOriginal.toLowerCase().includes(termo) || nomeFantasia.toLowerCase().includes(termo) || email.toLowerCase().includes(termo);
-  });
-
-  function toggleSelecionarCliente(id: string) {
-    setIdsClientesSelecionados(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
-  }
-
-  function toggleSelecionarTodos() {
-    const comEmail = clientesFiltrados.filter(c => c.email && c.email.trim() !== '');
-    if (comEmail.every(c => idsClientesSelecionados.includes(c.id))) {
-      const idsRemover = clientesFiltrados.map(c => c.id);
-      setIdsClientesSelecionados(prev => prev.filter(id => !idsRemover.includes(id)));
-    } else {
-      setIdsClientesSelecionados(prev => Array.from(new Set([...prev, ...comEmail.map(c => c.id)])));
-    }
-  }
-
-  // ==========================================
-  // OPERAÇÕES DO MODAL DE ALTERAÇÃO/INSERÇÃO
-  // ==========================================
-  function abrirModalCadastro() {
+  function handleAbrirModalCriacao() {
     setCampanhaEmEdicao(null);
     setNomeEvento('');
     setTipoEvento('fixo');
@@ -561,298 +486,346 @@ export default function CampanhasClientes() {
     setIsModalOpen(true);
   }
 
-  function abrirModalEdicao(campanha: Campanha, e: React.MouseEvent) {
-    e.stopPropagation(); 
+  function handleAbrirModalEdicao(campanha: Campanha) {
     setCampanhaEmEdicao(campanha);
     setNomeEvento(campanha.nome_evento);
     setTipoEvento(campanha.tipo_evento);
     setMesDia(campanha.mes_dia || '');
     setMsgEmail(campanha.mensagem_email || '');
-    setArteArquivo(null); 
+    setArteArquivo(null);
     setIsModalOpen(true);
   }
 
-  function handleEditarCampanhaPorArte(urlPublica: string) {
-    const correspondente = campanhas.find(c => c.url_arte_storage === urlPublica);
-    if (correspondente) {
-      setCampanhaEmEdicao(correspondente);
-      setNomeEvento(correspondente.nome_evento);
-      setTipoEvento(correspondente.tipo_evento);
-      setMesDia(correspondente.mes_dia || '');
-      setMsgEmail(correspondente.mensagem_email || '');
-      setArteArquivo(null); 
-      setIsModalOpen(true);
-    } else {
-      showToast("Esta imagem não está vinculada a nenhuma campanha ativa no momento.", 'info');
-    }
-  }
-
-  async function handleSalvarCampanha(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleDownloadArte(url: string, nomeEvento: string) {
     try {
-      setEnviando(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return showToast('Sessão expirada. Refaça o login.', 'erro');
-
-      const { data: perfil } = await supabase.from('usuarios_perfis').select('corretora_id').eq('id', user.id).single();
-      const idCorretoraDestaCampanha = perfil?.corretora_id || user.id;
-      let urlPublicaArte = campanhaEmEdicao ? campanhaEmEdicao.url_arte_storage : null;
-
-      if (arteArquivo) {
-        const pontoIndex = arteArquivo.name.lastIndexOf('.');
-        const apenasNome = pontoIndex !== -1 ? arteArquivo.name.substring(0, pontoIndex) : arteArquivo.name;
-        const extensao = pontoIndex !== -1 ? arteArquivo.name.substring(pontoIndex) : '';
-        const nomeSanitizado = apenasNome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9-_]/g, '_').replace(/_+/g, '_');
-        const nomeArquivo = `${Date.now()}-${nomeSanitizado}${extensao.toLowerCase()}`;
-
-        const { error: uploadError } = await supabase.storage.from('artes-campanhas').upload(nomeArquivo, arteArquivo);
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage.from('artes-campanhas').getPublicUrl(nomeArquivo);
-        urlPublicaArte = urlData.publicUrl;
-      }
-
-      const dadosCampanhaBanco = {
-        nome_evento: nomeEvento,
-        tipo_evento: tipoEvento,
-        mes_dia: tipoEvento === 'fixo' ? mesDia : null,
-        mensagem_email: msgEmail,
-        url_arte_storage: urlPublicaArte,
-        corretora_id: idCorretoraDestaCampanha
-      };
-
-      if (campanhaEmEdicao) {
-        const { error } = await supabase.from('tab_campanhas').update(dadosCampanhaBanco).eq('id', campanhaEmEdicao.id);
-        if (error) throw error;
-        
-        if (campanhaSelecionada?.id === campanhaEmEdicao.id) {
-          setCampanhaSelecionada({ id: campanhaEmEdicao.id, ...dadosCampanhaBanco });
-        }
-        showToast('Campanha atualizada com sucesso!');
-      } else {
-        const { error } = await supabase.from('tab_campanhas').insert([dadosCampanhaBanco]);
-        if (error) throw error;
-        showToast('Campanha salva com sucesso!');
-      }
-
-      setIsModalOpen(false);
-      buscarCampanhas();
-      carregarGerenciadorStorage();
-    } catch (error: any) {
-      showToast('Erro ao processar campanha: ' + error.message, 'erro');
-    } finally {
-      setEnviando(false);
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `arte-${nomeEvento.replaceAll(' ', '_')}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      toast.error('Incapaz de baixar o arquivo automaticamente.');
     }
   }
 
-  // Sincronização automática de efeitos colaterais por clique
-  useEffect(() => {
-    if (campanhaSelecionada) {
-      setTermoBusca(''); 
-      buscarClientesElegiveis(campanhaSelecionada);
-      buscarDetalhesResultados(campanhaSelecionada.id); 
+  function handleEditarCampanhaPorArte(urlPublica: string) {
+    const campanhaDona = campanhas.find(c => c.url_arte_storage === urlPublica);
+    if (campanhaDona) {
+      handleAbrirModalEdicao(campanhaDona);
     } else {
-      setClientes([]);
-      setIdsClientesSelecionados([]);
-      setIsListaImportada(false);
-      setErroArquivo(null);
-      setDetalhesEnvios([]);
+      handleAbrirModalCriacao();
+      setMsgEmail(`Mídia pré-vinculada: ${urlPublica}`);
     }
-  }, [campanhaSelecionada]);
-
-  useEffect(() => {
-    buscarCampanhas();
-    carregarGerenciadorStorage();
-  }, []);
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8 relative">
+    <div className="p-6 bg-gray-50/50 min-h-screen space-y-6">
       
-      {/* CONTAINER FLUTUANTE DE NOTIFICAÇÕES (TOASTS SYSTEM) */}
-      <div className="fixed top-4 right-4 z-[9999] space-y-2 pointer-events-none max-w-sm w-full">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`p-4 rounded-xl shadow-lg border text-sm font-medium flex items-center justify-between transition-all duration-300 animate-slideDown pointer-events-auto bg-white ${
-              toast.tipo === 'sucesso' ? 'border-emerald-200 text-emerald-800 bg-emerald-50/90' :
-              toast.tipo === 'erro' ? 'border-red-200 text-red-800 bg-red-50/90' : 'border-blue-200 text-blue-800 bg-blue-50/90'
-            }`}
-          >
-            <span>{toast.texto}</span>
-            <button onClick={() => setToasts(p => p.filter(t => t.id !== toast.id))} className="ml-2 text-xs opacity-50 hover:opacity-100">✕</button>
-          </div>
-        ))}
-      </div>
-
-      {/* Cabeçalho */}
-      <div className="flex justify-between items-center border-b pb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Campanhas e Datas Comemorativas</h1>
-          <p className="text-sm text-gray-500">Controle completo de disparos automatizados e acompanhamento em lote</p>
-        </div>
-      </div>
-
       {/* ==========================================================
-          PRIMEIRA LINHA: TRÊS COLUNAS COMPACTAS DE OPERAÇÃO
+          PRIMEIRA LINHA: CONJUNTO DE 3 COLUNAS DE GERENCIAMENTO
           ========================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* COLUNA 1: Inserção de Campanhas / Próximos Eventos */}
+        {/* COLUNA 1: Campanhas Disponíveis */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col h-[520px]">
-          <div className="border-b pb-2 mb-4 flex justify-between items-center">
-            <div>
-              <h2 className="font-semibold text-base text-gray-700">📅 1. Escolha a Campanha</h2>
-              <p className="text-xs text-gray-400">Inserção e seleção base</p>
-            </div>
-            <button 
-              onClick={abrirModalCadastro}
-              className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors shadow-sm"
-              title="Criar nova campanha"
+          <div className="flex justify-between items-center border-b pb-2 mb-3">
+            <h2 className="font-semibold text-base text-gray-700">📅 1. Campanhas e Gatilhos</h2>
+            <button
+              onClick={handleAbrirModalCriacao}
+              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm"
             >
-              <span className="text-xs font-bold">+ Adicionar</span>
+              + Nova Regra
             </button>
           </div>
-          
-          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-            {carregando ? (
-              <p className="text-sm text-gray-400 text-center py-4 animate-pulse">Carregando...</p>
-            ) : campanhas.length === 0 ? (
-              <div className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg h-full flex items-center justify-center">
-                Nenhuma campanha cadastrada.
-              </div>
-            ) : (
-              campanhas.map((campanha) => (
-                <div 
-                  key={campanha.id} 
-                  onClick={() => setCampanhaSelecionada(campanha)}
-                  className={`p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-all flex justify-between items-center group ${
-                    campanhaSelecionada?.id === campanha.id ? 'border-blue-500 bg-blue-50/30 shadow-sm' : 'border-gray-100'
+
+          {carregandoCampanhas ? (
+            <p className="text-center text-xs text-gray-400 py-12 animate-pulse">Consultando tab_campanhas...</p>
+          ) : campanhas.length === 0 ? (
+            <p className="text-center text-xs text-gray-400 py-12">Nenhuma campanha registrada no sistema.</p>
+          ) : (
+            <div className="overflow-y-auto flex-1 space-y-2 pr-1 custom-scrollbar">
+              {campanhas.map((camp) => (
+                <div
+                  key={camp.id}
+                  onClick={() => setCampanhaSelecionada(camp)}
+                  className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                    campanhaSelecionada?.id === camp.id
+                      ? 'border-blue-500 bg-blue-50/40 shadow-sm'
+                      : 'border-gray-100 bg-white hover:bg-gray-50/70'
                   }`}
                 >
-                  <div className="min-w-0 flex-1 mr-2">
-                    <p className="font-semibold text-xs text-gray-800 truncate">{campanha.nome_evento}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      {campanha.tipo_evento === 'aniversario' ? '🎂 Aniversário' : `📅 Geral (${campanha.mes_dia || 'Fixo'})`}
-                    </p>
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-bold text-sm text-gray-800 truncate max-w-[180px]">{camp.nome_evento}</h3>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      camp.tipo_evento === 'aniversario' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'
+                    }`}>
+                      {camp.tipo_evento === 'aniversario' ? '🎂 Aniversário' : '📅 Recorrente'}
+                    </span>
                   </div>
-                  
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                  <p className="text-xs text-gray-400 mt-1 line-clamp-2 min-h-[32px]">
+                    {camp.mensagem_email || <span className="italic">Nenhum template de e-mail estruturado...</span>}
+                  </p>
+
+                  <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-50 text-[11px]">
+                    <span className="text-gray-400 font-mono">
+                      Gatilho: {camp.tipo_evento === 'aniversario' ? 'Dia do Nasc.' : `Todo dia ${camp.mes_dia}`}
+                    </span>
                     <button
-                      onClick={(e) => abrirModalEdicao(campanha, e)}
-                      className="p-1 bg-white hover:bg-amber-50 text-gray-500 hover:text-amber-600 rounded border border-gray-200 text-xs"
-                      title="Editar"
+                      onClick={(e) => { e.stopPropagation(); handleAbrirModalEdicao(camp); }}
+                      className="text-gray-400 hover:text-blue-600 font-medium"
                     >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={(e) => handleDeletarCampanhaCompleto(campanha.id, campanha.url_arte_storage, e)}
-                      className="p-1 bg-white hover:bg-red-50 text-gray-500 hover:text-red-600 rounded border border-gray-200 text-xs"
-                      title="Excluir tudo (Banco + Storage)"
-                    >
-                      🗑️
+                      Ajustar
                     </button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* COLUNA 2: Eleger os Clientes */}
+        {/* COLUNA 2: Eleger Público Alvo com Inteligência de Temperatura ou Importação CSV */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col h-[520px]">
-          <div className="border-b pb-2 mb-3 flex flex-col gap-1.5">
-            <div className="flex justify-between items-center">
-              <h2 className="font-semibold text-base text-gray-700 truncate">
-                👥 2. Eleger Clientes ({idsClientesSelecionados.length})
-              </h2>
-              {isListaImportada && (
-                <button
-                  onClick={handleLimparListaImportada}
-                  className="text-[9px] bg-red-50 text-red-600 hover:bg-red-100 px-2 py-0.5 rounded font-bold"
-                >
-                  ↩️ Interna
-                </button>
-              )}
+          <div className="border-b pb-2 mb-2 flex justify-between items-center">
+            <div>
+              <h2 className="font-semibold text-base text-gray-700">👥 2. Eleger Público Alvo</h2>
+              <p className="text-[11px] text-gray-400">Filtre da sua base ou importe uma lista externa</p>
             </div>
             
-            {campanhaSelecionada && (
-              <div className="bg-gray-50 p-2 rounded-lg border border-gray-200/60">
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Subir lista alternativa (CSV):</label>
-                <input 
-                  type="file" 
-                  accept=".csv,.txt" 
-                  onChange={handleFileUpload}
-                  className="block w-full text-[10px] text-gray-500 file:mr-2 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700 cursor-pointer"
-                />
-                {erroArquivo && <p className="text-red-500 text-[9px] mt-1">{erroArquivo}</p>}
-              </div>
-            )}
+            {/* SELETOR DE MODO: BANCO VS CSV */}
+            <div className="flex bg-gray-100 p-0.5 rounded-lg text-[10px] font-bold">
+              <button
+                type="button"
+                onClick={() => setModoPublico?.('base')}
+                className={`px-2 py-1 rounded-md ${(!modoPublico || modoPublico === 'base') ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
+              >
+                Filtrar Base
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoPublico?.('csv')}
+                className={`px-2 py-1 rounded-md ${modoPublico === 'csv' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
+              >
+                Importar CSV
+              </button>
+            </div>
           </div>
 
-          {campanhaSelecionada && (
-            <div className="space-y-2 mb-2">
-              <input 
-                type="text"
-                placeholder="🔍 Buscar público..."
-                value={termoBusca}
-                onChange={(e) => setTermoBusca(e.target.value)}
-                className="w-full p-2 text-xs border rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
-              />
-              <div className="flex justify-between items-center text-[10px]">
-                <button type="button" onClick={toggleSelecionarTodos} className="text-blue-600 font-bold hover:underline">
-                  ☑️ Alternar Seleção Completa
+          {!campanhaSelecionada ? (
+            <div className="flex-1 flex items-center justify-center border border-dashed rounded-xl bg-gray-50/50 p-6 text-center text-xs text-gray-400">
+              Selecione uma campanha à esquerda para carregar as opções de público alvo.
+            </div>
+          ) : carregandoLeads ? (
+            <p className="text-center text-xs text-gray-400 py-12 animate-pulse">Carregando dados...</p>
+          ) : (!modoPublico || modoPublico === 'base') ? (
+            
+            /* ==========================================
+              MODO ATUAL: INTELIGÊNCIA DE BASE (INALTERADO)
+              ========================================== */
+            <div className="flex flex-col flex-1 min-h-0">
+              {/* INTERFACE DE FILTROS DE TEMPERATURA */}
+              <div className="grid grid-cols-4 gap-1 p-1 bg-gray-100 rounded-lg mb-3 text-[10px] font-bold text-center">
+                <button 
+                  onClick={() => setFiltroTemperatura('todos')}
+                  className={`py-1 rounded ${filtroTemperatura === 'todos' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  Todos ({leadsElegiveis.length})
                 </button>
-                <span className="text-gray-400">{clientesFiltrados.length} contatos</span>
+                <button 
+                  onClick={() => setFiltroTemperatura('frios')}
+                  className={`py-1 rounded ${filtroTemperatura === 'frios' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-400 hover:text-blue-500'}`}
+                >
+                  ❄️ Frios
+                </button>
+                <button 
+                  onClick={() => setFiltroTemperatura('mornos')}
+                  className={`py-1 rounded ${filtroTemperatura === 'mornos' ? 'bg-orange-400 text-white shadow-sm' : 'text-gray-400 hover:text-orange-500'}`}
+                >
+                  ☕ Mornos
+                </button>
+                <button 
+                  onClick={() => setFiltroTemperatura('quentes')}
+                  className={`py-1 rounded ${filtroTemperatura === 'quentes' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-400 hover:text-red-500'}`}
+                >
+                  🔥 Quentes
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center mb-2 px-1 text-[11px] font-bold text-gray-400 uppercase">
+                <span>Lista ({leadsFiltradosPorTemperatura.length})</span>
+                <button
+                  onClick={() => {
+                    if (idsLeadsSelecionados.length === leadsFiltradosPorTemperatura.length) setIdsLeadsSelecionados([]);
+                    else setIdsLeadsSelecionados(leadsFiltradosPorTemperatura.map(l => l.id));
+                  }}
+                  className="text-blue-600 hover:underline normal-case text-xs"
+                >
+                  {idsLeadsSelecionados.length === leadsFiltradosPorTemperatura.length ? 'Desmarcar Aba' : 'Marcar Aba'}
+                </button>
+              </div>
+
+              {leadsFiltradosPorTemperatura.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center border border-dashed rounded-xl bg-gray-50/50 text-gray-400 text-xs p-4 text-center">
+                  Nenhum lead nesta faixa de temperatura.
+                </div>
+              ) : (
+                <div className="overflow-y-auto flex-1 space-y-1.5 pr-1 custom-scrollbar">
+                  {leadsFiltradosPorTemperatura.map((lead) => {
+                    const totalAbriu = lead.email_total_aberturas || 0;
+                    const totalClicou = lead.email_total_cliques || 0;
+
+                    const visualQuente = totalAbriu > 0 || totalClicou > 0;
+                    const visualMorno = totalAbriu > 0 && totalClicou === 0;
+                    const visualFrio = totalAbriu === 0 && totalClicou === 0;
+
+                    return (
+                      <div
+                        key={lead.id}
+                        onClick={() => setLeadParaVerHistorico(lead)}
+                        className={`flex items-center gap-2 p-2 border rounded-lg cursor-pointer transition-all text-left relative ${
+                          leadParaVerHistorico?.id === lead.id ? 'ring-2 ring-blue-400' : ''
+                        } ${
+                          idsLeadsSelecionados.includes(lead.id) ? 'border-blue-200 bg-blue-50/10' : 'border-gray-50 bg-white hover:bg-gray-50/40'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={idsLeadsSelecionados.includes(lead.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => {
+                            setIdsLeadsSelecionados(prev =>
+                              prev.includes(lead.id) ? prev.filter(id => id !== lead.id) : [...prev, lead.id]
+                            );
+                          }}
+                          className="rounded text-blue-600 border-gray-300 focus:ring-blue-500/20 h-3.5 w-3.5"
+                        />
+                        <div className="min-w-0 flex-1 text-xs">
+                          <p className="font-semibold text-gray-700 truncate flex items-center gap-1">
+                            {lead.nome || 'Lead sem Nome'}
+                            {visualQuente && filtroTemperatura === 'quentes' && <span className="text-[10px]">🔥</span>}
+                            {visualMorno && filtroTemperatura === 'mornos' && <span className="text-[10px]">☕</span>}
+                            {visualFrio && filtroTemperatura === 'frios' && <span className="text-[10px]">❄️</span>}
+                            {filtroTemperatura === 'todos' && (
+                              <>
+                                {visualQuente && !visualMorno && <span className="text-[10px]">🔥</span>}
+                                {visualMorno && <span className="text-[10px]">☕</span>}
+                                {visualFrio && <span className="text-[10px]">❄️</span>}
+                              </>
+                            )}
+                          </p>
+                          <p className="text-gray-400 font-mono truncate text-[10px]">{lead.email}</p>
+                          
+                          <div className="flex gap-2 mt-1">
+                            <span className={`text-[9px] px-1 rounded font-bold ${totalAbriu > 0 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-gray-100 text-gray-400'}`}>
+                              👁️ {totalAbriu} aberturas
+                            </span>
+                            {totalClicou > 0 && (
+                              <span className="text-[9px] px-1 rounded font-bold bg-purple-50 text-purple-600 border border-purple-100">
+                                💬 {totalClicou} clicks
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-[9px] font-bold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded capitalize">
+                          {lead.origem_lead}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            
+            /* ==========================================
+              MODO NOVO: IMPORTAÇÃO DE LISTA EM CSV
+              ========================================== */
+            <div className="flex flex-col flex-1 min-h-0 space-y-3">
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl space-y-1">
+                <span className="text-[11px] font-bold text-blue-700 uppercase block">Instruções do Arquivo</span>
+                <p className="text-[11px] text-blue-900 leading-relaxed">
+                  Carregue um arquivo <code className="bg-white px-1 py-0.5 rounded font-mono border">.csv</code> contendo obrigatoriamente as colunas <code className="bg-white px-1 py-0.5 rounded font-mono border font-bold">nome,email</code> na primeira linha.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Carregar arquivo local</label>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      const text = event.target?.result as string;
+                      if (!text) return;
+
+                      const linhas = text.split(/\r?\n/);
+                      const listaEstruturada: any[] = [];
+
+                      linhas.forEach((linha, idx) => {
+                        const colunas = linha.split(',');
+                        if (colunas.length < 2) return;
+
+                        let nome = colunas[0].replace(/^["']|["']$/g, '').trim();
+                        let email = colunas[1].replace(/^["']|["']$/g, '').trim();
+
+                        if (idx === 0 && nome.toLowerCase() === 'nome' && email.toLowerCase() === 'email') return;
+
+                        if (email) {
+                          listaEstruturada.push({
+                            nome: nome || 'Cliente',
+                            email: email.toLowerCase(),
+                            tipo_cliente: 'PF',
+                            nome_fantasia: null
+                          });
+                        }
+                      });
+
+                      setClientesListaImportada(listaEstruturada);
+                    };
+                    reader.readAsText(file, 'UTF-8');
+                  }}
+                  className="w-full p-2 text-xs bg-gray-50 border rounded-lg file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[11px] file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
+                />
+              </div>
+
+              {/* Preview/Painel dos itens carregados */}
+              <div className="flex-1 flex flex-col border border-gray-100 rounded-xl min-h-0 bg-gray-50/30 p-2">
+                {clientesListaImportada.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-xs text-gray-400 text-center border border-dashed rounded-lg bg-white">
+                    Nenhum arquivo processado até o momento.
+                  </div>
+                ) : (
+                  <div className="flex flex-col h-full min-h-0">
+                    <div className="text-[10px] font-bold text-emerald-600 uppercase pb-1 flex justify-between">
+                      <span>📋 Destinatários identificados</span>
+                      <span>Total: {clientesListaImportada.length}</span>
+                    </div>
+                    <div className="overflow-y-auto flex-1 space-y-1 pr-0.5 custom-scrollbar bg-white p-2 rounded-lg border">
+                      {clientesListaImportada.slice(0, 100).map((item: any, i: number) => (
+                        <div key={i} className="flex justify-between items-center text-[11px] py-1 border-b last:border-0 border-gray-50">
+                          <span className="font-semibold text-gray-700 truncate max-w-[120px]">{item.nome}</span>
+                          <span className="font-mono text-gray-400 text-[10px] truncate">{item.email}</span>
+                        </div>
+                      ))}
+                      {clientesListaImportada.length > 100 && (
+                        <p className="text-[10px] text-center text-gray-400 pt-1 font-semibold italic">
+                          + {clientesListaImportada.length - 100} contatos na fila...
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
-            
-          <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-             {carregandoClientes ? (
-               <p className="text-xs text-gray-400 text-center py-4 animate-pulse">Buscando público elegível...</p>
-             ) : !campanhaSelecionada ? (
-               <div className="text-center text-gray-400 text-xs h-full flex items-center justify-center border border-dashed rounded-lg">
-                 Selecione uma campanha ao lado.
-               </div>
-             ) : clientesFiltrados.length === 0 ? (
-               <div className="text-center text-gray-400 text-xs h-full flex items-center justify-center p-2">
-                 Nenhum registro localizado.
-               </div>
-             ) : (
-               clientesFiltrados.map((cliente) => {
-                 const estaSelecionado = idsClientesSelecionados.includes(cliente.id);
-                 const temEmail = !!(cliente.email && cliente.email.trim() !== '');
-
-                 return (
-                   <div 
-                     key={cliente.id} 
-                     onClick={() => temEmail && toggleSelecionarCliente(cliente.id)}
-                     className={`p-2 border rounded-lg flex justify-between items-center transition-all ${
-                       estaSelecionado ? 'border-blue-300 bg-blue-50/10' : 'border-gray-100 bg-gray-50/30'
-                     } ${temEmail ? 'cursor-pointer' : 'opacity-50'}`}
-                   >
-                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                       <input 
-                         type="checkbox"
-                         checked={estaSelecionado}
-                         disabled={!temEmail}
-                         readOnly
-                         className="h-3.5 w-3.5 text-blue-600 rounded border-gray-300"
-                       />
-                       <div className="min-w-0 flex-1">
-                         <p className="font-medium text-xs text-gray-800 truncate">
-                           {cliente.tipo_cliente === 'PF' ? cliente.nome : (cliente.nome_fantasia || cliente.nome)}
-                         </p>
-                         <p className={`text-[10px] truncate ${!temEmail ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
-                           {cliente.email || '⚠️ Sem e-mail'}
-                         </p>
-                       </div>
-                     </div>
-                   </div>
-                 );
-               })
-             )}
-          </div>
         </div>
 
         {/* COLUNA 3: Verificar Mídias / Artes e Ações Rápidas */}
@@ -871,8 +844,6 @@ export default function CampanhasClientes() {
                   {campanhaSelecionada.url_arte_storage ? (
                     <div className="w-full h-36 rounded-lg bg-zinc-50 border overflow-hidden flex flex-col items-center justify-center p-2 relative group shadow-inner">
                       <img src={campanhaSelecionada.url_arte_storage} alt="Arte" className="max-w-full max-h-full object-contain" />
-                      
-                      {/* Painel Flutuante com a funcionalidade vital de Download */}
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-2">
                         <button
                           type="button"
@@ -904,11 +875,131 @@ export default function CampanhasClientes() {
             <div className="pt-4 border-t">
               <button 
                 type="button"
-                onClick={handleDispararEmailOriginal}
-                disabled={enviando || idsClientesSelecionados.length === 0}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+                disabled={
+                  enviando || 
+                  (modoPublico === 'csv' ? clientesListaImportada.length === 0 : idsLeadsSelecionados.length === 0)
+                }
+                onClick={async () => {
+                  console.log("🔘 Botão de disparo clicado. Modo ativo:", modoPublico);
+
+                  // SE FOR MODO CSV: Dispara para a sua nova lógica de lote importado
+                  if (modoPublico === 'csv') {
+                    console.log(`📊 Total de registros detectados no CSV do estado React: ${clientesListaImportada.length}`);
+                    
+                    if (!confirm(`Confirmar o disparo imediato para os ${clientesListaImportada.length} contatos importados via CSV?`)) {
+                      console.log("❌ Operação abortada pelo usuário no prompt de confirmação.");
+                      return;
+                    }
+                    
+                    setEnviando(true);
+                    try {
+                      const cAny = campanhaSelecionada as any;
+
+                      // 🧠 INTELIGÊNCIA DE IDS LOGADOS (Igual ao handleDispararEmailOriginal)
+                      const idDoUsuarioLogado = userProfile?.id;
+                      //const tipoUsuarioLogado = userProfile?.tipo_usuario;
+
+                      if (!idDoUsuarioLogado) {
+                        toast.error("Erro de sessão: Perfil não identificado.");
+                        setEnviando(false);
+                        return;
+                      }
+
+                      const idCorretorReal = idDoUsuarioLogado; // Chave primária do usuário
+                      const idCorretoraReal = userProfile?.corretora_id || idDoUsuarioLogado; // Fallback caso seja a própria corretora
+
+                      // Montando o payload estruturado e 100% preenchido
+                      const payload = {
+                        userProfile: userProfile, // 👈 Backup seguro para a Edge Function
+                        id_template_origem: cAny.id,
+                        campanha: {
+                          id: cAny.id,
+                          nome_evento: cAny.nome_evento,
+                          mensagem_email: cAny.mensagem_email,
+                          url_arte_storage: cAny.url_arte_storage || null,
+                          tipo_evento: cAny.tipo_evento || 'fixo',
+                          mes_dia: cAny.mes_dia || null,
+                          corretora_id: idCorretoraReal, // 👈 Agora vai corrigido!
+                          corretor_id: idCorretorReal    // 👈 Agora vai corrigido!
+                        },
+                        destinatarios: clientesListaImportada
+                      };
+
+                      // --- CONSOLES DIAGNÓSTICOS AVANÇADOS ---
+                      console.group("📡 INVESTIGAÇÃO DE DISPARO DA EDGE FUNCTION");
+                      console.log("1. Informações básicas do cabeçalho da campanha:");
+                      console.table(payload.campanha);
+                      
+                      console.log("2. Amostra dos primeiros 3 destinatários que serão transmitidos:");
+                      console.table(clientesListaImportada.slice(0, 3));
+
+                      console.log("3. Verificação do tamanho bruto do JSON em texto:");
+                      try {
+                        const jsonStringificado = JSON.stringify(payload);
+                        const tamanhoEmBytes = new Blob([jsonStringificado]).size;
+                        const tamanhoEmMb = (tamanhoEmBytes / (1024 * 1024)).toFixed(2);
+                        console.log(`📏 Tamanho do payload de transmissão: ${tamanhoEmMb} MB (${tamanhoEmBytes} bytes)`);
+                        
+                        if (tamanhoEmBytes > 5 * 1024 * 1024) {
+                          console.warn("⚠️ ALERTA CRÍTICO: O payload passou de 5MB!");
+                        }
+                      } catch (e) {
+                        console.error("❌ FALHA CRÍTICA: Não foi possível stringificar o objeto JSON!", e);
+                      }
+                      console.groupEnd();
+
+                      // Executa a chamada explícita
+                      console.log("✈️ Invocando 'supabase.functions.invoke' agora...");
+                      const { data, error } = await supabase.functions.invoke('disparar-emails', {
+                        body: payload
+                      });
+
+                      if (error) {
+                        console.group("❌ ERRO RETORNADO PELO CLIENT DO SUPABASE:");
+                        console.error(error);
+                        console.groupEnd();
+                        throw error;
+                      }
+
+                      console.log("✅ RESPOSTA COM SUCESSO DA EDGE FUNCTION:", data);
+                      toast.success(`🚀 Campanha em lote iniciada! Total: ${data?.total_enviados || clientesListaImportada.length} contatos.`);
+                      setClientesListaImportada([]); 
+                      
+                      const fAny = window as any;
+                      if (typeof fAny.detalhesEnvios === 'function') {
+                        fAny.detalhesEnvios(campanhaSelecionada.id);
+                      }
+
+                    } catch (err: any) {
+                      console.group("💥 EXCEÇÃO CAPTURADA NO CATCH DO FRONT-END:");
+                      console.error(err);
+                      console.groupEnd();
+                      
+                      toast.error(`❌ Falha no disparo do CSV: ${err.message || 'Erro interno de processamento'}`);
+                    } finally {
+                      setEnviando(false);
+                    }
+                  }
+                  
+                  // SE FOR MODO BASE: Roda a sua função padrão original intacta
+                  else {
+                    console.log("➡️ Executando rota normal base ( handleDispararEmailOriginal ).");
+                    handleDispararEmailOriginal();
+                  }
+                }}
+                className={`w-full py-2.5 font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1 text-white ${
+                  modoPublico === 'csv' 
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                } disabled:bg-gray-300 disabled:from-gray-300 disabled:to-gray-300 disabled:text-gray-400`}
               >
-                {enviando ? 'Efetuando processamento...' : `🚀 Iniciar Fila de Envio (${idsClientesSelecionados.length})`}
+                {enviando ? (
+                  'Efetuando processamento...'
+                ) : modoPublico === 'csv' ? (
+                  `✈️ Disparar Lista Importada (${clientesListaImportada.length})`
+                ) : (
+                  `🚀 Iniciar Fila de Envio (${idsLeadsSelecionados.length})`
+                )}
               </button>
             </div>
           )}
@@ -916,7 +1007,63 @@ export default function CampanhasClientes() {
       </div>
 
       {/* ==========================================================
-          SEGUNDA LINHA: SEÇÃO DE CONTROLE ROBUSTO (A GRADE COMPLETA)
+          SEÇÃO EXTRA: PAINEL DE DOSSIÊ / HISTÓRICO COMPLETO DO LEAD SELECIONADO
+          ========================================================== */}
+      {leadParaVerHistorico && (
+        <div className="bg-gradient-to-r from-blue-900 to-slate-900 p-5 rounded-xl shadow-md border text-white space-y-4 animate-fadeIn">
+          <div className="flex justify-between items-center border-b border-white/10 pb-2">
+            <div>
+              <h3 className="font-bold text-base flex items-center gap-2">
+                🔎 Ficha de Inteligência do Lead: <span className="text-blue-300">{leadParaVerHistorico.nome || 'Sem nome cadastrado'}</span>
+              </h3>
+              <p className="text-xs text-slate-300 font-mono mt-0.5">{leadParaVerHistorico.email}</p>
+            </div>
+            <button 
+              onClick={() => setLeadParaVerHistorico(null)}
+              className="text-xs bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded"
+            >
+              Fechar Ficha ×
+            </button>
+          </div>
+
+          {carregandoHistoricoLead ? (
+            <p className="text-xs text-slate-400 animate-pulse">Cruzando dados de tab_campanhas_emails_detalhe...</p>
+          ) : historicoCampanhasDoLead.length === 0 ? (
+            <p className="text-xs text-slate-300 italic">Esse contato ainda não possui registros de disparos anteriores no sistema.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {historicoCampanhasDoLead.map((hist) => (
+                <div key={hist.id} className="bg-white/5 border border-white/10 rounded-lg p-3 text-xs space-y-2">
+                  <div className="flex justify-between items-start">
+                    <span className="font-bold text-blue-200 truncate max-w-[180px]">
+                      {hist.tab_campanhas?.nome_evento || 'Campanha Desconhecida'}
+                    </span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-extrabold ${
+                      hist.status_entrega === 'entregue' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                    }`}>
+                      {hist.status_entrega}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-slate-400 text-[10px]">
+                    <span>Disparo: {new Date(hist.criado_em).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                  <div className="flex gap-2 pt-1 border-t border-white/5 font-semibold text-[10px]">
+                    <span className={hist.abriu_email ? 'text-emerald-400' : 'text-slate-500'}>
+                      {hist.abriu_email ? '👁️ Abriu E-mail' : '❌ Não Abriu'}
+                    </span>
+                    <span className={hist.clicou_whatsapp ? 'text-purple-400' : 'text-slate-500'}>
+                      {hist.clicou_whatsapp ? '💬 Clicou no Whats' : '❌ Não Clicou'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==========================================================
+          SEGUNDA LINHA: GRADE DE MONITORAMENTO (tab_campanhas_emails_detalhe)
           ========================================================== */}
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-3">
@@ -924,32 +1071,74 @@ export default function CampanhasClientes() {
             <h2 className="font-bold text-lg text-gray-800 flex items-center gap-2">
               📊 Painel de Controle e Grade Geral de Monitoramento
             </h2>
-            <p className="text-xs text-gray-500">Resultados, aberturas em tempo real e controle de reenvios individuais ou em lote</p>
+            <p className="text-xs text-gray-500">Aberturas da tab_campanhas_emails_detalhe em tempo real e ações em lote</p>
           </div>
           
-          {/* Controles de Ação Coletiva na Grade */}
+          {/* AÇÕES EM LOTE (REENVIO E EXCLUSÃO) */}
           {idsLinhasSelecionadas.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg flex items-center gap-3 animate-fadeIn">
-              <span className="text-xs font-semibold text-amber-800">
-                {idsLinhasSelecionadas.length} e-mails marcados na grade
+            <div className="bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg flex items-center gap-2 animate-fadeIn flex-wrap">
+              <span className="text-xs font-semibold text-amber-800 mr-2">
+                {idsLinhasSelecionadas.length} itens marcados:
               </span>
               <button
                 onClick={() => handleReenviarEmailsGrade()}
                 disabled={enviando}
                 className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] px-3 py-1 rounded transition-colors shadow-sm"
               >
-                🔄 Reenviar Selecionados em Lote
+                🔄 Reenviar em Lote
+              </button>
+              <button
+                onClick={async () => {
+                  if (confirm(`Tem certeza que deseja excluir os ${idsLinhasSelecionadas.length} registros selecionados?`)) {
+                    // Executa a exclusão para cada ID selecionado
+                    for (const id of idsLinhasSelecionadas) {
+                      await handleDeletarLinhaEnvio(id);
+                    }
+                    setIdsLinhasSelecionadas([]);
+                  }
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] px-3 py-1 rounded transition-colors shadow-sm"
+              >
+                🗑️ Excluir em Lote
               </button>
             </div>
           )}
         </div>
+
+        {/* FILTRO DE SEGMENTAÇÃO DE PÚBLICO */}
+        {campanhaSelecionada && detalhesEnvios.length > 0 && (
+          <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-lg border border-gray-200 text-xs">
+            <span className="font-semibold text-gray-600">🎯 Filtrar Segmento:</span>
+            <select 
+              id="filtroSegmento"
+              className="p-1 px-2 border rounded bg-white font-medium text-gray-700 outline-none focus:border-blue-500"
+              onChange={(e) => {
+                const val = e.target.value;
+                // Aplica o filtro visual na tabela mudando o estado ou manipulando a exibição
+                const linhas = document.querySelectorAll('.linha-envio-registro');
+                linhas.forEach((linha: any) => {
+                  const tipo = linha.getAttribute('data-tipo-cliente');
+                  if (val === 'TODOS' || tipo === val) {
+                    linha.style.display = '';
+                  } else {
+                    linha.style.display = 'none';
+                  }
+                });
+              }}
+            >
+              <option value="TODOS">👥 Mostrar Todos os Clientes</option>
+              <option value="PF">👤 Apenas Pessoa Física (PF)</option>
+              <option value="PJ">🏢 Apenas Empresarial / Jurídica (PJ)</option>
+            </select>
+          </div>
+        )}
 
         {!campanhaSelecionada ? (
           <div className="py-12 text-center text-sm text-gray-400 border border-dashed rounded-xl bg-gray-50/40">
             Selecione uma campanha na primeira linha para abrir a grade completa de auditoria de e-mails.
           </div>
         ) : carregandoDetalhes ? (
-          <p className="text-center text-xs text-gray-400 py-12 animate-pulse">Buscando registros da campanha no banco de dados...</p>
+          <p className="text-center text-xs text-gray-400 py-12 animate-pulse">Buscando registros na tab_campanhas_emails_detalhe...</p>
         ) : detalhesEnvios.length === 0 ? (
           <div className="py-12 text-center text-xs text-gray-400 bg-zinc-50/50 border rounded-xl">
             Nenhum disparo registrado para esta campanha até o momento.
@@ -983,8 +1172,11 @@ export default function CampanhasClientes() {
                   const isModoEdicaoLinha = linhaEmEdicao === detalhe.id;
 
                   return (
-                    <tr key={detalhe.id} className="hover:bg-gray-50/50 transition-colors">
-                      {/* Checkbox de Lote */}
+                    <tr 
+                      key={detalhe.id} 
+                      className="hover:bg-gray-50/50 transition-colors linha-envio-registro"
+                      data-tipo-cliente={detalhe.tipo_cliente} // Atributo usado pelo filtro
+                    >
                       <td className="py-3.5 px-4 align-middle">
                         <input
                           type="checkbox"
@@ -996,11 +1188,11 @@ export default function CampanhasClientes() {
                         />
                       </td>
 
-                      {/* Dados Cadastrais / Input de Edição Inline */}
                       <td className="py-3.5 px-4 align-middle max-w-xs">
                         <div className="flex flex-col">
                           <span className="font-semibold text-gray-800 leading-snug truncate">
                             {detalhe.tipo_cliente === 'PF' ? detalhe.nome_cliente : (detalhe.nome_fantasia || detalhe.nome_cliente)}
+                            <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded bg-gray-100 text-gray-500 font-bold">{detalhe.tipo_cliente}</span>
                           </span>
                           
                           {isModoEdicaoLinha ? (
@@ -1009,17 +1201,17 @@ export default function CampanhasClientes() {
                                 type="text"
                                 value={emailEditadoValue}
                                 onChange={(e) => setEmailEditadoValue(e.target.value)}
-                                className="p-1 px-2 text-xs border border-gray-300 rounded bg-white w-48 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                                className="p-1 px-2 text-xs border border-gray-300 rounded bg-white w-48 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                               />
                               <button
                                 onClick={() => handleSalvarEdicaoEmailLinha(detalhe.id)}
-                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold transition-colors"
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold"
                               >
                                 Salvar
                               </button>
                               <button
                                 onClick={() => setLinhaEmEdicao(null)}
-                                className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-500 rounded text-[10px] transition-colors"
+                                className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-500 rounded text-[10px]"
                               >
                                 Cancelar
                               </button>
@@ -1030,48 +1222,37 @@ export default function CampanhasClientes() {
                         </div>
                       </td>
 
-                      {/* Data de Envio */}
                       <td className="py-3.5 px-4 align-middle text-gray-500 text-xs whitespace-nowrap">
                         {new Date(detalhe.criado_em).toLocaleString('pt-BR')}
                       </td>
 
-                      {/* Status de Entrega Customizado */}
                       <td className="py-3.5 px-4 align-middle whitespace-nowrap">
                         {detalhe.status_entrega === 'enviando' ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
                             ⏳ Processando
                           </span>
                         ) : detalhe.status_entrega === 'entregue' ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
                             Entregue
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
-                            <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
-                            {detalhe.status_entrega}
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200" title={detalhe.status_entrega}>
+                            ⚠️ Bounce / Falha
                           </span>
                         )}
                       </td>
 
-                      {/* Status de Abertura */}
                       <td className="py-3.5 px-4 align-middle text-center">
-                        {detalhe.abriu_email ? (
-                          <span className="inline-flex items-center justify-center h-6 w-12 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium" title="E-mail Aberto">
-                            Sim
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center justify-center h-6 w-12 rounded-full bg-gray-50 text-gray-400 border border-gray-200 text-xs font-normal" title="Não aberto">
-                            Não
-                          </span>
-                        )}
+                        <span className={`inline-flex items-center justify-center h-6 w-12 rounded-full text-xs font-medium border ${
+                          detalhe.abriu_email ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-400 border-gray-200'
+                        }`}>
+                          {detalhe.abriu_email ? 'Sim' : 'Não'}
+                        </span>
                       </td>
 
-                      {/* Status de Clique de WhatsApp */}
                       <td className="py-3.5 px-4 align-middle text-center">
                         {detalhe.clicou_whatsapp ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-bold uppercase tracking-wider" title="Clicou no link">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-bold uppercase tracking-wider">
                             💬 Clicou
                           </span>
                         ) : (
@@ -1079,7 +1260,6 @@ export default function CampanhasClientes() {
                         )}
                       </td>
 
-                      {/* Controles Individuais da Linha */}
                       <td className="py-3.5 px-4 align-middle text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
@@ -1088,24 +1268,21 @@ export default function CampanhasClientes() {
                               setEmailEditadoValue(detalhe.email_cliente);
                             }}
                             className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-gray-50 text-gray-600 border border-gray-200 rounded text-xs font-medium transition-colors shadow-sm"
-                            title="Corrigir e-mail"
                           >
-                            ✏️ <span className="text-gray-500">Editar</span>
+                            ✏️ Editar
                           </button>
                           
                           <button
                             onClick={() => handleReenviarEmailsGrade([detalhe])}
                             disabled={enviando}
                             className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-blue-700 border border-blue-200 rounded text-xs font-semibold transition-colors shadow-sm"
-                            title="Reenviar agora"
                           >
-                            🔄 <span>Reenviar</span>
+                            🔄 Reenviar
                           </button>
                           
                           <button
                             onClick={() => handleDeletarLinhaEnvio(detalhe.id)}
-                            className="p-1 bg-white hover:bg-red-50 text-gray-400 hover:text-red-600 rounded border border-gray-200 hover:border-red-200 text-xs transition-colors shadow-sm"
-                            title="Remover histórico"
+                            className="p-1 bg-white hover:bg-red-50 text-gray-400 hover:text-red-600 rounded border border-gray-200 text-xs transition-colors shadow-sm"
                           >
                             🗑️
                           </button>
@@ -1121,55 +1298,73 @@ export default function CampanhasClientes() {
       </div>
 
       {/* ==========================================================
-          RODAPÉ: GERENCIADOR COMPLETO DO STORAGE DE ARTES
+          RODAPÉ: GERENCIADOR DO STORAGE DE ARTES
           ========================================================== */}
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4">
-        <div className="border-b pb-3 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3">
           <div>
-            <h2 className="font-bold text-base text-gray-800">📦 Histórico Físico do Storage de Artes</h2>
-            <p className="text-xs text-gray-400">Visão global dos arquivos upados no bucket do Supabase</p>
+            <h2 className="font-bold text-base text-gray-800 flex items-center gap-2">
+              📦 Gerenciador do Storage de Mídias e Artes
+            </h2>
+            <p className="text-xs text-gray-500">
+              Arquivos de imagem atualmente armazenados no bucket <code className="bg-gray-100 px-1 rounded text-red-600 font-mono">artes-campanhas</code>
+            </p>
           </div>
-          <div className="bg-blue-50 text-blue-700 font-bold text-xs px-2.5 py-1 rounded-lg border border-blue-100">
-            Volume Ocupado: {totalEspacoMB.toFixed(2)} MB
+          <div className="text-right text-xs text-gray-400 font-mono">
+            Espaço Estimado Ocupado: <span className="text-gray-700 font-bold">{totalEspacoMB.toFixed(2)} MB</span>
           </div>
         </div>
 
         {carregandoArtes ? (
-          <p className="text-xs text-gray-400 text-center py-4 animate-pulse">Lendo arquivos do bucket...</p>
+          <p className="text-center text-xs text-gray-400 py-6 animate-pulse">Listando objetos do Supabase Storage...</p>
         ) : listaArtes.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-4 border border-dashed rounded-xl">Nenhuma mídia armazenada.</p>
+          <p className="text-center text-xs text-gray-400 py-6 italic">Nenhum arquivo isolado encontrado no bucket.</p>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {listaArtes.map((arte) => {
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {listaArtes.map((arte, idx) => {
               const urlPublica = supabase.storage.from('artes-campanhas').getPublicUrl(arte.name).data.publicUrl;
-              const tamanhoEmMB = (arte.metadata?.size || 0) / (1024 * 1024);
+              const tamanhoBytes = arte.metadata && typeof arte.metadata === 'object' && 'size' in arte.metadata 
+                ? (arte.metadata as any).size 
+                : 0;
+              const tamanhoKB = tamanhoBytes / 1024;
 
               return (
-                <div key={arte.id || arte.name} className="border border-gray-100 bg-gray-50/50 rounded-xl p-2 relative flex flex-col justify-between group shadow-sm hover:shadow transition-all">
-                  <div className="w-full h-20 bg-white rounded-lg border overflow-hidden flex items-center justify-center mb-1">
-                    <img src={urlPublica} alt={arte.name} className="max-w-full max-h-full object-contain p-1" loading="lazy" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[9px] text-gray-600 truncate font-mono" title={arte.name}>{arte.name}</p>
-                    <p className="text-[9px] font-bold text-gray-400">{tamanhoEmMB.toFixed(2)} MB</p>
+                <div 
+                  key={arte.id || idx} 
+                  className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 flex flex-col justify-between h-44 shadow-sm group relative hover:border-gray-300 transition-all"
+                >
+                  <div className="w-full h-24 bg-white rounded-lg overflow-hidden flex items-center justify-center p-1 border shadow-inner">
+                    <img 
+                      src={urlPublica} 
+                      alt={arte.name} 
+                      className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform" 
+                    />
                   </div>
                   
-                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <div className="mt-2 min-w-0">
+                    <p className="text-[11px] font-semibold text-gray-700 truncate font-mono" title={arte.name}>
+                      {arte.name}
+                    </p>
+                    <p className="text-[10px] text-gray-400 font-mono">
+                      {tamanhoKB > 1024 ? `${(tamanhoKB / 1024).toFixed(1)} MB` : `${tamanhoKB.toFixed(0)} KB`}
+                    </p>
+                  </div>
+
+                  {/* AÇÕES FLUTUANTES AO PASSAR O MOUSE */}
+                  <div className="absolute inset-0 bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-2">
                     <button
                       type="button"
                       onClick={() => handleEditarCampanhaPorArte(urlPublica)}
-                      className="p-1 bg-white hover:bg-amber-500 text-gray-600 hover:text-white border rounded text-[9px]"
-                      title="Vincular/Editar Campanha"
+                      className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold shadow transition-colors"
                     >
-                      ✏️
+                      🔗 Vincular / Usar
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExcluirArteStorage(arte.name)}
-                      className="p-1 bg-white hover:bg-red-500 text-gray-600 hover:text-white border rounded text-[9px]"
-                      title="Deletar do Storage"
+                      className="w-full py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold shadow transition-colors"
                     >
-                      🗑️
+                      🗑️ Excluir Mídia
                     </button>
                   </div>
                 </div>
@@ -1180,101 +1375,120 @@ export default function CampanhasClientes() {
       </div>
 
       {/* ==========================================================
-          MODAL DE COMPOSIÇÃO DE CAMPANHAS (CADASTRO / EDIÇÃO)
+          MODAL DE CADASTRO / EDIÇÃO DE CAMPANHA (isModalOpen)
           ========================================================== */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[999] p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">
-              {campanhaEmEdicao ? '📝 Modificar Campanha Existente' : '✨ Criar Nova Campanha Comercial'}
-            </h2>
-            <form onSubmit={handleSalvarCampanha} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600">Identificação do Evento</label>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-xl border max-w-lg w-full overflow-hidden flex flex-col">
+            
+            {/* Cabeçalho */}
+            <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
+              <h3 className="font-bold text-sm text-gray-800">
+                {campanhaEmEdicao ? '✏️ Editar Configuração da Campanha' : '✨ Cadastrar Nova Campanha / Gatilho'}
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setIsModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-lg font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Formulário CORRIGIDO mapeando os valores estáticos do formulário */}
+            <form onSubmit={handleSalvarCampanha} className="p-4 space-y-4 flex-1 overflow-y-auto">
+              
+              {/* Nome do Evento */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Nome do Evento / Campanha</label>
                 <input 
                   type="text" 
-                  required 
-                  value={nomeEvento} 
+                  required
+                  value={nomeEvento}
                   onChange={(e) => setNomeEvento(e.target.value)}
-                  placeholder="Ex: Campanha de Natal"
-                  className="w-full mt-1 p-2 border rounded-lg outline-none text-xs focus:ring-1 focus:ring-blue-500"
+                  placeholder="Ex: Campanha de Aniversário Maio, Black Friday..."
+                  className="w-full p-2 text-xs border rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600">Categoria de Regra</label>
-                <select 
-                  value={tipoEvento} 
-                  onChange={(e) => setTipoEvento(e.target.value as 'fixo' | 'aniversario')}
-                  className="w-full mt-1 p-2 border rounded-lg outline-none text-xs bg-white focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="fixo">📅 Campanha Geral / Calendário Fixo</option>
-                  <option value="aniversario">🎂 Automação Base: Aniversariantes do Dia</option>
-                </select>
-              </div>
+              {/* Tipo de Evento e Gatilho */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Tipo de Gatilho</label>
+                  <select
+                    value={tipoEvento}
+                    onChange={(e) => setTipoEvento(e.target.value as 'fixo' | 'aniversario')}
+                    className="w-full p-2 text-xs border rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white"
+                  >
+                    <option value="fixo">📅 Data Recorrente Fixa</option>
+                    <option value="aniversario">🎂 Dia do Aniversário</option>
+                  </select>
+                </div>
 
-              {tipoEvento === 'fixo' && (
-                <div className="animate-slideDown">
-                  <label className="block text-xs font-semibold text-gray-600">Gatilho de Data (Mês-Dia: MM-DD)</label>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Dia de Disparo</label>
                   <input 
-                    type="text" 
-                    required 
-                    value={mesDia} 
+                    type="text"
+                    disabled={tipoEvento === 'aniversario'}
+                    required={tipoEvento === 'fixo'}
+                    value={tipoEvento === 'aniversario' ? '' : mesDia}
                     onChange={(e) => setMesDia(e.target.value)}
-                    placeholder="Ex: 12-25"
-                    className="w-full mt-1 p-2 border rounded-lg outline-none text-xs focus:ring-1 focus:ring-blue-500"
+                    placeholder="Ex: 25-05 ou 10"
+                    className="w-full p-2 text-xs border rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-400"
                   />
                 </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600">Corpo de Mensagem Comercial (E-mail)</label>
-                <textarea 
-                  value={msgEmail} 
-                  onChange={(e) => setMsgEmail(e.target.value)}
-                  placeholder="Insira as diretrizes textuais da campanha..."
-                  className="w-full mt-1 p-2 border rounded-lg outline-none h-24 text-xs font-mono focus:ring-1 focus:ring-blue-500"
-                />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Upload/Substituição de Imagem</label>
-                {campanhaEmEdicao?.url_arte_storage && (
-                  <div className="w-full h-24 bg-gray-50 border rounded-lg overflow-hidden flex items-center justify-center p-2 mb-2 shadow-inner">
-                    <img src={campanhaEmEdicao.url_arte_storage} alt="Atual" className="max-w-full max-h-full object-contain" />
-                  </div>
-                )}
+              {/* Upload de Arte (Mídia) */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Arte / Imagem de Fundo</label>
                 <input 
-                  type="file" 
+                  type="file"
                   accept="image/*"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) setArteArquivo(e.target.files[0]);
-                  }}
-                  className="w-full text-xs text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700 cursor-pointer"
+                  onChange={(e) => setArteArquivo(e.target.files ? e.target.files[0] : null)}
+                  className="w-full p-1.5 text-xs border rounded-lg file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                />
+                {campanhaEmEdicao?.url_arte_storage && !arteArquivo && (
+                  <p className="text-[10px] text-emerald-600 font-medium">✨ Já possui uma imagem vinculada no storage.</p>
+                )}
+              </div>
+
+              {/* Corpo do E-mail (Template) */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Mensagem do E-mail (HTML/Texto)</label>
+                <textarea 
+                  rows={4}
+                  required
+                  value={msgEmail}
+                  onChange={(e) => setMsgEmail(e.target.value)}
+                  placeholder="Escreva a mensagem. Use {nome} para personalizar dinamicamente..."
+                  className="w-full p-2 text-xs border rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-mono"
                 />
               </div>
 
-              <div className="flex justify-end space-x-3 mt-6 border-t pt-4">
-                <button 
-                  type="button" 
+              {/* Rodapé do Form / Ações */}
+              <div className="pt-3 border-t flex justify-end gap-2 text-xs">
+                <button
+                  type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg"
-                  disabled={enviando}
+                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg font-medium transition-colors"
                 >
                   Cancelar
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={enviando}
-                  className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-bold shadow-sm"
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg font-bold shadow-sm transition-colors"
                 >
-                  {enviando ? 'Gravando dados...' : 'Salvar Configurações'}
+                  {enviando ? 'Gravando dados...' : '💾 Salvar Configuração'}
                 </button>
               </div>
+
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 }
