@@ -226,36 +226,32 @@ export default function PainelMarketingCampanhas() {
     }
   }
 
- 
-  // --- FILTRAGEM DOS LEADS EM MEMÓRIA BASEADO NA ABA DE TEMPERATURA ---
+  // --- FILTRAGEM DOS LEADS EM MEMÓRIA BASEADO NA NOVA REGRA DE TEMPERATURA ---
   const leadsFiltradosPorTemperatura = leadsElegiveis.filter(lead => {
-    // 1. Procuramos na lista de logs se este e-mail específico abriu ou clicou em algo
-    const logsDoLead = detalhesEnvios.filter(log => log.email_cliente === lead.email);
-    
-    const abriu = logsDoLead.some(log => log.abriu_email === true);
-    const clicou = logsDoLead.some(log => log.clicou_whatsapp === true);
-    const entregue = logsDoLead.some(log => log.status_entrega === 'entregue');
+    const totalAbriu = lead.email_total_aberturas || 0;
+    const totalClicou = lead.email_total_cliques || 0;
 
-    // => QUENTES: Qualquer log onde ele clicou no whatsapp ou abriu o e-mail
+    // Se o filtro selecionado for 'todos', lista toda a gente
+    if (filtroTemperatura === 'todos') return true;
+
+    // 1. CLICOU É QUENTE
     if (filtroTemperatura === 'quentes') {
-      return abriu || clicou;
+      return totalClicou > 0;
     }
     
-    // => MORNOS: Foi entregue com sucesso, mas NÃO abriu e NÃO clicou em nada
+    // 2. ABRIU É MORNO (Teve abertura, mas não tem cliques)
     if (filtroTemperatura === 'mornos') {
-      return entregue && !abriu && !clicou;
+      return totalAbriu > 0 && totalClicou === 0;
     }
     
-    // => FRIOS: Não foi entregue (apenas enviado/válido) e NÃO interagiu com nada
+    // 3. NÃO ABRIU É FRIO (Total de aberturas é zero)
     if (filtroTemperatura === 'frios') {
-      return !entregue && !abriu && !clicou;
+      return totalAbriu === 0;
     }
     
-    return true; // Aba 'todos'
+    return true;
   });
 
-  
-  // --- OPERAÇÕES DO SISTEMA (DISPAROS, REENVIOS E CRUDS) ---
   // --- OPERAÇÕES DO SISTEMA (DISPAROS, REENVIOS E CRUDS) ---
   async function handleDispararEmailOriginal() {
     // 1. Validação segura usando as variáveis declaradas no topo do componente
