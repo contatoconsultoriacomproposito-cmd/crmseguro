@@ -763,18 +763,31 @@ export default function PainelMarketingCampanhas() {
                 </button>
               </div>
 
-              <div className="flex justify-between items-center mb-2 px-1 text-[11px] font-bold text-gray-400 uppercase">
-                <span>Lista ({leadsFiltradosPorTemperatura.length})</span>
-                <button
-                  onClick={() => {
-                    if (idsLeadsSelecionados.length === leadsFiltradosPorTemperatura.length) setIdsLeadsSelecionados([]);
-                    else setIdsLeadsSelecionados(leadsFiltradosPorTemperatura.map(l => l.id));
-                  }}
-                  className="text-blue-600 hover:underline normal-case text-xs"
-                >
-                  {idsLeadsSelecionados.length === leadsFiltradosPorTemperatura.length ? 'Desmarcar Aba' : 'Marcar Aba'}
-                </button>
-              </div>
+              {/* CABEÇALHO COM CHECKBOX DE SELEÇÃO ISOLADA DA ABA */}
+              {leadsFiltradosPorTemperatura.length > 0 && (
+                <div className="flex items-center gap-2 p-2 bg-gray-50 border border-gray-200 rounded-lg mb-2 text-[11px]">
+                  <input
+                    type="checkbox"
+                    checked={leadsFiltradosPorTemperatura.every(l => idsLeadsSelecionados.includes(l.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        // Preserva o que já estava selecionado em outras abas e adiciona os atuais da grid
+                        const novosIds = [...idsLeadsSelecionados];
+                        leadsFiltradosPorTemperatura.forEach(l => {
+                          if (!novosIds.includes(l.id)) novosIds.push(l.id);
+                        });
+                        setIdsLeadsSelecionados(novosIds);
+                      } else {
+                        // Remove apenas os itens que pertencem a esta listagem filtrada, mantendo intactos os do CRM
+                        const idsDaGrid = leadsFiltradosPorTemperatura.map(l => l.id);
+                        setIdsLeadsSelecionados(idsLeadsSelecionados.filter(id => !idsDaGrid.includes(id)));
+                      }
+                    }}
+                    className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span className="font-bold text-gray-600 uppercase">Selecionar Todos Filtrados ({leadsFiltradosPorTemperatura.length})</span>
+                </div>
+              )}
 
               {leadsFiltradosPorTemperatura.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center border border-dashed rounded-xl bg-gray-50/50 text-gray-400 text-xs p-4 text-center">
@@ -872,11 +885,38 @@ export default function PainelMarketingCampanhas() {
                       <span>🤝 Contatos da Carteira</span>
                       <span>Total: {clientesCRM.length}</span>
                     </div>
+
+                    {/* CHECKBOX SELECIONAR TODOS DO CRM */}
+                    {clientesCRM.length > 0 && (
+                      <div className="flex items-center gap-2 p-2 bg-purple-50/40 border border-purple-100 rounded-lg mb-2 text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={clientesCRM.every(c => idsLeadsSelecionados.includes(c.id))}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // Mantém o que já estava marcado em outras abas e adiciona os atuais do CRM
+                              const novosIds = [...idsLeadsSelecionados];
+                              clientesCRM.forEach(c => {
+                                if (!novosIds.includes(c.id)) novosIds.push(c.id);
+                              });
+                              setIdsLeadsSelecionados(novosIds);
+                            } else {
+                              // Filtra para remover apenas quem pertence ao CRM, protegendo a seleção da Base
+                              const idsDoCrm = clientesCRM.map(c => c.id);
+                              setIdsLeadsSelecionados(idsLeadsSelecionados.filter(id => !idsDoCrm.includes(id)));
+                            }
+                          }}
+                          className="w-3.5 h-3.5 rounded border-purple-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                        />
+                        <span className="font-bold text-purple-700 uppercase">Selecionar Todos do CRM</span>
+                      </div>
+                    )}
                     
                     <div className="overflow-y-auto flex-1 space-y-1 pr-0.5 custom-scrollbar bg-white p-2 rounded-lg border">
                       {clientesCRM.map((item: any) => {
                         // Verificação de destaque visual: confere se este item é o selecionado na ficha
                         const estaSelecionado = leadParaVerHistorico?.id === item.id;
+                        const isChecked = idsLeadsSelecionados.includes(item.id);
 
                         return (
                           <div 
@@ -903,13 +943,28 @@ export default function PainelMarketingCampanhas() {
                                 : 'hover:bg-purple-50/50 text-gray-700'
                             }`}
                           >
-                            <div className="truncate max-w-[150px]">
-                              <p className="truncate">{item.nome || item.nome_fantasia || 'Sem Nome'}</p>
-                              <p className={`text-[9px] font-mono truncate ${estaSelecionado ? 'text-purple-600' : 'text-gray-400'}`}>
-                                {item.email}
-                              </p>
+                            <div className="flex items-center gap-2 truncate max-w-[170px]">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onClick={(e) => e.stopPropagation()} // Impede de abrir o histórico só por clicar na caixinha
+                                onChange={() => {
+                                  if (isChecked) {
+                                    setIdsLeadsSelecionados(idsLeadsSelecionados.filter(id => id !== item.id));
+                                  } else {
+                                    setIdsLeadsSelecionados([...idsLeadsSelecionados, item.id]);
+                                  }
+                                }}
+                                className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer flex-shrink-0"
+                              />
+                              <div className="truncate">
+                                <p className="truncate font-medium">{item.nome || item.nome_fantasia || 'Sem Nome'}</p>
+                                <p className={`text-[9px] font-mono truncate ${estaSelecionado ? 'text-purple-600' : 'text-gray-400'}`}>
+                                  {item.email}
+                                </p>
+                              </div>
                             </div>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
                               item.tipo_cliente === 'PJ' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'
                             }`}>
                               {item.tipo_cliente}
@@ -1060,7 +1115,11 @@ export default function PainelMarketingCampanhas() {
                 type="button"
                 disabled={
                   enviando || 
-                  (modoPublico === 'csv' ? clientesListaImportada.length === 0 : idsLeadsSelecionados.length === 0)
+                  (modoPublico === 'csv' 
+                    ? clientesListaImportada.length === 0 
+                    : modoPublico === 'crm'
+                      ? clientesCRM.filter((c: any) => idsLeadsSelecionados.includes(c.id)).length === 0
+                      : idsLeadsSelecionados.length === 0)
                 }
                 onClick={async () => {
                   console.log("🔘 Botão de disparo clicado. Modo ativo:", modoPublico);
@@ -1080,7 +1139,6 @@ export default function PainelMarketingCampanhas() {
 
                       // 🧠 INTELIGÊNCIA DE IDS LOGADOS (Igual ao handleDispararEmailOriginal)
                       const idDoUsuarioLogado = userProfile?.id;
-                      //const tipoUsuarioLogado = userProfile?.tipo_usuario;
 
                       if (!idDoUsuarioLogado) {
                         toast.error("Erro de sessão: Perfil não identificado.");
@@ -1164,7 +1222,7 @@ export default function PainelMarketingCampanhas() {
                     }
                   }
                   
-                  // SE FOR MODO BASE: Roda a sua função padrão original intacta
+                  // SE FOR MODO CRM ou MODO BASE: Roda a sua função padrão original intacta (que agora mapeará a aba correta)
                   else {
                     console.log("➡️ Executando rota normal base ( handleDispararEmailOriginal ).");
                     handleDispararEmailOriginal();
@@ -1173,13 +1231,17 @@ export default function PainelMarketingCampanhas() {
                 className={`w-full py-2.5 font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1 text-white ${
                   modoPublico === 'csv' 
                     ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' 
-                    : 'bg-blue-600 hover:bg-blue-700'
+                    : modoPublico === 'crm'
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
                 } disabled:bg-gray-300 disabled:from-gray-300 disabled:to-gray-300 disabled:text-gray-400`}
               >
                 {enviando ? (
                   'Efetuando processamento...'
                 ) : modoPublico === 'csv' ? (
                   `✈️ Disparar Lista Importada (${clientesListaImportada.length})`
+                ) : modoPublico === 'crm' ? (
+                  `🤝 Disparar Selecionados CRM (${clientesCRM.filter((c: any) => idsLeadsSelecionados.includes(c.id)).length})`
                 ) : (
                   `🚀 Iniciar Fila de Envio (${idsLeadsSelecionados.length})`
                 )}
