@@ -54,6 +54,7 @@ interface ClientePublico {
   origem: 'crm' | 'qualificado_frio' | 'qualificado_morno' | 'qualificado_quente' | 'csv';
   tipo_cliente?: string;
   nome_fantasia?: string | null;
+  temperatura?: 'frio' | 'morno' | 'quente'; // Adicionado para controle estrito de exibição dinâmica
 }
 
 interface PainelContextType {
@@ -96,6 +97,9 @@ const PainelMarketingContext = createContext<PainelContextType | undefined>(unde
 export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile } = useAuth();
 
+  const idCorretoraReal = userProfile?.corretora_id;
+  const isIndividual = userProfile?.tipo_usuario === 'CORRETOR';
+
   // Estados principais de dados
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [disparos, setDisparos] = useState<Disparo[]>([]);
@@ -125,14 +129,12 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   // 1. CARREGAR CAMPANHAS (MÃES)
   // ------------------------------------------------------------------
   const carregarCampanhas = async () => {
-    if (!userProfile) return;
-    const currentCorretoraId = userProfile.corretora_id;
-    const isIndividual = userProfile.tipo_usuario === 'CORRETOR';
+    if (!idCorretoraReal) return;
 
     setLoadingCampanhas(true);
     try {
-      let query = supabase.from('tab_campanhas').select('*').eq('corretora_id', currentCorretoraId);
-      if (isIndividual) {
+      let query = supabase.from('tab_campanhas').select('*').eq('corretora_id', idCorretoraReal);
+      if (isIndividual && userProfile) {
         query = query.eq('corretor_id', userProfile.id);
       }
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -146,10 +148,10 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   useEffect(() => {
-    if (userProfile) {
+    if (idCorretoraReal) {
       carregarCampanhas();
     }
-  }, [userProfile]);
+  }, [idCorretoraReal]);
 
   // ------------------------------------------------------------------
   // 2. CARREGAR DISPAROS (FILHOS) AO SELECIONAR UMA CAMPANHA
@@ -212,7 +214,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
 
     carregarAuditoriaInicial();
 
-    // SINTAXE CORRIGIDA: Filtro estrito sem espaços para o canal realtime do Supabase
     const canalAuditoria = supabase
       .channel(`audi_lote_${disparoSelecionado.id}`)
       .on(
@@ -240,36 +241,30 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   }, [disparoSelecionado]);
 
   // ------------------------------------------------------------------
-  // 4. CARREGAR PÚBLICOS ALVO
+  // 4. CARREGAR PÚBLICOS ALVO (CRM TRADICIONAL + TERMOMETRIA DINÂMICA DE LOGS)
   // ------------------------------------------------------------------
   useEffect(() => {
     const carregarLeadsEClientes = async () => {
-      if (!userProfile) return;
-      
-      const targetCorretoraId = userProfile.corretora_id;
-      const isIndividual = userProfile.tipo_usuario === 'CORRETOR';
-
-      if (!targetCorretoraId) return;
+      if (!idCorretoraReal) return;
       setLoadingClientes(true);
 
       try {
+        // --- PROCESSO A: EXTRAÇÃO BASE CRM ---
         let queryLeads = supabase
           .from('tab_clientes')
-          .select('id, nome, razao_social, nome_fantasia, email, telefone_whats, temperatura, tipo_cliente, corretor_id')
-          .eq('corretora_id', targetCorretoraId)
+          .select('id, nome, razao_social, nome_fantasia, email, telefone_whats, tipo_cliente, corretor_id')
+          .eq('corretora_id', idCorretoraReal)
           .not('email', 'is', null)
           .neq('email', '');
 
-        if (isIndividual) {
+        if (isIndividual && userProfile) {
           queryLeads = queryLeads.eq('corretor_id', userProfile.id);
         }
 
         const { data: clientesDoBanco, error: errLeads } = await queryLeads;
         if (errLeads) throw errLeads;
 
-        const baseMkt = clientesDoBanco || [];
-
-        const formatadosCRM: ClientePublico[] = baseMkt.map(c => {
+        const formatadosCRM: ClientePublico[] = (clientesDoBanco || []).map(c => {
           const nomeExibicao = c.nome?.trim() || c.nome_fantasia?.trim() || c.razao_social?.trim() || 'Cliente Sem Nome';
           return {
             id: c.id,
@@ -283,43 +278,79 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
         });
         setClientesCRM(formatadosCRM);
 
-        const qualificados: ClientePublico[] = baseMkt.map(c => {
-          const nomeExibicao = c.nome?.trim() || c.nome_fantasia?.trim() || c.razao_social?.trim() || 'Cliente Sem Nome';
-          
-          let origemTermometria: 'qualificado_frio' | 'qualificado_morno' | 'qualificado_quente' = 'qualificado_morno';
-          if (c.temperatura === 'frio') origemTermometria = 'qualificado_frio';
-          if (c.temperatura === 'quente') origemTermometria = 'qualificado_quente';
+
+        // --- PROCESSO B: EXTRAÇÃO DA TERMOMETRIA BASEADA EM LOGS REAIS ---
+        let queryLogs = supabase
+          .from('tab_campanhas_emails_detalhe')
+          .select('id, nome_cliente, email_cliente, status_entrega, abriu_email, clicou_whatsapp, clicou_responder, nome_fantasia, tipo_cliente')
+          .eq('corretora_id', idCorretoraReal);
+
+        if (isIndividual && userProfile) {
+          queryLogs = queryLogs.eq('corretor_id', userProfile.id);
+        }
+
+        const { data: logsDeEnvio, error: errLogs } = await queryLogs;
+        if (errLogs) throw errLogs;
+
+        // Mapeia e calcula a temperatura viva individual de cada log do histórico
+        const leadsMapeados: ClientePublico[] = (logsDeEnvio || []).map((log) => {
+          let tempCalculada: 'frio' | 'morno' | 'quente' = 'frio';
+
+          if (log.clicou_whatsapp || log.clicou_responder) {
+            tempCalculada = 'quente';
+          } else if (log.status_entrega === 'entregue') {
+            tempCalculada = 'morno';
+          } else {
+            tempCalculada = 'frio';
+          }
 
           return {
-            id: c.id,
-            nome: nomeExibicao,
-            email: c.email.trim().toLowerCase(),
-            telefone_whats: c.telefone_whats,
-            origem: origemTermometria,
-            tipo_cliente: c.tipo_cliente,
-            nome_fantasia: c.nome_fantasia
+            id: log.id,
+            nome: log.nome_cliente || 'Cliente',
+            email: log.email_cliente.trim().toLowerCase(),
+            telefone_whats: 'Via E-mail',
+            origem: `qualificado_${tempCalculada}` as any,
+            tipo_cliente: log.tipo_cliente || 'PF',
+            nome_fantasia: log.nome_fantasia,
+            temperatura: tempCalculada
           };
         });
-        setClientesQualificados(qualificados);
+
+        // Consolida registros para que emails duplicados herdem apenas seu maior nível de calor histórico
+        const dicionarioUnico: { [email: string]: ClientePublico } = {};
+        leadsMapeados.forEach((lead) => {
+          const existente = dicionarioUnico[lead.email];
+          if (!existente) {
+            dicionarioUnico[lead.email] = lead;
+          } else {
+            if (lead.temperatura === 'quente' && existente.temperatura !== 'quente') {
+              dicionarioUnico[lead.email] = lead;
+            } else if (lead.temperatura === 'morno' && existente.temperatura === 'frio') {
+              dicionarioUnico[lead.email] = lead;
+            }
+          }
+        });
+
+        setClientesQualificados(Object.values(dicionarioUnico));
 
       } catch (err: any) {
-        console.error('Erro ao catalogar públicos do CRM:', err.message);
+        console.error('Erro ao catalogar públicos por termometria de logs:', err.message);
       } finally {
         setLoadingClientes(false);
       }
     };
 
     carregarLeadsEClientes();
-  }, [userProfile]);
+  }, [userProfile, idCorretoraReal]);
 
   // ------------------------------------------------------------------
-  // 5. MEMO DE FILTRAGEM
+  // 5. MEMO DE FILTRAGEM DINÂMICA
   // ------------------------------------------------------------------
   const clientesFiltrados = useMemo(() => {
     if (abaAtiva === 'crm') return clientesCRM;
     if (abaAtiva === 'csv') return clientesCSV;
     if (abaAtiva === 'qualificados') {
-      return clientesQualificados.filter(c => c.origem === `qualificado_${subAbaQualificados}`);
+      return clientesQualificados.filter(c => c.temperatura === subAbaQualificados);
     }
     return [];
   }, [abaAtiva, subAbaQualificados, clientesCRM, clientesQualificados, clientesCSV]);
@@ -349,7 +380,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   const limparSelecao = () => setIdsLeadsSelecionados([]);
 
   // ------------------------------------------------------------------
-  // 7. DISPARAR CAMPANHA (EXECUÇÃO DA EDGE FUNCTION)
+  // 7. DISPARAR CAMPANHA (EXECUÇÃO DA EDGE FUNCTION COM DEDUP MANUAL)
   // ------------------------------------------------------------------
   const dispararCampanhaLote = async () => {
     if (!userProfile) return;
@@ -367,16 +398,23 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
       const { data: sessionData } = await supabase.auth.getSession();
       const tokenJWT = sessionData.session?.access_token || '';
 
-      const alvosFinais = clientesFiltrados.filter(c => 
+      const alvosFiltradosDoEstado = clientesFiltrados.filter(c => 
         abaAtiva === 'csv' ? idsLeadsSelecionados.includes(c.email) : idsLeadsSelecionados.includes(c.id || '')
       );
+
+      // Proteção de Borda: Eliminação preventiva de duplicidades de email para evitar crash 500/Constraint no Postgres
+      const dicionarioFiltro: { [email: string]: any } = {};
+      alvosFiltradosDoEstado.forEach(item => {
+        dicionarioFiltro[item.email.trim().toLowerCase()] = item;
+      });
+      const alvosFinaisSemDuplicados = Object.values(dicionarioFiltro);
 
       const payload = {
         campanha_id: campanhaSelecionada.id,
         nome_evento: campanhaSelecionada.nome_evento,
         mensagem_email: campanhaSelecionada.mensagem_email,
         url_arte_storage: campanhaSelecionada.url_arte_storage,
-        destinatarios: alvosFinais,
+        destinatarios: alvosFinaisSemDuplicados,
         userProfile: {
           id: userProfile.id,
           corretora_id: userProfile.corretora_id
@@ -411,6 +449,42 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
       
       setIdsLeadsSelecionados([]);
       if (abaAtiva === 'csv') setClientesCSV([]);
+
+      // Força a atualização da termometria em segundo plano após o novo lote rodar
+      let queryRefresh = supabase
+        .from('tab_campanhas_emails_detalhe')
+        .select('id, nome_cliente, email_cliente, status_entrega, abriu_email, clicou_whatsapp, clicou_responder, nome_fantasia, tipo_cliente')
+        .eq('corretora_id', idCorretoraReal);
+
+      if (isIndividual) {
+        queryRefresh = queryRefresh.eq('corretor_id', userProfile.id);
+      }
+      const { data: logRefresh } = await queryRefresh;
+      if (logRefresh) {
+        const leadsMapeados = logRefresh.map((log) => {
+          let tempCalculada: 'frio' | 'morno' | 'quente' = 'frio';
+          if (log.clicou_whatsapp || log.clicou_responder) tempCalculada = 'quente';
+          else if (log.status_entrega === 'entregue') tempCalculada = 'morno';
+          return {
+            id: log.id,
+            nome: log.nome_cliente || 'Cliente',
+            email: log.email_cliente.trim().toLowerCase(),
+            telefone_whats: 'Via E-mail',
+            origem: `qualificado_${tempCalculada}` as any,
+            tipo_cliente: log.tipo_cliente || 'PF',
+            nome_fantasia: log.nome_fantasia,
+            temperatura: tempCalculada
+          };
+        });
+        const dic: { [email: string]: ClientePublico } = {};
+        leadsMapeados.forEach(l => {
+          const e = dic[l.email];
+          if (!e || (l.temperatura === 'quente' && e.temperatura !== 'quente') || (l.temperatura === 'morno' && e.temperatura === 'frio')) {
+            dic[l.email] = l;
+          }
+        });
+        setClientesQualificados(Object.values(dic));
+      }
 
     } catch (err: any) {
       toast.error('Falha crítica no disparo: ' + err.message);
