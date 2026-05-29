@@ -194,7 +194,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
     const carregarAuditoriaInicial = async () => {
       setLoadingAuditoria(true);
       try {
-        console.log("🕵️‍♂️ Buscando auditoria para o ID de disparo:", disparoSelecionado.id);
+        console.log("🕵️‍♂️ Buscando auditoria para o ID de disparo:", disparoSelecionado.id);  
         const { data, error } = await supabase
           .from('tab_campanhas_emails_detalhe')
           .select('*')
