@@ -102,10 +102,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       // Query de Datas Comemorativas / Campanhas com evento Fixo hoje
       const queryCampanhasHoje = supabase
         .from('tab_campanhas')
-        .select('id, nome_evento, mes_dia')
+        .select('id, nome_evento, tipo_evento, created_at')
         .eq('corretora_id', corretoraDonaId)
-        .eq('tipo_evento', 'fixo')
-        .eq('mes_dia', mesDiaHoje);
+        .eq('tipo_evento', 'fixo');
 
       // 🔥 DISPARO SIMULTÂNEO (Executa as 4 queries de dados de forma paralela e performática)
       const [resIndicacoes, resClientes, resRenovacoes, resCampanhas] = await Promise.all([
@@ -203,9 +202,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         listaGeral.push({
           id: `camp-${camp.id}`,
           tipo: 'CAMPANHA',
-          titulo: `📅 DATA COMEMORATIVA: ${camp.nome_evento}`,
-          subtitulo: 'Campanha ativa para hoje',
-          data: hojeLocalStr,
+          titulo: `📅 CAMPANHA ATIVA: ${camp.nome_evento}`,
+          subtitulo: 'Regra de envio manual / lote fixo disponível',
+          data: camp.created_at || hojeLocalStr,
           atrasado: false,
           ref_id: camp.id
         });
