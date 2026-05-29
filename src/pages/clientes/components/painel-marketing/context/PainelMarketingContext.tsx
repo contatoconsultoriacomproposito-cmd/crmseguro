@@ -182,7 +182,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   }, [campanhaSelecionada]);
 
   // ------------------------------------------------------------------
-  // 3. CARREGAR AUDITORIA FINA (REALTIME AUTOMÁTICO)
+  // 3. CARREGAR AUDITORIA FINA (REALTIME AUTOMÁTICO CORRIGIDO)
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!disparoSelecionado) {
@@ -194,6 +194,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
     const carregarAuditoriaInicial = async () => {
       setLoadingAuditoria(true);
       try {
+        console.log("🕵️‍♂️ Buscando auditoria para o ID de disparo:", disparoSelecionado.id);
         const { data, error } = await supabase
           .from('tab_campanhas_emails_detalhe')
           .select('*')
@@ -211,6 +212,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
 
     carregarAuditoriaInicial();
 
+    // SINTAXE CORRIGIDA: Filtro estrito sem espaços para o canal realtime do Supabase
     const canalAuditoria = supabase
       .channel(`audi_lote_${disparoSelecionado.id}`)
       .on(
@@ -238,7 +240,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   }, [disparoSelecionado]);
 
   // ------------------------------------------------------------------
-  // 4. CARREGAR PÚBLICOS ALVO (CONVENÇÃO DE ESCOPO CORRIGIDA VIA USERPROFILE)
+  // 4. CARREGAR PÚBLICOS ALVO
   // ------------------------------------------------------------------
   useEffect(() => {
     const carregarLeadsEClientes = async () => {
@@ -347,7 +349,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   const limparSelecao = () => setIdsLeadsSelecionados([]);
 
   // ------------------------------------------------------------------
-  // 7. DISPARAR CAMPANHA (EXECUÇÃO DA EDGE FUNCTION CORRIGIDA)
+  // 7. DISPARAR CAMPANHA (EXECUÇÃO DA EDGE FUNCTION)
   // ------------------------------------------------------------------
   const dispararCampanhaLote = async () => {
     if (!userProfile) return;
@@ -369,7 +371,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
         abaAtiva === 'csv' ? idsLeadsSelecionados.includes(c.email) : idsLeadsSelecionados.includes(c.id || '')
       );
 
-      // CORREÇÃO: Payload alimentado diretamente com dados seguros mapeados do userProfile
       const payload = {
         campanha_id: campanhaSelecionada.id,
         nome_evento: campanhaSelecionada.nome_evento,

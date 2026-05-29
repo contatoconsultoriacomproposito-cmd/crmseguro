@@ -14,14 +14,23 @@ export const Linha2Coluna3Auditoria: React.FC = () => {
   // CÁLCULO DE MÉTRICAS RÁPIDAS DO LOTE ATUAL
   // ------------------------------------------------------------------
   const metricas = React.useMemo(() => {
-    if (!auditoria.length) return { entregues: 0, abertos: 0, cliques: 0, bounces: 0 };
+    if (!auditoria || !auditoria.length) {
+      return { entregues: 0, abertos: 0, cliques: 0, bounces: 0 };
+    }
     
     return auditoria.reduce(
       (acc, curr) => {
-        if (curr.status_entrega === 'entregue' || curr.status_entrega === 'enviado') acc.entregues++;
-        if (curr.abriu_email) acc.abertos++;
-        if (curr.clicou_whatsapp) acc.cliques++;
+        // Trata os valores de forma segura garantindo a avaliação como booleano real
+        const abriu = Boolean(curr.abriu_email);
+        const clicou = Boolean(curr.clicou_whatsapp);
+        
+        if (curr.status_entrega === 'entregue' || curr.status_entrega === 'enviado') {
+          acc.entregues++;
+        }
+        if (abriu) acc.abertos++;
+        if (clicou) acc.cliques++;
         if (curr.status_entrega === 'erro_bounced') acc.bounces++;
+        
         return acc;
       },
       { entregues: 0, abertos: 0, cliques: 0, bounces: 0 }
@@ -29,9 +38,12 @@ export const Linha2Coluna3Auditoria: React.FC = () => {
   }, [auditoria]);
 
   // Função auxiliar para renderizar badges visuais com base no status do Resend
-  const renderBadgeStatus = (status: string, abriu: boolean, clicou: boolean) => {
-    if (clicou) return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">🔥 Clicou Whats</span>;
-    if (abriu) return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">🌤️ Abriu E-mail</span>;
+  const renderBadgeStatus = (status: string, abriu: unknown, clicou: unknown) => {
+    const isClicou = Boolean(clicou);
+    const isAbriu = Boolean(abriu);
+
+    if (isClicou) return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">🔥 Clicou Whats</span>;
+    if (isAbriu) return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">🌤️ Abriu E-mail</span>;
     if (status === 'erro_bounced') return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">🚨 Bounce (Erro)</span>;
     if (status === 'entregue') return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">📥 Entregue</span>;
     return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-600">⏳ Processando</span>;
@@ -120,7 +132,7 @@ export const Linha2Coluna3Auditoria: React.FC = () => {
 
       {/* ====================================================================
           PAINEL LATERAL INJETADO (INSPEÇÃO DETALHADA DO CLIENTE CLICADO)
-         ==================================================================== */}
+          ==================================================================== */}
       {clienteAuditoriaSelecionado && (
         <div className="absolute inset-y-0 right-0 w-80 bg-slate-900 text-slate-100 shadow-2xl p-4 flex flex-col z-20 rounded-r-xl border-l border-slate-800 animate-slideLeft">
           <div className="flex justify-between items-start border-b border-slate-800 pb-3">
