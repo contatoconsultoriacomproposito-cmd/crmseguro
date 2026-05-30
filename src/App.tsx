@@ -7,7 +7,7 @@ import { NotificationProvider } from "./contexts/NotificationContext"
 import DashboardLayout from "./layouts/DashboardLayout"
 
 // IA
-import { ConsultorIA } from "./ConsultorIA"
+//import { ConsultorIA } from "./ConsultorIA"
 
 // Páginas Públicas
 import HomePage from "./pages/homepage/HomePage"
@@ -98,11 +98,11 @@ export default function App() {
 
   return (
     <NotificationProvider>
-      {/* IA apenas se autenticado */}
+      {/* IA DESATIVADA PROVISORIAMENTE (Retornando null para evitar tela branca) */}
       {user &&
         userProfile &&
         location.pathname !== "/reset-password" && (
-          <ConsultorIA />
+          null
         )}
 
       <Routes>

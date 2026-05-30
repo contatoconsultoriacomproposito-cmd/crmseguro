@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   ArrowLeft, Calendar, CheckCircle2, Loader2,
-  Upload, Trash2, Eye, Edit3, Check, Plus, X, MessageSquare, Clock
+  Upload, Trash2, Eye, Edit3, Check, Plus, X, MessageSquare, Clock, Printer
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../auth/AuthContext";
 import { maskCPF, maskCNPJ, maskPhone } from "../../utils/masks";
 import { toast } from "sonner";
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 
 // Lista de colunas fixas mapeáveis do banco de dados destino
 const COLUNAS_BANCO = [
@@ -51,6 +53,14 @@ export default function LeadsProspeccao() {
   const [loading, setLoading] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
 
+  // Estados paginação
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+  const ITENS_POR_PAGINA = 100;
+
+   // Estados rotas
+  const [pontoPartida, setPontoPartida] = useState("");
+
   // Estados do Motor de Importação CSV (Mapeamento Flexível)
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvRows, setCsvRows] = useState<string[][]>([]);
@@ -72,6 +82,7 @@ export default function LeadsProspeccao() {
   const [historicoAcoes, setHistoricoAcoes] = useState<any[]>([]);
   const [novaAcaoObs, setNovaAcaoObs] = useState("");
   const [novaAcaoRetorno, setNovaAcaoRetorno] = useState("");
+  const [marcarComoJaCliente, setMarcarComoJaCliente] = useState(false);
 
   // Estado do Botão de Ouro (Conversor Realtime)
   const [leadConversao, setLeadConversao] = useState<any>(null);
@@ -101,41 +112,65 @@ export default function LeadsProspeccao() {
       buscarLeadsFrios();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perfilUsuario, filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados]);
+  }, [perfilUsuario, filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, paginaAtual]);
 
-  // Leitura de Dados Básica e Filtros Inteligentes
+  //Resetar a Página ao Mudar os Filtros
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados]);
+
+  // Leitura de Dados Básica e Filtros Inteligentes com Paginação Profissional
   async function buscarLeadsFrios() {
     if (!perfilUsuario) return;
     setLoading(true);
     try {
-      let query = supabase.from("tab_clientes_frios").select("*").eq("corretora_id", perfilUsuario.corretora_id).neq("status_prospeccao", "convertido");
+      // 1. Define os limites matemáticos da paginação (Ex: pág 1 -> 0 a 99)
+      const de = (paginaAtual - 1) * ITENS_POR_PAGINA;
+      const ate = de + ITENS_POR_PAGINA - 1;
+
+      // 2. Solicita a contagem exata ({ count: "exact" }) para sabermos o total de páginas
+      let query = supabase
+        .from("tab_clientes_frios")
+        .select("*", { count: "exact" })
+        .eq("corretora_id", perfilUsuario.corretora_id)
+        .neq("status_prospeccao", "convertido");
       
+      // 3. Mantém suas regras estritas de níveis de acesso
       if (perfilUsuario.tipo_usuario === "CORRETOR") {
         query = query.eq("corretor_id", perfilUsuario.id);
       }
+
+      // 4. Mantém seus filtros de busca inteligentes
       if (filtroUf) query = query.ilike("uf", `%${filtroUf}%`);
       if (filtroMunicipio) query = query.ilike("municipio", `%${filtroMunicipio}%`);
       if (filtroBairro) query = query.ilike("bairro", `%${filtroBairro}%`);
-      if (filtroCnaesSelecionados.length > 0) { query = query.in("cnae_principal", filtroCnaesSelecionados); }
+      if (filtroCnaesSelecionados.length > 0) { 
+        query = query.in("cnae_principal", filtroCnaesSelecionados); 
+      }
 
-    const { data, error } = await query.order("importado_em", { ascending: false });
-    
-    if (error) throw error;
+      // 5. Aplica a limitação de linhas (.range) para trazer apenas 100 por vez
+      const { data, error, count } = await query
+        .order("importado_em", { ascending: false })
+        .range(de, ate);
+      
+      if (error) throw error;
 
-    // Garante que 'data' não é nulo antes de extrair os CNAEs
-    if (data && filtroCnaesSelecionados.length === 0 && !filtroUf && !filtroMunicipio && !filtroBairro) {
-      const cnaesUnicos = Array.from(
-        new Set(data.map((l: any) => l.cnae_principal?.trim()).filter(Boolean))
-      ) as string[];
-      setTodosCnaesDisponiveis(cnaesUnicos);
+      // 6. Alimenta a listagem global de CNAEs sem estragar a performance (apenas quando não há filtros aplicados)
+      if (data && filtroCnaesSelecionados.length === 0 && !filtroUf && !filtroMunicipio && !filtroBairro) {
+        const cnaesUnicos = Array.from(
+          new Set(data.map((l: any) => l.cnae_principal?.trim()).filter(Boolean))
+        ) as string[];
+        setTodosCnaesDisponiveis(cnaesUnicos);
+      }
+
+      // 7. Define os estados locais de dados e controle de páginas
+      setLeads(data || []);
+      setTotalRegistros(count || 0); // Atualiza a paginação com o número real do banco
+    } catch (err: any) {
+      toast.error("Erro ao buscar registros: " + err.message);
+    } finally {
+      setLoading(false);
     }
-
-    setLeads(data || []);
-  } catch (err: any) {
-    toast.error("Erro ao buscar registros: " + err.message);
-  } finally {
-    setLoading(false);
-  }
   }
 
   // Processamento de Upload e Leitura do Cabeçalho CSV
@@ -280,6 +315,7 @@ export default function LeadsProspeccao() {
       return;
     }
     try {
+      // Grava o histórico de ações
       const { error } = await supabase.from("tab_clientes_frios_acoes").insert({
         cliente_frio_id: leadTimeline.id,
         corretor_id: perfilUsuario.id,
@@ -288,11 +324,15 @@ export default function LeadsProspeccao() {
       });
       if (error) throw error;
 
+      // DEFINE O STATUS: Se marcou a caixinha vira 'ja_cliente', senão vira 'em_prospeccao'
+      const novoStatus = marcarComoJaCliente ? "ja_cliente" : "em_prospeccao";
+
       await supabase.from("tab_clientes_frios").update({
-        status_prospeccao: "em_prospeccao"
+        status_prospeccao: novoStatus
       }).eq("id", leadTimeline.id);
 
       toast.success("Ação registrada na linha do tempo!");
+      setMarcarComoJaCliente(false); // Reseta a caixinha
       abrirTimeline(leadTimeline);
       buscarLeadsFrios();
     } catch (err: any) {
@@ -367,6 +407,251 @@ export default function LeadsProspeccao() {
         👤 {n.trim()}
       </span>
     ));
+  };
+
+  const exportarRotaWhatsApp = () => {
+    if (selecionados.length === 0) {
+      toast.error("Selecione pelo menos 1 lead para exportar a rota.");
+      return;
+    }
+
+    const leadsParaRota = leads.filter(l => selecionados.includes(l.id));
+    let leadsOrdenados = [...leadsParaRota];
+
+    // Se o ponto de partida for uma coordenada GPS (identificada pelo prefixo "GPS:")
+    if (pontoPartida.startsWith("GPS:")) {
+      const [_, latPartida, lngPartida] = pontoPartida.split(":");
+      const lat1 = parseFloat(latPartida);
+      const lng1 = parseFloat(lngPartida);
+
+      // Ordena por proximidade matemática de linha reta (Fórmula de distância simplificada)
+      leadsOrdenados.sort((a, b) => {
+        const latA = parseFloat(a.latitude) || 0;
+        const lngA = parseFloat(a.longitude) || 0;
+        const latB = parseFloat(b.latitude) || 0;
+        const lngB = parseFloat(b.longitude) || 0;
+
+        // Se o lead não tiver lat/lng, joga para o fim
+        if (!latA && !latB) return 0;
+        if (!latA) return 1;
+        if (!latB) return -1;
+
+        const distA = Math.sqrt(Math.pow(latA - lat1, 2) + Math.pow(lngA - lng1, 2));
+        const distB = Math.sqrt(Math.pow(latB - lat1, 2) + Math.pow(lngB - lng1, 2));
+        return distA - distB;
+      });
+    } else if (pontoPartida.trim()) {
+      // Ordenação tradicional por texto (Bairro / Município)
+      const termoPartida = pontoPartida.toLowerCase();
+      leadsOrdenados.sort((a, b) => {
+        const muniA = (a.municipio || "").toLowerCase();
+        const bairroA = (a.bairro || "").toLowerCase();
+        const muniB = (b.municipio || "").toLowerCase();
+        const bairroB = (b.bairro || "").toLowerCase();
+
+        const pesoA = (termoPartida.includes(muniA) ? 2 : 0) + (termoPartida.includes(bairroA) ? 3 : 0);
+        const pesoB = (termoPartida.includes(muniB) ? 2 : 0) + (termoPartida.includes(bairroB) ? 3 : 0);
+
+        return pesoB - pesoA;
+      });
+    }
+
+    // Montagem do corpo da mensagem para o WhatsApp
+    let textoMensagem = `📍 *ROTA DE VISITAS ENCONTRADA*\n\n`;
+    if (pontoPartida.trim()) {
+      textoMensagem += `🚗 *Ponto de Partida:* ${pontoPartida.startsWith("GPS:") ? "Minha Localização Atual (GPS)" : pontoPartida}\n`;
+    }
+    textoMensagem += `=========================\n\n`;
+
+    leadsOrdenados.forEach((lead, index) => {
+      const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} ${lead.complemento ? "- " + lead.complemento : ""} - ${lead.bairro || ""}, ${lead.municipio || ""} - ${lead.uf || ""}`.replace(/, ,/g, "").trim();
+      const linkGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
+      const telefoneFormatado = lead.ddd_telefone_1 ? maskPhone(lead.ddd_telefone_1) : "Não informado";
+
+      textoMensagem += `🏢 *${index + 1}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}*\n`;
+      textoMensagem += `👥 *Sócios:* ${lead.nomes_socios || "Não informados"}\n`;
+      textoMensagem += `🗺️ *Endereço:* ${enderecoCompleto || "Não cadastrado"}\n`;
+      textoMensagem += `📞 *Telefone:* ${telefoneFormatado}\n`;
+      if (enderecoCompleto) {
+        textoMensagem += `🔗 *Navegar por GPS:* ${linkGoogleMaps}\n`;
+      }
+      textoMensagem += `\n-------------------------\n\n`;
+    });
+
+    textoMensagem += `_Boas vendas! Gerado pelo CRM._ 🚀`;
+
+    const urlWhatsApp = `https://wa.me/?text=${encodeURIComponent(textoMensagem)}`;
+    window.open(urlWhatsApp, "_blank");
+  };
+
+  const capturarLocalizacaoAtual = () => {
+    if (!navigator.geolocation) {
+      toast.error("Seu navegador não suporta geolocalização.");
+      return;
+    }
+
+    toast.info("Obtendo localização do GPS...");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        // Salva com um prefixo oculto para a nossa função de ordenação identificar
+        setPontoPartida(`GPS:${latitude}:${longitude}`);
+        toast.success("📍 Localização atual definida com sucesso!");
+      },
+      (error) => {
+        console.error(error);
+        toast.error("Não foi possível obter sua localização. Verifique as permissões do seu navegador.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const exportarFichasPDF = () => {
+    if (selecionados.length === 0) {
+      toast.error("Selecione pelo menos 1 lead para exportar o PDF.");
+      return;
+    }
+
+    toast.info("Gerando arquivo PDF customizado...");
+
+    // 1. Cria o documento PDF no formato A4, orientação Retrato (Portrait), unidade em milímetros (mm)
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4"
+    });
+
+    // Filtra apenas os clientes que o usuário marcou na tela
+    const leadsSelecionados = leads.filter(l => selecionados.includes(l.id));
+
+    // Configurações de layout da página A4 (210mm x 297mm)
+    const margemEsquerda = 15;
+    let posicaoY = 20; 
+    const larguraDisponivel = 180; // 210mm - 30mm de margens
+    const alturaMaximaPagina = 275;
+
+    // Cabeçalho Principal do PDF (Apenas na primeira página)
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42); // Cor Slate-900
+    doc.text("ROTEIRO DE VISITAS EM CAMPO", margemEsquerda, posicaoY);
+    
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139); // Cor Slate-500
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, margemEsquerda, posicaoY + 5);
+    
+    posicaoY += 15;
+
+    // Percorre cada cliente selecionado para montar o bloco visual customizado
+    leadsSelecionados.forEach((lead, index) => {
+      const alturaBlocoCliente = 55; // Altura fixa de cada ficha em milímetros
+
+      // Controle de Quebra de Página Automática: Se o próximo bloco for passar do limite do papel, cria nova folha
+      if (posicaoY + alturaBlocoCliente > alturaMaximaPagina) {
+        doc.addPage();
+        posicaoY = 20; // Reseta o topo na nova página
+      }
+
+      // --- DESIGN DA FICHA DO CLIENTE ---
+      
+      // 1. Fundo cinza claro para a barra de título do cliente
+      doc.setFillColor(248, 250, 252); // Slate-50
+      doc.rect(margemEsquerda, posicaoY, larguraDisponivel, 7, "F");
+      
+      // Borda externa fina ao redor de toda a ficha do cliente
+      doc.setDrawColor(203, 213, 225); // Slate-300
+      doc.setLineWidth(0.2);
+      doc.rect(margemEsquerda, posicaoY, larguraDisponivel, alturaBlocoCliente);
+
+      // Texto do título (Número + Nome Fantasia ou Razão Social)
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(30, 41, 59); // Slate-800
+      const nomeEmpresa = `${index + 1}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}`;
+      // Corta o nome se for excessivamente longo para não vazar o layout
+      doc.text(nomeEmpresa.substring(0, 75), margemEsquerda + 3, posicaoY + 5);
+
+      // Linha divisória interna vertical dividindo Dados (60%) e Anotações (40%)
+      const larguraDados = 110; 
+      const divisorX = margemEsquerda + larguraDados;
+      doc.line(divisorX, posicaoY + 7, divisorX, posicaoY + alturaBlocoCliente);
+
+      // 2. PREENCHIMENTO DOS DADOS (Coluna da Esquerda)
+      let dadosY = posicaoY + 13;
+      doc.setFontSize(9);
+
+      // CNPJ
+      doc.setFont("Helvetica", "bold"); doc.text("CNPJ:", margemEsquerda + 3, dadosY);
+      doc.setFont("Helvetica", "normal"); doc.text(lead.cnpj ? maskCNPJ(lead.cnpj) : "Não informado", margemEsquerda + 16, dadosY);
+      
+      // Razão Social
+      dadosY += 6;
+      doc.setFont("Helvetica", "bold"); doc.text("Razão Social:", margemEsquerda + 3, dadosY);
+      doc.setFont("Helvetica", "normal"); 
+      const razaoCortada = (lead.razao_social || "Não informada").substring(0, 45);
+      doc.text(razaoCortada, margemEsquerda + 26, dadosY);
+
+      // Sócios
+      dadosY += 6;
+      doc.setFont("Helvetica", "bold"); doc.text("Sócios:", margemEsquerda + 3, dadosY);
+      doc.setFont("Helvetica", "normal");
+      const sociosCortados = (lead.nomes_socios || "Não informados").substring(0, 48);
+      doc.text(sociosCortados, margemEsquerda + 16, dadosY);
+
+      // Capital Social
+      dadosY += 6;
+      doc.setFont("Helvetica", "bold"); doc.text("Capital Social:", margemEsquerda + 3, dadosY);
+      doc.setFont("Helvetica", "normal");
+      const capitalFormatado = lead.capital_social 
+        ? Number(lead.capital_social).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        : "Não informado";
+      doc.text(capitalFormatado, margemEsquerda + 27, dadosY);
+
+      // Endereço (Um extra importante para o vendedor saber onde ir)
+      dadosY += 6;
+      doc.setFont("Helvetica", "bold"); doc.text("Endereço:", margemEsquerda + 3, dadosY);
+      doc.setFont("Helvetica", "normal");
+      const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} - ${lead.bairro || ""}, ${lead.municipio || ""}`.substring(0, 45);
+      doc.text(enderecoCompleto, margemEsquerda + 20, dadosY);
+
+      // Telefone
+      dadosY += 6;
+      doc.setFont("Helvetica", "bold"); doc.text("Telefone:", margemEsquerda + 3, dadosY);
+      doc.setFont("Helvetica", "normal");
+      doc.text(lead.ddd_telefone_1 ? maskPhone(lead.ddd_telefone_1) : "Não informado", margemEsquerda + 19, dadosY);
+
+
+      // 3. CAMPO LIVRE PARA ANOTAÇÕES (Coluna da Direita - Efeito pautado pontilhado)
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184); // Slate-400
+      doc.text("ANOTAÇÕES DA VISITA (CANETA):", divisorX + 4, posicaoY + 12);
+
+      // Desenha as linhas pontilhadas espaçadas para escrita confortável à mão
+      doc.setDrawColor(226, 232, 240); // Slate-200
+      let linhaAnotacaoY = CollegeLineY(posicaoY + 20);
+      
+      for (let i = 0; i < 4; i++) {
+        // Altera o estilo da linha para tracejado/pontilhado
+        doc.setLineDashPattern([1, 1], 0);
+        doc.line(divisorX + 4, linhaAnotacaoY, margemEsquerda + larguraDisponivel - 4, linhaAnotacaoY);
+        linhaAnotacaoY += 7; // Espaçamento perfeito de 7mm entre linhas pautadas
+      }
+      // Reseta o estilo de linha para sólida normal nas próximas iterações
+      doc.setLineDashPattern([], 0);
+
+      // Avança a posição Y para o início do bloco do próximo cliente, adicionando um espaçamento de margem de 6mm
+      posicaoY += alturaBlocoCliente + 6;
+    });
+
+    // Auxiliar para legibilidade da altura da linha pautada
+    function CollegeLineY(start: number) { return start; }
+
+    // Salva o PDF gerado forçando o download imediato no dispositivo do usuário
+    doc.save(`roteiro_visitas_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success("PDF customizado exportado com sucesso! 📄");
   };
 
 return (
@@ -554,55 +839,66 @@ return (
                 </tr>
               ) : (
                 leads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-slate-50 transition">
-                    <td className="p-4">
-                      <input type="checkbox" checked={selecionados.includes(lead.id)} onChange={() => toggleLeadUnico(lead.id)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" />
-                    </td>
-                    <td className="p-4 max-w-[320px]">
-                      <div className="font-bold text-slate-800 truncate">{lead.nome_fantasia || lead.razao_social}</div>
-                      <div className="text-xs text-gray-400 font-mono mt-0.5">{maskCNPJ(lead.cnpj)}</div>
-                      <div className="text-[11px] text-slate-500 italic truncate mt-0.5">{lead.razao_social}</div>
-                      {lead.cnae_principal && (
-                        <div className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded inline-block mt-1 max-w-full truncate font-medium">
-                          🎯 {lead.cnae_principal}
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-4 max-w-[280px]">
-                      <div className="flex flex-wrap">{renderSociosBadge(lead.nomes_socios)}</div>
-                    </td>
-                    <td className="p-4">
-                      <div className="text-xs font-semibold text-slate-700">{lead.municipio} - {lead.uf}</div>
-                      <div className="text-[11px] text-gray-400 truncate mt-0.5">{lead.bairro}</div>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold uppercase ${
-                        lead.status_prospeccao === 'nao_contatado' ? 'bg-gray-100 text-gray-600' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {lead.status_prospeccao === 'nao_contatado' ? 'Não Contatado' : 'Em Prospecção'}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => abrirTimeline(lead)} title="Timeline & Ações" className="p-1.5 hover:bg-slate-100 text-purple-600 rounded-lg transition">
-                          <MessageSquare className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => setLeadVisualizar(lead)} title="Visualizar Ficha" className="p-1.5 hover:bg-slate-100 text-blue-600 rounded-lg transition">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => setLeadEditar(lead)} title="Editar Cadastro" className="p-1.5 hover:bg-slate-100 text-amber-600 rounded-lg transition">
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => excluirLoteOuUnico(lead.id)} title="Remover" className="p-1.5 hover:bg-slate-100 text-red-600 rounded-lg transition">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => { setLeadConversao(lead); setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); }} className="ml-2 px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition">
-                          🏆 Converter
-                        </button>
+                <tr key={lead.id} className="hover:bg-slate-50 transition">
+                  <td className="p-4">
+                    <input type="checkbox" checked={selecionados.includes(lead.id)} onChange={() => toggleLeadUnico(lead.id)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" />
+                  </td>
+                  <td className="p-4 max-w-[320px]">
+                    <div className="font-bold text-slate-800 truncate">{lead.nome_fantasia || lead.razao_social}</div>
+                    <div className="text-xs text-gray-400 font-mono mt-0.5">{maskCNPJ(lead.cnpj)}</div>
+                    <div className="text-[11px] text-slate-500 italic truncate mt-0.5">{lead.razao_social}</div>
+                    {lead.cnae_principal && (
+                      <div className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded inline-block mt-1 max-w-full truncate font-medium">
+                        🎯 {lead.cnae_principal}
                       </div>
-                    </td>
-                  </tr>
-                ))
+                    )}
+                  </td>
+                  <td className="p-4 max-w-[280px]">
+                    <div className="flex flex-wrap">{renderSociosBadge(lead.nomes_socios)}</div>
+                  </td>
+                  <td className="p-4">
+                    <div className="text-xs font-semibold text-slate-700">{lead.municipio} - {lead.uf}</div>
+                    <div className="text-[11px] text-gray-400 truncate mt-0.5">{lead.bairro}</div>
+                  </td>
+                  
+                  {/* COLUNA DE STATUS REMONTADA E CORRIGIDA */}
+                  <td className="p-4">
+                    {lead.status_prospeccao === 'ja_cliente' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
+                        👑 Já é Cliente
+                      </span>
+                    ) : lead.status_prospeccao === 'em_prospeccao' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+                        🔄 Em Prospecção
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-gray-100 text-gray-600 border border-gray-200">
+                        Não Contatado
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="p-4">
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => abrirTimeline(lead)} title="Timeline & Ações" className="p-1.5 hover:bg-slate-100 text-purple-600 rounded-lg transition">
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setLeadVisualizar(lead)} title="Visualizar Ficha" className="p-1.5 hover:bg-slate-100 text-blue-600 rounded-lg transition">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setLeadEditar(lead)} title="Editar Cadastro" className="p-1.5 hover:bg-slate-100 text-amber-600 rounded-lg transition">
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => excluirLoteOuUnico(lead.id)} title="Remover" className="p-1.5 hover:bg-slate-100 text-red-600 rounded-lg transition">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => { setLeadConversao(lead); setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); }} className="ml-2 px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition">
+                        🏆 Converter
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
               )}
             </tbody>
           </table>
@@ -851,6 +1147,123 @@ return (
               }} className="px-5 py-2 text-sm font-semibold bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700">Salvar Alterações</button>
             </div>
           </div>
+        </div>
+      )}
+
+    {/* Controles de Paginação Profissional */}
+      {!loading && leads.length > 0 && (
+        <div className="bg-white px-4 py-3 flex items-center justify-between border border-slate-200 rounded-xl shadow-sm">
+          <div className="flex-1 flex justify-between sm:hidden">
+            <button
+              disabled={paginaAtual === 1}
+              onClick={() => setPaginaAtual(prev => Math.max(prev - 1, 1))}
+              className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-750 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              Anterior
+            </button>
+            <button
+              disabled={paginaAtual >= Math.ceil(totalRegistros / ITENS_POR_PAGINA)}
+              onClick={() => setPaginaAtual(prev => prev + 1)}
+              className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-750 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              Próximo
+            </button>
+          </div>
+          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-slate-700 font-medium">
+                Exibindo de <span className="font-bold text-blue-600">{((paginaAtual - 1) * ITENS_POR_PAGINA) + 1}</span> até{" "}
+                <span className="font-bold text-blue-600">{Math.min(paginaAtual * ITENS_POR_PAGINA, totalRegistros)}</span> de{" "}
+                <span className="font-bold text-slate-800">{totalRegistros}</span> registros
+              </p>
+            </div>
+            <div>
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <button
+                  disabled={paginaAtual === 1}
+                  onClick={() => setPaginaAtual(prev => Math.max(prev - 1, 1))}
+                  className="relative inline-flex items-center px-3 py-2 rounded-l-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  ◀ Anterior
+                </button>
+                <div className="bg-slate-50 border-t border-b border-gray-300 px-4 py-2 text-sm font-semibold text-slate-700 min-w-[100px] text-center select-none">
+                  Pág. {paginaAtual} de {Math.ceil(totalRegistros / ITENS_POR_PAGINA) || 1}
+                </div>
+                <button
+                  disabled={paginaAtual >= Math.ceil(totalRegistros / ITENS_POR_PAGINA)}
+                  onClick={() => setPaginaAtual(prev => prev + 1)}
+                  className="relative inline-flex items-center px-3 py-2 rounded-r-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  Próximo ▶
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
+
+    {/* Barra Flutuante de Rota de Visitas */}
+      {selecionados.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex flex-col md:flex-row items-center gap-4 z-50 border border-slate-700 w-[90%] max-w-5xl">
+          
+          {/* Indicador de quantidade de leads selecionados */}
+          <div className="flex items-center gap-2 min-w-[160px]">
+            <div className="bg-blue-600 p-2 rounded-lg text-white font-bold text-sm">
+              {selecionados.length}
+            </div>
+            <p className="text-sm font-medium text-slate-300">Leads na rota</p>
+          </div>
+
+          {/* Campo de busca / GPS do ponto de partida */}
+          <div className="flex-1 w-full relative flex items-center">
+            <input
+              type="text"
+              placeholder={pontoPartida.startsWith("GPS:") ? "📍 Usando sua localização atual..." : "Digite o Bairro/Cidade de Partida..."}
+              value={pontoPartida.startsWith("GPS:") ? "" : pontoPartida}
+              disabled={pontoPartida.startsWith("GPS:")}
+              onChange={(e) => setPontoPartida(e.target.value)}
+              className="w-full bg-slate-800 text-sm text-white placeholder-slate-400 pl-4 pr-32 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-blue-500 disabled:bg-slate-800/50 disabled:text-blue-400 disabled:font-medium"
+            />
+            <div className="absolute right-2 flex gap-1">
+              {pontoPartida.startsWith("GPS:") ? (
+                <button
+                  onClick={() => setPontoPartida("")}
+                  className="bg-red-950/40 hover:bg-red-900/60 text-red-400 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+                >
+                  Limpar GPS
+                </button>
+              ) : (
+                <button
+                  onClick={capturarLocalizacaoAtual}
+                  className="bg-blue-950/60 hover:bg-blue-900 text-blue-400 text-[11px] font-bold px-2.5 py-1 rounded-lg transition border border-blue-800/30 flex items-center gap-1"
+                >
+                  📍 Usar GPS
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Bloco de Ações (Botões) */}
+          <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+            {/* Botão do WhatsApp */}
+            <button
+              onClick={exportarRotaWhatsApp}
+              className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition flex items-center justify-center gap-2 whitespace-nowrap shadow-lg active:scale-95"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Rota WhatsApp
+            </button>
+
+            {/* NOVO BOTÃO CUSTOMIZADO DE IMPRESSÃO AQUI */}
+            <button
+              onClick={exportarFichasPDF}
+              className="w-full md:w-auto bg-slate-700 hover:bg-slate-600 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition flex items-center justify-center gap-2 whitespace-nowrap shadow-lg active:scale-95 border border-slate-600"
+            >
+              <Printer className="w-4 h-4" />
+              Exportar Fichas (PDF)
+            </button>
+          </div>
+
         </div>
       )}
 
