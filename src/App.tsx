@@ -26,6 +26,7 @@ import AgendaCorretor from "./pages/agenda/AgendaCorretor"
 import ClientesCadastro from "./pages/clientes/ClientesCadastro"
 import ClientesLista from "./pages/clientes/ClientesLista"
 import ClientesAcoes from "./pages/clientes/ClientesAcoes"
+import LeadsProspeccao from "./pages/clientes/LeadsProspeccao"
 import CampanhasClientes from "./pages/clientes/components/painel-marketing/CampanhasClientes"
 import SeguradorasLista from "./pages/seguradoras/SeguradorasLista"
 import ProdutosLista from "./pages/propostas/ProdutosLista"
@@ -135,7 +136,8 @@ export default function App() {
             <Route path="/clientes/lista" element={<ClientesLista />} />
             <Route path="/clientes/editar/:id" element={<ClientesCadastro />} />
             <Route path="/clientes/acoes" element={<ClientesAcoes />} /> 
-            <Route path="/clientes/campanhas" element={<CampanhasClientes />} /> 
+            <Route path="/clientes/campanhas" element={<CampanhasClientes />} />
+            <Route path="/clientes/leads" element={<LeadsProspeccao />} />
 
             <Route path="/propostas/criar" element={<PropostasCadastro key="nova" />} />
             <Route path="/propostas/lista" element={<PropostasLista />} />
