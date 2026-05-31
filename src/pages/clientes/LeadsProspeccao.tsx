@@ -75,6 +75,15 @@ export default function LeadsProspeccao() {
   const [termoPesquisaCnae, setTermoPesquisaCnae] = useState("");
   const [dropdownCnaeAberto, setDropdownCnaeAberto] = useState(false);
 
+  // 🎯 NOVOS ESTADOS DOS FILTROS AVANÇADOS
+  const [filtroStatus, setFiltroStatus] = useState("");
+  const [filtroPorte, setFiltroPorte] = useState("");
+  const [filtroMei, setFiltroMei] = useState(""); // "" = Todos, "true" = Sim, "false" = Não
+  const [filtroSimples, setFiltroSimples] = useState("");
+  const [filtroMatriz, setFiltroMatriz] = useState("");
+  const [filtroCapitalMin, setFiltroCapitalMin] = useState("");
+  const [filtroCapitalMax, setFiltroCapitalMax] = useState("");
+
   // Estados dos Modais Modulares
   const [leadVisualizar, setLeadVisualizar] = useState<any>(null);
   const [leadEditar, setLeadEditar] = useState<any>(null);
@@ -112,12 +121,12 @@ export default function LeadsProspeccao() {
       buscarLeadsFrios();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perfilUsuario, filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, paginaAtual]);
+  }, [perfilUsuario, filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, paginaAtual]);
 
   //Resetar a Página ao Mudar os Filtros
   useEffect(() => {
     setPaginaAtual(1);
-  }, [filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados]);
+  }, [filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax]);
 
   // Leitura de Dados Básica e Filtros Inteligentes com Paginação Profissional
   async function buscarLeadsFrios() {
@@ -132,15 +141,22 @@ export default function LeadsProspeccao() {
       let query = supabase
         .from("tab_clientes_frios")
         .select("*", { count: "exact" })
-        .eq("corretora_id", perfilUsuario.corretora_id)
-        .neq("status_prospeccao", "convertido");
-      
+        .eq("corretora_id", perfilUsuario.corretora_id);
+
+      // 🎯 LÓGICA DO NOVO FILTRO DE STATUS
+      if (filtroStatus) {
+        query = query.eq("status_prospeccao", filtroStatus);
+      } else {
+        // Se não houver filtro de status selecionado, o padrão é ocultar os já convertidos
+        query = query.neq("status_prospeccao", "convertido");
+      }
+
       // 3. Mantém suas regras estritas de níveis de acesso
       if (perfilUsuario.tipo_usuario === "CORRETOR") {
         query = query.eq("corretor_id", perfilUsuario.id);
       }
 
-      // 4. Mantém seus filtros de busca inteligentes
+      // 4. Filtros Geográficos Inteligentes
       if (filtroUf) query = query.ilike("uf", `%${filtroUf}%`);
       if (filtroMunicipio) query = query.ilike("municipio", `%${filtroMunicipio}%`);
       if (filtroBairro) query = query.ilike("bairro", `%${filtroBairro}%`);
@@ -148,7 +164,15 @@ export default function LeadsProspeccao() {
         query = query.in("cnae_principal", filtroCnaesSelecionados); 
       }
 
-      // 5. Aplica a limitação de linhas (.range) para trazer apenas 100 por vez
+      // 🎯 5. NOVOS FILTROS AVANÇADOS
+      if (filtroPorte) query = query.eq("porte", filtroPorte);
+      if (filtroMei !== "") query = query.eq("opcao_pelo_mei", filtroMei === "true");
+      if (filtroSimples !== "") query = query.eq("opcao_pelo_simples", filtroSimples === "true");
+      if (filtroMatriz) query = query.eq("descricao_identificador_matriz_filial", filtroMatriz);
+      if (filtroCapitalMin) query = query.gte("capital_social", Number(filtroCapitalMin));
+      if (filtroCapitalMax) query = query.lte("capital_social", Number(filtroCapitalMax));
+
+      // 6. Aplica a limitação de linhas (.range) para trazer apenas 100 por vez
       const { data, error, count } = await query
         .order("importado_em", { ascending: false })
         .range(de, ate);
@@ -185,10 +209,15 @@ export default function LeadsProspeccao() {
       if (lines.length === 0) return;
 
       const delimitador = lines[0].includes(";") ? ";" : ",";
-      const headers = lines[0].split(delimitador).map(h => h.replace(/^["']|["']$/g, "").trim());
+      
+      // 🎯 A CORREÇÃO: Regex que divide pelo delimitador, MAS ignora os que estão dentro de aspas duplas!
+      const regexSeparador = new RegExp(`${delimitador}(?=(?:[^"]*"[^"]*")*[^"]*$)`);
+
+      // Aplicamos o regexSeparador no lugar do .split(delimitador) tradicional
+      const headers = lines[0].split(regexSeparador).map(h => h.replace(/^["']|["']$/g, "").trim());
       
       const rows = lines.slice(1).map(line => 
-        line.split(delimitador).map(cell => cell.replace(/^["']|["']$/g, "").trim())
+        line.split(regexSeparador).map(cell => cell.replace(/^["']|["']$/g, "").trim())
       );
 
       setCsvHeaders(headers);
@@ -654,6 +683,61 @@ export default function LeadsProspeccao() {
     toast.success("PDF customizado exportado com sucesso! 📄");
   };
 
+  
+  // 🎯 FUNÇÃO PARA EXPORTAR APENAS NOME E EMAIL PARA CAMPANHAS DE MARKETING (TRATADO MINÚSCULO)
+  const exportarCampanhaCSV = () => {
+    if (leads.length === 0) {
+      toast.error("Não há registros filtrados para exportar.");
+      return;
+    }
+
+    // 1. Cabeçalho esperado pelo importador da Central de Disparos
+    const cabecalho = "nome,email\n";
+
+    // 2. Mapeia as linhas usando Nome Fantasia/Razão Social e o Email do seu estado 'leads'
+    const linhas = leads
+      .map((cliente: any) => {
+        // Trata strings para evitar quebras de linha ou vírgulas que estraguem o CSV
+        const nomeLimpo = (cliente.nome_fantasia || cliente.razao_social || "Empresa sem Nome")
+          .replace(/,/g, " ")
+          .replace(/\n/g, " ")
+          .trim();
+        
+        // 🎯 Força o e-mail a ficar 100% em letras minúsculas e remove espaços vazios
+        const emailLimpo = (cliente.email || "").trim().toLowerCase();
+
+        return `"${nomeLimpo}","${emailLimpo}"`;
+      })
+      .filter((linha: string) => {
+        // Garante que não vai exportar linhas onde o e-mail esteja em branco
+        return !linha.endsWith('""');
+      })
+      .join("\n");
+
+    if (linhas.length === 0) {
+      toast.error("Nenhum cliente com e-mail válido encontrado no filtro atual.");
+      return;
+    }
+
+    // 3. Cria o arquivo BLOB e força o download no navegador
+    const conteudoFinal = cabecalho + linhas;
+    const blob = new Blob(["\ufeff" + conteudoFinal], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    
+    // Nome dinâmico baseado no seu estado 'filtroMunicipio'
+    const nomeArquivo = `prospeccao_marketing_${filtroMunicipio || "segmentada"}.csv`;
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", nomeArquivo);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast.success(`${leads.length} contatos preparados para a Central de Disparos!`);
+  };
+
 return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6 bg-slate-50 dark:bg-zinc-900 min-h-screen">
       
@@ -687,6 +771,7 @@ return (
 
       {/* Painel Unificado de Filtros (Geográficos e Segmentação) */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📍 Filtrar por UF</label>
           <input 
@@ -737,13 +822,13 @@ return (
               {dropdownCnaeAberto ? "▲" : "▼"}
             </span>
           </div>
+        
 
-          {/* Caixa Dropdown Flutuante */}
-            {dropdownCnaeAberto && (() => {
-                // Agora busca da lista global imutável, permitindo selecionar múltiplos sem que sumam!
-                const cnaesFiltrados = todosCnaesDisponiveis.filter((cnae: string) => 
-                cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
-                );
+          {/* Caixa Dropdown Flutuante FICA DENTRO do container do CNAE */}
+          {dropdownCnaeAberto && (() => {
+            const cnaesFiltrados = todosCnaesDisponiveis.filter((cnae: string) => 
+              cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
+            );
 
             return (
               <div className="absolute right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 space-y-2 animate-fade-in w-full min-w-[280px] md:min-w-[340px]">
@@ -808,6 +893,63 @@ return (
             );
           })()}
         </div>
+
+        {/* NOVOS FILTROS AVANÇADOS FICAM FORA (agora preenchem as outras colunas) */}
+        <div>
+          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📌 Status de Prospecção</label>
+          <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
+            <option value="">Todos (Exceto Convertidos)</option>
+            <option value="nao_contatado">Não Contatado</option>
+            <option value="em_prospeccao">Em Prospecção</option>
+            <option value="ja_cliente">Já Cliente</option>
+            <option value="convertido">Convertidos para CRM</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏢 Porte da Empresa</label>
+          <select value={filtroPorte} onChange={(e) => setFiltroPorte(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
+            <option value="">Todos os Portes</option>
+            <option value="MICRO EMPRESA">Micro Empresa</option>
+            <option value="EMPRESA DE PEQUENO PORTE">Empresa de Pequeno Porte</option>
+            <option value="DEMAIS">Demais Portes</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏷️ Matriz / Filial</label>
+          <select value={filtroMatriz} onChange={(e) => setFiltroMatriz(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
+            <option value="">Matriz e Filiais</option>
+            <option value="1">Apenas Matriz (1)</option>
+            <option value="2">Apenas Filial (2)</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">⚙️ Enquadramento</label>
+          <div className="grid grid-cols-2 gap-2">
+            <select value={filtroMei} onChange={(e) => setFiltroMei(e.target.value)} className="w-full p-2.5 rounded-lg border text-xs bg-slate-50/50 outline-none focus:border-blue-500">
+              <option value="">MEI?</option>
+              <option value="true">Sim</option>
+              <option value="false">Não</option>
+            </select>
+            <select value={filtroSimples} onChange={(e) => setFiltroSimples(e.target.value)} className="w-full p-2.5 rounded-lg border text-xs bg-slate-50/50 outline-none focus:border-blue-500">
+              <option value="">Simples?</option>
+              <option value="true">Sim</option>
+              <option value="false">Não</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="col-span-1 sm:col-span-2 md:col-span-4 border-t border-slate-100 pt-3">
+          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">💰 Filtro de Capital Social (Intervalo)</label>
+          <div className="flex items-center gap-2">
+            <input type="number" placeholder="De R$ 0,00" value={filtroCapitalMin} onChange={(e) => setFiltroCapitalMin(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500" />
+            <span className="text-slate-400 font-bold">até</span>
+            <input type="number" placeholder="Até R$ (Máximo)" value={filtroCapitalMax} onChange={(e) => setFiltroCapitalMax(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500" />
+          </div>
+        </div>
+        
       </div>
 
       {/* Tabela de Leads */}
@@ -1262,6 +1404,15 @@ return (
               <Printer className="w-4 h-4" />
               Exportar Fichas (PDF)
             </button>
+
+            {/* 🚀 O SEU NOVO BOTÃO DE BINGO ENTRA EXATAMENTE AQUI: */}
+            <button
+              onClick={exportarCampanhaCSV}
+              className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition flex items-center justify-center gap-2 whitespace-nowrap shadow-lg active:scale-95"
+            >
+              📊 Exportar para Central de Emails
+            </button>
+
           </div>
 
         </div>
