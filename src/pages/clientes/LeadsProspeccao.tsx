@@ -49,7 +49,7 @@ export default function LeadsProspeccao() {
   
   // Estados de Dados Principais
   const [leads, setLeads] = useState<any[]>([]);
-  const [todosCnaesDisponiveis, setTodosCnaesDisponiveis] = useState<string[]>([]);
+  const [todosCnaesDisponiveis, setTodosCnaesDisponiveis] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
 
@@ -179,12 +179,55 @@ export default function LeadsProspeccao() {
       
       if (error) throw error;
 
-      // 6. Alimenta a listagem global de CNAEs sem estragar a performance (apenas quando não há filtros aplicados)
-      if (data && filtroCnaesSelecionados.length === 0 && !filtroUf && !filtroMunicipio && !filtroBairro) {
-        const cnaesUnicos = Array.from(
-          new Set(data.map((l: any) => l.cnae_principal?.trim()).filter(Boolean))
-        ) as string[];
-        setTodosCnaesDisponiveis(cnaesUnicos);
+      // 6. Alimenta a listagem global de CNAEs com contagem em tempo real baseada nos outros filtros aplicados
+      try {
+        let cnaeQuery = supabase
+          .from("tab_clientes_frios")
+          .select("cnae_principal")
+          .eq("corretora_id", perfilUsuario.corretora_id);
+
+        if (filtroStatus) {
+          cnaeQuery = cnaeQuery.eq("status_prospeccao", filtroStatus);
+        } else {
+          cnaeQuery = cnaeQuery.neq("status_prospeccao", "convertido");
+        }
+
+        if (perfilUsuario.tipo_usuario === "CORRETOR") {
+          cnaeQuery = cnaeQuery.eq("corretor_id", perfilUsuario.id);
+        }
+
+        // Aplica os demais filtros de segmentação (menos o próprio filtroCnaesSelecionados)
+        if (filtroUf) cnaeQuery = cnaeQuery.ilike("uf", `%${filtroUf}%`);
+        if (filtroMunicipio) cnaeQuery = cnaeQuery.ilike("municipio", `%${filtroMunicipio}%`);
+        if (filtroBairro) cnaeQuery = cnaeQuery.ilike("bairro", `%${filtroBairro}%`);
+        if (filtroPorte) cnaeQuery = cnaeQuery.eq("porte", filtroPorte);
+        if (filtroMei !== "") cnaeQuery = cnaeQuery.eq("opcao_pelo_mei", filtroMei === "true");
+        if (filtroSimples !== "") cnaeQuery = cnaeQuery.eq("opcao_pelo_simples", filtroSimples === "true");
+        if (filtroMatriz) cnaeQuery = cnaeQuery.eq("descricao_identificador_matriz_filial", filtroMatriz);
+        if (filtroCapitalMin) cnaeQuery = cnaeQuery.gte("capital_social", Number(filtroCapitalMin));
+        if (filtroCapitalMax) cnaeQuery = cnaeQuery.lte("capital_social", Number(filtroCapitalMax));
+
+        const { data: cnaeData } = await cnaeQuery;
+
+        if (cnaeData) {
+          const contagem: { [key: string]: number } = {};
+          cnaeData.forEach((item: any) => {
+            const cnaeNome = item.cnae_principal?.trim();
+            if (cnaeNome) {
+              contagem[cnaeNome] = (contagem[cnaeNome] || 0) + 1;
+            }
+          });
+
+          // Mapeia para array de objetos e ordena do segmento com mais registros para o com menos
+          const listaMapeada = Object.entries(contagem).map(([cnae, qtd]) => ({
+            cnae,
+            quantidade: qtd
+          })).sort((a, b) => b.quantidade - a.quantidade);
+
+          setTodosCnaesDisponiveis(listaMapeada);
+        }
+      } catch (err) {
+        console.error("Erro ao calcular contagem de CNAEs:", err);
       }
 
       // 7. Define os estados locais de dados e controle de páginas
@@ -826,8 +869,8 @@ return (
 
           {/* Caixa Dropdown Flutuante FICA DENTRO do container do CNAE */}
           {dropdownCnaeAberto && (() => {
-            const cnaesFiltrados = todosCnaesDisponiveis.filter((cnae: string) => 
-              cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
+            const cnaesFiltrados = todosCnaesDisponiveis.filter((item: any) => 
+              item.cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
             );
 
             return (
@@ -843,24 +886,29 @@ return (
 
                 <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
                   {cnaesFiltrados.length > 0 ? (
-                    cnaesFiltrados.map((cnae: string) => {
-                      const incluso = filtroCnaesSelecionados.includes(cnae);
+                    cnaesFiltrados.map((item: any) => {
+                      const incluso = filtroCnaesSelecionados.includes(item.cnae);
                       return (
                         <label 
-                          key={cnae} 
-                          className="flex items-start gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none"
+                          key={item.cnae} 
+                          className="flex items-center justify-between gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none"
                         >
-                          <input 
-                            type="checkbox"
-                            checked={incluso}
-                            onChange={() => {
-                              setFiltroCnaesSelecionados(prev => 
-                                incluso ? prev.filter(item => item !== cnae) : [...prev, cnae]
-                              );
-                            }}
-                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer"
-                          />
-                          <span className="text-slate-700 font-medium break-words leading-tight">{cnae}</span>
+                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                            <input 
+                              type="checkbox"
+                              checked={incluso}
+                              onChange={() => {
+                                setFiltroCnaesSelecionados(prev => 
+                                  incluso ? prev.filter(i => i !== item.cnae) : [...prev, item.cnae]
+                                );
+                              }}
+                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer flex-shrink-0"
+                            />
+                            <span className="text-slate-700 font-medium break-words leading-tight">{item.cnae}</span>
+                          </div>
+                          <span className="text-[10px] bg-blue-50 dark:bg-zinc-800 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100 dark:border-zinc-700">
+                            {item.quantidade}
+                          </span>
                         </label>
                       );
                     })
