@@ -74,6 +74,7 @@ export default function LeadsProspeccao() {
   const [filtroCnaesSelecionados, setFiltroCnaesSelecionados] = useState<string[]>([]);
   const [termoPesquisaCnae, setTermoPesquisaCnae] = useState("");
   const [dropdownCnaeAberto, setDropdownCnaeAberto] = useState(false);
+  const [pesquisaGeral, setPesquisaGeral] = useState("");
 
   // 🎯 NOVOS ESTADOS DOS FILTROS AVANÇADOS
   const [filtroStatus, setFiltroStatus] = useState("");
@@ -121,12 +122,12 @@ export default function LeadsProspeccao() {
       buscarLeadsFrios();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perfilUsuario, filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, paginaAtual]);
+  }, [perfilUsuario, filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, paginaAtual, pesquisaGeral]);
 
   //Resetar a Página ao Mudar os Filtros
   useEffect(() => {
     setPaginaAtual(1);
-  }, [filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax]);
+  }, [filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, pesquisaGeral]);
 
   // Leitura de Dados Básica e Filtros Inteligentes com Paginação Profissional
   async function buscarLeadsFrios() {
@@ -144,6 +145,10 @@ export default function LeadsProspeccao() {
         .eq("corretora_id", perfilUsuario.corretora_id);
 
       // 🎯 LÓGICA DO NOVO FILTRO DE STATUS
+      if (pesquisaGeral) {
+        query = query.or(`razao_social.ilike."%${pesquisaGeral}%",nome_fantasia.ilike."%${pesquisaGeral}%",cnpj.ilike."%${pesquisaGeral}%"`);
+      }
+
       if (filtroStatus) {
         query = query.eq("status_prospeccao", filtroStatus);
       } else {
@@ -186,6 +191,8 @@ export default function LeadsProspeccao() {
           .select("cnae_principal")
           .eq("corretora_id", perfilUsuario.corretora_id);
 
+
+
         if (filtroStatus) {
           cnaeQuery = cnaeQuery.eq("status_prospeccao", filtroStatus);
         } else {
@@ -194,6 +201,10 @@ export default function LeadsProspeccao() {
 
         if (perfilUsuario.tipo_usuario === "CORRETOR") {
           cnaeQuery = cnaeQuery.eq("corretor_id", perfilUsuario.id);
+        }
+
+        if (pesquisaGeral) {
+          cnaeQuery = cnaeQuery.or(`razao_social.ilike."%${pesquisaGeral}%",nome_fantasia.ilike."%${pesquisaGeral}%",cnpj.ilike."%${pesquisaGeral}%"`);
         }
 
         // Aplica os demais filtros de segmentação (menos o próprio filtroCnaesSelecionados)
@@ -781,8 +792,24 @@ export default function LeadsProspeccao() {
     toast.success(`${leads.length} contatos preparados para a Central de Disparos!`);
   };
 
+const handleLimparFiltros = () => {
+    setPesquisaGeral("");
+    setFiltroUf("");
+    setFiltroMunicipio("");
+    setFiltroBairro("");
+    setFiltroCnaesSelecionados([]);
+    setFiltroStatus("");
+    setFiltroPorte("");
+    setFiltroMei("");
+    setFiltroSimples("");
+    setFiltroMatriz("");
+    setFiltroCapitalMin("");
+    setFiltroCapitalMax("");
+    setPaginaAtual(1);
+  };
+
 return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-6 bg-slate-50 dark:bg-zinc-900 min-h-screen">
+  <div className="p-6 max-w-[1600px] mx-auto space-y-6 bg-slate-50 dark:bg-zinc-900 min-h-screen">
       
       {/* Cabeçalho de Ações Principais */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
@@ -811,10 +838,25 @@ return (
           )}
         </div>
       </div>
+      
+      
 
       {/* Painel Unificado de Filtros (Geográficos e Segmentação) */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         
+        {/* 🔍 BARRA DE PESQUISA INTELIGENTE (Ocupa a linha inteira de cima) */}
+        <div className="col-span-1 sm:col-span-2 md:col-span-4 border-b border-slate-100 pb-3">
+          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🔍 Pesquisa Rápida</label>
+          <input 
+            type="text" 
+            value={pesquisaGeral} 
+            onChange={(e) => setPesquisaGeral(e.target.value)} 
+            placeholder="Busque por Razão Social, Nome Fantasia ou CNPJ..." 
+            className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500 transition-colors font-medium placeholder-slate-400"
+          />
+        </div> 
+        
+        {/* 📍 Filtrar por UF */}
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📍 Filtrar por UF</label>
           <input 
@@ -827,6 +869,7 @@ return (
           />
         </div>
 
+        {/* 🏙️ Filtrar por Município */}
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏙️ Filtrar por Município</label>
           <input 
@@ -838,6 +881,7 @@ return (
           />
         </div>
 
+        {/* 🏡 Filtrar por Bairro */}
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏡 Filtrar por Bairro</label>
           <input 
@@ -849,6 +893,7 @@ return (
           />
         </div>
 
+        {/* 🎯 Filtrar por CNAE / Nicho */}
         <div className="relative" id="cnae-dropdown-container">
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🎯 Filtrar por CNAE / Nicho</label>
           
@@ -866,8 +911,7 @@ return (
             </span>
           </div>
         
-
-          {/* Caixa Dropdown Flutuante FICA DENTRO do container do CNAE */}
+          {/* Caixa Dropdown Flutuante */}
           {dropdownCnaeAberto && (() => {
             const cnaesFiltrados = todosCnaesDisponiveis.filter((item: any) => 
               item.cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
@@ -906,7 +950,7 @@ return (
                             />
                             <span className="text-slate-700 font-medium break-words leading-tight">{item.cnae}</span>
                           </div>
-                          <span className="text-[10px] bg-blue-50 dark:bg-zinc-800 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100 dark:border-zinc-700">
+                          <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100">
                             {item.quantidade}
                           </span>
                         </label>
@@ -942,7 +986,7 @@ return (
           })()}
         </div>
 
-        {/* NOVOS FILTROS AVANÇADOS FICAM FORA (agora preenchem as outras colunas) */}
+        {/* 📌 Status de Prospecção */}
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📌 Status de Prospecção</label>
           <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
@@ -954,6 +998,7 @@ return (
           </select>
         </div>
 
+        {/* 🏢 Porte da Empresa */}
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏢 Porte da Empresa</label>
           <select value={filtroPorte} onChange={(e) => setFiltroPorte(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
@@ -964,6 +1009,7 @@ return (
           </select>
         </div>
 
+        {/* 🏷️ Matriz / Filial */}
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏷️ Matriz / Filial</label>
           <select value={filtroMatriz} onChange={(e) => setFiltroMatriz(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
@@ -973,6 +1019,7 @@ return (
           </select>
         </div>
 
+        {/* ⚙️ Enquadramento */}
         <div>
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">⚙️ Enquadramento</label>
           <div className="grid grid-cols-2 gap-2">
@@ -989,6 +1036,7 @@ return (
           </div>
         </div>
 
+        {/* 💰 Filtro de Capital Social (Intervalo) */}
         <div className="col-span-1 sm:col-span-2 md:col-span-4 border-t border-slate-100 pt-3">
           <label className="block text-xs font-bold text-slate-600 uppercase mb-1">💰 Filtro de Capital Social (Intervalo)</label>
           <div className="flex items-center gap-2">
@@ -997,6 +1045,16 @@ return (
             <input type="number" placeholder="Até R$ (Máximo)" value={filtroCapitalMax} onChange={(e) => setFiltroCapitalMax(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500" />
           </div>
         </div>
+
+
+        {/* Botão Limpa Filtros */}
+        <button
+          type="button"
+          onClick={handleLimparFiltros}
+          className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 text-sm font-bold rounded-lg transition-all border border-slate-200 active:scale-95 shrink-0 flex items-center justify-center gap-1.5"
+        >
+          🧹 Limpar Filtros
+        </button>
         
       </div>
 
@@ -1467,5 +1525,6 @@ return (
       )}
 
     </div>
+  
   );
 }
