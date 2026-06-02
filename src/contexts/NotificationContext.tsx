@@ -9,7 +9,7 @@ import ModalContato from '../pages/agenda/modalcontatos';
 
 interface Notificacao {
   id: string;
-  tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO' | 'RENOVACAO' | 'ANIVERSARIO' | 'CAMPANHA';
+  tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO' | 'RENOVACAO' | 'ANIVERSARIO' | 'PROSPECCAO';
   titulo: string;
   subtitulo?: string;
   data: string;
@@ -68,8 +68,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryInd = queryInd.or(`corretor_id.eq.${user.id},corretor_id.is.null`);
 
-      // Query Clientes otimizada: Trazemos as pendências comerciais, de sinistros E o campo de nascimento
-      // Removendo o filtro restritivo .or() direto do banco, passamos a capturar a lista da carteira e triamos no laço
+      // Query Clientes otimizada
       let queryClientes = supabase
         .from('tab_clientes')
         .select('id, nome, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, data_nascimento')
@@ -99,19 +98,33 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryRenovacoes = queryRenovacoes.eq('tab_proposta_opcoes.tab_propostas.corretor_id', user.id);
 
-      // Query de Datas Comemorativas / Campanhas com evento Fixo hoje
-      const queryCampanhasHoje = supabase
-        .from('tab_campanhas')
-        .select('id, nome_evento, tipo_evento, created_at')
-        .eq('corretora_id', corretoraDonaId)
-        .eq('tipo_evento', 'fixo');
+      // Query de Prospecção Fria (Substituindo tab_campanhas) trazendo data e horário de retorno
+      let queryFrios = supabase
+        .from('tab_clientes_frios_acoes')
+        .select(`
+          id,
+          observacao,
+          data_retorno,
+          horario_retorno,
+          tab_clientes_frios!inner (
+            id,
+            razao_social,
+            nome_fantasia,
+            corretora_id,
+            corretor_id
+          )
+        `)
+        .lte('data_retorno', hojeLocalStr)
+        .eq('tab_clientes_frios.corretora_id', corretoraDonaId);
+
+      if (!isAdmin) queryFrios = queryFrios.eq('tab_clientes_frios.corretor_id', user.id);
 
       // 🔥 DISPARO SIMULTÂNEO (Executa as 4 queries de dados de forma paralela e performática)
-      const [resIndicacoes, resClientes, resRenovacoes, resCampanhas] = await Promise.all([
+      const [resIndicacoes, resClientes, resRenovacoes, resFrios] = await Promise.all([
         queryInd,
         queryClientes,
         queryRenovacoes,
-        queryCampanhasHoje
+        queryFrios
       ]);
 
       // --- PROCESSAMENTO DOS RESULTADOS ---
@@ -160,11 +173,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           });
         }
 
-        // C) Filtro Seguro de Aniversariantes (Evita erros 404 de tipagem do PostgREST)
+        // C) Filtro Seguro de Aniversariantes
         if (c.data_nascimento) {
-          const partes = c.data_nascimento.split('-'); // Quebra '1985-05-20' em ['1985', '05', '20']
+          const partes = c.data_nascimento.split('-');
           if (partes.length === 3) {
-            const mesDiaCliente = `${partes[1]}-${partes[2]}`; // Resta apenas '05-20'
+            const mesDiaCliente = `${partes[1]}-${partes[2]}`;
             
             if (mesDiaCliente === mesDiaHoje) {
               listaGeral.push({
@@ -197,16 +210,22 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Datas Comemorativas (Campanhas Fixas de hoje)
-      resCampanhas.data?.forEach((camp: any) => {
+      // Processar Prospecção Fria (Leitura de data_retorno e horario_retorno)
+      resFrios.data?.forEach((acao: any) => {
+        const cFrio = acao.tab_clientes_frios;
+        if (!cFrio) return;
+
+        const nomeExibicao = cFrio.nome_fantasia || cFrio.razao_social || 'Prospect Frio';
+
         listaGeral.push({
-          id: `camp-${camp.id}`,
-          tipo: 'CAMPANHA',
-          titulo: `📅 CAMPANHA ATIVA: ${camp.nome_evento}`,
-          subtitulo: 'Regra de envio manual / lote fixo disponível',
-          data: camp.created_at || hojeLocalStr,
-          atrasado: false,
-          ref_id: camp.id
+          id: `frio-${acao.id}`,
+          tipo: 'PROSPECCAO',
+          titulo: `PROSPECÇÃO (RETORNO): ${nomeExibicao}`,
+          subtitulo: acao.observacao || 'Retorno agendado',
+          data: acao.data_retorno,
+          horario: acao.horario_retorno,
+          atrasado: acao.data_retorno < hojeLocalStr,
+          ref_id: cFrio.id
         });
       });
 
@@ -214,7 +233,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setNotificacoes(listaGeral.sort((a, b) => {
         if (a.tipo === 'INDICACAO' && b.tipo !== 'INDICACAO') return -1;
         if (a.tipo !== 'INDICACAO' && b.tipo === 'INDICACAO') return 1;
-        return a.data.localeCompare(b.data);
+        return (a.data || '').localeCompare(b.data || '');
       }));
       
     } catch (error) {
@@ -233,7 +252,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    // Se clicar em Comercial, Sinistro ou Aniversário, abre o ModalContato com a ficha do cliente
+    // Se clicar em Comercial, Sinistro ou Aniversário, abre a ficha do cliente
     if (n.tipo === 'COMERCIAL' || n.tipo === 'SINISTRO' || n.tipo === 'ANIVERSARIO') {
       const { data: cliente } = await supabase
         .from('tab_clientes')
@@ -250,9 +269,25 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    // Se clicar em uma Notificação de Data Comemorativa, redireciona para a página de campanhas
-    if (n.tipo === 'CAMPANHA') {
-      window.location.href = `/marketing/campanhas?id=${n.ref_id}`;
+    // Se clicar em Prospecção Fria, abre o mesmo modal adaptado com os dados da tabela fria
+    if (n.tipo === 'PROSPECCAO') {
+      const { data: prospect } = await supabase
+        .from('tab_clientes_frios')
+        .select('*')
+        .eq('id', n.ref_id)
+        .single();
+
+      if (prospect) {
+        const prospectNormalizado = {
+          ...prospect,
+          nome: prospect.nome_fantasia || prospect.razao_social || 'Sem Nome',
+          isFrio: true
+        };
+        setClienteParaModal(prospectNormalizado);
+        setModalAtivo({ tipo: 'CONTATO_GERAL', id: n.ref_id });
+      } else {
+        toast.error("Prospect não encontrado.");
+      }
       return;
     }
   };
@@ -264,13 +299,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     if (!user) return;
     
-    // Subscrições Realtime atualizadas para escutar as 4 tabelas de interesse
+    // Subscrições Realtime atualizadas para escutar a tabela de ações frias no lugar de campanhas
     const channel = supabase
       .channel('notificacoes-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_proposta_itens' }, () => carregarNotificacoes())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_campanhas' }, () => carregarNotificacoes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_frios_acoes' }, () => carregarNotificacoes())
       .subscribe();
 
     carregarNotificacoes();

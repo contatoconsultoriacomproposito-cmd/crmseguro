@@ -93,7 +93,10 @@ export default function LeadsProspeccao() {
   const [historicoAcoes, setHistoricoAcoes] = useState<any[]>([]);
   const [novaAcaoObs, setNovaAcaoObs] = useState("");
   const [novaAcaoRetorno, setNovaAcaoRetorno] = useState("");
+  const [novaAcaoHorarioRetorno, setNovaAcaoHorarioRetorno] = useState("");
   const [marcarComoJaCliente, setMarcarComoJaCliente] = useState(false);
+
+
 
   // Estado do Botão de Ouro (Conversor Realtime)
   const [leadConversao, setLeadConversao] = useState<any>(null);
@@ -149,12 +152,12 @@ export default function LeadsProspeccao() {
       const ate = de + ITENS_POR_PAGINA - 1;
 
       // Verifica se o usuário ativou o filtro de data
-      const temFiltroData = filtroDataRetornoMin || filtroDataRetornoMax;
+      //const temFiltroData = filtroDataRetornoMin || filtroDataRetornoMax;
 
       // 2. Solicita a contagem exata ({ count: "exact" }) para sabermos o total de páginas
       let query = supabase
         .from("tab_clientes_frios")
-        .select(temFiltroData ? "*, tab_clientes_frios_acoes!inner(data_retorno)" : "*", { count: "exact" })
+        .select("*", { count: "exact" }) // <-- Simplificado aqui (sem !inner)
         .eq("corretora_id", perfilUsuario.corretora_id);
 
       // 🎯 LÓGICA DO NOVO FILTRO DE STATUS
@@ -191,8 +194,8 @@ export default function LeadsProspeccao() {
       if (filtroCapitalMax) query = query.lte("capital_social", Number(filtroCapitalMax));
 
       // Filtros de Data de Retorno na tabela estrangeira
-      if (filtroDataRetornoMin) query = query.gte("tab_clientes_frios_acoes.data_retorno", filtroDataRetornoMin);
-      if (filtroDataRetornoMax) query = query.lte("tab_clientes_frios_acoes.data_retorno", filtroDataRetornoMax);
+      if (filtroDataRetornoMin) query = query.gte("data_retorno", filtroDataRetornoMin); // <-- Corrigido
+      if (filtroDataRetornoMax) query = query.lte("data_retorno", filtroDataRetornoMax); // <-- Corrigido
 
       // 6. Aplica a limitação de linhas (.range) para trazer apenas 100 por vez
       const { data, error, count } = await query
@@ -235,8 +238,8 @@ export default function LeadsProspeccao() {
         if (filtroCapitalMin) cnaeQuery = cnaeQuery.gte("capital_social", Number(filtroCapitalMin));
         if (filtroCapitalMax) cnaeQuery = cnaeQuery.lte("capital_social", Number(filtroCapitalMax));
         // Adiciona os filtros de data também na contagem de CNAEs
-        if (filtroDataRetornoMin) cnaeQuery = cnaeQuery.gte("tab_clientes_frios_acoes.data_retorno", filtroDataRetornoMin);
-        if (filtroDataRetornoMax) cnaeQuery = cnaeQuery.lte("tab_clientes_frios_acoes.data_retorno", filtroDataRetornoMax);
+        if (filtroDataRetornoMin) cnaeQuery = cnaeQuery.gte("data_retorno", filtroDataRetornoMin); // <-- Removido o prefixo da tabela estrangeira
+        if (filtroDataRetornoMax) cnaeQuery = cnaeQuery.lte("data_retorno", filtroDataRetornoMax); // <-- Removido o prefixo da tabela estrangeira
 
         const { data: cnaeData } = await cnaeQuery;
 
@@ -406,7 +409,8 @@ export default function LeadsProspeccao() {
   const abrirTimeline = async (lead: any) => {
     setLeadTimeline(lead);
     setNovaAcaoObs("");
-    setNovaAcaoRetorno("");
+    setNovaAcaoRetorno(lead.data_retorno || ""); // Preenche com o agendamento salvo no lead, se houver
+    setNovaAcaoHorarioRetorno(lead.horario_retorno || ""); // <-- ADICIONE ESTA LINHA
     try {
       const { data, error } = await supabase
         .from("tab_clientes_frios_acoes")
@@ -426,25 +430,34 @@ export default function LeadsProspeccao() {
       return;
     }
     try {
-      // Grava o histórico de ações
+      // 1. Grava apenas a observação histórica da ação realizada
       const { error } = await supabase.from("tab_clientes_frios_acoes").insert({
         cliente_frio_id: leadTimeline.id,
         corretor_id: perfilUsuario.id,
-        observacao: novaAcaoObs,
-        data_retorno: novaAcaoRetorno || null
+        observacao: novaAcaoObs
       });
       if (error) throw error;
 
       // DEFINE O STATUS: Se marcou a caixinha vira 'ja_cliente', senão vira 'em_prospeccao'
       const novoStatus = marcarComoJaCliente ? "ja_cliente" : "em_prospeccao";
 
+      // 2. Atualiza o status E centraliza o agendamento 1 para 1 na tabela principal do lead
       await supabase.from("tab_clientes_frios").update({
-        status_prospeccao: novoStatus
+        status_prospeccao: novoStatus,
+        data_retorno: novaAcaoRetorno || null,
+        horario_retorno: novaAcaoHorarioRetorno || null // <-- Gravando o horário na coluna correspondente
       }).eq("id", leadTimeline.id);
 
       toast.success("Ação registrada na linha do tempo!");
       setMarcarComoJaCliente(false); // Reseta a caixinha
-      abrirTimeline(leadTimeline);
+      
+      // Mantém os dados locais sincronizados ao reabrir a timeline
+      abrirTimeline({
+        ...leadTimeline,
+        data_retorno: novaAcaoRetorno || null,
+        horario_retorno: novaAcaoHorarioRetorno || null
+      });
+      
       buscarLeadsFrios();
     } catch (err: any) {
       toast.error("Falha ao salvar ação: " + err.message);
@@ -1341,7 +1354,16 @@ return (
                 <Clock className="w-5 h-5"/>
                 <div>
                   <h3 className="font-bold">Linha do Tempo de Interações</h3>
-                  <p className="text-[11px] text-purple-100 font-medium">{leadTimeline.nome_fantasia || leadTimeline.razao_social}</p>
+                  <p className="text-[11px] text-purple-100 font-medium">
+                    {leadTimeline.nome_fantasia || leadTimeline.razao_social}
+                    {/* 🎯 CORREÇÃO 1: Exibe o agendamento atual 1 para 1 do cliente diretamente no cabeçalho */}
+                    {leadTimeline.data_retorno && (
+                      <span className="ml-2 bg-purple-700 text-amber-300 px-1.5 py-0.5 rounded font-bold text-[10px]">
+                        ⏰ RETORNO: {new Date(leadTimeline.data_retorno + "T00:00:00").toLocaleDateString("pt-BR")}
+                        {leadTimeline.horario_retorno ? ` às ${leadTimeline.horario_retorno.substring(0, 5)}` : ""}
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
               <button onClick={() => setLeadTimeline(null)} className="p-1 rounded-lg hover:bg-purple-700"><X className="w-5 h-5"/></button>
@@ -1352,13 +1374,15 @@ return (
                 <label className="block text-xs font-bold text-slate-600 uppercase mb-1">O que foi conversado / Resumo do Acionamento</label>
                 <textarea rows={2} value={novaAcaoObs} onChange={e => setNovaAcaoObs(e.target.value)} placeholder="Ex: Liguei para o sócio e ele pediu para retornar na próxima semana..." className="w-full p-2.5 border rounded-lg text-sm resize-none outline-none focus:border-purple-500"></textarea>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                {/* 🎯 CORREÇÃO 2: Adicionado o input de horário lado a lado com o de data */}
+                <div className="flex items-center gap-2 flex-wrap">
                   <Calendar className="w-4 h-4 text-purple-600" />
-                  <span className="text-xs font-bold text-slate-600 uppercase">Agendar Data de Retorno:</span>
-                  <input type="date" value={novaAcaoRetorno} onChange={e => setNovaAcaoRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none" />
+                  <span className="text-xs font-bold text-slate-600 uppercase">Agendar Retorno:</span>
+                  <input type="date" value={novaAcaoRetorno} onChange={e => setNovaAcaoRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500" />
+                  <input type="time" value={novaAcaoHorarioRetorno} onChange={e => setNovaAcaoHorarioRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500" />
                 </div>
-                <button onClick={salvarNovaAcaoAcompanhamento} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm">
+                <button onClick={salvarNovaAcaoAcompanhamento} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm whitespace-nowrap ml-auto">
                   <Plus className="w-3.5 h-3.5"/> Registrar Ação
                 </button>
               </div>
@@ -1373,11 +1397,7 @@ return (
                     <div className="absolute -left-[6px] top-1 w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
                     <div className="flex justify-between text-xs text-gray-400 font-semibold">
                       <span>📅 {new Date(acao.criado_em).toLocaleString("pt-BR")}</span>
-                      {acao.data_retorno && (
-                        <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold">
-                          ⏰ Retornar em: {new Date(acao.data_retorno + "T00:00:00").toLocaleDateString("pt-BR")}
-                        </span>
-                      )}
+                      {/* 🎯 OBSERVAÇÃO: O bloco antigo do acao.data_retorno foi removido daqui pois o histórico de ações não carrega mais o agendamento individual */}
                     </div>
                     <p className="text-sm text-slate-700 mt-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 font-medium">{acao.observacao}</p>
                   </div>
