@@ -1118,7 +1118,7 @@ return (
                       {/* 🎯 DATA ADICIONADA AQUI */}
                       {lead.data_abertura && ` • Aberta em: ${new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR')}`}
                     </div>
-                    <div className="text-xs text-gray-400 font-mono mt-0.5">{maskCNPJ(lead.cnpj)}</div>
+                    
                     <div className="text-[11px] text-slate-500 italic truncate mt-0.5">{lead.razao_social}</div>
                     {lead.cnae_principal && (
                       <div className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded inline-block mt-1 max-w-full truncate font-medium">
