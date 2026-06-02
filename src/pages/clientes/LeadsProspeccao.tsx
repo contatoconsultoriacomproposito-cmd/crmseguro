@@ -40,6 +40,7 @@ const COLUNAS_BANCO = [
   { campo: "numero", label: "Número" },
   { campo: "complemento", label: "Complemento" },
   { campo: "cep", label: "CEP" },
+  { campo: "data_abertura", label: "Data de Abertura" },
 ];
 
 export default function LeadsProspeccao() {
@@ -304,30 +305,38 @@ export default function LeadsProspeccao() {
         };
 
         COLUNAS_BANCO.forEach(col => {
-        const colunaCsvEscolhida = mapeamento[col.campo];
-        if (colunaCsvEscolhida) {
-          const index = csvHeaders.indexOf(colunaCsvEscolhida);
-          if (index !== -1) {
-            // .trim() remove espaços inúteis inseridos acidentalmente no CSV
-            const valor = row[index]?.trim(); 
+          const colunaCsvEscolhida = mapeamento[col.campo];
+          if (colunaCsvEscolhida) {
+            const index = csvHeaders.indexOf(colunaCsvEscolhida);
+            if (index !== -1) {
+              // .trim() remove espaços inúteis inseridos acidentalmente no CSV
+              const valor = row[index]?.trim(); 
 
-            if (col.campo === "capital_social") {
-              item[col.campo] = valor ? parseFloat(valor.replace(/[^0-9.-]/g, "")) || 0 : 0;
-            } else if (col.campo === "opcao_pelo_mei" || col.campo === "opcao_pelo_simples") {
-              item[col.campo] = valor?.toUpperCase() === "S" || valor?.toUpperCase() === "SIM" || valor === "true";
-            } else if (col.campo === "cep") {
-              // Mantém apenas os números no CEP (ex: 88708-352 vira 88708352)
-              item[col.campo] = valor ? valor.replace(/\D/g, "") : null;
-            } else if (col.campo === "numero") {
-              // Garante o formato string para aceitar "581" ou "S/N" sem estourar o banco
-              item[col.campo] = valor ? String(valor) : null;
-            } else {
-              // Salva os campos text normais (logradouro, complemento, etc.)
-              item[col.campo] = valor || null;
+              if (col.campo === "capital_social") {
+                item[col.campo] = valor ? parseFloat(valor.replace(/[^0-9.-]/g, "")) || 0 : 0;
+              } else if (col.campo === "opcao_pelo_mei" || col.campo === "opcao_pelo_simples") {
+                item[col.campo] = valor?.toUpperCase() === "S" || valor?.toUpperCase() === "SIM" || valor === "true";
+              } else if (col.campo === "cep") {
+                // Mantém apenas os números no CEP (ex: 88708-352 vira 88708352)
+                item[col.campo] = valor ? valor.replace(/\D/g, "") : null;
+              } else if (col.campo === "numero") {
+                // Garante o formato string para aceitar "581" ou "S/N" sem estourar o banco
+                item[col.campo] = valor ? String(valor) : null;
+              } else if (col.campo === "data_abertura") {
+                // Converte DD/MM/YYYY para YYYY-MM-DD para o banco aceitar nativamente
+                if (valor && valor.includes("/")) {
+                  const [dia, mes, ano] = valor.split("/");
+                  item[col.campo] = `${ano}-${mes}-${dia}`;
+                } else {
+                  item[col.campo] = valor || null;
+                }
+              } else {
+                // Salva os campos text normais (logradouro, complemento, etc.)
+                item[col.campo] = valor || null;
+              }
             }
           }
-        }
-      });
+        });
         return item;
       }).filter(r => r.cnpj);
 
@@ -467,7 +476,8 @@ export default function LeadsProspeccao() {
         temperatura: dadosConversaoCRM.temperatura,
         nome: dadosConversaoCRM.nome || null,
         cpf: dadosConversaoCRM.cpf || null,
-        telefone_whats: dadosConversaoCRM.telefone_whats || null
+        telefone_whats: dadosConversaoCRM.telefone_whats || null,
+        data_abertura: leadConversao.data_abertura
       };
 
       const { error: insertErr } = await supabase.from("tab_clientes").insert(crmPayload);
@@ -549,7 +559,8 @@ export default function LeadsProspeccao() {
     leadsOrdenados.forEach((lead, index) => {
       const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} ${lead.complemento ? "- " + lead.complemento : ""} - ${lead.bairro || ""}, ${lead.municipio || ""} - ${lead.uf || ""}`.replace(/, ,/g, "").trim();
       const linkGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
-      const telefoneFormatado = lead.ddd_telefone_1 ? maskPhone(lead.ddd_telefone_1) : "Não informado";
+      const telWhatsTratado = lead.ddd_telefone_1 ? String(lead.ddd_telefone_1).replace(/^0/, '') : "";
+      const telefoneFormatado = telWhatsTratado ? maskPhone(telWhatsTratado) : "Não informado";
 
       textoMensagem += `🏢 *${index + 1}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}*\n`;
       textoMensagem += `👥 *Sócios:* ${lead.nomes_socios || "Não informados"}\n`;
@@ -668,6 +679,13 @@ export default function LeadsProspeccao() {
       // CNPJ
       doc.setFont("Helvetica", "bold"); doc.text("CNPJ:", margemEsquerda + 3, dadosY);
       doc.setFont("Helvetica", "normal"); doc.text(lead.cnpj ? maskCNPJ(lead.cnpj) : "Não informado", margemEsquerda + 16, dadosY);
+
+      // 🎯 NOVA LINHA: Data de Abertura no PDF
+      dadosY += 6;
+      doc.setFont("Helvetica", "bold"); doc.text("Abertura:", margemEsquerda + 3, dadosY);
+      doc.setFont("Helvetica", "normal");
+      const dataPdf = lead.data_abertura ? new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR') : "Não informada";
+      doc.text(dataPdf, margemEsquerda + 21, dadosY);
       
       // Razão Social
       dadosY += 6;
@@ -703,7 +721,9 @@ export default function LeadsProspeccao() {
       dadosY += 6;
       doc.setFont("Helvetica", "bold"); doc.text("Telefone:", margemEsquerda + 3, dadosY);
       doc.setFont("Helvetica", "normal");
-      doc.text(lead.ddd_telefone_1 ? maskPhone(lead.ddd_telefone_1) : "Não informado", margemEsquerda + 19, dadosY);
+      // 🎯 CORREÇÃO: Remove o zero à esquerda antes de aplicar a máscara
+      const telPdfTratado = lead.ddd_telefone_1 ? lead.ddd_telefone_1.replace(/^0/, '') : "";
+      doc.text(telPdfTratado ? maskPhone(telPdfTratado) : "Não informado", margemEsquerda + 19, dadosY);
 
 
       // 3. CAMPO LIVRE PARA ANOTAÇÕES (Coluna da Direita - Efeito pautado pontilhado)
@@ -1093,6 +1113,11 @@ return (
                   </td>
                   <td className="p-4 max-w-[320px]">
                     <div className="font-bold text-slate-800 truncate">{lead.nome_fantasia || lead.razao_social}</div>
+                    <div className="text-xs text-gray-400 font-mono mt-0.5">
+                      {maskCNPJ(lead.cnpj)}
+                      {/* 🎯 DATA ADICIONADA AQUI */}
+                      {lead.data_abertura && ` • Aberta em: ${new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR')}`}
+                    </div>
                     <div className="text-xs text-gray-400 font-mono mt-0.5">{maskCNPJ(lead.cnpj)}</div>
                     <div className="text-[11px] text-slate-500 italic truncate mt-0.5">{lead.razao_social}</div>
                     {lead.cnae_principal && (
@@ -1324,6 +1349,7 @@ return (
               <div><strong>Razão Social:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.razao_social || 'Não cadastrado'}</div></div>
               <div><strong>Nome Fantasia:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.nome_fantasia || 'Não cadastrado'}</div></div>
               <div><strong>CNPJ:</strong> <div className="text-sm text-slate-700 font-mono mt-0.5">{maskCNPJ(leadVisualizar.cnpj)}</div></div>
+              <div><strong>Data de Abertura:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.data_abertura ? new Date(leadVisualizar.data_abertura + "T00:00:00").toLocaleDateString('pt-BR') : 'Não informada'}</div></div>
               <div><strong>Telefone Comercial:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.ddd_telefone_1 || 'Não informado'}</div></div>
               <div><strong>E-mail:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.email || 'Não informado'}</div></div>
               <div><strong>Capital Social:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">R$ {leadVisualizar.capital_social?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div></div>
