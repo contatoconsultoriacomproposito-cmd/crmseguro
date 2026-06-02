@@ -8,7 +8,6 @@ import { supabase } from "../../lib/supabaseClient";
 import { toast, Toaster } from 'react-hot-toast';
 import { format } from "date-fns";
 
-
 // Bibliotecas de PDF
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -40,13 +39,13 @@ export default function ClientesAcoes() {
 
   async function atualizarTemperatura(clienteId: string, novaTemp: string) {
     try {
-      const { error } = await supabase
+      // Atualiza na base principal se o cliente for de lá
+      await supabase
         .from('tab_clientes')
         .update({ temperatura: novaTemp })
         .eq('id', clienteId);
 
-      if (error) throw error;
-
+      // Atualiza o estado visual em memória para dar feedback imediato na tela
       setRelatorioData(prev => prev.map(item => 
         item.id === clienteId 
           ? { ...item, info: { ...item.info, temperatura: novaTemp } }
@@ -59,16 +58,15 @@ export default function ClientesAcoes() {
     }
   }
 
-  // NOVA FUNÇÃO: Atualizar Data de Retorno
   async function atualizarDataRetorno(clienteId: string, novaData: string) {
     try {
-      const { error } = await supabase
+      // Atualiza na base principal se o cliente for de lá
+      await supabase
         .from('tab_clientes')
         .update({ data_retorno: novaData })
         .eq('id', clienteId);
 
-      if (error) throw error;
-
+      // Atualiza o estado visual em memória para dar feedback imediato na tela
       setRelatorioData(prev => prev.map(item => 
         item.id === clienteId 
           ? { ...item, info: { ...item.info, data_retorno: novaData } }
@@ -85,7 +83,8 @@ export default function ClientesAcoes() {
     if (!userProfile?.corretora_id) return;
     setLoading(true);
     try {
-      let query = supabase
+      // 1) Busca de interações padrão (Base Principal - Clientes Antigos / Convertidos)
+      let queryInteracoes = supabase
         .from('tab_interacoes')
         .select(`
           *,
@@ -98,26 +97,112 @@ export default function ClientesAcoes() {
         .lte('data_historico', dataFim);
 
       if (userProfile.tipo_usuario === 'CORRETOR') {
-        query = query.eq('corretor_id', userProfile.id);
+        queryInteracoes = queryInteracoes.eq('corretor_id', userProfile.id);
       }
 
-      const { data, error } = await query.order('data_historico', { ascending: false });
-      if (error) throw error;
+      // 2) Busca de Clientes Frios (Tabela de Prospecção) com colunas reais existentes
+      let queryClientesFrios = supabase
+        .from('tab_clientes_frios')
+        .select('id, razao_social, nome_fantasia, corretora_id, corretor_id');
 
-      const agrupado = data.reduce((acc: any, item: any) => {
+      if (userProfile.tipo_usuario === 'CORRETOR') {
+        queryClientesFrios = queryClientesFrios.eq('corretor_id', userProfile.id);
+      } else {
+        queryClientesFrios = queryClientesFrios.eq('corretora_id', userProfile.corretora_id);
+      }
+
+      // 3) Busca de Ações Frias usando a coluna de data correta 'criado_em'
+      let queryAcoesFrias = supabase
+        .from('tab_clientes_frios_acoes')
+        .select('*')
+        .gte('criado_em', `${dataInicio}T00:00:00`)
+        .lte('criado_em', `${dataFim}T23:59:59`);
+
+      if (userProfile.tipo_usuario === 'CORRETOR') {
+        queryAcoesFrias = queryAcoesFrias.eq('corretor_id', userProfile.id);
+      }
+
+      const [resInteracoes, resClientesFrios, resAcoesFrias] = await Promise.all([
+        queryInteracoes.order('data_historico', { ascending: false }),
+        queryClientesFrios,
+        queryAcoesFrias.order('criado_em', { ascending: false })
+      ]);
+
+      if (resInteracoes.error) throw resInteracoes.error;
+      if (resClientesFrios.error) throw resClientesFrios.error;
+      if (resAcoesFrias.error) throw resAcoesFrias.error;
+
+      const agrupado: any = {};
+
+      // Mapeia Interações da Base Principal (Clientes Convertidos)
+      resInteracoes.data?.forEach((item: any) => {
         const clienteId = item.cliente_id;
-        if (!item.cliente) return acc;
+        if (!item.cliente) return;
         const tempCliente = item.cliente?.temperatura || 'morno';
-        if (filtroTemp !== 'todos' && tempCliente !== filtroTemp) return acc;
+        if (filtroTemp !== 'todos' && tempCliente !== filtroTemp) return;
 
-        if (!acc[clienteId]) {
-          acc[clienteId] = { id: clienteId, info: item.cliente, acoes: [] };
+        if (!agrupado[clienteId]) {
+          agrupado[clienteId] = { id: clienteId, info: item.cliente, acoes: [] };
         }
-        acc[clienteId].acoes.push(item);
-        return acc;
-      }, {});
+        agrupado[clienteId].acoes.push(item);
+      });
 
-      setRelatorioData(Object.values(agrupado));
+      // Indexa os Clientes Frios para cruzamento rápido em memória
+      const clientesFriosMap = new Map<string, any>();
+      resClientesFrios.data?.forEach((c: any) => {
+        clientesFriosMap.set(c.id, c);
+      });
+
+      // Cruza as Ações Frias mapeando com as colunas reais da Prospecção
+      resAcoesFrias.data?.forEach((item: any) => {
+        const clienteId = item.cliente_frio_id;
+        if (!clienteId) return;
+
+        const cFrio = clientesFriosMap.get(clienteId);
+        if (!cFrio) return; 
+
+        // Como pertencem à tabela de Prospecção Fria, a temperatura base padrão é 'frio'
+        const tempCliente = 'frio';
+        if (filtroTemp !== 'todos' && tempCliente !== filtroTemp) return;
+
+        if (!agrupado[clienteId]) {
+          agrupado[clienteId] = {
+            id: clienteId,
+            info: {
+              id: cFrio.id,
+              nome: cFrio.nome_fantasia || cFrio.razao_social || 'Sem Nome',
+              razao_social: cFrio.razao_social || '',
+              temperatura: tempCliente,
+              data_retorno: item.data_retorno || '', // Resgata da ação de prospecção fria
+              horario_retorno: ''
+            },
+            acoes: []
+          };
+        } else {
+          // Se a ação atual do loop possuir uma data de retorno mais recente, atualiza a info de exibição
+          if (item.data_retorno && (!agrupado[clienteId].info.data_retorno || item.data_retorno > agrupado[clienteId].info.data_retorno)) {
+            agrupado[clienteId].info.data_retorno = item.data_retorno;
+          }
+        }
+
+        // Isola o timestamp criado_em em YYYY-MM-DD para uniformizar a ordenação
+        const dataAcao = item.criado_em ? item.criado_em.split('T')[0] : '';
+
+        agrupado[clienteId].acoes.push({
+          id: item.id,
+          tipo_acao: 'Prospecção Fria',
+          data_historico: dataAcao,
+          relato: item.observacao || ''
+        });
+      });
+
+      // Ordena cronologicamente decrescente as linhas do tempo combinadas
+      const resultadoFinal = Object.values(agrupado).map((item: any) => {
+        item.acoes.sort((a: any, b: any) => (b.data_historico || '').localeCompare(a.data_historico || ''));
+        return item;
+      });
+
+      setRelatorioData(resultadoFinal);
     } catch (error) {
       toast.error("Erro ao carregar dados");
     } finally {
@@ -125,7 +210,6 @@ export default function ClientesAcoes() {
     }
   }
 
-  // Melhora na visibilidade dos ícones (Cores mais fortes e BG sólido no ativo)
   const getTempStyle = (temp: string, active: boolean) => {
     if (!active) return 'bg-slate-100 text-slate-400 opacity-30 hover:opacity-100';
     switch (temp) {
@@ -162,7 +246,11 @@ export default function ClientesAcoes() {
       autoTable(doc, {
         startY: (doc as any).lastAutoTable.finalY,
         head: [['DATA', 'AÇÃO', 'RELATO']],
-        body: item.acoes.map((a: any) => [format(new Date(a.data_historico + 'T00:00:00'), 'dd/MM/yyyy'), a.tipo_acao, a.relato]),
+        body: item.acoes.map((a: any) => [
+          a.data_historico ? format(new Date(a.data_historico + 'T00:00:00'), 'dd/MM/yyyy') : '-', 
+          a.tipo_acao, 
+          a.relato
+        ]),
         styles: { fontSize: 8 }
       });
       currentY = (doc as any).lastAutoTable.finalY + 10;
@@ -222,7 +310,6 @@ export default function ClientesAcoes() {
               </h3>
               
               <div className="flex flex-wrap items-center gap-6">
-                {/* 1) ÍCONES DE TEMPERATURA MAIS VISÍVEIS */}
                 <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl">
                   {['frio', 'morno', 'quente'].map((t) => (
                     <button
@@ -235,7 +322,6 @@ export default function ClientesAcoes() {
                   ))}
                 </div>
 
-                {/* 2) EDIÇÃO DA DATA DE RETORNO */}
                 <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 px-3 py-1.5 rounded-xl shadow-sm">
                   <Clock size={14} className="text-blue-500" />
                   <span className="text-[10px] font-black text-slate-400 uppercase">Retorno:</span>
@@ -249,14 +335,15 @@ export default function ClientesAcoes() {
               </div>
             </div>
 
-            {/* Timeline de Ações */}
             <div className="p-6 space-y-6">
               {item.acoes.map((acao: any) => (
                 <div key={acao.id} className="relative pl-6 border-l-2 border-slate-100 dark:border-zinc-800 pb-2">
                   <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white dark:bg-zinc-900 border-2 border-blue-500 shadow-sm" />
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{acao.tipo_acao}</span>
-                    <span className="text-[9px] font-bold text-slate-400">{format(new Date(acao.data_historico + 'T00:00:00'), 'dd/MM/yyyy')}</span>
+                    <span className="text-[9px] font-bold text-slate-400">
+                      {acao.data_historico ? format(new Date(acao.data_historico + 'T00:00:00'), 'dd/MM/yyyy') : '-'}
+                    </span>
                   </div>
                   <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium leading-relaxed">{acao.relato}</p>
                 </div>
