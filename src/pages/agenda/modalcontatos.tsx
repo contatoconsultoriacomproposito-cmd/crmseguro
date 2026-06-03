@@ -34,6 +34,9 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
   // Verifica dinamicamente se o cliente é PJ
   const isPJ = cliente?.tipo_pessoa === 'PJ' || !!cliente?.cnpj || !!cliente?.razao_social;
 
+  // Identifica se o cliente vem do fluxo de prospecção fria
+  const isProspeccao = cliente?.is_prospeccao || cliente?.fase_kanban === 'PROSPECCAO' || !cliente?.fase_kanban;
+
   useEffect(() => {
     if (isOpen && cliente) {
       fetchDadosIniciais();
@@ -41,6 +44,13 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
   }, [isOpen, cliente]);
 
   async function fetchDadosIniciais() {
+    // Se for prospecção, não busca sinistros nem interações da carteira ativa
+    if (isProspeccao) {
+      setSinistrosAtivos([]);
+      setHistoricoTotal([]);
+      return;
+    }
+
     try {
       const { data: sinistros } = await supabase
         .from('tab_sinistros')
@@ -101,20 +111,33 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
       const { data: { user } } = await supabase.auth.getUser();
       const { data: perf } = await supabase.from('usuarios_perfis').select('corretora_id').eq('id', user?.id).single();
 
-      await supabase.from('tab_interacoes').insert([{
-        cliente_id: cliente.id,
-        corretor_id: user?.id,
-        corretora_id: perf?.corretora_id,
-        tipo_acao: tipoAcao,
-        relato: textoAcao,
-        data_historico: new Date().toLocaleDateString('en-CA'),
-        get horario_historico() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
-      }]);
+      if (isProspeccao) {
+        // Alimenta exclusivamente a tabela de clientes frios conforme a regra de prospecção
+        const { error: errFrio } = await supabase.from('tab_clientes_frios').update({
+          data_retorno: dataRetorno || null,
+          horario_retorno: horarioRetorno || null,
+          ultimo_relato: textoAcao,
+          tipo_acao: tipoAcao
+        }).eq('id', cliente.id);
+        
+        if (errFrio) throw errFrio;
+      } else {
+        // Fluxo original para clientes ativos e fidelizados
+        await supabase.from('tab_interacoes').insert([{
+          cliente_id: cliente.id,
+          corretor_id: user?.id,
+          corretora_id: perf?.corretora_id,
+          tipo_acao: tipoAcao,
+          relato: textoAcao,
+          data_historico: new Date().toLocaleDateString('en-CA'),
+          get horario_historico() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
+        }]);
 
-      await supabase.from('tab_clientes').update({
-        data_retorno: dataRetorno || null,
-        horario_retorno: horarioRetorno || null,
-      }).eq('id', cliente.id);
+        await supabase.from('tab_clientes').update({
+          data_retorno: dataRetorno || null,
+          horario_retorno: horarioRetorno || null,
+        }).eq('id', cliente.id);
+      }
 
       finalizarSucesso();
     } catch (err: any) { 
@@ -126,7 +149,7 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
   async function salvarSinistro() {
     if (!sinistroSelecionadoId || !relatoSinistro) return setErro("Selecione o sinistro e relate a ocorrência.");
     if ((etapaSinistro === 'Conclusão' || ['Cadastro', 'Avaliação', 'Solução'].includes(etapaSinistro)) && !dataRetornoSinistro) {
-      return setErro("Informe a data necessária para esta fase.");
+      return setErro("Informe a data necessária para esta phase.");
     }
 
     setLoading(true);
@@ -175,7 +198,7 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-widest">
-                  {cliente.fase_kanban || 'LEAD'}
+                  {isProspeccao ? 'PROSPECÇÃO' : (cliente.fase_kanban || 'LEAD')}
                 </span>
                 
                 {/* BOTÃO/TAG ELEGANTE DE PF / PJ */}
@@ -220,9 +243,14 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
             <button onClick={() => setAbaAtiva('COMERCIAL')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${abaAtiva === 'COMERCIAL' ? 'bg-white dark:bg-zinc-800 shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>
               <MessageSquare size={14} /> Comercial
             </button>
-            <button onClick={() => setAbaAtiva('SINISTRO')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${abaAtiva === 'SINISTRO' ? 'bg-white dark:bg-zinc-800 shadow-sm text-red-600' : 'text-slate-500 hover:text-slate-700'}`}>
-              <Activity size={14} /> Sinistros
-            </button>
+            
+            {/* Oculta a aba de Sinistros se for Prospecção */}
+            {!isProspeccao && (
+              <button onClick={() => setAbaAtiva('SINISTRO')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${abaAtiva === 'SINISTRO' ? 'bg-white dark:bg-zinc-800 shadow-sm text-red-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                <Activity size={14} /> Sinistros
+              </button>
+            )}
+            
             <button onClick={() => setAbaAtiva('HISTORICO')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${abaAtiva === 'HISTORICO' ? 'bg-white dark:bg-zinc-800 shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>
               <History size={14} /> Timeline
             </button>
@@ -264,7 +292,7 @@ export default function ModalContato({ isOpen, onClose, cliente, onSuccess }: Mo
                 </div>
               )}
 
-              {abaAtiva === 'SINISTRO' && (
+              {abaAtiva === 'SINISTRO' && !isProspeccao && (
                 <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                   {sinistrosAtivos.length === 0 ? (
                     <div className="py-8 text-center text-slate-400 font-bold uppercase text-[10px] border-2 border-dashed border-slate-100 dark:border-zinc-800 rounded-[32px]">Este cliente não possui sinistros ativos.</div>

@@ -142,6 +142,54 @@ export default function LeadsProspeccao() {
     setPaginaAtual(1);
   }, [filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, pesquisaGeral,filtroDataRetornoMin, filtroDataRetornoMax]);
 
+
+
+// useEffect Definitivo: Abre o modal por ID local ou buscando diretamente no Supabase se paginado/filtrado
+  useEffect(() => {
+    // Só prossegue se o perfil do usuário já estiver carregado (essencial para segurança)
+    if (!perfilUsuario) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const leadIdDaUrl = urlParams.get('leadId');
+
+    if (leadIdDaUrl) {
+      // 1. Tenta encontrar na lista que já foi carregada localmente na página
+      const leadLocal = leads.find((l) => l.id === leadIdDaUrl);
+
+      if (leadLocal) {
+        abrirTimeline(leadLocal);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } 
+      // 2. Se não achou localmente (bug resolvido aqui!), busca direto no banco de dados
+      else if (!loading && leads.length > 0) {
+        (async () => {
+          try {
+            const { data: leadDoBanco, error } = await supabase
+              .from("tab_clientes_frios")
+              .select("*")
+              .eq("id", leadIdDaUrl)
+              .eq("corretora_id", perfilUsuario.corretora_id)
+              .single();
+
+            if (error) throw error;
+
+            if (leadDoBanco) {
+              // Abre a modal roxa com os dados completos vindos direto do Supabase
+              abrirTimeline(leadDoBanco);
+            } else {
+              toast.error("Lead da notificação não foi localizado.");
+            }
+          } catch (err: any) {
+            console.error("Erro ao buscar lead da URL de forma isolada:", err);
+          } finally {
+            // Limpa o parâmetro da URL para não reexecutar em novos cliques/filtros
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        })();
+      }
+    }
+  }, [leads, loading, perfilUsuario]);
+  
   // Leitura de Dados Básica e Filtros Inteligentes com Paginação Profissional
   async function buscarLeadsFrios() {
     if (!perfilUsuario) return;

@@ -100,24 +100,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // Query de Prospecção Fria (Substituindo tab_campanhas) trazendo data e horário de retorno
       let queryFrios = supabase
-        .from('tab_clientes_frios_acoes')
-        .select(`
-          id,
-          observacao,
-          data_retorno,
-          horario_retorno,
-          tab_clientes_frios!inner (
-            id,
-            razao_social,
-            nome_fantasia,
-            corretora_id,
-            corretor_id
-          )
-        `)
+        .from('tab_clientes_frios')
+        .select('id, razao_social, nome_fantasia, data_retorno, horario_retorno')
         .lte('data_retorno', hojeLocalStr)
-        .eq('tab_clientes_frios.corretora_id', corretoraDonaId);
+        .neq('status_prospeccao', 'convertido')
+        .eq('corretora_id', corretoraDonaId);
 
-      if (!isAdmin) queryFrios = queryFrios.eq('tab_clientes_frios.corretor_id', user.id);
+      if (!isAdmin) queryFrios = queryFrios.eq('corretor_id', user.id);
 
       // 🔥 DISPARO SIMULTÂNEO (Executa as 4 queries de dados de forma paralela e performática)
       const [resIndicacoes, resClientes, resRenovacoes, resFrios] = await Promise.all([
@@ -210,24 +199,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Prospecção Fria (Leitura de data_retorno e horario_retorno)
-      resFrios.data?.forEach((acao: any) => {
-        const cFrio = acao.tab_clientes_frios;
-        if (!cFrio) return;
-
-        const nomeExibicao = cFrio.nome_fantasia || cFrio.razao_social || 'Prospect Frio';
+      // Processar Prospecção Fria (Leitura de data_retorno e horario_retorno diretamente da tabela principal)
+      resFrios.data?.forEach((lead: any) => {
+        const nomeExibicao = lead.nome_fantasia || lead.razao_social || 'Prospect Frio';
 
         listaGeral.push({
-          id: `frio-${acao.id}`,
+          id: `frio-${lead.id}`,
           tipo: 'PROSPECCAO',
           titulo: `PROSPECÇÃO (RETORNO): ${nomeExibicao}`,
-          subtitulo: acao.observacao || 'Retorno agendado',
-          data: acao.data_retorno,
-          horario: acao.horario_retorno,
-          atrasado: acao.data_retorno < hojeLocalStr,
-          ref_id: cFrio.id
+          subtitulo: 'Retorno agendado',
+          data: lead.data_retorno,
+          horario: lead.horario_retorno,
+          atrasado: lead.data_retorno < hojeLocalStr,
+          ref_id: lead.id
         });
-      });
+      })
 
       // Ordenação Final: Indicações primeiro, depois o restante ordenado por data
       setNotificacoes(listaGeral.sort((a, b) => {
@@ -269,28 +255,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    // Se clicar em Prospecção Fria, abre o mesmo modal adaptado com os dados da tabela fria
-    if (n.tipo === 'PROSPECCAO') {
-      const { data: prospect } = await supabase
-        .from('tab_clientes_frios')
-        .select('*')
-        .eq('id', n.ref_id)
-        .single();
-
-      if (prospect) {
-        const prospectNormalizado = {
-          ...prospect,
-          nome: prospect.nome_fantasia || prospect.razao_social || 'Sem Nome',
-          isFrio: true
-        };
-        setClienteParaModal(prospectNormalizado);
-        setModalAtivo({ tipo: 'CONTATO_GERAL', id: n.ref_id });
-      } else {
-        toast.error("Prospect não encontrado.");
-      }
-      return;
-    }
-  };
+    // Se clicar em Prospecção Fria, redireciona para a rota correta com o ID do lead na URL
+    if (n.tipo === 'PROSPECCAO') {
+      window.location.href = `/clientes/leads?leadId=${n.ref_id}`;
+      return;
+    }
+  }
 
   const markAsReadByIndicacao = async (indicacaoId: string) => {
     setNotificacoes(prev => prev.filter(n => n.ref_id !== indicacaoId));
@@ -305,7 +275,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_proposta_itens' }, () => carregarNotificacoes())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_frios_acoes' }, () => carregarNotificacoes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_frios' }, () => carregarNotificacoes())
       .subscribe();
 
     carregarNotificacoes();
