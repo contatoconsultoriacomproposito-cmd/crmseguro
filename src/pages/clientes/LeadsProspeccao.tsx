@@ -94,7 +94,7 @@ export default function LeadsProspeccao() {
   const [novaAcaoObs, setNovaAcaoObs] = useState("");
   const [novaAcaoRetorno, setNovaAcaoRetorno] = useState("");
   const [novaAcaoHorarioRetorno, setNovaAcaoHorarioRetorno] = useState("");
-  const [marcarComoJaCliente, setMarcarComoJaCliente] = useState(false);
+  const [resultadoAcao, setResultadoAcao] = useState("em_prospeccao");
 
 
 
@@ -199,24 +199,22 @@ export default function LeadsProspeccao() {
       const de = (paginaAtual - 1) * ITENS_POR_PAGINA;
       const ate = de + ITENS_POR_PAGINA - 1;
 
-      // Verifica se o usuário ativou o filtro de data
-      //const temFiltroData = filtroDataRetornoMin || filtroDataRetornoMax;
-
       // 2. Solicita a contagem exata ({ count: "exact" }) para sabermos o total de páginas
       let query = supabase
         .from("tab_clientes_frios")
-        .select("*", { count: "exact" }) // <-- Simplificado aqui (sem !inner)
+        .select("*", { count: "exact" })
         .eq("corretora_id", perfilUsuario.corretora_id);
 
-      // 🎯 LÓGICA DO NOVO FILTRO DE STATUS
+      // 🎯 LÓGICA DE FILTRAGEM POR TEXTO (PESQUISA GERAL)
       if (pesquisaGeral) {
         query = query.or(`razao_social.ilike."%${pesquisaGeral}%",nome_fantasia.ilike."%${pesquisaGeral}%",cnpj.ilike."%${pesquisaGeral}%"`);
       }
 
+      // 🎯 CORREÇÃO CRÍTICA DO FILTRO DE STATUS DA GRADE PRINCIPAL
       if (filtroStatus) {
         query = query.eq("status_prospeccao", filtroStatus);
       } else {
-        // Se não houver filtro de status selecionado, o padrão é ocultar os já convertidos
+        // Se não houver filtro de status ativo, traz tudo do fluxo normal ocultando APENAS quem já virou cliente do CRM (convertido)
         query = query.neq("status_prospeccao", "convertido");
       }
 
@@ -230,7 +228,7 @@ export default function LeadsProspeccao() {
       if (filtroMunicipio) query = query.ilike("municipio", `%${filtroMunicipio}%`);
       if (filtroBairro) query = query.ilike("bairro", `%${filtroBairro}%`);
       if (filtroCnaesSelecionados.length > 0) { 
-        query = query.in("cnae_principal", filtroCnaesSelecionados); 
+        query = query.in("cnae_principal", filtroCnaesSelecionados);
       }
 
       // 🎯 5. NOVOS FILTROS AVANÇADOS
@@ -240,16 +238,14 @@ export default function LeadsProspeccao() {
       if (filtroMatriz) query = query.eq("descricao_identificador_matriz_filial", filtroMatriz);
       if (filtroCapitalMin) query = query.gte("capital_social", Number(filtroCapitalMin));
       if (filtroCapitalMax) query = query.lte("capital_social", Number(filtroCapitalMax));
-
-      // Filtros de Data de Retorno na tabela estrangeira
-      if (filtroDataRetornoMin) query = query.gte("data_retorno", filtroDataRetornoMin); // <-- Corrigido
-      if (filtroDataRetornoMax) query = query.lte("data_retorno", filtroDataRetornoMax); // <-- Corrigido
+      if (filtroDataRetornoMin) query = query.gte("data_retorno", filtroDataRetornoMin);
+      if (filtroDataRetornoMax) query = query.lte("data_retorno", filtroDataRetornoMax);
 
       // 6. Aplica a limitação de linhas (.range) para trazer apenas 100 por vez
       const { data, error, count } = await query
         .order("importado_em", { ascending: false })
         .range(de, ate);
-      
+
       if (error) throw error;
 
       // 6. Alimenta a listagem global de CNAEs com contagem em tempo real baseada nos outros filtros aplicados
@@ -259,8 +255,7 @@ export default function LeadsProspeccao() {
           .select("cnae_principal")
           .eq("corretora_id", perfilUsuario.corretora_id);
 
-
-
+        // 🎯 CORREÇÃO CRÍTICA DO FILTRO DE STATUS NA CONTAGEM DO DROPDOWN DE CNAE
         if (filtroStatus) {
           cnaeQuery = cnaeQuery.eq("status_prospeccao", filtroStatus);
         } else {
@@ -285,9 +280,8 @@ export default function LeadsProspeccao() {
         if (filtroMatriz) cnaeQuery = cnaeQuery.eq("descricao_identificador_matriz_filial", filtroMatriz);
         if (filtroCapitalMin) cnaeQuery = cnaeQuery.gte("capital_social", Number(filtroCapitalMin));
         if (filtroCapitalMax) cnaeQuery = cnaeQuery.lte("capital_social", Number(filtroCapitalMax));
-        // Adiciona os filtros de data também na contagem de CNAEs
-        if (filtroDataRetornoMin) cnaeQuery = cnaeQuery.gte("data_retorno", filtroDataRetornoMin); // <-- Removido o prefixo da tabela estrangeira
-        if (filtroDataRetornoMax) cnaeQuery = cnaeQuery.lte("data_retorno", filtroDataRetornoMax); // <-- Removido o prefixo da tabela estrangeira
+        if (filtroDataRetornoMin) cnaeQuery = cnaeQuery.gte("data_retorno", filtroDataRetornoMin);
+        if (filtroDataRetornoMax) cnaeQuery = cnaeQuery.lte("data_retorno", filtroDataRetornoMax);
 
         const { data: cnaeData } = await cnaeQuery;
 
@@ -300,7 +294,6 @@ export default function LeadsProspeccao() {
             }
           });
 
-          // Mapeia para array de objetos e ordena do segmento com mais registros para o com menos
           const listaMapeada = Object.entries(contagem).map(([cnae, qtd]) => ({
             cnae,
             quantidade: qtd
@@ -314,7 +307,7 @@ export default function LeadsProspeccao() {
 
       // 7. Define os estados locais de dados e controle de páginas
       setLeads(data || []);
-      setTotalRegistros(count || 0); // Atualiza a paginação com o número real do banco
+      setTotalRegistros(count || 0);
     } catch (err: any) {
       toast.error("Erro ao buscar registros: " + err.message);
     } finally {
@@ -477,8 +470,18 @@ export default function LeadsProspeccao() {
       toast.warning("Escreva o resumo da ação realizada.");
       return;
     }
+
     try {
-      // 1. Grava apenas a observação histórica da ação realizada
+      // 1. Define o status correto baseado na seleção da tela LOGO NO INÍCIO
+      let novoStatus = "em_prospeccao";
+      if (resultadoAcao === "ja_cliente") novoStatus = "ja_cliente";
+      if (resultadoAcao === "perdido") novoStatus = "perdido";
+
+      // Se for 'perdido' ou 'ja_cliente', limpamos as datas de retorno para tirar do fluxo de agendamentos
+      const dataRetornoFinal = novoStatus === "em_prospeccao" ? (novaAcaoRetorno || null) : null;
+      const horarioRetornoFinal = novoStatus === "em_prospeccao" ? (novaAcaoHorarioRetorno || null) : null;
+
+      // 2. Grava a observação histórica da ação realizada
       const { error } = await supabase.from("tab_clientes_frios_acoes").insert({
         cliente_frio_id: leadTimeline.id,
         corretor_id: perfilUsuario.id,
@@ -486,26 +489,32 @@ export default function LeadsProspeccao() {
       });
       if (error) throw error;
 
-      // DEFINE O STATUS: Se marcou a caixinha vira 'ja_cliente', senão vira 'em_prospeccao'
-      const novoStatus = marcarComoJaCliente ? "ja_cliente" : "em_prospeccao";
-
-      // 2. Atualiza o status E centraliza o agendamento 1 para 1 na tabela principal do lead
-      await supabase.from("tab_clientes_frios").update({
+      // 3. Atualiza o status E o agendamento diretamente na tabela principal
+      const { error: errorUpdate } = await supabase.from("tab_clientes_frios").update({
         status_prospeccao: novoStatus,
-        data_retorno: novaAcaoRetorno || null,
-        horario_retorno: novaAcaoHorarioRetorno || null // <-- Gravando o horário na coluna correspondente
+        data_retorno: dataRetornoFinal,
+        horario_retorno: horarioRetornoFinal
       }).eq("id", leadTimeline.id);
+      
+      if (errorUpdate) throw errorUpdate;
 
       toast.success("Ação registrada na linha do tempo!");
-      setMarcarComoJaCliente(false); // Reseta a caixinha
       
-      // Mantém os dados locais sincronizados ao reabrir a timeline
+      // Reseta os campos do formulário da timeline
+      setNovaAcaoObs("");
+      setNovaAcaoRetorno("");
+      setNovaAcaoHorarioRetorno("");
+      setResultadoAcao("em_prospeccao");
+      
+      // Mantém os dados locais sincronizados ao reabrir a timeline e fecha/atualiza o estado
       abrirTimeline({
         ...leadTimeline,
-        data_retorno: novaAcaoRetorno || null,
-        horario_retorno: novaAcaoHorarioRetorno || null
+        status_prospeccao: novoStatus,
+        data_retorno: dataRetornoFinal,
+        horario_retorno: horarioRetornoFinal
       });
       
+      // Recarrega a grade principal da tela para aplicar o fundo vermelho instantaneamente
       buscarLeadsFrios();
     } catch (err: any) {
       toast.error("Falha ao salvar ação: " + err.message);
@@ -1122,6 +1131,7 @@ return (
                 <option value="em_prospeccao">Em Prospecção</option>
                 <option value="ja_cliente">Já Cliente</option>
                 <option value="convertido">Convertidos para CRM</option>
+                <option value="perdido">Perdidos / Dispensados</option>
               </select>
             </div>
 
@@ -1253,7 +1263,7 @@ return (
                     <div className="text-[11px] text-gray-400 truncate mt-0.5">{lead.bairro}</div>
                   </td>
                   
-                  {/* COLUNA DE STATUS REMONTADA E CORRIGIDA */}
+                  {/* COLUNA DE STATUS ATUALIZADA E CORRIGIDA */}
                   <td className="p-4">
                     {lead.status_prospeccao === 'ja_cliente' ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
@@ -1262,6 +1272,10 @@ return (
                     ) : lead.status_prospeccao === 'em_prospeccao' ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
                         🔄 Em Prospecção
+                      </span>
+                    ) : lead.status_prospeccao === 'perdido' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-red-100 text-red-700 border border-red-200 shadow-sm">
+                        ❌ Perdido
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-gray-100 text-gray-600 border border-gray-200">
@@ -1424,15 +1438,35 @@ return (
               </div>
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 {/* 🎯 CORREÇÃO 2: Adicionado o input de horário lado a lado com o de data */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Calendar className="w-4 h-4 text-purple-600" />
-                  <span className="text-xs font-bold text-slate-600 uppercase">Agendar Retorno:</span>
-                  <input type="date" value={novaAcaoRetorno} onChange={e => setNovaAcaoRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500" />
-                  <input type="time" value={novaAcaoHorarioRetorno} onChange={e => setNovaAcaoHorarioRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500" />
+
+
+                <div className="flex items-center gap-4 flex-wrap w-full md:w-auto">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Calendar className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-bold text-slate-600 uppercase">Agendar Retorno:</span>
+                    <input type="date" value={novaAcaoRetorno} onChange={e => setNovaAcaoRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500" />
+                    <input type="time" value={novaAcaoHorarioRetorno} onChange={e => setNovaAcaoHorarioRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500" />
+                  </div>
+
+                  {/* 📌 NOVO SELETOR PARA PERDIDO / RESULTADO DA AÇÃO */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-600 uppercase">Status:</span>
+                    <select 
+                      value={resultadoAcao} 
+                      onChange={e => setResultadoAcao(e.target.value)} 
+                      className="p-1.5 border rounded-lg text-xs bg-white font-semibold outline-none focus:border-purple-500 text-slate-700"
+                    >
+                      <option value="em_prospeccao">🔄 Em Prospecção</option>
+                      <option value="perdido">❌ Perdido (Dispensou)</option>
+                    </select>
+                  </div>
                 </div>
+
                 <button onClick={salvarNovaAcaoAcompanhamento} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm whitespace-nowrap ml-auto">
                   <Plus className="w-3.5 h-3.5"/> Registrar Ação
                 </button>
+
+
               </div>
             </div>
 
