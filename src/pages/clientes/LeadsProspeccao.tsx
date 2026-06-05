@@ -293,7 +293,7 @@ export default function LeadsProspeccao() {
         }
 
         if (pesquisaGeralDebounced) {
-          cnaeQuery = cnaeQuery.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%,nomes_socios.ilike.%${pesquisaGeralDebounced}%,nomes_socios.ilike.%${pesquisaGeralDebounced}%`);
+          cnaeQuery = cnaeQuery.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%,nomes_socios.ilike.%${pesquisaGeralDebounced}%`);
         }
 
         // Aplica os demais filtros de segmentação (menos o próprio filtroCnaesSelecionados)
@@ -1657,7 +1657,7 @@ return (
           <div className="flex-1 w-full relative flex items-center">
             <input
               type="text"
-              placeholder={pontoPartida.startsWith("GPS:") ? "📍 Usando sua localização atual..." : "Digite o Bairro/Cidade de Partida..."}
+              placeholder={pontoPartida.startsWith("GPS:") ? "📍 Usando a localização atual..." : "Digite o Bairro/Cidade de Partida..."}
               value={pontoPartida.startsWith("GPS:") ? "" : pontoPartida}
               disabled={pontoPartida.startsWith("GPS:")}
               onChange={(e) => setPontoPartida(e.target.value)}
