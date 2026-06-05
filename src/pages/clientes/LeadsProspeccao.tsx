@@ -228,7 +228,7 @@ export default function LeadsProspeccao() {
 
       // 🎯 LÓGICA DE FILTRAGEM POR TEXTO (PESQUISA GERAL)
       if (pesquisaGeralDebounced) {
-        query = query.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%`);
+        query = query.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%,nomes_socios.ilike.%${pesquisaGeralDebounced}%`);
       }
 
       // 🎯 CORREÇÃO CRÍTICA DO FILTRO DE STATUS DA GRADE PRINCIPAL
@@ -293,7 +293,7 @@ export default function LeadsProspeccao() {
         }
 
         if (pesquisaGeralDebounced) {
-          cnaeQuery = cnaeQuery.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%`);
+          cnaeQuery = cnaeQuery.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%,nomes_socios.ilike.%${pesquisaGeralDebounced}%,nomes_socios.ilike.%${pesquisaGeralDebounced}%`);
         }
 
         // Aplica os demais filtros de segmentação (menos o próprio filtroCnaesSelecionados)
