@@ -76,6 +76,7 @@ export default function LeadsProspeccao() {
   const [termoPesquisaCnae, setTermoPesquisaCnae] = useState("");
   const [dropdownCnaeAberto, setDropdownCnaeAberto] = useState(false);
   const [pesquisaGeral, setPesquisaGeral] = useState("");
+  const [pesquisaGeralDebounced, setPesquisaGeralDebounced] = useState("");
 
   // 🎯 NOVOS ESTADOS DOS FILTROS AVANÇADOS
   const [filtroStatus, setFiltroStatus] = useState("");
@@ -85,6 +86,10 @@ export default function LeadsProspeccao() {
   const [filtroMatriz, setFiltroMatriz] = useState("");
   const [filtroCapitalMin, setFiltroCapitalMin] = useState("");
   const [filtroCapitalMax, setFiltroCapitalMax] = useState("");
+  const [filtroCep, setFiltroCep] = useState("");
+  const [filtroSituacaoCadastral, setFiltroSituacaoCadastral] = useState("");
+  const [filtroDataAberturaMin, setFiltroDataAberturaMin] = useState("");
+  const [filtroDataAberturaMax, setFiltroDataAberturaMax] = useState("");
 
   // Estados dos Modais Modulares
   const [leadVisualizar, setLeadVisualizar] = useState<any>(null);
@@ -118,6 +123,16 @@ export default function LeadsProspeccao() {
 
   const [painelExpandido, setPainelExpandido] = useState(false); // Começa recolhido (false) ou expandido (true)
 
+  useEffect(() => {
+  const handler = setTimeout(() => {
+    setPesquisaGeralDebounced(pesquisaGeral);
+  }, 500); // Espera 500ms após o usuário parar de digitar
+
+  return () => {
+    clearTimeout(handler);
+  };
+}, [pesquisaGeral]);
+
   // Inicialização e Carga de Perfis
   useEffect(() => {
     async function carregarPerfil() {
@@ -135,14 +150,20 @@ export default function LeadsProspeccao() {
       buscarLeadsFrios();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perfilUsuario, filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, paginaAtual, pesquisaGeral, filtroDataRetornoMin, filtroDataRetornoMax]);
+  }, [perfilUsuario, filtroUf, filtroMunicipio, filtroBairro, 
+    filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, 
+    filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, 
+    paginaAtual, pesquisaGeralDebounced, filtroDataRetornoMin, filtroDataRetornoMax, filtroCep, 
+    filtroSituacaoCadastral, filtroDataAberturaMin, filtroDataAberturaMax]);
 
   //Resetar a Página ao Mudar os Filtros
   useEffect(() => {
     setPaginaAtual(1);
-  }, [filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, pesquisaGeral,filtroDataRetornoMin, filtroDataRetornoMax]);
-
-
+  }, [filtroUf, filtroMunicipio, filtroBairro, filtroCnaesSelecionados, 
+    filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, 
+    filtroCapitalMin, filtroCapitalMax, pesquisaGeralDebounced,
+    filtroDataRetornoMin, filtroDataRetornoMax, filtroCep, 
+    filtroSituacaoCadastral,filtroDataAberturaMin, filtroDataAberturaMax]);
 
 // useEffect Definitivo: Abre o modal por ID local ou buscando diretamente no Supabase se paginado/filtrado
   useEffect(() => {
@@ -206,8 +227,8 @@ export default function LeadsProspeccao() {
         .eq("corretora_id", perfilUsuario.corretora_id);
 
       // 🎯 LÓGICA DE FILTRAGEM POR TEXTO (PESQUISA GERAL)
-      if (pesquisaGeral) {
-        query = query.or(`razao_social.ilike."%${pesquisaGeral}%",nome_fantasia.ilike."%${pesquisaGeral}%",cnpj.ilike."%${pesquisaGeral}%"`);
+      if (pesquisaGeralDebounced) {
+        query = query.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%`);
       }
 
       // 🎯 CORREÇÃO CRÍTICA DO FILTRO DE STATUS DA GRADE PRINCIPAL
@@ -230,6 +251,11 @@ export default function LeadsProspeccao() {
       if (filtroCnaesSelecionados.length > 0) { 
         query = query.in("cnae_principal", filtroCnaesSelecionados);
       }
+      // 🎯 NOVOS: Filtros de Abertura e Situação Cadastral
+      if (filtroCep) query = query.ilike("cep", `%${filtroCep.replace(/\D/g, '')}%`);
+      if (filtroSituacaoCadastral) query = query.eq("situacao_cadastral", filtroSituacaoCadastral);
+      if (filtroDataAberturaMin) query = query.gte("data_abertura", filtroDataAberturaMin)
+      if (filtroDataAberturaMax) query = query.lte("data_abertura", filtroDataAberturaMax);
 
       // 🎯 5. NOVOS FILTROS AVANÇADOS
       if (filtroPorte) query = query.eq("porte", filtroPorte);
@@ -266,8 +292,8 @@ export default function LeadsProspeccao() {
           cnaeQuery = cnaeQuery.eq("corretor_id", perfilUsuario.id);
         }
 
-        if (pesquisaGeral) {
-          cnaeQuery = cnaeQuery.or(`razao_social.ilike."%${pesquisaGeral}%",nome_fantasia.ilike."%${pesquisaGeral}%",cnpj.ilike."%${pesquisaGeral}%"`);
+        if (pesquisaGeralDebounced) {
+          cnaeQuery = cnaeQuery.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%`);
         }
 
         // Aplica os demais filtros de segmentação (menos o próprio filtroCnaesSelecionados)
@@ -917,6 +943,10 @@ const handleLimparFiltros = () => {
     setFiltroDataRetornoMin(""); 
     setFiltroDataRetornoMax("");
     setPaginaAtual(1);
+    setFiltroCep("");
+    setFiltroSituacaoCadastral("");
+    setFiltroDataAberturaMin("");
+    setFiltroDataAberturaMax("");
   };
 
 return (
@@ -953,12 +983,12 @@ return (
       
 
       {/* Painel Unificado de Filtros (Geográficos e Segmentação) */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
         
-        {/* 🔍 BARRA DE PESQUISA INTELIGENTE + BOTÕES DE CONTROLE */}
-        <div className={`col-span-1 sm:col-span-2 md:col-span-4 flex flex-col sm:flex-row sm:items-end gap-3 ${painelExpandido ? 'border-b border-slate-100 pb-3' : ''}`}>
+        {/* LINHA 1: BARRA DE PESQUISA INTELIGENTE + BOTÕES DE CONTROLE */}
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
           <div className="flex-1">
-            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🔍 Pesquisa Rápida</label>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">🔍 Busca Global</label>
             <input 
               type="text" 
               value={pesquisaGeral} 
@@ -969,16 +999,13 @@ return (
           </div> 
           
           <div className="flex items-center gap-2 shrink-0">
-            {/* 🛠️ BOTÃO RETRAIR / EXPANDIR */}
             <button
               type="button"
               onClick={() => setPainelExpandido(!painelExpandido)}
               className="px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-sm font-bold rounded-lg transition-all border border-blue-100 active:scale-95 flex items-center justify-center gap-1.5 whitespace-nowrap"
             >
-              {painelExpandido ? "▲ Recolher Filtros" : "▼ Filtros Avançados"}
+              {painelExpandido ? "▲ Ocultar Avançados" : "▼ Filtros Avançados"}
             </button>
-
-            {/* Botão Limpa Filtros */}
             <button
               type="button"
               onClick={handleLimparFiltros}
@@ -989,222 +1016,200 @@ return (
           </div>
         </div> 
         
-        {/* ⚡ CONTEÚDO CONDICIONAL (Só renderiza se painelExpandido for true) */}
+        {/* CONTEÚDO CONDICIONAL (Só renderiza se painelExpandido for true) */}
         {painelExpandido && (
-          <>
-            {/* 📍 Filtrar por UF */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📍 Filtrar por UF</label>
-              <input 
-                type="text" 
-                maxLength={2}
-                value={filtroUf} 
-                onChange={(e) => setFiltroUf(e.target.value.toUpperCase())} 
-                placeholder="Ex: SP" 
-                className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500 transition-colors"
-              />
-            </div>
-
-            {/* 🏙️ Filtrar por Município */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏙️ Filtrar por Município</label>
-              <input 
-                type="text" 
-                value={filtroMunicipio} 
-                onChange={(e) => setFiltroMunicipio(e.target.value)} 
-                placeholder="Ex: São Paulo" 
-                className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500 transition-colors"
-              />
-            </div>
-
-            {/* 🏡 Filtrar por Bairro */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏡 Filtrar por Bairro</label>
-              <input 
-                type="text" 
-                value={filtroBairro} 
-                onChange={(e) => setFiltroBairro(e.target.value)} 
-                placeholder="Ex: Centro" 
-                className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500 transition-colors"
-              />
-            </div>
-
-            {/* 🎯 Filtrar por CNAE / Nicho */}
-            <div className="relative" id="cnae-dropdown-container">
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🎯 Filtrar por CNAE / Nicho</label>
-              
-              <div 
-                onClick={() => setDropdownCnaeAberto(!dropdownCnaeAberto)}
-                className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 font-medium cursor-pointer flex justify-between items-center select-none min-h-[42px] hover:border-slate-300 transition-colors"
-              >
-                <span className="truncate text-slate-700">
-                  {filtroCnaesSelecionados.length === 0 
-                    ? "Todos os nichos" 
-                    : `${filtroCnaesSelecionados.length} nicho(s) selecionado(s)`}
-                </span>
-                <span className="text-xs text-gray-400 transition-transform duration-200">
-                  {dropdownCnaeAberto ? "▲" : "▼"}
-                </span>
-              </div>
+          <div className="flex flex-col gap-5 border-t border-slate-100 pt-4 animate-fade-in">
             
-              {/* Caixa Dropdown Flutuante */}
-              {dropdownCnaeAberto && (() => {
-                const cnaesFiltrados = todosCnaesDisponiveis.filter((item: any) => 
-                  item.cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
-                );
-
-                return (
-                  <div className="absolute right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 space-y-2 animate-fade-in w-full min-w-[280px] md:min-w-[340px]">
-                    <input 
-                      type="text"
-                      autoFocus
-                      value={termoPesquisaCnae}
-                      onChange={(e) => setTermoPesquisaCnae(e.target.value)}
-                      placeholder="Digite para pesquisar..."
-                      className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 bg-slate-50 font-medium"
-                    />
-
-                    <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
-                      {cnaesFiltrados.length > 0 ? (
-                        cnaesFiltrados.map((item: any) => {
-                          const incluso = filtroCnaesSelecionados.includes(item.cnae);
-                          return (
-                            <label 
-                              key={item.cnae} 
-                              className="flex items-center justify-between gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none"
-                            >
-                              <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                                <input 
-                                  type="checkbox"
-                                  checked={incluso}
-                                  onChange={() => {
-                                    setFiltroCnaesSelecionados(prev => 
-                                      incluso ? prev.filter(i => i !== item.cnae) : [...prev, item.cnae]
-                                    );
-                                  }}
-                                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer flex-shrink-0"
-                                />
-                                <span className="text-slate-700 font-medium break-words leading-tight">{item.cnae}</span>
-                              </div>
-                              <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100">
-                                {item.quantidade}
-                              </span>
-                            </label>
-                          );
-                        })
-                      ) : (
-                        <p className="text-center text-gray-400 py-4 italic">Nenhum segmento encontrado.</p>
-                      )}
-                    </div>
-
-                    <div className="border-t pt-2 flex justify-between items-center bg-slate-50 -mx-2 -mb-2 p-2 rounded-b-xl">
-                      <div>
-                        {filtroCnaesSelecionados.length > 0 && (
-                          <button 
-                            type="button"
-                            onClick={() => setFiltroCnaesSelecionados([])} 
-                            className="text-[10px] bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded font-bold uppercase transition"
-                          >
-                            Limpar
-                          </button>
-                        )}
-                      </div>
-                      <button 
-                        type="button"
-                        onClick={() => { setDropdownCnaeAberto(false); setTermoPesquisaCnae(""); }} 
-                        className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold uppercase transition shadow-sm"
-                      >
-                        Fechar
-                      </button>
-                    </div>
+            {/* LINHA 2: DOIS BLOCOS (Endereço e Cadastral + Capital) */}
+            <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+              
+              {/* Bloco 1: Localização */}
+              <div className="xl:col-span-2 bg-slate-50/50 p-3 rounded-lg border border-slate-100">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">1. Localização</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Estado (UF)</label>
+                    <input type="text" maxLength={2} value={filtroUf} onChange={(e) => setFiltroUf(e.target.value.toUpperCase())} placeholder="SP" className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-center" />
                   </div>
-                );
-              })()}
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Município</label>
+                    <input type="text" value={filtroMunicipio} onChange={(e) => setFiltroMunicipio(e.target.value)} placeholder="Ex: São Paulo" className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Bairro</label>
+                    <input type="text" value={filtroBairro} onChange={(e) => setFiltroBairro(e.target.value)} placeholder="Ex: Centro" className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">CEP</label>
+                    <input type="text" value={filtroCep} onChange={(e) => setFiltroCep(e.target.value)} placeholder="00000-000" className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloco 2: Cadastro na Receita Federal + Capital Social */}
+              <div className="xl:col-span-3 bg-slate-50/50 p-3 rounded-lg border border-slate-100">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">2. Dados da Receita & Capital</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Situação</label>
+                    <select value={filtroSituacaoCadastral} onChange={(e) => setFiltroSituacaoCadastral(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white">
+                      <option value="">Todas</option>
+                      <option value="02">✅ Ativa (02)</option>
+                      <option value="03">⚠️ Suspensa (03)</option>
+                      <option value="04">❌ Inapta (04)</option>
+                      <option value="08">🛑 Baixada (08)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Abertura (De)</label>
+                    <input type="date" value={filtroDataAberturaMin} onChange={(e) => setFiltroDataAberturaMin(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Abertura (Até)</label>
+                    <input type="date" value={filtroDataAberturaMax} onChange={(e) => setFiltroDataAberturaMax(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Capital Mín. (R$)</label>
+                    <input type="number" value={filtroCapitalMin} onChange={(e) => setFiltroCapitalMin(e.target.value)} placeholder="0" className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Capital Máx. (R$)</label>
+                    <input type="number" value={filtroCapitalMax} onChange={(e) => setFiltroCapitalMax(e.target.value)} placeholder="Ex: 50000" className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white" />
+                  </div>
+                </div>
+              </div>
+
             </div>
 
-            {/* 📌 Status de Prospecção */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📌 Status de Prospecção</label>
-              <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
-                <option value="">Todos (Exceto Convertidos)</option>
-                <option value="nao_contatado">Não Contatado</option>
-                <option value="em_prospeccao">Em Prospecção</option>
-                <option value="ja_cliente">Já Cliente</option>
-                <option value="convertido">Convertidos para CRM</option>
-                <option value="perdido">Perdidos / Dispensados</option>
-              </select>
-            </div>
+            {/* LINHA 3: SEGMENTAÇÃO CORPORATIVA */}
+            <div className="border-t border-slate-100 pt-3">
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">3. Perfil da Empresa</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                
+                {/* 1º ELEMENTO (Canto Esquerdo): Porte da Empresa (Movido para cá) */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Porte</label>
+                  <select value={filtroPorte} onChange={(e) => setFiltroPorte(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white">
+                    <option value="">Todos</option>
+                    <option value="MICRO EMPRESA">Micro Empresa</option>
+                    <option value="EMPRESA DE PEQUENO PORTE">Pequeno Porte</option>
+                    <option value="DEMAIS">Demais Portes</option>
+                  </select>
+                </div>
 
-            {/* 🏢 Porte da Empresa */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏢 Porte da Empresa</label>
-              <select value={filtroPorte} onChange={(e) => setFiltroPorte(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
-                <option value="">Todos os Portes</option>
-                <option value="MICRO EMPRESA">Micro Empresa</option>
-                <option value="EMPRESA DE PEQUENO PORTE">Empresa de Pequeno Porte</option>
-                <option value="DEMAIS">Demais Portes</option>
-              </select>
-            </div>
+                {/* 2º ELEMENTO: Tipo de Unidade */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tipo de Unidade</label>
+                  <select value={filtroMatriz} onChange={(e) => setFiltroMatriz(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white">
+                    <option value="">Matriz e Filial</option>
+                    <option value="1">🏢 Apenas Matriz</option>
+                    <option value="2">🏬 Apenas Filial</option>
+                  </select>
+                </div>
 
-            {/* 🏷️ Matriz / Filial */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🏷️ Matriz / Filial</label>
-              <select value={filtroMatriz} onChange={(e) => setFiltroMatriz(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500">
-                <option value="">Matriz e Filiais</option>
-                <option value="1">Apenas Matriz (1)</option>
-                <option value="2">Apenas Filial (2)</option>
-              </select>
-            </div>
+                {/* 3º ELEMENTO: É MEI? */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">É MEI?</label>
+                  <select value={filtroMei} onChange={(e) => setFiltroMei(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white">
+                    <option value="">Indiferente</option>
+                    <option value="true">Sim</option>
+                    <option value="false">Não</option>
+                  </select>
+                </div>
 
-            {/* ⚙️ Enquadramento */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">⚙️ Enquadramento</label>
-              <div className="grid grid-cols-2 gap-2">
-                <select value={filtroMei} onChange={(e) => setFiltroMei(e.target.value)} className="w-full p-2.5 rounded-lg border text-xs bg-slate-50/50 outline-none focus:border-blue-500">
-                  <option value="">MEI?</option>
-                  <option value="true">Sim</option>
-                  <option value="false">Não</option>
-                </select>
-                <select value={filtroSimples} onChange={(e) => setFiltroSimples(e.target.value)} className="w-full p-2.5 rounded-lg border text-xs bg-slate-50/50 outline-none focus:border-blue-500">
-                  <option value="">Simples?</option>
-                  <option value="true">Sim</option>
-                  <option value="false">Não</option>
-                </select>
+                {/* 4º ELEMENTO: Optante Simples? */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Optante Simples?</label>
+                  <select value={filtroSimples} onChange={(e) => setFiltroSimples(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white">
+                    <option value="">Indiferente</option>
+                    <option value="true">Sim</option>
+                    <option value="false">Não</option>
+                  </select>
+                </div>
+
+                {/* 5º ELEMENTO (Canto Direito): Dropdown Customizado de CNAE (Movido para cá) */}
+                <div className="relative" id="cnae-dropdown-container">
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nicho (CNAE)</label>
+                  <div 
+                    onClick={() => setDropdownCnaeAberto(!dropdownCnaeAberto)}
+                    className="w-full p-2 rounded-md border text-sm bg-white font-medium cursor-pointer flex justify-between items-center select-none min-h-[38px] hover:border-slate-300 transition-colors"
+                  >
+                    <span className="truncate text-slate-700">
+                      {filtroCnaesSelecionados.length === 0 ? "Todos os nichos" : `${filtroCnaesSelecionados.length} selecionados`}
+                    </span>
+                    <span className="text-xs text-gray-400">{dropdownCnaeAberto ? "▲" : "▼"}</span>
+                  </div>
+                  
+                  {dropdownCnaeAberto && (() => {
+                    const cnaesFiltrados = todosCnaesDisponiveis.filter((item: any) => 
+                      item.cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
+                    );
+                    return (
+                      /* Mantido right-0 para colar na borda direita do container do painel avançado */
+                      <div className="absolute right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 space-y-2 animate-fade-in w-[90vw] sm:w-[400px] md:w-[480px]">
+                        <input type="text" autoFocus value={termoPesquisaCnae} onChange={(e) => setTermoPesquisaCnae(e.target.value)} placeholder="Digite para pesquisar..." className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 bg-slate-50 font-medium" />
+                        <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
+                          {cnaesFiltrados.length > 0 ? (
+                            cnaesFiltrados.map((item: any) => {
+                              const incluso = filtroCnaesSelecionados.includes(item.cnae);
+                              return (
+                                <label key={item.cnae} className="flex items-center justify-between gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none">
+                                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                    <input type="checkbox" checked={incluso} onChange={() => setFiltroCnaesSelecionados(prev => incluso ? prev.filter(i => i !== item.cnae) : [...prev, item.cnae])} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer flex-shrink-0" />
+                                    <span className="text-slate-700 font-medium break-words leading-tight">{item.cnae}</span>
+                                  </div>
+                                  <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100">{item.quantidade}</span>
+                                </label>
+                              );
+                            })
+                          ) : (
+                            <p className="text-center text-gray-400 py-4 italic">Nenhum segmento encontrado.</p>
+                          )}
+                        </div>
+                        <div className="border-t pt-2 flex justify-between items-center bg-slate-50 -mx-2 -mb-2 p-2 rounded-b-xl">
+                          <div>
+                            {filtroCnaesSelecionados.length > 0 && (
+                              <button type="button" onClick={() => setFiltroCnaesSelecionados([])} className="text-[10px] bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded font-bold uppercase transition">Limpar</button>
+                            )}
+                          </div>
+                          <button type="button" onClick={() => { setDropdownCnaeAberto(false); setTermoPesquisaCnae(""); }} className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold uppercase transition shadow-sm">Fechar</button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
               </div>
             </div>
 
-            {/* 💰 Filtro de Capital Social (Intervalo) */}
-            <div className="col-span-1 sm:col-span-2 md:col-span-4 border-t border-slate-100 pt-3">
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">💰 Filtro de Capital Social (Intervalo)</label>
-              <div className="flex items-center gap-2">
-                <input type="number" placeholder="De R$ 0,00" value={filtroCapitalMin} onChange={(e) => setFiltroCapitalMin(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500" />
-                <span className="text-slate-400 font-bold">até</span>
-                <input type="number" placeholder="Até R$ (Máximo)" value={filtroCapitalMax} onChange={(e) => setFiltroCapitalMax(e.target.value)} className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500" />
+            {/* LINHA 4: CONTROLE E AÇÕES */}
+            <div className="border-t border-slate-100 pt-3">
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">4. Ações de Prospecção</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Status na Fila</label>
+                  <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700 font-medium">
+                    <option value="">Todos (Oculta Convertidos)</option>
+                    <option value="nao_contatado">⚪ Não Contatado</option>
+                    <option value="em_prospeccao">🔄 Em Prospecção</option>
+                    <option value="ja_cliente">👑 Já Cliente</option>
+                    <option value="convertido">🏆 Convertido no CRM</option>
+                    <option value="perdido">❌ Perdido</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Agendado Para (Início)</label>
+                  <input type="date" value={filtroDataRetornoMin} onChange={(e) => setFiltroDataRetornoMin(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Agendado Para (Fim)</label>
+                  <input type="date" value={filtroDataRetornoMax} onChange={(e) => setFiltroDataRetornoMax(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
+                </div>
               </div>
             </div>
 
-            {/* 📅 FILTRO DE DATA DE RETORNO (INTERVALO) */}
-            <div className="col-span-1 sm:col-span-2 md:col-span-4 border-t border-slate-100 pt-3">
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📅 Filtro de Data de Retorno (Agendado)</label>
-              <div className="flex items-center gap-2">
-                <input 
-                  type="date" 
-                  value={filtroDataRetornoMin} 
-                  onChange={(e) => setFiltroDataRetornoMin(e.target.value)} 
-                  className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500 text-slate-700" 
-                />
-                <span className="text-slate-400 font-bold">até</span>
-                <input 
-                  type="date" 
-                  value={filtroDataRetornoMax} 
-                  onChange={(e) => setFiltroDataRetornoMax(e.target.value)} 
-                  className="w-full p-2.5 rounded-lg border text-sm bg-slate-50/50 outline-none focus:border-blue-500 text-slate-700" 
-                />
-              </div>
-            </div>
-          </>
+          </div>
         )}
-        
       </div>
 
       {/* Tabela de Leads */}
