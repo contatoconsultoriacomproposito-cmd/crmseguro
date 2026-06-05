@@ -755,7 +755,8 @@ export default function LeadsProspeccao() {
 
     // Percorre cada cliente selecionado para montar o bloco visual customizado
     leadsSelecionados.forEach((lead, index) => {
-      const alturaBlocoCliente = 55; // Altura fixa de cada ficha em milímetros
+      // 🚀 AUMENTADO PARA 65mm para acomodar com folga a expansão dinâmica dos múltiplos sócios
+      const alturaBlocoCliente = 65; 
 
       // Controle de Quebra de Página Automática: Se o próximo bloco for passar do limite do papel, cria nova folha
       if (posicaoY + alturaBlocoCliente > alturaMaximaPagina) {
@@ -787,58 +788,72 @@ export default function LeadsProspeccao() {
       const divisorX = margemEsquerda + larguraDados;
       doc.line(divisorX, posicaoY + 7, divisorX, posicaoY + alturaBlocoCliente);
 
-      // 2. PREENCHIMENTO DOS DADOS (Coluna da Esquerda)
-      let dadosY = posicaoY + 13;
-      doc.setFontSize(9);
+      // 2. PREENCHIMENTO DOS DADOS (Coluna da Esquerda - Alturas Calculadas Dinamicamente)
+      let dadosY = posicaoY + 12;
+      doc.setFontSize(8.5); // Ajustado sutilmente para dar mais respiro vertical interno
 
       // CNPJ
       doc.setFont("Helvetica", "bold"); doc.text("CNPJ:", margemEsquerda + 3, dadosY);
-      doc.setFont("Helvetica", "normal"); doc.text(lead.cnpj ? maskCNPJ(lead.cnpj) : "Não informado", margemEsquerda + 16, dadosY);
+      doc.setFont("Helvetica", "normal"); doc.text(lead.cnpj ? maskCNPJ(lead.cnpj) : "Não informado", margemEsquerda + 14, dadosY);
 
-      // 🎯 NOVA LINHA: Data de Abertura no PDF
-      dadosY += 6;
+      // Data de Abertura
+      dadosY += 5;
       doc.setFont("Helvetica", "bold"); doc.text("Abertura:", margemEsquerda + 3, dadosY);
       doc.setFont("Helvetica", "normal");
       const dataPdf = lead.data_abertura ? new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR') : "Não informada";
-      doc.text(dataPdf, margemEsquerda + 21, dadosY);
+      doc.text(dataPdf, margemEsquerda + 19, dadosY);
       
       // Razão Social
-      dadosY += 6;
+      dadosY += 5;
       doc.setFont("Helvetica", "bold"); doc.text("Razão Social:", margemEsquerda + 3, dadosY);
       doc.setFont("Helvetica", "normal"); 
-      const razaoCortada = (lead.razao_social || "Não informada").substring(0, 45);
-      doc.text(razaoCortada, margemEsquerda + 26, dadosY);
+      const razaoCortada = (lead.razao_social || "Não informada").substring(0, 48);
+      doc.text(razaoCortada, margemEsquerda + 24, dadosY);
 
-      // Sócios
-      dadosY += 6;
+      // 🚀 MODIFICAÇÃO CRÍTICA: GESTÃO INTELIGENTE DE MÚLTIPLOS SÓCIOS (SEM CORTAR)
+      dadosY += 5;
       doc.setFont("Helvetica", "bold"); doc.text("Sócios:", margemEsquerda + 3, dadosY);
       doc.setFont("Helvetica", "normal");
-      const sociosCortados = (lead.nomes_socios || "Não informados").substring(0, 48);
-      doc.text(sociosCortados, margemEsquerda + 16, dadosY);
+      
+      // Formata a string de sócios substituindo o caractere '|' por vírgulas para melhor visualização no PDF
+      const textoSociosOriginal = lead.nomes_socios ? lead.nomes_socios.replace(/ \| /g, ', ') : "Não informados";
+      
+      // Quebra o texto longo de sócios automaticamente com base na largura limite da coluna da esquerda (Aprox. 90mm de largura útil)
+      const linhasSociosCalculadas = doc.splitTextToSize(textoSociosOriginal, 90);
+      
+      // Desenha cada linha gerada na tela, empurrando as próximas linhas de dados para baixo
+      linhasSociosCalculadas.forEach((linha: string, idx: number) => {
+        // Para evitar que um condomínio com dezenas de sócios empurre o resto dos dados para fora da ficha
+        if (idx < 3) { 
+          doc.text(idx === 2 ? linha + "..." : linha, margemEsquerda + 15, dadosY);
+          if (idx < linhasSociosCalculadas.length - 1 && idx < 2) {
+            dadosY += 4.5; // Espaçamento interno menor entre as quebras do próprio nome do sócio
+          }
+        }
+      });
 
-      // Capital Social
-      dadosY += 6;
+      // Capital Social (Agora posicionado de forma dinâmica de acordo com o tamanho dos sócios acima)
+      dadosY += 5;
       doc.setFont("Helvetica", "bold"); doc.text("Capital Social:", margemEsquerda + 3, dadosY);
       doc.setFont("Helvetica", "normal");
       const capitalFormatado = lead.capital_social 
         ? Number(lead.capital_social).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
         : "Não informado";
-      doc.text(capitalFormatado, margemEsquerda + 27, dadosY);
+      doc.text(capitalFormatado, margemEsquerda + 25, dadosY);
 
-      // Endereço (Um extra importante para o vendedor saber onde ir)
-      dadosY += 6;
+      // Endereço
+      dadosY += 5;
       doc.setFont("Helvetica", "bold"); doc.text("Endereço:", margemEsquerda + 3, dadosY);
       doc.setFont("Helvetica", "normal");
-      const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} - ${lead.bairro || ""}, ${lead.municipio || ""}`.substring(0, 45);
-      doc.text(enderecoCompleto, margemEsquerda + 20, dadosY);
+      const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} - ${lead.bairro || ""}, ${lead.municipio || ""}`.substring(0, 48);
+      doc.text(enderecoCompleto, margemEsquerda + 19, dadosY);
 
       // Telefone
-      dadosY += 6;
+      dadosY += 5;
       doc.setFont("Helvetica", "bold"); doc.text("Telefone:", margemEsquerda + 3, dadosY);
       doc.setFont("Helvetica", "normal");
-      // 🎯 CORREÇÃO: Remove o zero à esquerda antes de aplicar a máscara
       const telPdfTratado = lead.ddd_telefone_1 ? lead.ddd_telefone_1.replace(/^0/, '') : "";
-      doc.text(telPdfTratado ? maskPhone(telPdfTratado) : "Não informado", margemEsquerda + 19, dadosY);
+      doc.text(telPdfTratado ? maskPhone(telPdfTratado) : "Não informado", margemEsquerda + 18, dadosY);
 
 
       // 3. CAMPO LIVRE PARA ANOTAÇÕES (Coluna da Direita - Efeito pautado pontilhado)
@@ -849,9 +864,10 @@ export default function LeadsProspeccao() {
 
       // Desenha as linhas pontilhadas espaçadas para escrita confortável à mão
       doc.setDrawColor(226, 232, 240); // Slate-200
-      let linhaAnotacaoY = CollegeLineY(posicaoY + 20);
+      let linhaAnotacaoY = CollegeLineY(posicaoY + 19);
       
-      for (let i = 0; i < 4; i++) {
+      // 🚀 AUMENTADO DE 4 PARA 6 LINHAS aproveitando os 10mm extras da altura do bloco
+      for (let i = 0; i < 6; i++) {
         // Altera o estilo da linha para tracejado/pontilhado
         doc.setLineDashPattern([1, 1], 0);
         doc.line(divisorX + 4, linhaAnotacaoY, margemEsquerda + larguraDisponivel - 4, linhaAnotacaoY);
@@ -860,8 +876,8 @@ export default function LeadsProspeccao() {
       // Reseta o estilo de linha para sólida normal nas próximas iterações
       doc.setLineDashPattern([], 0);
 
-      // Avança a posição Y para o início do bloco do próximo cliente, adicionando um espaçamento de margem de 6mm
-      posicaoY += alturaBlocoCliente + 6;
+      // Avança a posição Y para o início do bloco do próximo cliente, adicionando um espaçamento de margem de 5mm
+      posicaoY += alturaBlocoCliente + 5;
     });
 
     // Auxiliar para legibilidade da altura da linha pautada
