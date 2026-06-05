@@ -220,7 +220,7 @@ export default function LeadsProspeccao() {
       const de = (paginaAtual - 1) * ITENS_POR_PAGINA;
       const ate = de + ITENS_POR_PAGINA - 1;
 
-      // 2. Solicita a contagem exata ({ count: "exact" }) para sabermos o total de páginas
+      // 2. Solicita a contagem exata ({ count: "exact" ou "planned"}) para sabermos o total de páginas
       let query = supabase
         .from("tab_clientes_frios")
         .select("*", { count: "exact" })
