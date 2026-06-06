@@ -76,7 +76,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryClientes = queryClientes.eq('corretor_id', user.id);
 
-      // Query Renovações Otimizada
+      // Query Renovações Otimizada (CORRIGIDA)
       let queryRenovacoes = supabase
         .from('tab_proposta_itens')
         .select(`
@@ -84,19 +84,24 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           data_renovacao, 
           horario_renovacao,
           notificacao_ativa,
+          status_renovacao,
+          corretor_id, -- 🔥 Agora o ID está aqui!
           tab_proposta_opcoes!inner (
             tab_propostas!inner (
               corretora_id,
-              corretor_id,
               tab_clientes (nome)
             )
           )
         `)
         .eq('notificacao_ativa', true)
+        .eq('status_renovacao', 'A RENOVAR')
         .lte('data_renovacao', hojeLocalStr)
         .eq('tab_proposta_opcoes.tab_propostas.corretora_id', corretoraDonaId);
 
-      if (!isAdmin) queryRenovacoes = queryRenovacoes.eq('tab_proposta_opcoes.tab_propostas.corretor_id', user.id);
+      // Filtragem direta e segura por corretor logado:
+      if (!isAdmin) {
+        queryRenovacoes = queryRenovacoes.eq('corretor_id', user.id);
+      }
 
       // Query de Prospecção Fria (Substituindo tab_campanhas) trazendo data e horário de retorno
       let queryFrios = supabase

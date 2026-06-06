@@ -72,7 +72,7 @@ export default function ProdutosLista() {
   const [modalComissaoAberto, setModalComissaoAberto] = useState(false);
   const [itemSelecionadoId, setItemSelecionadoId] = useState<string | null>(null);
   
-  // NOVO: Controle de comissões existentes e carregamento do Drawer do cliente
+  // Controle de comissões existentes e carregamento do Drawer do cliente
   const [itensComComissao, setItensComComissao] = useState<Set<string>>(new Set());
   const [clienteDrawer, setClienteDrawer] = useState<{ isOpen: boolean; loading: boolean; dados: any }>({
     isOpen: false,
@@ -85,7 +85,7 @@ export default function ProdutosLista() {
     setModalComissaoAberto(true);
   };
 
-  // NOVO: Buscar dados resumidos do cliente para o Drawer de visualização rápida
+  // Buscar dados resumidos do cliente para o Drawer de visualização rápida
   const abrirVisualizacaoCliente = async (clienteId: string) => {
     if (!clienteId) return;
     setClienteDrawer({ isOpen: true, loading: true, dados: null });
@@ -146,6 +146,8 @@ export default function ProdutosLista() {
       const perfilAtivo = perfilAtual || userProfile;
       if (!perfilAtivo?.corretora_id) return;
 
+      // 🔥 ALTERAÇÃO AQUI: Mudamos o relacionamento do 'usuarios_perfis' para a raiz da query 
+      // e trouxemos o 'corretor_id' direto de 'tab_proposta_itens'.
       let query = supabase
         .from("tab_proposta_itens")
         .select(`
@@ -159,7 +161,9 @@ export default function ProdutosLista() {
           periodicidade,
           status_renovacao,
           motivo_cancelamento,
+          corretor_id,
           base_produtos (nome),
+          usuarios_perfis!tab_proposta_itens_corretor_id_fkey (id, nome),
           tab_proposta_opcoes!inner (
             seguradora_id,
             base_seguradoras (nome),
@@ -167,28 +171,27 @@ export default function ProdutosLista() {
               id,
               numero_proposta,
               status,
-              corretor_id,
               corretora_id,
               parceiro_id,
               data_venda,
               cliente_id,
               tipo_negocio,
-              tab_clientes (id, nome, razao_social, tipo_cliente),
-              usuarios_perfis!tab_propostas_corretor_id_fkey(id, nome)
+              tab_clientes (id, nome, razao_social, tipo_cliente)
             )
           )
         `);
 
       query = query.eq("tab_proposta_opcoes.tab_propostas.corretora_id", perfilAtivo.corretora_id);
       
+      // 🔥 ALTERAÇÃO AQUI: Filtro de segurança por corretor agora é direto na raiz (muito mais rápido)
       if (perfilAtivo.tipo_usuario === 'CORRETOR') {
-        query = query.eq("tab_proposta_opcoes.tab_propostas.corretor_id", perfilAtivo.id);
+        query = query.eq("corretor_id", perfilAtivo.id);
       }
 
       const { data, error } = await query.order("data_fim_vigencia", { ascending: true });
       if (error) throw error;
 
-      // NOVO: Cruzamento imediato para identificar quais itens possuem comissões lançadas
+      // Cruzamento imediato para identificar comissões lançadas
       const itemIds = data?.map((i: any) => i.id) || [];
       if (itemIds.length > 0) {
         const { data: lancadas } = await supabase
@@ -206,7 +209,9 @@ export default function ProdutosLista() {
         const itemCliente = Array.isArray(itemProposta?.tab_clientes) ? itemProposta.tab_clientes[0] : itemProposta?.tab_clientes;
         const itemSeguradora = Array.isArray(itemOpcao?.base_seguradoras) ? itemOpcao.base_seguradoras[0] : itemOpcao?.base_seguradoras;
         const itemProduto = Array.isArray(item.base_produtos) ? item.base_produtos[0] : item.base_produtos;
-        const itemCorretor = Array.isArray(itemProposta?.usuarios_perfis) ? itemProposta.usuarios_perfis[0] : itemProposta?.usuarios_perfis;
+        
+        // 🔥 ALTERAÇÃO AQUI: O corretor agora é resolvido a partir da raiz da query
+        const itemCorretor = Array.isArray(item.usuarios_perfis) ? item.usuarios_perfis[0] : item.usuarios_perfis;
 
         return {
           id_item: item.id,
@@ -229,8 +234,9 @@ export default function ProdutosLista() {
           tipo_negocio: itemProposta?.tipo_negocio || "Novo",
           periodicidade: item.periodicidade || "ANUAL",
           cliente: itemCliente?.tipo_cliente === 'PJ' ? itemCliente?.razao_social : itemCliente?.nome,
+          // 🔥 Usando os dados vindos direto do item raiz
           corretor: itemCorretor?.nome || "Não informado", 
-          corretor_id: itemProposta?.corretor_id,
+          corretor_id: item.corretor_id,
           parceiro_id: itemProposta?.parceiro_id
         };
       });
@@ -307,7 +313,7 @@ export default function ProdutosLista() {
                              (!dataVendaFim || i.data_venda <= dataVendaFim);
 
       const matchPeriodicidade = selectedPeriodicidades.length === 0 || 
-                                selectedPeriodicidades.includes(i.periodicidade);
+                                 selectedPeriodicidades.includes(i.periodicidade);
 
       const matchStatus = selectedStatuses.length === 0 || selectedStatuses.includes(i.status);
 
@@ -383,7 +389,7 @@ export default function ProdutosLista() {
 
     doc.save(`Produtos_Vigencias_${new Date().getTime()}.pdf`);
   };
-
+  
   return (
     <div className="p-8 bg-[#F8FAFC] min-h-screen relative overflow-x-hidden">
       <div className="max-w-[1600px] mx-auto">
