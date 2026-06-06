@@ -70,11 +70,11 @@ export default function PropostasCadastro() {
   ]);
 
   // NOVO: Herdar o corretor do cliente assim que o cliente for selecionado
-useEffect(() => {
-  if (selectedClient && selectedClient.corretor_id) {
-    setSelectedCorretor(selectedClient.corretor_id);
-  }
-}, [selectedClient]);
+  useEffect(() => {
+    if (!propostaId && selectedClient && selectedClient.corretor_id) {
+      setSelectedCorretor(selectedClient.corretor_id);
+    }
+  }, [selectedClient, propostaId]);
   
   
   useEffect(() => {
@@ -138,10 +138,10 @@ useEffect(() => {
     // 4. Extrair Seguradoras Únicas e Produtos Únicos do Portfólio
     // Como a tabela de portfólio é uma matriz, precisamos filtrar os nulos e remover duplicatas
     const seguradorasDistintas = Array.from(new Map(
-      portfolio
-        .filter(item => item.base_seguradoras)
+      (portfolio || [])
+        .filter(item => item?.base_seguradoras && (item.base_seguradoras as any).id)
         .map(item => {
-          const s = item.base_seguradoras as any; // Cast para evitar o erro de 'id' inexistente
+          const s = item.base_seguradoras as any;
           return [s.id, { id: s.id, nome: s.nome }];
         })
     ).values());
@@ -451,9 +451,18 @@ useEffect(() => {
             parcelamento: cot.parcelamento,
             meio_pagamento: cot.meio,
             coberturas_franquias: cot.cobertura,
-            numero_cotacao: cot.numero_cotacao
+            numero_cotacao: cot.numero_cotacao, // <-- Não esqueça da vírgula aqui
+            
+            // 🔥 A MUDANÇA AQUI: Injeta o corretor em cada item salvo
+            corretor_id: corretorFinal 
           }));
-          await supabase.from("tab_proposta_itens").insert(itensParaInserir);
+
+          // Uma boa prática: capturar se houver erro ao inserir os itens
+          const { error: errorItens } = await supabase
+            .from("tab_proposta_itens")
+            .insert(itensParaInserir);
+
+          if (errorItens) throw errorItens;
         }
       }
 
@@ -477,10 +486,8 @@ useEffect(() => {
       // O redirecionamento agora é controlado pelo botão na modal de sucesso, 
       // mas mantivemos o timer por segurança caso o usuário não clique.
       setTimeout(() => {
-        if (showSuccess) {
-           setShowSuccess(false);
-           navigate('/propostas/lista');
-        }
+        setShowSuccess(false);
+        navigate('/propostas/lista');
       }, 5000);
 
     } catch (error: any) {
@@ -492,7 +499,7 @@ useEffect(() => {
   };
 
   return (
-    <div className="p-6 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen pb-32">
+    <div className="p-6 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen pb-40">
       <div className="max-w-[1600px] mx-auto mb-8">
         <div className="bg-white dark:bg-zinc-900 rounded-[24px] border border-slate-200 dark:border-zinc-800 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
@@ -521,9 +528,9 @@ useEffect(() => {
                 <div className="absolute z-50 w-full mt-2 bg-white dark:bg-zinc-800 border border-slate-200 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
                   {filteredClientes.map(c => (
                     <button key={c.id} onClick={() => {setSelectedClient(c); setShowSearch(false); setSearchTerm("");}}
-                      className="w-full p-3 text-left hover:bg-blue-50 border-b last:border-0"
+                      className="w-full p-3 text-left hover:bg-blue-50 border-b last:border-0 dark:hover:bg-zinc-700"
                     >
-                      <p className="text-sm font-bold uppercase">{c.tipo_cliente === 'PJ' ? c.razao_social : c.nome}</p>
+                      <p className="text-sm font-bold uppercase text-slate-800 dark:text-zinc-100">{c.tipo_cliente === 'PJ' ? c.razao_social : c.nome}</p>
                       <p className="text-[10px] text-slate-400 font-bold">{c.tipo_cliente === 'PJ' ? c.cnpj : c.cpf}</p>
                     </button>
                   ))}
@@ -532,20 +539,20 @@ useEffect(() => {
             </div>
 
             {selectedClient ? (
-              <div className="col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4 bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 relative">
+              <div className="col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4 bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 relative">
                 <button onClick={() => setSelectedClient(null)} className="absolute top-2 right-2 text-blue-300 hover:text-red-500"><X size={14} /></button>
                 <div>
                   <span className="text-[10px] font-bold text-blue-400 uppercase block">Nome / Razão Social</span>
-                  <span className="text-sm font-bold block truncate uppercase">{selectedClient.tipo_cliente === 'PJ' ? selectedClient.razao_social : selectedClient.nome}</span>
-                  <span className="text-[11px] opacity-60">{selectedClient.tipo_cliente === 'PJ' ? selectedClient.cnpj : selectedClient.cpf}</span>
+                  <span className="text-sm font-bold block truncate uppercase text-slate-800 dark:text-zinc-100">{selectedClient.tipo_cliente === 'PJ' ? selectedClient.razao_social : selectedClient.nome}</span>
+                  <span className="text-[11px] opacity-60 text-slate-500 dark:text-zinc-400">{selectedClient.tipo_cliente === 'PJ' ? selectedClient.cnpj : selectedClient.cpf}</span>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-blue-400 uppercase block">WhatsApp</span>
-                  <span className="text-sm font-bold text-emerald-600">{selectedClient.telefone_whats || "---"}</span>
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{selectedClient.telefone_whats || "---"}</span>
                 </div>
               </div>
             ) : (
-              <div className="col-span-3 flex items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-sm italic">Aguardando seleção...</div>
+              <div className="col-span-3 flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl text-slate-400 text-sm italic">Aguardando seleção...</div>
             )}
           </div>
         </div>
@@ -558,6 +565,7 @@ useEffect(() => {
         </h2>
         
         <button 
+          type="button"
           onClick={adicionarNovaOpcao}
           className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-blue-700 shadow-xl shadow-blue-200 dark:shadow-none transition-all active:scale-95 group"
         >
@@ -565,29 +573,26 @@ useEffect(() => {
           Adicionar Nova Opção de Seguradora
         </button>
         
-        {/* Linha decorativa opcional para dar profundidade */}
         <div className="w-24 h-1 bg-blue-600 rounded-full opacity-20"></div>
       </div>
 
       <div className="max-w-[1600px] mx-auto flex flex-wrap justify-center gap-8 py-4">
-      {opcoes.map((opcao, opIdx) => (
-        <div 
-          key={opIdx} 
-          className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl flex flex-col min-h-[600px] 
-                    w-full 
-                    md:w-[420px] 
-                    transition-all duration-500 animate-in fade-in zoom-in slide-in-from-bottom-2"
-        >
+        {opcoes.map((opcao, opIdx) => (
+          <div 
+            key={opIdx} 
+            className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl flex flex-col min-h-[600px] 
+                      w-full md:w-[420px] transition-all duration-500 animate-in fade-in zoom-in slide-in-from-bottom-2"
+          >
             <div className="p-5 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50 rounded-t-[32px]">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center font-black text-xs italic">0{opIdx + 1}</span>
-                <h3 className="font-black text-sm uppercase tracking-tight">Opção de Cotação</h3>
+                <h3 className="font-black text-sm uppercase tracking-tight text-slate-800 dark:text-zinc-100">Opção de Cotação</h3>
               </div>
               
-              {/* BOTÃO DE EXCLUIR SEGURADORA ADICIONADO AQUI */}
               <button 
+                type="button"
                 onClick={() => removerOpcao(opIdx)}
-                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-all"
                 title="Excluir Seguradora"
               >
                 <Trash2 size={18} />
@@ -595,153 +600,143 @@ useEffect(() => {
             </div>
 
             <div className="p-6 space-y-6 flex-1">
-  <div>
-    {/* Cabeçalho com Label e Atalho para o Modal */}
-    <div className="flex items-center justify-between mb-1">
-      <label className="text-[10px] font-black text-slate-400 uppercase block">
-        Companhia Seguradora
-      </label>
-      <button 
-        type="button"
-        onClick={() => setIsModalPortfolioOpen(true)}
-        className="text-[10px] font-black text-blue-500 hover:text-blue-700 uppercase flex items-center gap-1 transition-all active:scale-95"
-      >
-        <PlusCircle size={12} /> Gerenciar Portfólio
-      </button>
-    </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase block">
+                    Companhia Seguradora
+                  </label>
+                  <button 
+                    type="button"
+                    onClick={() => setIsModalPortfolioOpen(true)}
+                    className="text-[10px] font-black text-blue-500 hover:text-blue-700 uppercase flex items-center gap-1 transition-all active:scale-95"
+                  >
+                    <PlusCircle size={12} /> Gerenciar Portfólio
+                  </button>
+                </div>
 
-    <select 
-      className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-bold outline-none"
-      value={opcao.seguradora_id}
-      onChange={(e) => {
-        const sel = seguradoras.find(s => s.id === e.target.value);
-        const novas = [...opcoes];
-        novas[opIdx].seguradora_id = e.target.value;
-        novas[opIdx].nome_seguradora = sel?.nome || "";
-        setOpcoes(novas);
-      }}
-    >
-      <option value="">Selecione...</option>
-      {seguradoras.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-    </select>
-  </div>
-
-  {opcao.seguradora_id && (
-    <div className="space-y-4">
-      <div className="p-4 bg-slate-50 dark:bg-zinc-800/40 rounded-2xl border border-dashed border-slate-200">
-        <label className="text-[10px] font-black text-slate-500 uppercase mb-2 block italic">
-          + Adicionar Produtos Disponíveis nesta Seguradora
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {portfolioRaw
-            .filter(item => item.base_seguradora_id === opcao.seguradora_id)
-            .map(item => {
-              const p = item.base_produtos as any;
-              return (
-                <button 
-                  key={p.id} 
-                  onClick={() => addProdutoToOpcao(opIdx, p)}
-                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm flex items-center gap-1"
+                <select 
+                  className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-bold outline-none text-slate-800 dark:text-zinc-100"
+                  value={opcao.seguradora_id}
+                  onChange={(e) => {
+                    const sel = seguradoras.find(s => s.id === e.target.value);
+                    const novas = [...opcoes];
+                    novas[opIdx].seguradora_id = e.target.value;
+                    novas[opIdx].nome_seguradora = sel?.nome || "";
+                    setOpcoes(novas);
+                  }}
                 >
-                  + {p.nome}
-                </button>
-              );
-            })
-          }
-
-          {portfolioRaw.filter(item => item.base_seguradora_id === opcao.seguradora_id).length === 0 && (
-            <p className="text-[10px] text-slate-400 italic">Nenhum produto ativado para esta seguradora no seu portfólio.</p>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {opcao.cotacoes.map((cot, cotIdx) => (
-          <div key={cotIdx} className="p-5 border border-slate-200 dark:border-zinc-800 rounded-[24px] bg-white dark:bg-zinc-900 shadow-sm relative group">
-            <div className="flex items-center justify-between mb-4">
-              <span className="px-3 py-1 bg-blue-100 text-blue-600 text-[10px] font-black rounded-full uppercase">{cot.nome_produto}</span>
-              <button onClick={() => { const novas = [...opcoes]; novas[opIdx].cotacoes.splice(cotIdx, 1); setOpcoes(novas); }} className="text-red-400 opacity-0 group-hover:opacity-100"><X size={14} /></button>
-            </div>
-            
-            <div className="mb-3">
-              <label className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                <Hash size={10} /> Nº Cotação (Opcional)
-              </label>
-              <input 
-                type="text" 
-                placeholder="Ex: 998877"
-                className="w-full h-8 bg-transparent border-b border-slate-200 text-xs font-bold outline-none focus:border-blue-500 transition-colors"
-                value={cot.numero_cotacao}
-                onChange={e => updateCotacao(opIdx, cotIdx, 'numero_cotacao', e.target.value)}
-              />
-            </div>                    
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Valor Cotação</label>
-                <input type="text" className="w-full h-9 bg-transparent border-b border-slate-200 font-black text-sm text-blue-600" 
-                  value={cot.valor}
-                  onChange={e => handleValorChange(opIdx, cotIdx, e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Data</label>
-                <input type="date" className="w-full h-9 bg-transparent border-b border-slate-200 text-xs" 
-                  value={cot.data} onChange={e => updateCotacao(opIdx, cotIdx, 'data', e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Parcelas</label>
-                <select className="w-full h-9 bg-transparent border-b border-slate-200 text-xs font-bold"
-                  value={cot.parcelamento}
-                  onChange={e => updateCotacao(opIdx, cotIdx, 'parcelamento', e.target.value)}
-                >
-                  {[...Array(12)].map((_, i) => (
-                    <option key={i} value={`${i+1}x`}>{i+1}x</option>
-                  ))}
+                  <option value="">Selecione...</option>
+                  {seguradoras.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Meio</label>
-                <select className="w-full h-9 bg-transparent border-b border-slate-200 text-xs font-bold"
-                  value={cot.meio}
-                  onChange={e => updateCotacao(opIdx, cotIdx, 'meio', e.target.value)}
-                >
-                  <option value="Boleto">Boleto</option>
-                  <option value="Cartão">Cartão</option>
-                  <option value="Pix">À vista</option>
-                </select>
-              </div>
+
+              {opcao.seguradora_id && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-zinc-700">
+                    <label className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase mb-2 block italic">
+                      + Adicionar Produtos Disponíveis nesta Seguradora
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {portfolioRaw
+                        .filter(item => item.base_seguradora_id === opcao.seguradora_id)
+                        .map(item => {
+                          const p = item.base_produtos as any;
+                          return (
+                            <button 
+                              key={p.id} 
+                              type="button"
+                              onClick={() => addProdutoToOpcao(opIdx, p)}
+                              className="px-3 py-1.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-[11px] font-bold hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 transition-all shadow-sm flex items-center gap-1 text-slate-700 dark:text-zinc-300"
+                            >
+                              + {p.nome}
+                            </button>
+                          );
+                        })
+                      }
+
+                      {portfolioRaw.filter(item => item.base_seguradora_id === opcao.seguradora_id).length === 0 && (
+                        <p className="text-[10px] text-slate-400 italic">Nenhum produto ativado para esta seguradora no seu portfólio.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {opcao.cotacoes.map((cot, cotIdx) => (
+                      <div key={cotIdx} className="p-5 border border-slate-200 dark:border-zinc-800 rounded-[24px] bg-white dark:bg-zinc-900 shadow-sm relative group">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 text-[10px] font-black rounded-full uppercase">{cot.nome_produto}</span>
+                          <button type="button" onClick={() => { const novas = [...opcoes]; novas[opIdx].cotacoes.splice(cotIdx, 1); setOpcoes(novas); }} className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X size={14} /></button>
+                        </div>
+                        
+                        <div className="mb-3">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                            <Hash size={10} /> Nº Cotação (Opcional)
+                          </label>
+                          <input 
+                            type="text" 
+                            placeholder="Ex: 998877"
+                            className="w-full h-8 bg-transparent border-b border-slate-200 dark:border-zinc-800 text-xs font-bold outline-none focus:border-blue-500 dark:text-zinc-100 transition-colors"
+                            value={cot.numero_cotacao}
+                            onChange={e => updateCotacao(opIdx, cotIdx, 'numero_cotacao', e.target.value)}
+                          />
+                        </div>                    
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Valor Cotação</label>
+                            <input type="text" className="w-full h-9 bg-transparent border-b border-slate-200 dark:border-zinc-800 font-black text-sm text-blue-600 dark:text-blue-400" 
+                              value={cot.valor}
+                              onChange={e => handleValorChange(opIdx, cotIdx, e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Data</label>
+                            <input type="date" className="w-full h-9 bg-transparent border-b border-slate-200 dark:border-zinc-800 text-xs dark:text-zinc-100" 
+                              value={cot.data} onChange={e => updateCotacao(opIdx, cotIdx, 'data', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Parcelas</label>
+                            <select className="w-full h-9 bg-transparent border-b border-slate-200 dark:border-zinc-800 text-xs font-bold dark:text-zinc-100"
+                              value={cot.parcelamento}
+                              onChange={e => updateCotacao(opIdx, cotIdx, 'parcelamento', e.target.value)}
+                            >
+                              {[...Array(12)].map((_, i) => (
+                                <option key={i} value={`${i+1}x`} className="dark:bg-zinc-900">{i+1}x</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Meio</label>
+                            <select className="w-full h-9 bg-transparent border-b border-slate-200 dark:border-zinc-800 text-xs font-bold dark:text-zinc-100"
+                              value={cot.meio}
+                              onChange={e => updateCotacao(opIdx, cotIdx, 'meio', e.target.value)}
+                            >
+                              <option value="Boleto" className="dark:bg-zinc-900">Boleto</option>
+                              <option value="Cartão" className="dark:bg-zinc-900">Cartão</option>
+                              <option value="Pix" className="dark:bg-zinc-900">À vista</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Coberturas</label>
+                          <textarea className="w-full p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl text-[11px] h-20 resize-none outline-none dark:text-zinc-200" 
+                            value={cot.cobertura} onChange={e => updateCotacao(opIdx, cotIdx, 'cobertura', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Coberturas</label>
-              <textarea className="w-full p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl text-[11px] h-20 resize-none outline-none" 
-                value={cot.cobertura} onChange={e => updateCotacao(opIdx, cotIdx, 'cobertura', e.target.value)}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )}
-
-  {/* Inserção do Modal no fluxo do componente */}
-  <ModalGerenciarPortfolio 
-    isOpen={isModalPortfolioOpen}
-    onClose={() => setIsModalPortfolioOpen(false)}
-    onUpdate={() => {
-      // CORREÇÃO: Alterado de carregarDadosIniciais para fetchDados
-      fetchDados(); 
-    }}
-  />
-  </div>
-
-            <div className="p-6 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-100 rounded-b-[32px]">
+            <div className="p-6 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-100 dark:border-zinc-800 rounded-b-[32px]">
                 <span className="text-[10px] font-black text-slate-400 uppercase block tracking-tighter">Total da Opção</span>
-                <span className="text-2xl font-black text-blue-600 italic">
+                <span className="text-2xl font-black text-blue-600 dark:text-blue-400 italic">
                   {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(calcularTotal(opcao.cotacoes))}
                 </span>
             </div>
@@ -749,17 +744,22 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* Rodapé fixo ajustado para não invadir o menu lateral */}
-      <div className="fixed bottom-0 left-72 right-24 p-4 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-t border-slate-200 z-40">
+      {/* Espaçador para o rodapé fixo não cobrir os totais */}
+      <div className="h-20 w-full" />
+
+      {/* Rodapé fixo ajustado */}
+      <div className="fixed bottom-0 left-72 right-0 p-4 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-t border-slate-200 dark:border-zinc-800 z-40 pr-8">
         <div className="max-w-[1600px] mx-auto flex justify-end gap-4">
           <button 
+            type="button"
             onClick={handleGerarPDF}
-            className="flex items-center gap-2 px-8 py-3 rounded-2xl font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 transition-all"
+            className="flex items-center gap-2 px-8 py-3 rounded-2xl font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 hover:bg-emerald-100 transition-all"
           >
             <FileText size={20} /> PDF Proposta
           </button>
           
           <button 
+            type="button"
             onClick={() => setShowFinalizeModal(true)} 
             className="flex items-center gap-2 px-10 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-xl hover:bg-blue-700 transition-all active:scale-95"
           >
@@ -768,20 +768,27 @@ useEffect(() => {
         </div>
       </div>
 
-     {showFinalizeModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl border border-slate-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-blue-50/30">
-              <h3 className="font-black text-lg uppercase italic text-blue-600">Finalizar Proposta</h3>
-              <button onClick={() => setShowFinalizeModal(false)} className="p-2 hover:bg-red-50 rounded-full"><X size={20}/></button>
+      {/* MODAL DE PORTFÓLIO: Posicionada corretamente fora do loop */}
+      <ModalGerenciarPortfolio 
+        isOpen={isModalPortfolioOpen}
+        onClose={() => setIsModalPortfolioOpen(false)}
+        onUpdate={() => { fetchDados(); }}
+      />
+
+      {showFinalizeModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-300">
+            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-blue-50/30 dark:bg-blue-950/20">
+              <h3 className="font-black text-lg uppercase italic text-blue-600 dark:text-blue-400">Finalizar Proposta</h3>
+              <button type="button" onClick={() => setShowFinalizeModal(false)} className="p-2 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-full text-slate-400 hover:text-red-500"><X size={20}/></button>
             </div>
             
             <div className="p-8 space-y-6">
               <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl">
-                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-blue-600"><Hash size={20}/></div>
+                <div className="w-10 h-10 bg-white dark:bg-zinc-900 border dark:border-zinc-700 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400"><Hash size={20}/></div>
                 <div>
                   <span className="text-[10px] font-black text-slate-400 uppercase block">Proposta N°</span>
-                  <span className="text-lg font-black tracking-widest">{numeroProposta}</span>
+                  <span className="text-lg font-black tracking-widest text-slate-800 dark:text-zinc-100">{numeroProposta}</span>
                 </div>
               </div>
 
@@ -791,15 +798,16 @@ useEffect(() => {
                   Corretor Responsável {selectedClient?.corretor_id ? "(Herdado do Cliente)" : ""}
                 </label>
                 <select 
-                  className={`w-full h-12 px-4 rounded-2xl border border-slate-200 dark:bg-zinc-900 text-sm font-bold outline-none transition-all ${
-                    selectedClient?.corretor_id ? 'bg-slate-100 dark:bg-zinc-800 cursor-not-allowed opacity-70' : ''
+                  className={`w-full h-12 px-4 rounded-2xl border border-slate-200 dark:border-zinc-800 dark:bg-zinc-900 text-sm font-bold outline-none transition-all text-slate-800 dark:text-zinc-100 ${
+                    selectedClient?.corretor_id ? 'bg-slate-100 dark:bg-zinc-800 cursor-not-allowed opacity-70' : 'focus:ring-2 focus:ring-blue-500/20'
                   }`}
                   value={selectedCorretor}
                   onChange={(e) => setSelectedCorretor(e.target.value)}
                   disabled={!!selectedClient?.corretor_id}
                 >
-                  {corretores.length > 1 && !selectedClient?.corretor_id && <option value="">Selecione...</option>}
-                  {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  {/* CORREÇÃO: Mostra "Selecione" sempre que não vier travado pelo cliente */}
+                  {!selectedClient?.corretor_id && <option value="">Selecione...</option>}
+                  {corretores.map(c => <option key={c.id} value={c.id} className="dark:bg-zinc-900">{c.nome}</option>)}
                 </select>
                 
                 {selectedClient?.corretor_id && (
@@ -809,19 +817,19 @@ useEffect(() => {
                 )}
               </div>
 
-              {/* NOVO CAMPO: PARCEIRO INDICADOR */}
+              {/* CAMPO: PARCEIRO INDICADOR */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">
                   Parceiro Indicador (Opcional)
                 </label>
                 <select 
-                  className="w-full h-12 px-4 rounded-2xl border border-slate-200 dark:bg-zinc-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  className="w-full h-12 px-4 rounded-2xl border border-slate-200 dark:border-zinc-800 dark:bg-zinc-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-slate-800 dark:text-zinc-100"
                   value={selectedParceiro}
                   onChange={(e) => setSelectedParceiro(e.target.value)}
                 >
-                  <option value="">Nenhum (Venda Direta)</option>
+                  <option value="" className="dark:bg-zinc-900">Nenhum (Venda Direta)</option>
                   {parceiros.map(p => (
-                    <option key={p.id} value={p.id}>{p.nome_parceiro}</option>
+                    <option key={p.id} value={p.id} className="dark:bg-zinc-900">{p.nome_parceiro}</option>
                   ))}
                 </select>
               </div>
@@ -831,20 +839,21 @@ useEffect(() => {
                 <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">Validade</label>
                 <input 
                   type="date"
-                  className="w-full h-12 px-4 rounded-2xl border border-slate-200 dark:bg-zinc-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full h-12 px-4 rounded-2xl border border-slate-200 dark:border-zinc-800 dark:bg-zinc-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800 dark:text-zinc-100"
                   value={validadeProposta}
                   onChange={(e) => setValidadeProposta(e.target.value)}
                 />
               </div>
 
               <button 
+                type="button"
                 onClick={handleSalvarBanco}
                 disabled={
                   loading || 
                   (!selectedCorretor && !selectedClient?.corretor_id) || 
                   !validadeProposta
                 }
-                className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all"
+                className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-blue-200 dark:shadow-none hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all"
               >
                 {loading ? "Salvando..." : "Confirmar e Salvar"}
               </button>
@@ -853,7 +862,7 @@ useEffect(() => {
         </div>
       )}
 
-      {/* MODAL DE SUCESSO AJUSTADO: SEM DOWNLOAD AUTOMÁTICO */}
+      {/* MODAL DE SUCESSO */}
       {showSuccess && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-10 max-w-md w-full shadow-2xl border border-slate-100 dark:border-zinc-800 text-center animate-in zoom-in slide-in-from-bottom-4 duration-500">
@@ -861,26 +870,26 @@ useEffect(() => {
               <CheckCircle2 className="text-emerald-500" size={44} />
             </div>
             <h2 className="text-2xl font-bold mb-2 text-slate-800 dark:text-white">Proposta Salva!</h2>
-            <p className="text-slate-500 dark:text-zinc-400 mb-8">
-              A proposta **{numeroProposta}** foi {propostaId ? "atualizada" : "gravada"} com sucesso no banco de dados.
+            <p className="text-slate-500 dark:text-zinc-400 mb-8 text-sm">
+              A proposta <strong className="text-blue-600 dark:text-blue-400">{numeroProposta}</strong> foi {propostaId ? "atualizada" : "gravada"} com sucesso no banco de dados.
             </p>
 
             <div className="grid grid-cols-1 gap-3">
               <button 
-                onClick={() => {
-                  handleGerarPDF(); // Gera apenas se o usuário clicar
-                }}
-                className="flex items-center justify-center gap-2 w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100"
+                type="button"
+                onClick={handleGerarPDF}
+                className="flex items-center justify-center gap-2 w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100 dark:shadow-none"
               >
                 <FileText size={18} /> Baixar PDF Agora
               </button>
 
               <button 
+                type="button"
                 onClick={() => {
                   setShowSuccess(false);
                   navigate('/propostas/lista');
                 }}
-                className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all"
               >
                 Ir para Listagem
               </button>

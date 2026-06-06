@@ -208,8 +208,9 @@ const exportarPDF = () => {
         .eq("corretora_id", userProfile.corretora_id)
         .order("created_at", { ascending: false });
 
+      // 🛠️ CORREÇÃO DA BUSCA POR PERFIL:
       if (userProfile.tipo_usuario === 'CORRETOR') {
-        query = query.eq('corretor_id', userProfile.id);
+        query = query.eq('corretor_id', userProfile.id); 
       }
 
       const { data, error } = await query;
@@ -233,7 +234,11 @@ const exportarPDF = () => {
         (p.tab_clientes?.razao_social || "").toLowerCase().includes(term);
 
       // 2. Corretor
-      const matchCorretor = selectedCorretores.length === 0 || selectedCorretores.includes(p.corretor_id);
+      const matchCorretor = selectedCorretores.length === 0 || 
+        selectedCorretores.includes(p.corretor_id) || 
+        p.tab_proposta_opcoes?.some((opt: any) => 
+          opt.tab_proposta_itens?.some((item: any) => selectedCorretores.includes(item.corretor_id))
+        );
 
       // Novo filtro de Status
       const matchStatus = selectedStatus.length === 0 || selectedStatus.includes(p.status);
@@ -570,7 +575,7 @@ const exportarPDF = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="p-20 text-center">
+                  <td colSpan={8} className="p-20 text-center">
                     <Loader2 className="animate-spin mx-auto text-blue-500" />
                   </td>
                 </tr>

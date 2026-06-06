@@ -85,7 +85,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           horario_renovacao,
           notificacao_ativa,
           status_renovacao,
-          corretor_id, -- 🔥 Agora o ID está aqui!
+          corretor_id,
           tab_proposta_opcoes!inner (
             tab_propostas!inner (
               corretora_id,
