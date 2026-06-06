@@ -1513,99 +1513,504 @@ return (
 
       {/* Modal: Visualizar Ficha */}
       {leadVisualizar && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-xl shadow-xl p-6 space-y-4">
-            <div className="flex justify-between items-start border-b pb-3">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl w-full max-w-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
+            
+            {/* Cabeçalho */}
+            <div className="p-5 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50 rounded-t-3xl">
               <div>
-                <h3 className="font-bold text-slate-800 text-lg">Ficha Cadastral do Lead</h3>
-                <p className="text-xs text-gray-400">Origem: Banco de Dados de Prospecção Fria</p>
+                <h3 className="font-black text-slate-800 dark:text-zinc-100 uppercase text-sm tracking-tight">Ficha Completa do Lead</h3>
+                <p className="text-[11px] text-slate-400 font-medium">Origem: Banco de Dados de Prospecção Fria</p>
               </div>
-              <button onClick={() => setLeadVisualizar(null)} className="p-1 rounded-lg hover:bg-slate-100"><X className="w-5 h-5"/></button>
+              <button 
+                type="button"
+                onClick={() => setLeadVisualizar(null)} 
+                className="p-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all"
+              >
+                <X className="w-5 h-5"/>
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="col-span-2 bg-blue-50/50 p-2.5 rounded-xl border border-blue-100">
-                <strong>Segmentação / CNAE Alvo:</strong> 
-                <div className="text-sm text-blue-800 font-semibold mt-0.5">{leadVisualizar.cnae_principal || 'Descrição do CNAE não mapeada ou indisponível.'}</div>
-              </div>
-              <div><strong>Razão Social:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.razao_social || 'Não cadastrado'}</div></div>
-              <div><strong>Nome Fantasia:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.nome_fantasia || 'Não cadastrado'}</div></div>
-              <div><strong>CNPJ:</strong> <div className="text-sm text-slate-700 font-mono mt-0.5">{maskCNPJ(leadVisualizar.cnpj)}</div></div>
-              <div><strong>Data de Abertura:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.data_abertura ? new Date(leadVisualizar.data_abertura + "T00:00:00").toLocaleDateString('pt-BR') : 'Não informada'}</div></div>
-              <div><strong>Telefone Comercial:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.ddd_telefone_1 || 'Não informado'}</div></div>
-              <div><strong>E-mail:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">{leadVisualizar.email || 'Não informado'}</div></div>
-              <div><strong>Capital Social:</strong> <div className="text-sm text-slate-700 font-medium mt-0.5">R$ {leadVisualizar.capital_social?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div></div>
-              <div className="col-span-2 border-t pt-2 mt-2">
-                <strong>Endereço Mapeado:</strong>
-                <div className="text-sm text-slate-600 mt-1">
-                  {leadVisualizar.logradouro}, {leadVisualizar.numero} {leadVisualizar.complemento && ` - ${leadVisualizar.complemento}`} <br/>
-                  {leadVisualizar.bairro} — {leadVisualizar.municipio}/{leadVisualizar.uf} — CEP: {leadVisualizar.cep}
+
+            {/* Corpo do Modal com Scroll */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1 text-xs">
+              
+              {/* SEÇÃO 1: STATUS E AGENDAMENTO (PROSPECÇÃO) */}
+              <div className="bg-blue-50/40 dark:bg-blue-950/10 p-4 rounded-2xl border border-blue-100/60 dark:border-blue-900/30 space-y-3">
+                <h4 className="text-[10px] font-black text-blue-500 uppercase tracking-wider">Status & Agendamento</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Status Prospecção</span>
+                    <span className="inline-block mt-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 uppercase">
+                      {(leadVisualizar.status_prospeccao || 'nao_contatado').replace('_', ' ')}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Data de Retorno</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-semibold mt-1">
+                      {leadVisualizar.data_retorno ? new Date(leadVisualizar.data_retorno + "T00:00:00").toLocaleDateString('pt-BR') : '---'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Horário de Retorno</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-semibold mt-1">
+                      {leadVisualizar.horario_retorno ? leadVisualizar.horario_retorno.substring(0, 5) : '---'}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-blue-100/40 dark:border-blue-900/20 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 font-medium">Vinculado à Corretora:</span> <span className="font-mono text-slate-600 dark:text-zinc-400">{leadVisualizar.corretora_id}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-medium">Corretor Responsável:</span> <span className="font-mono text-slate-600 dark:text-zinc-400">{leadVisualizar.corretor_id || 'Não atribuído'}</span>
+                  </div>
                 </div>
               </div>
-              <div className="col-span-2 border-t pt-2">
-                <strong>Quadro de Sócios Vinculado:</strong>
-                <div className="text-xs text-slate-600 font-mono mt-1 whitespace-pre-line">
-                  {leadVisualizar.nomes_socios ? leadVisualizar.nomes_socios.split(" | ").map((n: string) => `• ${n.trim()}`).join("\n") : "Nenhum sócio identificado."}
+
+              {/* SEÇÃO 2: IDENTIFICAÇÃO DA EMPRESA */}
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Identificação do Lead</h4>
+                
+                <div className="bg-slate-50 dark:bg-zinc-800/50 p-3.5 rounded-xl border border-slate-100 dark:border-zinc-800 text-sm text-slate-800 dark:text-zinc-200 font-bold">
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Segmentação / CNAE Principal</span>
+                  {leadVisualizar.cnae_principal || 'Descrição do CNAE não mapeada.'}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Razão Social</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-bold mt-0.5 uppercase">{leadVisualizar.razao_social || '---'}</div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Nome Fantasia</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-bold mt-0.5 uppercase">{leadVisualizar.nome_fantasia || '---'}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">CNPJ</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-mono font-semibold mt-0.5">{maskCNPJ ? maskCNPJ(leadVisualizar.cnpj) : leadVisualizar.cnpj}</div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Data de Abertura</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-medium mt-0.5">
+                      {leadVisualizar.data_abertura ? new Date(leadVisualizar.data_abertura + "T00:00:00").toLocaleDateString('pt-BR') : '---'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Situação Cadastral</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-bold mt-0.5">
+                      {leadVisualizar.situacao_cadastral ? `(${leadVisualizar.situacao_cadastral})` : '---'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Importado Em</span>
+                    <div className="text-sm text-slate-500 dark:text-zinc-400 font-medium mt-0.5">
+                      {leadVisualizar.importado_em ? new Date(leadVisualizar.importado_em).toLocaleDateString('pt-BR') : '---'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1 border-t border-dashed border-slate-100 dark:border-zinc-800">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Porte</span>
+                    <div className="text-xs text-slate-600 dark:text-zinc-400 font-semibold mt-0.5 uppercase">{leadVisualizar.porte || '---'}</div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Capital Social</span>
+                    <div className="text-xs text-slate-600 dark:text-zinc-400 font-mono font-bold mt-0.5 text-emerald-600 dark:text-emerald-400">
+                      {leadVisualizar.capital_social ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(leadVisualizar.capital_social) : '---'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Opção pelo MEI</span>
+                    <div className="text-xs text-slate-600 dark:text-zinc-400 font-semibold mt-0.5">
+                      {leadVisualizar.opcao_pelo_mei === true ? 'Sim ✅' : leadVisualizar.opcao_pelo_mei === false ? 'Não ❌' : '---'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Opção pelo Simples</span>
+                    <div className="text-xs text-slate-600 dark:text-zinc-400 font-semibold mt-0.5">
+                      {leadVisualizar.opcao_pelo_simples === true ? 'Sim ✅' : leadVisualizar.opcao_pelo_simples === false ? 'Não ❌' : '---'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Natureza Jurídica</span>
+                    <div className="text-xs text-slate-600 dark:text-zinc-400 font-medium mt-0.5">{leadVisualizar.natureza_juridica || '---'}</div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Identificador Matriz/Filial</span>
+                    <div className="text-xs text-slate-600 dark:text-zinc-400 font-medium mt-0.5 uppercase">{leadVisualizar.descricao_identificador_matriz_filial || '---'}</div>
+                  </div>
                 </div>
               </div>
+
+              {/* SEÇÃO 3: CANAIS DE CONTATO */}
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Canais de Contato</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50/50 dark:bg-zinc-800/30 p-3 rounded-2xl border border-slate-100 dark:border-zinc-800">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Telefone Principal</span>
+                    <div className="text-sm text-blue-600 dark:text-blue-400 font-bold mt-0.5">{leadVisualizar.ddd_telefone_1 || '---'}</div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Telefone Adicional / Whats</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-medium mt-0.5">{leadVisualizar.telefone_adicional || '---'}</div>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">E-mail Corporativo</span>
+                    <div className="text-sm text-slate-700 dark:text-zinc-300 font-medium mt-0.5 truncate select-all" title={leadVisualizar.email}>{leadVisualizar.email || '---'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SEÇÃO 4: ENDEREÇO MAPEADO */}
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Endereço Cadastral</h4>
+                <div className="bg-slate-50 dark:bg-zinc-800/40 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700/60 text-slate-600 dark:text-zinc-300 leading-relaxed">
+                  <div className="font-semibold text-slate-800 dark:text-zinc-200 text-xs">
+                    {leadVisualizar.logradouro || '---'}, Nº {leadVisualizar.numero || 'S/N'} 
+                    {leadVisualizar.complemento && <span className="text-slate-400 font-normal"> ({leadVisualizar.complemento})</span>}
+                  </div>
+                  <div className="mt-0.5 font-medium">
+                    Bairro: {leadVisualizar.bairro || '---'} — {leadVisualizar.municipio || '---'}/{leadVisualizar.uf || '---'}
+                  </div>
+                  <div className="text-[11px] font-mono mt-1 text-slate-400">
+                    CEP: {leadVisualizar.cep || '---'}
+                  </div>
+                </div>
+              </div>
+
+              {/* SEÇÃO 5: QUADRO DE SÓCIOS E CPFS (1 A 1 COM TIPAGEM RESGUARDADA) */}
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Quadro de Sócios e Administradores</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl border border-dashed border-slate-200 dark:border-zinc-700">
+                  
+                  {/* Listagem de Sócios */}
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Nomes Vinculados</span>
+                    <div className="flex flex-col gap-1.5">
+                      {leadVisualizar.nomes_socios && leadVisualizar.nomes_socios.trim() !== "" ? (
+                        leadVisualizar.nomes_socios.split(',')
+                          .filter((n: string) => n.trim() !== "")
+                          .map((socio: string, idx: number) => (
+                            <div key={idx} className="bg-white dark:bg-zinc-800 p-2 rounded-lg border text-slate-700 dark:text-zinc-300 font-semibold flex items-center gap-1.5 shadow-sm truncate">
+                              <span className="text-slate-400 text-[10px]">👤</span> {socio.trim()}
+                            </div>
+                          ))
+                      ) : (
+                        <span className="text-slate-400 font-medium italic text-[11px]">Nenhum sócio identificado</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Listagem de CPFs correspondentes */}
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Documentos (CPFs) / Faixa Etária</span>
+                    <div className="flex flex-col gap-1.5">
+                      {leadVisualizar.cpfs_socios && leadVisualizar.cpfs_socios.trim() !== "" ? (
+                        leadVisualizar.cpfs_socios.split(',')
+                          .filter((c: string) => c.trim() !== "")
+                          .map((cpf: string, idx: number) => (
+                            <div key={idx} className="bg-white dark:bg-zinc-800 p-2 rounded-lg border text-slate-600 dark:text-zinc-400 font-mono flex items-center gap-1.5 shadow-sm truncate">
+                              <span className="text-slate-400 text-[10px]">🪪</span> {cpf.trim()}
+                            </div>
+                          ))
+                      ) : (
+                        <span className="text-slate-400 font-medium italic text-[11px]">Nenhum documento listado</span>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Campo de Apoio: Faixas Etárias estruturadas da tabela */}
+                {leadVisualizar.faixas_etarias && (
+                  <div className="pt-1">
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Faixas Etárias Identificadas</span>
+                    <div className="text-xs text-slate-600 dark:text-zinc-400 font-medium mt-0.5">{leadVisualizar.faixas_etarias}</div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Rodapé do Modal */}
+            <div className="p-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/30 flex justify-end rounded-b-3xl">
+              <button 
+                type="button"
+                onClick={() => setLeadVisualizar(null)} 
+                className="px-6 py-2.5 text-xs font-black uppercase tracking-wider bg-slate-800 dark:bg-zinc-700 text-white rounded-xl shadow hover:bg-slate-900 dark:hover:bg-zinc-600 transition-all active:scale-95"
+              >
+                Fechar Ficha
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Ajuste Manual (Editar) */}
+      {/* Modal: Ajuste Manual (Editar Lead Prospecção) */}
       {leadEditar && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-xl shadow-xl">
-            <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
-              <h3 className="font-bold text-slate-800">Ajuste Manual de Registro</h3>
-              <button onClick={() => setLeadEditar(null)} className="p-1 rounded-lg hover:bg-slate-200"><X className="w-5 h-5"/></button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl w-full max-w-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
+            
+            {/* Cabeçalho */}
+            <div className="p-5 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50 rounded-t-3xl">
+              <div>
+                <h3 className="font-black text-slate-800 dark:text-zinc-100 uppercase text-sm tracking-tight">Prospecção & Ajuste de Registro</h3>
+                <p className="text-[11px] text-slate-400 font-medium">CNPJ: {leadEditar.cnpj}</p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setLeadEditar(null)} 
+                className="p-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all"
+              >
+                <X className="w-5 h-5"/>
+              </button>
             </div>
-            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Descrição CNAE / Nicho</label>
-                <input type="text" value={leadEditar.cnae_principal || ""} onChange={e => setLeadEditar({...leadEditar, cnae_principal: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
+
+            {/* Corpo do Modal com Scroll */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              
+              {/* SEÇÃO 1: STATUS E AGENDAMENTO */}
+              <div className="bg-blue-50/40 dark:bg-blue-950/10 p-4 rounded-2xl border border-blue-100/60 dark:border-blue-900/30 space-y-4">
+                <h4 className="text-[10px] font-black text-blue-500 uppercase tracking-wider mb-2">Controle de Prospecção</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Status da Prospecção</label>
+                    <select 
+                      value={leadEditar.status_prospeccao || "nao_contatado"} 
+                      onChange={e => setLeadEditar({...leadEditar, status_prospeccao: e.target.value})}
+                      className="w-full h-10 px-3 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    >
+                      <option value="nao_contatado">Não Contatado</option>
+                      <option value="em_negociacao">Em Negociação</option>
+                      <option value="agendado_retorno">Agendado Retorno</option>
+                      <option value="sem_interesse">Sem Interesse</option>
+                      <option value="lead_invalido">Lead Inválido / Tel Errado</option>
+                      <option value="convertido">Convertido (Cliente)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Data de Retorno</label>
+                    <input 
+                      type="date" 
+                      value={leadEditar.data_retorno || ""} 
+                      onChange={e => setLeadEditar({...leadEditar, data_retorno: e.target.value})}
+                      className="w-full h-10 px-3 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horário de Retorno</label>
+                    <input 
+                      type="time" 
+                      value={leadEditar.horario_retorno || ""} 
+                      onChange={e => setLeadEditar({...leadEditar, horario_retorno: e.target.value})}
+                      className="w-full h-10 px-3 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Nome Fantasia</label>
-                <input type="text" value={leadEditar.nome_fantasia || ""} onChange={e => setLeadEditar({...leadEditar, nome_fantasia: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Razão Social</label>
-                <input type="text" value={leadEditar.razao_social || ""} onChange={e => setLeadEditar({...leadEditar, razao_social: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              {/* SEÇÃO 2: DADOS DE CONTATO */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Canais de Contato Direto</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Telefone Principal</label>
+                    <input 
+                      type="text" 
+                      placeholder="(00) 0000-0000"
+                      value={leadEditar.ddd_telefone_1 || ""} 
+                      onChange={e => setLeadEditar({...leadEditar, ddd_telefone_1: e.target.value})} 
+                      className="w-full h-10 px-3 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-zinc-800 outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Telefone Adicional / Whats</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ex: (00) 99999-0000"
+                      value={leadEditar.telefone_adicional || ""} 
+                      onChange={e => setLeadEditar({...leadEditar, telefone_adicional: e.target.value})} 
+                      className="w-full h-10 px-3 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium bg-white dark:bg-zinc-800 outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Telefone Comercial</label>
-                  <input type="text" value={leadEditar.ddd_telefone_1 || ""} onChange={e => setLeadEditar({...leadEditar, ddd_telefone_1: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">E-mail</label>
-                  <input type="text" value={leadEditar.email || ""} onChange={e => setLeadEditar({...leadEditar, email: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Município</label>
-                  <input type="text" value={leadEditar.municipio || ""} onChange={e => setLeadEditar({...leadEditar, municipio: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">UF</label>
-                  <input type="text" maxLength={2} value={leadEditar.uf || ""} onChange={e => setLeadEditar({...leadEditar, uf: e.target.value.toUpperCase()})} className="w-full p-2 border rounded-lg text-sm" />
+                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">E-mail Corporativo</label>
+                  <input 
+                    type="email" 
+                    placeholder="contato@empresa.com"
+                    value={leadEditar.email || ""} 
+                    onChange={e => setLeadEditar({...leadEditar, email: e.target.value})} 
+                    className="w-full h-10 px-3 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium bg-white dark:bg-zinc-800 outline-none focus:border-blue-500"
+                  />
                 </div>
               </div>
+
+              {/* SEÇÃO 3: QUADRO DE SÓCIOS COM CORREÇÃO DE TIPAGEM */}
+              <div className="space-y-4 pt-2">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Quadro de Sócios e Administradores</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-2xl border border-dashed border-slate-200 dark:border-zinc-700">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Nomes dos Sócios (Separados por vírgula)</label>
+                    <textarea 
+                      rows={2}
+                      value={leadEditar.nomes_socios || ""} 
+                      onChange={e => setLeadEditar({...leadEditar, nomes_socios: e.target.value})} 
+                      placeholder="Sócio Um, Sócio Dois..."
+                      className="w-full p-3 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium bg-white dark:bg-zinc-800 outline-none resize-none text-slate-800 dark:text-zinc-100"
+                    />
+                    
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {leadEditar.nomes_socios?.split(',')
+                        .filter((n: string) => n.trim() !== "")
+                        .map((socio: string, idx: number) => (
+                          <span key={idx} className="bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-300 text-[10px] px-2 py-0.5 rounded-md font-medium">
+                            👤 {socio.trim()}
+                          </span>
+                        ))
+                      }
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">CPFs dos Sócios (Separados por vírgula)</label>
+                    <textarea 
+                      rows={2}
+                      value={leadEditar.cpfs_socios || ""} 
+                      onChange={e => setLeadEditar({...leadEditar, cpfs_socios: e.target.value})} 
+                      placeholder="000.000.000-00, 111.111.111-11"
+                      className="w-full p-3 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium bg-white dark:bg-zinc-800 outline-none resize-none text-slate-800 dark:text-zinc-100"
+                    />
+                    
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {leadEditar.cpfs_socios?.split(',')
+                        .filter((c: string) => c.trim() !== "")
+                        .map((cpf: string, idx: number) => (
+                          <span key={idx} className="bg-slate-200 dark:bg-zinc-700 text-slate-600 dark:text-zinc-400 text-[10px] px-2 py-0.5 rounded-md font-mono">
+                            🪪 {cpf.trim()}
+                          </span>
+                        ))
+                      }
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SEÇÃO 4: DADOS DA EMPRESA (SOMENTE LEITURA PROTEGIDA) */}
+              <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 space-y-4">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Informações Cadastrais (Somente Leitura)</h4>
+                
+                <div className="space-y-3 opacity-75">
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Descrição CNAE / Nicho</label>
+                    <div className="w-full bg-slate-100 dark:bg-zinc-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-medium text-slate-700 dark:text-zinc-300 select-all">
+                      {leadEditar.cnae_principal || "---"}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Nome Fantasia</label>
+                      <div className="w-full bg-slate-100 dark:bg-zinc-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase truncate">
+                        {leadEditar.nome_fantasia || "---"}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Razão Social</label>
+                      <div className="w-full bg-slate-100 dark:bg-zinc-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase truncate">
+                        {leadEditar.razao_social || "---"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Porte</label>
+                      <div className="w-full bg-slate-100 dark:bg-zinc-800/80 p-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-center text-xs font-semibold text-slate-600 dark:text-zinc-400">
+                        {leadEditar.porte || "---"}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Capital Social</label>
+                      <div className="w-full bg-slate-100 dark:bg-zinc-800/80 p-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-center text-xs font-mono font-bold text-slate-600 dark:text-zinc-400">
+                        {leadEditar.capital_social ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(leadEditar.capital_social) : "---"}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">Município</label>
+                      <div className="w-full bg-slate-100 dark:bg-zinc-800/80 p-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-center text-xs font-semibold text-slate-600 dark:text-zinc-400 truncate uppercase">
+                        {leadEditar.municipio || "---"}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">UF</label>
+                      <div className="w-full bg-slate-100 dark:bg-zinc-800/80 p-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-center text-xs font-bold text-slate-600 dark:text-zinc-400 uppercase">
+                        {leadEditar.uf || "---"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
-            <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-2xl">
-              <button onClick={() => setLeadEditar(null)} className="px-4 py-2 text-sm font-semibold border rounded-xl hover:bg-white">Cancelar</button>
-              <button onClick={async () => {
-                const { error } = await supabase.from("tab_clientes_frios").update(leadEditar).eq("id", leadEditar.id);
-                if (!error) { toast.success("Registro salvo!"); setLeadEditar(null); buscarLeadsFrios(); }
-              }} className="px-5 py-2 text-sm font-semibold bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700">Salvar Alterações</button>
+
+            {/* Rodapé de Ações */}
+            <div className="p-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/30 flex justify-end gap-2 rounded-b-3xl">
+              <button 
+                type="button"
+                onClick={() => setLeadEditar(null)} 
+                className="px-5 py-2.5 text-xs font-black uppercase tracking-wider border border-slate-200 dark:border-zinc-700 rounded-xl text-slate-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-800 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                onClick={async () => {
+                  const { error } = await supabase
+                    .from("tab_clientes_frios")
+                    .update({
+                      status_prospeccao: leadEditar.status_prospeccao,
+                      ddd_telefone_1: leadEditar.ddd_telefone_1,
+                      email: leadEditar.email,
+                      telefone_adicional: leadEditar.telefone_adicional,
+                      nomes_socios: leadEditar.nomes_socios,
+                      cpfs_socios: leadEditar.cpfs_socios,
+                      data_retorno: leadEditar.data_retorno || null, 
+                      horario_retorno: leadEditar.horario_retorno || null
+                    })
+                    .eq("id", leadEditar.id);
+                  
+                  if (!error) { 
+                    toast.success("Registro atualizado com sucesso!"); 
+                    setLeadEditar(null); 
+                    buscarLeadsFrios(); 
+                  } else {
+                    toast.error("Erro ao salvar alterações.");
+                  }
+                }} 
+                className="px-6 py-2.5 text-xs font-black uppercase tracking-wider bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200 dark:shadow-none hover:bg-blue-700 transition-all active:scale-95"
+              >
+                Salvar Alterações
+              </button>
             </div>
           </div>
         </div>
       )}
 
-    {/* Controles de Paginação Profissional */}
+      {/* Controles de Paginação Profissional */}
       {!loading && leads.length > 0 && (
         <div className="bg-white px-4 py-3 flex items-center justify-between border border-slate-200 rounded-xl shadow-sm">
           <div className="flex-1 flex justify-between sm:hidden">
@@ -1657,7 +2062,7 @@ return (
         </div>
       )}
 
-    {/* Barra Flutuante de Rota de Visitas */}
+      {/* Barra Flutuante de Rota de Visitas */}
       {selecionados.length > 0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex flex-col md:flex-row items-center gap-4 z-50 border border-slate-700 w-[90%] max-w-5xl">
           
