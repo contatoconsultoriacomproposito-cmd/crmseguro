@@ -17,10 +17,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userProfile, setUserProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   
-  // Refs para controle de fluxo síncrono
   const isLoggingOut = useRef(false)
   const hasInitialized = useRef(false)
-  const activeUserIdRef = useRef<string | null>(null) // 🛡️ Trava mestre contra re-fetch
+  const activeUserIdRef = useRef<string | null>(null)
 
   const handleSignOut = useCallback(async () => {
     if (isLoggingOut.current) return
@@ -36,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       setUser(null)
       setUserProfile(null)
-      activeUserIdRef.current = null // Limpa a trava
+      activeUserIdRef.current = null
       
       if (window.location.pathname !== "/" && !window.location.pathname.startsWith("/portal")) {
         console.log("✅ [AUTH] Redirecionando para Home...")
@@ -67,9 +66,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { user: currentUser } } = await supabase.auth.getUser()
     if (currentUser) {
       const data = await fetchProfile(currentUser.id)
-      setUserProfile(data)
+      if (data?.ativo === false) {
+        await handleSignOut()
+      } else {
+        setUserProfile(data)
+      }
     }
-  }, [fetchProfile])
+  }, [fetchProfile, handleSignOut])
 
   useEffect(() => {
     if (hasInitialized.current) return
@@ -106,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (profile?.ativo === false) {
             await handleSignOut()
           } else {
-            activeUserIdRef.current = verifiedUser.id // 🔑 Ativa a trava aqui
+            activeUserIdRef.current = verifiedUser.id
             setUser(verifiedUser)
             setUserProfile(profile)
             console.log("✅ [AUTH] Boot concluído com sucesso.")
@@ -133,19 +136,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } 
       else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user) {
-          // 🛡️ TRAVA DEFINITIVA COM REF:
-          // Comparamos o ID da sessão com o ID guardado na Ref (que não atrasa como o estado)
           if (activeUserIdRef.current === session.user.id) {
             console.log("⏭️ [AUTH] Trava Ref: Usuário já ativo. Ignorando re-fetch silencioso.")
             setLoading(false)
             return
           }
 
-          console.log(`🔔 [AUTH] Evento: ${event} - Usuário novo/diferente. Atualizando perfil...`)
-          activeUserIdRef.current = session.user.id // Atualiza a trava
+          console.log(`🔔 [AUTH] Evento: ${event} - Validando perfil antes de liberar acesso...`)
           
-          setUser(session.user)
+          // 🚨 TIRE O setLoading(true) QUE ESTAVA AQUI! 
+          // Era ele que ativava o spinner global e destruía o modal de login na HomePage.
+
           const profile = await fetchProfile(session.user.id)
+
+          if (profile?.ativo === false) {
+            console.warn("🚫 [AUTH] Tentativa de login com conta inativa detectada!")
+            activeUserIdRef.current = null
+            await handleSignOut() // Fica silencioso, desloga por baixo dos panos
+            return
+          }
+
+          // Só altera os estados e libera a aplicação se o usuário for ativo
+          activeUserIdRef.current = session.user.id
+          setUser(session.user)
           setUserProfile(profile)
           setLoading(false)
         }

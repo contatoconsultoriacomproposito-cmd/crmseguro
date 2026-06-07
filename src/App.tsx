@@ -45,7 +45,7 @@ import { ComissoesLista } from "./pages/comissoes/ComissoesLista"
 // 🔐 ROTA PRIVADA BLINDADA
 // ===============================
 function PrivateWrapper() {
-  const { user, loading } = useAuth()
+  const { user, userProfile, loading } = useAuth()
   const location = useLocation()
 
   if (loading) {
@@ -56,8 +56,8 @@ function PrivateWrapper() {
     )
   }
 
-  // Se não houver user, mandamos para a home e salvamos de onde ele veio
-  if (!user) {
+  // Se não houver user OU se o perfil existir mas não estiver ativo, barra imediatamente!
+  if (!user || (userProfile && userProfile.ativo === false)) {
     return <Navigate to="/" state={{ from: location }} replace />
   }
 
@@ -70,7 +70,7 @@ function PrivateWrapper() {
 // 🌍 ROTA PÚBLICA SOMENTE PARA NÃO LOGADOS
 // ===============================
 function PublicOnlyWrapper() {
-  const { user, loading } = useAuth()
+  const { user, userProfile, loading } = useAuth()
 
   if (loading) {
     return (
@@ -80,8 +80,8 @@ function PublicOnlyWrapper() {
     )
   }
 
-  // Se já está logado e tenta ir para a Home (/), jogamos para o Dashboard
-  if (user) {
+  // Só joga para o dashboard se o usuário existir E estiver ativamente liberado no banco
+  if (user && userProfile?.ativo !== false) {
     return <Navigate to="/dashboard" replace />
   }
 

@@ -47,13 +47,13 @@ export default function ClientesCadastro() {
     origem_cliente: "Google", fase_kanban: "lead", status_kanban: "novo", corretor_id: ""
   });
 
-// 1. CARREGAR PERFIL E LISTA DE CORRETORES (CONSOLIDADO)
+
+// 1. CARREGAR PERFIL E LISTA DE CORRETORES (CORRIGIDO)
 useEffect(() => {
   async function carregarConfiguracoesIniciais() {
     try {
       if (!user) return;
 
-      // Busca o perfil de quem está operando o sistema
       const { data: perfil, error: perfilError } = await supabase
         .from("usuarios_perfis")
         .select("id, nome, tipo_usuario, corretora_id")
@@ -65,21 +65,24 @@ useEffect(() => {
       if (perfil) {
         setPerfilUsuarioLogado(perfil);
 
-        if (perfil.tipo_usuario === 'CORRETOR') {
-          // Se for CORRETOR: Só vê ele mesmo na lista e o formulário já trava nele
-          setCorretores([{ id: perfil.id, nome: perfil.nome }]);
-          setForm(prev => ({ ...prev, corretor_id: perfil.id }));
-        } else {
-          // Se for CORRETORA: Busca todos os corretores vinculados a esta corretora
-          const { data, error } = await supabase
-            .from("usuarios_perfis")
-            .select("id, nome")
-            .eq("corretora_id", perfil.id) // <== SEGURANÇA: Filtra apenas os corretores DESTA corretora
-            .eq("tipo_usuario", "CORRETOR")
-            .order("nome");
-          
-          if (error) throw error;
-          if (data) setCorretores(data);
+        // A lógica agora é a mesma para todos: 
+        // Identificar o grupo (corretora_id) e buscar todo mundo.
+        const idDoGrupo = perfil.tipo_usuario === "CORRETORA" ? perfil.id : perfil.corretora_id;
+
+        // Busca todos os corretores do grupo
+        const { data: listaCorretores, error: erroLista } = await supabase
+          .from("usuarios_perfis")
+          .select("id, nome")
+          .eq("corretora_id", idDoGrupo)
+          .eq("tipo_usuario", "CORRETOR")
+          .order("nome");
+        
+        if (erroLista) throw erroLista;
+        if (listaCorretores) setCorretores(listaCorretores);
+
+        // Define o padrão caso seja novo cadastro
+        if (!isEditing && !form.corretor_id) {
+            setForm(prev => ({ ...prev, corretor_id: perfil.id }));
         }
       }
     } catch (err) {
@@ -249,24 +252,17 @@ useEffect(() => {
     setLoading(true);
 
     // --- LÓGICA DE HIERARQUIA CORRIGIDA ---
-    let finalCorretoraId;
-    let finalCorretorId;
+    // --- LÓGICA DE HIERARQUIA ATUALIZADA ---
+    
+    // 1. A Corretora_id é sempre fixa para quem pertence o cadastro
+    const finalCorretoraId = perfilUsuarioLogado?.tipo_usuario === "CORRETORA" 
+      ? perfilUsuarioLogado.id 
+      : perfilUsuarioLogado?.corretora_id;
 
-    if (perfilUsuarioLogado?.tipo_usuario === "CORRETORA") {
-      // Se quem está logado é a corretora, ela é sempre a dona (corretora_id)
-      finalCorretoraId = perfilUsuarioLogado.id;
-      
-      // O corretor será quem ela selecionou no <select>
-      // Se ela selecionou ela mesma (opção "DIRETO COM A CORRETORA"), o ID será o dela.
-      // Se ela selecionou um corretor, o ID será o do corretor.
-      finalCorretorId = form.corretor_id; 
-    } else {
-      // Se quem está logado é um CORRETOR:
-      // A corretora_id vem do cadastro dele (quem é o patrão dele)
-      // O corretor_id é ele mesmo.
-      finalCorretoraId = perfilUsuarioLogado?.corretora_id;
-      finalCorretorId = perfilUsuarioLogado?.id;
-    }
+    // 2. O Corretor_id respeita o que foi escolhido no formulário.
+    // Se o corretor deixou o campo vazio, assume que ele mesmo é o responsável (fallback para o próprio user.id).
+    const finalCorretorId = form.corretor_id || perfilUsuarioLogado?.id;
+    
     // --------------------------------------
 
     const toUpper = (val: any) => (typeof val === "string" ? val.toUpperCase() : val);
@@ -730,17 +726,17 @@ useEffect(() => {
                     name="corretor_id" 
                     value={form.corretor_id || ""} 
                     onChange={handleChange}
-                    disabled={perfilUsuarioLogado?.tipo_usuario === "CORRETOR"}
                     className="h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 outline-none transition-all cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   >
                     <option value="">Selecione um responsável...</option>
                     
-                    {/* OPÇÃO NOVA: Permite que a corretora seja a responsável direta */}
-                    {perfilUsuarioLogado?.tipo_usuario === "CORRETORA" && (
-                      <option value={perfilUsuarioLogado.id} className="font-bold text-blue-600">
-                        ATENDIMENTO DIRETO (CORRETORA)
-                      </option>
-                    )}
+                    {/* REMOVIDA A CONDIÇÃO IF: Agora aparece para Corretor e Corretora */}
+                    <option 
+                      value={perfilUsuarioLogado?.tipo_usuario === "CORRETORA" ? perfilUsuarioLogado.id : perfilUsuarioLogado?.corretora_id} 
+                      className="font-bold text-blue-600"
+                    >
+                      ATENDIMENTO DIRETO (CORRETORA)
+                    </option>
 
                     {corretores.map(c => (
                       <option key={c.id} value={c.id}>{c.nome}</option>

@@ -35,52 +35,52 @@ export default function LoginModal({ onClose, onSwitch }: any) {
     setLoading(false)
   }
 
-async function handleLogin(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setResetSent(false)
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
     try {
-      // 1. Tenta o login no Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
-      })
+      });
 
-      if (authError) throw authError
+      if (authError) throw authError;
 
       if (authData?.user) {
-        // 2. BUSCA O PERFIL IMEDIATAMENTE
         const { data: perfil, error: perfilError } = await supabase
           .from("usuarios_perfis")
           .select("ativo")
           .eq("id", authData.user.id)
-          .single()
+          .maybeSingle();
 
-        // 3. SE INATIVO: O deslogue precisa ser "atômico" antes de liberar o loading
-        if (perfilError || !perfil?.ativo) {
-          // Desloga antes de qualquer outra ação para o App.tsx voltar ao estado !user
-          await supabase.auth.signOut()
-          
-          // Limpa o estado e mostra o erro
-          setError("Sua conta está inativa. Para regularizar seu acesso, entre em contato com nossa equipe de suporte.")
-          setLoading(false)
-          return // INTERROMPE aqui, nunca chegará no navigate
+        if (perfilError) {
+          supabase.auth.signOut().catch(() => {});
+          throw new Error("Erro ao validar permissões. Tente novamente.");
         }
 
-        // 4. SE ATIVO: Segue o fluxo
-        navigate("/dashboard")
+        // 🚨 O SEGREDO ESTÁ AQUI: Sem 'await' antes do signOut!
+        if (!perfil || perfil.ativo === false) {
+          supabase.auth.signOut().catch(() => {}); // Dispara e esquece
+          setError("Sua conta está inativa. Para regularizar seu acesso, entre em contato com nossa equipe de suporte.");
+          setLoading(false);
+          return; 
+        }
+
+        setLoading(false);
+        navigate("/dashboard");
       }
     } catch (err: any) {
-      // Apenas uma sugestão: tente deslogar, mas foque na mensagem de erro do login
-      await supabase.auth.signOut().catch(() => {}); 
-      setLoading(false)
-      setError(
-        err.message.includes("Invalid login credentials")
-          ? "E-mail ou senha incorretos."
-          : "Sua conta está inativa ou houve um erro de acesso." // Ajustado para ser mais genérico e cobrir o erro do RLS
-      )
+      // 🚨 Aqui também sem 'await'
+      supabase.auth.signOut().catch(() => {});
+      setLoading(false);
+      
+      if (err.message?.includes("Invalid login credentials")) {
+        setError("E-mail ou senha incorretos.");
+      } else {
+        setError(err.message || "Houve um erro ao acessar a conta.");
+      }
     }
   }
 
