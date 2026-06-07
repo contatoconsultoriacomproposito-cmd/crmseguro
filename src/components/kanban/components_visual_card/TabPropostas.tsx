@@ -6,7 +6,6 @@ import { gerarPDFProposta } from '../../../utils/gerarPDF';
 import { formatarDataBR } from '../../../utils/dateUtils';
 import { ModalFechamento } from '../../propostas/ModalFechamento';
 import { ModalExclusaoSegura } from '../../../pages/propostas/ModalExclusaoSegura';
-// IMPORTANTE: Importar o sincronizador aqui também
 import { sincronizarStatusCliente } from '../../../pages/propostas/sincronizarStatusCliente';
 
 export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: () => void }) => {
@@ -88,9 +87,10 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
         const idsDosItens = itens?.map(i => i.id) || [];
 
         if (idsDosItens.length > 0) {
+          // Ajustado de 'tab_comissoes' para 'tab_comissoes_regras' para respeitar a DDL real
           const [resSinistros, resComissoes] = await Promise.all([
             supabase.from('tab_sinistros').select('id', { count: 'exact' }).in('item_id', idsDosItens),
-            supabase.from('tab_comissoes').select('id', { count: 'exact' }).in('item_id', idsDosItens)
+            supabase.from('tab_comissoes_regras').select('id', { count: 'exact' }).in('item_id', idsDosItens)
           ]);
           totalSinistros = resSinistros.count || 0;
           totalComissoes = resComissoes.count || 0;
@@ -110,19 +110,16 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
   const confirmarExclusaoFinal = async () => {
     const { proposta } = modalExclusao;
     try {
-      // 1. Deleta a proposta
       const { error } = await supabase.from('tab_propostas').delete().eq('id', proposta.id);
       if (error) throw error;
 
-      // 2. SINCRONIZAÇÃO: Avisa o sistema que a proposta sumiu para recalcular o status do cliente
       if (cliente.id) {
         await sincronizarStatusCliente(cliente.id);
       }
 
-      // 3. Fecha o modal e atualiza as telas
       setModalExclusao({ ...modalExclusao, isOpen: false });
       await fetchPropostas();
-      if (onUpdate) onUpdate(); // Atualiza o Kanban lá atrás
+      if (onUpdate) onUpdate(); 
     } catch (error: any) {
       alert("Erro ao excluir: " + error.message);
     }
@@ -133,17 +130,17 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
       <div className="space-y-3">
         {propostas.length > 0 ? (
           propostas.map((prop) => (
-            <div key={prop.id} className="p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+            <div key={prop.id} className="p-3 bg-white dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700 shadow-sm">
               <div className="flex justify-between items-start mb-2">
                 <div className="flex flex-col">
                   <span className="font-black text-[9px] text-slate-400 uppercase">#{prop.numero_proposta}</span>
-                  <span className="font-black text-blue-600 text-sm">
+                  <span className="font-black text-blue-600 dark:text-blue-400 text-sm">
                     R$ {Number(prop.valor_total_proposta || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
                   
                   <div className="flex items-center gap-1 mt-1">
                     <Calendar size={10} className="text-slate-400" />
-                    <span className="text-[9px] font-bold text-slate-500 uppercase">
+                    <span className="text-[9px] font-bold text-slate-500 dark:text-zinc-400 uppercase">
                       Válida até: {prop.data_validade ? formatarDataBR(prop.data_validade) : 'N/D'}
                     </span>
                   </div>
@@ -161,26 +158,26 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2 border-t border-slate-50">
+              <div className="flex gap-2 pt-2 border-t border-slate-50 dark:border-zinc-700/50">
                 {prop.status?.toLowerCase() === 'vendido' ? (
-                  <div className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase">
+                  <div className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 rounded-lg text-[10px] font-black uppercase">
                     <CheckCircle size={14} /> Vendido
                   </div>
                 ) : prop.status?.toLowerCase() === 'perdido' ? (
-                  <div className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-red-100 text-red-700 rounded-lg text-[10px] font-black uppercase">
+                  <div className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400 rounded-lg text-[10px] font-black uppercase">
                     <XCircle size={14} /> Perdido
                   </div>
                 ) : (
                   <>
-                    <button onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: prop })} className="flex-1 py-1.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors">Vendido</button>
-                    <button onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: prop })} className="flex-1 py-1.5 bg-red-50 text-red-700 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">Perdido</button>
+                    <button onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: prop })} className="flex-1 py-1.5 bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400 rounded-lg text-[10px] font-black uppercase hover:bg-green-100 transition-colors">Vendido</button>
+                    <button onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: prop })} className="flex-1 py-1.5 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">Perdido</button>
                   </>
                 )}
               </div>
             </div>
           ))
         ) : (
-          <div className="py-8 text-center bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+          <div className="py-8 text-center bg-slate-50 dark:bg-zinc-800/50 rounded-xl border-2 border-dashed border-slate-200 dark:border-zinc-700">
             <p className="text-[10px] text-slate-400 uppercase font-bold italic">Nenhuma proposta vinculada</p>
           </div>
         )}
@@ -188,7 +185,7 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
 
       <button
         onClick={() => navigate('/propostas/criar', { state: { clienteId: cliente.id } })}
-        className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-white hover:bg-blue-50 text-blue-600 border border-blue-100 rounded-lg transition-all shadow-sm"
+        className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-white dark:bg-zinc-900 hover:bg-blue-50 dark:hover:bg-zinc-800 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-zinc-700 rounded-lg transition-all shadow-sm"
       >
         <Plus size={18} strokeWidth={2.5} />
         <span className="text-sm font-bold uppercase">Nova Proposta</span>
@@ -208,12 +205,11 @@ export const TabPropostas = ({ cliente, onUpdate }: { cliente: any, onUpdate: ()
         />
       )}
 
-      {/* CORREÇÃO DO ERRO DE COMPILAÇÃO: Passando o clienteId */}
       <ModalExclusaoSegura 
         isOpen={modalExclusao.isOpen}
         onClose={() => setModalExclusao({ ...modalExclusao, isOpen: false })}
         onConfirm={confirmarExclusaoFinal}
-        clienteId={cliente.id} // RESOLVE O ERRO DE TYPESCRIPT
+        clienteId={cliente.id} 
         dadosCriticos={modalExclusao.dadosCriticos}
       />
     </div>

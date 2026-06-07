@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Package, Calendar, AlertCircle, DollarSign, ShieldCheck, Clock, CheckCircle2 } from 'lucide-react';
+import { Package, Calendar, AlertCircle, ShieldCheck, Clock, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { formatarDataBR } from '../../../utils/dateUtils';
 import { ModalAberturaSinistro } from './ModalAberturaSinistro';
@@ -18,6 +18,7 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
   const fetchProdutosVendidos = async () => {
     setCarregando(true);
     try {
+      // Ajustado sub-select para apontar para a tabela real: tab_comissoes_regras
       const { data, error } = await supabase
         .from('tab_proposta_itens')
         .select(`
@@ -34,7 +35,7 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
             tab_propostas!inner ( status, cliente_id )
           ),
           tab_sinistros ( id, status ),
-          tab_comissoes ( id, data_recebimento ) 
+          tab_comissoes_regras ( id, pct_comissao_venda ) 
         `)
         .eq('tab_proposta_opcoes.tab_propostas.cliente_id', clienteId)
         .ilike('tab_proposta_opcoes.tab_propostas.status', 'vendido');
@@ -61,28 +62,21 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
           // LÓGICA DE SINISTRO
           const sinistroAtivo = item.tab_sinistros?.find((s: any) => s.status === 'Aberto');
 
-          // LÓGICA DE COMISSÃO
-          const comissao = item.tab_comissoes?.[0];
+          // LÓGICA DE COMISSÃO (Mapeado com base na existência da regra configurada)
+          const comissaoRegra = item.tab_comissoes_regras?.[0];
           let btnComissaoProps = {
-            label: "Comissão",
-            estilo: "bg-emerald-50 text-emerald-600 hover:bg-emerald-100",
-            icon: <DollarSign size={14} />
+            label: "Definir Comissão",
+            estilo: "bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 dark:border-amber-900/50",
+            icon: <Clock size={14} />
           };
 
-          if (comissao) {
-            if (comissao.data_recebimento) {
-              btnComissaoProps = {
-                label: "Comissão Recebida",
-                estilo: "bg-green-500 text-white hover:bg-green-600 shadow-sm",
-                icon: <CheckCircle2 size={14} />
-              };
-            } else {
-              btnComissaoProps = {
-                label: "Acompanhamento",
-                estilo: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm",
-                icon: <Clock size={14} />
-              };
-            }
+          // Se a regra de comissão já existir no banco para este item
+          if (comissaoRegra) {
+            btnComissaoProps = {
+              label: `Regra Ativa (${comissaoRegra.pct_comissao_venda || 0}%)`,
+              estilo: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm",
+              icon: <CheckCircle2 size={14} />
+            };
           }
 
           return (
@@ -106,6 +100,7 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
                       Fim Vigência: {item.data_fim_vigencia ? formatarDataBR(item.data_fim_vigencia) : 'N/D'}
                     </span>
                   </div>
+                  
                   {/* EXIBIÇÃO DA PERIODICIDADE */}
                   <div className="flex items-center gap-1">
                     <Clock size={10} className="text-slate-400" />
@@ -147,7 +142,7 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
                         numeroApolice: item.numero_apolice
                       }
                     })}
-                    className="flex items-center justify-center gap-1.5 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-[9px] font-black uppercase"
+                    className="flex items-center justify-center gap-1.5 py-1.5 bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 rounded-lg hover:bg-red-100 transition-colors text-[9px] font-black uppercase"
                   >
                     <AlertCircle size={14} /> Sinistro/Assistência
                   </button>
@@ -162,7 +157,7 @@ export const TabProdutos = ({ clienteId }: { clienteId: string }) => {
                 </button>
               </div>
             </div>
-          )
+          );
         })
       ) : (
         <div className="py-8 text-center bg-slate-50 dark:bg-zinc-800/50 rounded-xl border-2 border-dashed border-slate-200 dark:border-zinc-700">

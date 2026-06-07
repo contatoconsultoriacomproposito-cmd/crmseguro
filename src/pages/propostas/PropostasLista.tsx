@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { 
   Search, FileText, Edit3, Trash2, 
-  CheckCircle, XCircle, Loader2, Calendar, Users, Handshake,Download, FileSpreadsheet
+  CheckCircle, XCircle, Loader2, Calendar, Users, Handshake, Download, FileSpreadsheet
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { gerarPDFProposta } from "../../utils/gerarPDF";
@@ -23,12 +23,11 @@ export default function PropostasLista() {
   const [corretores, setCorretores] = useState<any[]>([]);
   const [parceiros, setParceiros] = useState<any[]>([]);
   
-  
   // Estados de Filtro
   const [selectedCorretores, setSelectedCorretores] = useState<string[]>([]);
   const [selectedParceiros, setSelectedParceiros] = useState<string[]>([]);
   const [selectedPeriodicidade, setSelectedPeriodicidade] = useState<string[]>([]);
-  const [selectedStatus, setSelectedStatus] = useState<string[]>([]); // Novo estado
+  const [selectedStatus, setSelectedStatus] = useState<string[]>([]); 
   
   // Intervalos de Data
   const [vencimentoInicio, setVencimentoInicio] = useState("");
@@ -50,12 +49,10 @@ export default function PropostasLista() {
 
   const exportarExcel = () => {
     const dadosParaExportar = propostasFiltradas.map(p => {
-      // 1. Extração dos Produtos (já existe)
       const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
         opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
       ))).filter(Boolean).join(', ');
 
-      // 2. ADICIONE ESTA LINHA: Extração dos Números de Cotação
       const numerosCotacao = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
         opt.tab_proposta_itens?.map((i: any) => i.numero_cotacao)
       ))).filter(Boolean).join(' / ');
@@ -66,7 +63,7 @@ export default function PropostasLista() {
         "Proposta": p.numero_proposta,
         "Cliente": p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
         "Corretor": p.usuarios_perfis?.nome,
-        "Nº Cotação": numerosCotacao || "NÃO INFORMADO", // 👈 AGORA A VARIÁVEL EXISTE AQUI
+        "Nº Cotação": numerosCotacao || "NÃO INFORMADO",
         "Cotações": qtdeCotacoes,
         "Produtos Cotados": produtosNomes || "NÃO INFORMADO",
         "Periodicidade": Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
@@ -79,72 +76,69 @@ export default function PropostasLista() {
       };
     });
 
-  const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Propostas");
-  XLSX.writeFile(wb, `Relatorio_Propostas_${new Date().getTime()}.xlsx`);
-};
+    const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Propostas");
+    XLSX.writeFile(wb, `Relatorio_Propostas_${new Date().getTime()}.xlsx`);
+  };
 
-const exportarPDF = () => {
-  const doc = new jsPDF({ orientation: 'landscape' });
-  
-  doc.setFontSize(14);
-  doc.text("Relatório de Propostas", 14, 15);
-  
-  const totalGeral = propostasFiltradas.reduce((sum, p) => sum + (Number(p.valor_total_proposta) || 0), 0);
+  const exportarPDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape' });
+    
+    doc.setFontSize(14);
+    doc.text("Relatório de Propostas", 14, 15);
+    
+    const totalGeral = propostasFiltradas.reduce((sum, p) => sum + (Number(p.valor_total_proposta) || 0), 0);
 
-  const tableData = propostasFiltradas.map(p => {
-    // Extração de nomes de produtos
-    const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
-      opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
-    ))).filter(Boolean).join(', ');
+    const tableData = propostasFiltradas.map(p => {
+      const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+        opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
+      ))).filter(Boolean).join(', ');
 
-    // Extração dos números de cotação (Resolvendo o erro de Cannot find name)
-    const numCotacao = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
-      opt.tab_proposta_itens?.map((i: any) => i.numero_cotacao)
-    ))).filter(Boolean).join(' / ');
+      const numCotacao = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
+        opt.tab_proposta_itens?.map((i: any) => i.numero_cotacao)
+      ))).filter(Boolean).join(' / ');
 
-    return [
-      p.numero_proposta,
-      p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
-      numCotacao || "-", // Nova Coluna
-      p.tab_proposta_opcoes?.length || 0,
-      produtosNomes || "-",
-      p.status,
-      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)
-    ];
-  });
+      return [
+        p.numero_proposta,
+        p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
+        numCotacao || "-",
+        p.tab_proposta_opcoes?.length || 0,
+        produtosNomes || "-",
+        p.status,
+        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)
+      ];
+    });
 
-  autoTable(doc, {
-    // Adicionado 'Nº Cotação' no cabeçalho
-    head: [['Nº Proposta', 'Cliente', 'Nº Cotação', 'Cot.', 'Produtos Cotados', 'Status', 'Valor']],
-    body: tableData,
-    foot: [[
-      { content: 'TOTALIZADOR GERAL', colSpan: 6, styles: { halign: 'right', fontStyle: 'bold' } },
-      { content: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalGeral), styles: { fontStyle: 'bold' } }
-    ]],
-    showFoot: 'lastPage',
-    startY: 20,
-    theme: 'grid',
-    styles: { 
-      fontSize: 8,
-      cellPadding: 2 
-    },
-    columnStyles: {
-      0: { cellWidth: 25 }, // Nº Proposta
-      1: { cellWidth: 45 }, // Cliente
-      2: { cellWidth: 35 }, // Nº Cotação (Nova)
-      3: { cellWidth: 10, halign: 'center' }, // Cot.
-      4: { cellWidth: 85 }, // Produtos
-      5: { cellWidth: 25 }, // Status
-      6: { cellWidth: 35, halign: 'right' } // Valor
-    },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
-    footStyles: { fillColor: [241, 245, 249], textColor: 51, fontSize: 9 }
-  });
+    autoTable(doc, {
+      head: [['Nº Proposta', 'Cliente', 'Nº Cotação', 'Cot.', 'Produtos Cotados', 'Status', 'Valor']],
+      body: tableData,
+      foot: [[
+        { content: 'TOTALIZADOR GERAL', colSpan: 6, styles: { halign: 'right', fontStyle: 'bold' } },
+        { content: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalGeral), styles: { fontStyle: 'bold' } }
+      ]],
+      showFoot: 'lastPage',
+      startY: 20,
+      theme: 'grid',
+      styles: { 
+        fontSize: 8,
+        cellPadding: 2 
+      },
+      columnStyles: {
+        0: { cellWidth: 25 }, 
+        1: { cellWidth: 45 }, 
+        2: { cellWidth: 35 }, 
+        3: { cellWidth: 10, halign: 'center' }, 
+        4: { cellWidth: 85 }, 
+        5: { cellWidth: 25 }, 
+        6: { cellWidth: 35, halign: 'right' } 
+      },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+      footStyles: { fillColor: [241, 245, 249], textColor: 51, fontSize: 9 }
+    });
 
-  doc.save(`Relatorio_Propostas_${new Date().getTime()}.pdf`);
-};
+    doc.save(`Relatorio_Propostas_${new Date().getTime()}.pdf`);
+  };
 
   useEffect(() => {
     async function getInitialData() {
@@ -208,7 +202,6 @@ const exportarPDF = () => {
         .eq("corretora_id", userProfile.corretora_id)
         .order("created_at", { ascending: false });
 
-      // 🛠️ CORREÇÃO DA BUSCA POR PERFIL:
       if (userProfile.tipo_usuario === 'CORRETOR') {
         query = query.eq('corretor_id', userProfile.id); 
       }
@@ -233,26 +226,21 @@ const exportarPDF = () => {
         (p.tab_clientes?.nome || "").toLowerCase().includes(term) ||
         (p.tab_clientes?.razao_social || "").toLowerCase().includes(term);
 
-      // 2. Corretor
       const matchCorretor = selectedCorretores.length === 0 || 
         selectedCorretores.includes(p.corretor_id) || 
         p.tab_proposta_opcoes?.some((opt: any) => 
           opt.tab_proposta_itens?.some((item: any) => selectedCorretores.includes(item.corretor_id))
         );
 
-      // Novo filtro de Status
       const matchStatus = selectedStatus.length === 0 || selectedStatus.includes(p.status);
 
-      // 3. Parceiro (Lógica de Venda Direta vs Parceiro ID)
       const matchParceiro = selectedParceiros.length === 0 || 
         (selectedParceiros.includes("venda_direta") && !p.parceiro_id) || 
         (p.parceiro_id && selectedParceiros.includes(p.parceiro_id));
 
-      // 4. Intervalo de Vencimento (Comparação de string YYYY-MM-DD é segura para tipo 'date')
       const matchVencimento = (!vencimentoInicio || p.data_validade >= vencimentoInicio) &&
                               (!vencimentoFim || p.data_validade <= vencimentoFim);
 
-      // 5. Intervalo de Venda
       const matchVenda = (!vendaInicio || (p.data_venda && p.data_venda >= vendaInicio)) &&
                          (!vendaFim || (p.data_venda && p.data_venda <= vendaFim));
 
@@ -266,6 +254,7 @@ const exportarPDF = () => {
 
   const handleRegerarPDF = async (proposta: any) => {
     try {
+      // const { data: { user } } = await supabase.auth.getUser();
       const { data: opcoesDb, error } = await supabase
         .from('tab_proposta_opcoes')
         .select(`
@@ -281,24 +270,19 @@ const exportarPDF = () => {
 
       if (error || !opcoesDb) return alert("Erro ao recuperar dados da proposta.");
 
-      // 1. Gera a lista de produtos únicos para o cabeçalho/resumo do PDF
       const produtosUnicos = Array.from(new Set(
         opcoesDb.flatMap(opt => 
           opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
         )
       )).filter(Boolean) as string[];
 
-      // 2. Cria a string formatada de produtos cotados (igual à tabela)
       const produtosCotadosTexto = produtosUnicos.join(', ');
-
-      // 3. Calcula a quantidade de cotações (opções)
       const totalCotacoes = opcoesDb.length;
 
       await gerarPDFProposta({
         numeroProposta: proposta.numero_proposta,
         corretorId: proposta.corretor_id,
         validade: proposta.data_validade,
-        // NOVAS INFORMAÇÕES ADICIONADAS AQUI:
         qtdeCotacoes: totalCotacoes,
         produtosCotados: produtosCotadosTexto,
         cliente: {
@@ -340,9 +324,10 @@ const exportarPDF = () => {
 
         const idsDosItens = itens?.map(i => i.id) || [];
         if (idsDosItens.length > 0) {
+          // Ajustado de 'tab_comissoes' para 'tab_comissoes_regras' conforme o banco real
           const [resSinistros, resComissoes] = await Promise.all([
             supabase.from('tab_sinistros').select('id', { count: 'exact' }).in('item_id', idsDosItens),
-            supabase.from('tab_comissoes').select('id', { count: 'exact' }).in('item_id', idsDosItens)
+            supabase.from('tab_comissoes_regras').select('id', { count: 'exact' }).in('item_id', idsDosItens)
           ]);
           totalSinistros = resSinistros.count || 0;
           totalComissoes = resComissoes.count || 0;
@@ -397,7 +382,6 @@ const exportarPDF = () => {
             </h1>
 
             <div className="flex items-center gap-3">
-              {/* BOTÕES DE EXPORTAÇÃO */}
               <button 
                 onClick={exportarExcel}
                 className="flex items-center gap-2 px-4 h-11 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-100 transition-all shadow-sm"
@@ -426,10 +410,7 @@ const exportarPDF = () => {
             </div>
           </div>
           
-          {/* Campos de filtros */}
           <div className="flex flex-row flex-wrap items-end gap-5 bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm">
-            
-            {/* Filtro Corretor - removi a div grid e usei flex-1 ou largura fixa */}
             <div className="flex-1 min-w-[160px]">
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
                 <Users size={12}/> Corretores
@@ -445,7 +426,6 @@ const exportarPDF = () => {
               </select>
             </div>
 
-            {/* Filtro Parceiro */}
             <div className="flex-1 min-w-[160px]">
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
                 <Handshake size={12}/> Parceiros
@@ -461,7 +441,6 @@ const exportarPDF = () => {
               </select>
             </div>
 
-            {/* Filtro Vencimento */}
             <div className="min-w-[140px]">
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
                 <Calendar size={12}/> Vencimento
@@ -474,7 +453,6 @@ const exportarPDF = () => {
               </div>
             </div>
 
-            {/* Filtro Venda */}
             <div className="min-w-[140px]">
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
                 <CheckCircle size={12}/> Venda
@@ -487,7 +465,6 @@ const exportarPDF = () => {
               </div>
             </div>
 
-            {/* Filtro Periodicidade */}
             <div className="flex-1 min-w-[130px]">
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
                 <Calendar size={12}/> Periodicidade
@@ -505,7 +482,6 @@ const exportarPDF = () => {
               </select>
             </div>
 
-            {/* Filtro Status */}
             <div className="flex-1 min-w-[130px]">
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
                 <Loader2 size={12}/> Status
@@ -522,7 +498,6 @@ const exportarPDF = () => {
               </select>
             </div>
 
-            {/* Ações de Filtro integradas na mesma linha */}
             <div className="pb-1 ml-auto">
               {(selectedCorretores.length > (userProfile?.tipo_usuario === 'CORRETOR' ? 1 : 0) || 
                 selectedParceiros.length > 0 || 
@@ -580,14 +555,12 @@ const exportarPDF = () => {
                   </td>
                 </tr>
               ) : propostasFiltradas.map((p) => {
-                // Extração dos produtos para exibição em texto
                 const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
                   opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
                 ))).filter(Boolean).join(', ');
 
                 return (
                   <tr key={p.id} className="group hover:bg-blue-50/20 transition-all">
-                    {/* Coluna: Proposta */}
                     <td className="p-5 border-b border-slate-50">
                       <div className="text-sm font-black text-blue-600 italic leading-none">{p.numero_proposta}</div>
                       <div className="text-[10px] text-slate-400 mt-1 font-bold italic uppercase">
@@ -595,7 +568,6 @@ const exportarPDF = () => {
                       </div>
                     </td>
 
-                    {/* Coluna: Cliente */}
                     <td className="p-5 border-b border-slate-50">
                       <div className="text-sm font-bold text-slate-700 uppercase leading-none">
                         {p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome}
@@ -605,11 +577,9 @@ const exportarPDF = () => {
                       </div>
                     </td>
 
-                    {/* 🚀 INSERIR ESTE BLOCO ABAIXO: */}
                     <td className="p-5 border-b border-slate-50">
                       <div className="flex flex-wrap gap-1 max-w-[180px]">
                         {(() => {
-                          // Extrai todos os números de cotação dos itens de todas as opções
                           const numeros = Array.from(new Set(
                             p.tab_proposta_opcoes?.flatMap((opt: any) => 
                               opt.tab_proposta_itens?.map((i: any) => i.numero_cotacao)
@@ -625,21 +595,18 @@ const exportarPDF = () => {
                       </div>
                     </td>
 
-                    {/* NOVA Coluna: Qtde Cotações */}
                     <td className="p-5 border-b border-slate-50 text-center">
                       <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[11px] font-black">
                         {p.tab_proposta_opcoes?.length || 0}
                       </span>
                     </td>
 
-                    {/* NOVA Coluna: Produtos Cotados */}
                     <td className="p-5 border-b border-slate-50">
                       <div className="text-[10px] font-bold text-slate-500 uppercase leading-tight max-w-[200px] line-clamp-2" title={produtosNomes}>
                         {produtosNomes || "NÃO INFORMADO"}
                       </div>
                     </td>
 
-                    {/* Coluna: Status */}
                     <td className="p-5 border-b border-slate-50">
                       <div className="flex flex-col gap-1">
                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border shadow-sm w-fit
@@ -656,16 +623,14 @@ const exportarPDF = () => {
                       </div>
                     </td>
 
-                    {/* Coluna: Valor */}
                     <td className="p-5 border-b border-slate-50">
                       <div className="text-sm font-black text-slate-700">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)}
                       </div>
                     </td>
-                    {/* Coluna: Ações */}
+                    
                     <td className="p-5 border-b border-slate-50">
                       <div className="flex justify-center gap-1">
-                        {/* BOTAO VENDIDO - Desabilitado se não estiver 'Em Negociação' */}
                         <button 
                           onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: p })} 
                           disabled={p.status !== 'Em Negociação'}
@@ -679,7 +644,6 @@ const exportarPDF = () => {
                           <CheckCircle size={18} />
                         </button>
 
-                        {/* BOTAO PERDIDO - Desabilitado se não estiver 'Em Negociação' */}
                         <button 
                           onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: p })}
                           disabled={p.status !== 'Em Negociação'}
@@ -695,7 +659,6 @@ const exportarPDF = () => {
 
                         <div className="w-[1px] h-4 bg-slate-100 self-center mx-1" />
 
-                        {/* BOTAO EDITAR - Desabilitado se não estiver 'Em Negociação' */}
                         <button 
                           onClick={() => navigate(`/propostas/editar/${p.id}`)}
                           disabled={p.status !== 'Em Negociação'}
@@ -709,7 +672,6 @@ const exportarPDF = () => {
                           <Edit3 size={18} />
                         </button>
 
-                        {/* BOTAO PDF - Sempre Habilitado (Para consulta histórica) */}
                         <button 
                           onClick={() => handleRegerarPDF(p)}
                           className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all" 
@@ -718,7 +680,6 @@ const exportarPDF = () => {
                           <FileText size={18} />
                         </button>
 
-                        {/* BOTAO EXCLUIR - Sempre Habilitado (Lógica de segurança já existe no modal) */}
                         <button 
                           onClick={() => executarExclusaoSegura(p)}
                           className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-all" 
