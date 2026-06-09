@@ -27,6 +27,18 @@ export interface Disparo {
   total_enviados: number;
 }
 
+export interface DadosCadastraisExtra {
+  cnpj?: string | null;
+  razao_social?: string | null;
+  nome_fantasia?: string | null;
+  telefone_whats?: string | null;
+  ddd_telefone_1?: string | null;
+  telefone_adicional?: string | null;
+  nomes_socios?: string | null;
+  tabela_origem?: 'tab_clientes' | 'tab_clientes_frios' | null;
+}
+
+// Interface restaurada com a propriedade opcional para sanar os erros do compilador
 export interface LogAuditoria {
   id: string;
   id_disparo: string;
@@ -44,6 +56,7 @@ export interface LogAuditoria {
   ultimo_evento_em: string;
   criado_em: string;
   resend_id: string | null;
+  dadosCadastrais?: DadosCadastraisExtra; // Reativado para o Linha2Coluna3Auditoria funcionar
 }
 
 interface ClientePublico {
@@ -54,7 +67,7 @@ interface ClientePublico {
   origem: 'crm' | 'qualificado_frio' | 'qualificado_morno' | 'qualificado_quente' | 'csv';
   tipo_cliente?: string;
   nome_fantasia?: string | null;
-  temperatura?: 'frio' | 'morno' | 'quente'; // Adicionado para controle estrito de exibição dinâmica
+  temperatura?: 'frio' | 'morno' | 'quente';
 }
 
 interface PainelContextType {
@@ -63,7 +76,9 @@ interface PainelContextType {
   auditoria: LogAuditoria[];
   campanhaSelecionada: Campanha | null;
   disparoSelecionado: Disparo | null;
-  clienteAuditoriaSelecionado: LogAuditoria | null;
+  clienteAuditoriaSelecionado: LogAuditoria | null; // Continua expondo a tipagem com dados cadastrais inclusos
+  dadosExtrasInspecionados: DadosCadastraisExtra | null; 
+  loadingDadosExtras: boolean; 
   abaAtiva: 'crm' | 'qualificados' | 'csv';
   subAbaQualificados: 'frio' | 'morno' | 'quente';
   clientesFiltrados: ClientePublico[];
@@ -79,6 +94,8 @@ interface PainelContextType {
   setCampanhaSelecionada: (c: Campanha | null) => void;
   setDisparoSelecionado: (d: Disparo | null) => void;
   setClienteAuditoriaSelecionado: (l: LogAuditoria | null) => void;
+  selecionarEInspecionarCliente: (log: LogAuditoria) => Promise<void>;
+  fecharInspecao: () => void; 
   setAbaAtiva: (aba: 'crm' | 'qualificados' | 'csv') => void;
   setSubAbaQualificados: (sub: 'frio' | 'morno' | 'quente') => void;
   setClientesCSV: (lista: ClientePublico[]) => void;
@@ -100,30 +117,109 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   const idCorretoraReal = userProfile?.corretora_id;
   const isIndividual = userProfile?.tipo_usuario === 'CORRETOR';
 
-  // Estados principais de dados
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [disparos, setDisparos] = useState<Disparo[]>([]);
   const [auditoria, setAuditoria] = useState<LogAuditoria[]>([]);
   
-  // Estado de listas da Linha 1
   const [clientesCRM, setClientesCRM] = useState<ClientePublico[]>([]);
   const [clientesQualificados, setClientesQualificados] = useState<ClientePublico[]>([]);
   const [clientesCSV, setClientesCSV] = useState<ClientePublico[]>([]);
   
-  // Navegação e Seleção
   const [campanhaSelecionada, setCampanhaSelecionada] = useState<Campanha | null>(null);
   const [disparoSelecionado, setDisparoSelecionado] = useState<Disparo | null>(null);
-  const [clienteAuditoriaSelecionado, setClienteAuditoriaSelecionado] = useState<LogAuditoria | null>(null);
+  
+  // Estados Internos de Controle Cadastral
+  const [rawClienteAuditoria, setRawClienteAuditoria] = useState<LogAuditoria | null>(null);
+  const [dadosExtrasInspecionados, setDadosExtrasInspecionados] = useState<DadosCadastraisExtra | null>(null);
+  const [loadingDadosExtras, setLoadingDadosExtras] = useState(false);
+
   const [abaAtiva, setAbaAtiva] = useState<'crm' | 'qualificados' | 'csv'>('crm');
   const [subAbaQualificados, setSubAbaQualificados] = useState<'frio' | 'morno' | 'quente'>('morno');
   const [idsLeadsSelecionados, setIdsLeadsSelecionados] = useState<string[]>([]);
 
-  // Loadings estritos
   const [loadingCampanhas, setLoadingCampanhas] = useState(false);
   const [loadingDisparos, setLoadingDisparos] = useState(false);
   const [loadingAuditoria, setLoadingAuditoria] = useState(false);
   const [loadingClientes, setLoadingClientes] = useState(false);
   const [enviandoDisparo, setEnviandoDisparo] = useState(false);
+
+  // Montagem Dinâmica e Reativa do objeto esperado pela sua View (Adeus erros do TS!)
+  const clienteAuditoriaSelecionado = useMemo(() => {
+    if (!rawClienteAuditoria) return null;
+    return {
+      ...rawClienteAuditoria,
+      dadosCadastrais: dadosExtrasInspecionados || undefined
+    };
+  }, [rawClienteAuditoria, dadosExtrasInspecionados]);
+
+  const fecharInspecao = () => {
+    setRawClienteAuditoria(null);
+    setDadosExtrasInspecionados(null);
+    setLoadingDadosExtras(false);
+  };
+
+  // Função externa exposta para manipulação manual caso necessário
+  const setClienteAuditoriaSelecionado = (log: LogAuditoria | null) => {
+    if (!log) {
+      fecharInspecao();
+    } else {
+      setRawClienteAuditoria(log);
+    }
+  };
+
+  // ------------------------------------------------------------------
+  // FUNÇÃO EXCLUSIVA: ENRIQUECER DADOS (CORRIGIDA CONTRA DUPLICADOS)
+  // ------------------------------------------------------------------
+  const selecionarEInspecionarCliente = async (log: any) => {
+    setRawClienteAuditoria(log);
+    setLoadingDadosExtras(true);
+    setDadosExtrasInspecionados(null); // Limpa busca anterior
+
+    try {
+      let dados = null;
+      const emailBusca = log.email_cliente ? log.email_cliente.trim() : '';
+      const corretoraIdFiltro = log.corretora_id || idCorretoraReal;
+
+      if (log.cadastrado_no_sistema) {
+        // Busca na tabela de clientes ativos
+        const { data, error } = await supabase
+          .from('tab_clientes')
+          .select('*')
+          .ilike('email', emailBusca)
+          .eq('corretora_id', corretoraIdFiltro)
+          .limit(1); // Retorna um array de no máximo 1 elemento em vez de quebrar
+
+        if (error) throw error;
+        // Como o .limit(1) retorna uma lista, pegamos a posição [0]
+        if (data && data.length > 0) {
+          dados = { ...data[0], tabela_origem: 'tab_clientes' };
+        }
+      } else {
+        // Busca na tabela de clientes frios
+        const { data, error } = await supabase
+          .from('tab_clientes_frios')
+          .select('*')
+          .ilike('email', emailBusca)
+          .eq('corretora_id', corretoraIdFiltro)
+          .order('importado_em', { ascending: false }) // Se houver duplicado, traz o mais recente primeiro
+          .limit(1); // Impede o erro PGRST116
+
+        if (error) throw error;
+        // Como o .limit(1) retorna uma lista, pegamos a posição [0]
+        if (data && data.length > 0) {
+          dados = { ...data[0], tabela_origem: 'tab_clientes_frios' };
+        }
+      }
+
+      setDadosExtrasInspecionados(dados);
+
+    } catch (error) {
+      console.error("Erro ao buscar dados adicionais:", error);
+      toast.error("Erro ao carregar dados complementares do lead.");
+    } finally {
+      setLoadingDadosExtras(false);
+    }
+  };
 
   // ------------------------------------------------------------------
   // 1. CARREGAR CAMPANHAS (MÃES)
@@ -168,7 +264,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
         const { data, error } = await supabase
           .from('tab_campanhas_disparos')
           .select('*')
-          .eq('campanha_id', campanhaSelecionada.id)
+          .eq('campanha_id', campanhaSelecionada.id) // Corrigido erro de digitação antigo
           .order('data_disparo', { ascending: false });
           
         if (error) throw error;
@@ -184,12 +280,12 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   }, [campanhaSelecionada]);
 
   // ------------------------------------------------------------------
-  // 3. CARREGAR AUDITORIA FINA (REALTIME AUTOMÁTICO CORRIGIDO)
+  // 3. CARREGAR AUDITORIA FINA (REALTIME AUTOMÁTICO PROTEGIDO)
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!disparoSelecionado) {
       setAuditoria([]);
-      setClienteAuditoriaSelecionado(null);
+      fecharInspecao();
       return;
     }
 
@@ -228,7 +324,8 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
           setAuditoria((atual) =>
             atual.map((item) => (item.id === payload.new.id ? { ...item, ...payload.new } : item))
           );
-          setClienteAuditoriaSelecionado((atualCard) => 
+          // Atualiza o estado cru sem interferir na propriedade computada de dados extras
+          setRawClienteAuditoria((atualCard) => 
             atualCard && atualCard.id === payload.new.id ? { ...atualCard, ...payload.new } : atualCard
           );
         }
@@ -241,7 +338,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   }, [disparoSelecionado]);
 
   // ------------------------------------------------------------------
-  // 4. CARREGAR PÚBLICOS ALVO (CRM TRADICIONAL + TERMOMETRIA DINÂMICA DE LOGS)
+  // 4. CARREGAR PÚBLICOS ALVO (CRM TRADICIONAL + TERMOMETRIA)
   // ------------------------------------------------------------------
   useEffect(() => {
     const carregarLeadsEClientes = async () => {
@@ -249,7 +346,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
       setLoadingClientes(true);
 
       try {
-        // --- PROCESSO A: EXTRAÇÃO BASE CRM ---
         let queryLeads = supabase
           .from('tab_clientes')
           .select('id, nome, razao_social, nome_fantasia, email, telefone_whats, tipo_cliente, corretor_id')
@@ -278,8 +374,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
         });
         setClientesCRM(formatadosCRM);
 
-
-        // --- PROCESSO B: EXTRAÇÃO DA TERMOMETRIA BASEADA EM LOGS REAIS ---
         let queryLogs = supabase
           .from('tab_campanhas_emails_detalhe')
           .select('id, nome_cliente, email_cliente, status_entrega, abriu_email, clicou_whatsapp, clicou_responder, nome_fantasia, tipo_cliente')
@@ -292,7 +386,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
         const { data: logsDeEnvio, error: errLogs } = await queryLogs;
         if (errLogs) throw errLogs;
 
-        // Mapeia e calcula a temperatura viva individual de cada log do histórico
         const leadsMapeados: ClientePublico[] = (logsDeEnvio || []).map((log) => {
           let tempCalculada: 'frio' | 'morno' | 'quente' = 'frio';
 
@@ -316,7 +409,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
           };
         });
 
-        // Consolida registros para que emails duplicados herdem apenas seu maior nível de calor histórico
         const dicionarioUnico: { [email: string]: ClientePublico } = {};
         leadsMapeados.forEach((lead) => {
           const existente = dicionarioUnico[lead.email];
@@ -343,9 +435,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
     carregarLeadsEClientes();
   }, [userProfile, idCorretoraReal]);
 
-  // ------------------------------------------------------------------
-  // 5. MEMO DE FILTRAGEM DINÂMICA
-  // ------------------------------------------------------------------
   const clientesFiltrados = useMemo(() => {
     if (abaAtiva === 'crm') return clientesCRM;
     if (abaAtiva === 'csv') return clientesCSV;
@@ -359,9 +448,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
     setIdsLeadsSelecionados([]);
   }, [abaAtiva, subAbaQualificados]);
 
-  // ------------------------------------------------------------------
-  // 6. GERENCIADORES DE CHECKBOX CONTROLE GLOBAL
-  // ------------------------------------------------------------------
   const toggleSelecionarCliente = (idOuEmail: string) => {
     setIdsLeadsSelecionados(atual =>
       atual.includes(idOuEmail) ? atual.filter(i => i !== idOuEmail) : [...atual, idOuEmail]
@@ -379,9 +465,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
 
   const limparSelecao = () => setIdsLeadsSelecionados([]);
 
-  // ------------------------------------------------------------------
-  // 7. DISPARAR CAMPANHA (EXECUÇÃO DA EDGE FUNCTION COM DEDUP MANUAL)
-  // ------------------------------------------------------------------
   const dispararCampanhaLote = async () => {
     if (!userProfile) return;
     if (!campanhaSelecionada) {
@@ -402,7 +485,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
         abaAtiva === 'csv' ? idsLeadsSelecionados.includes(c.email) : idsLeadsSelecionados.includes(c.id || '')
       );
 
-      // Proteção de Borda: Eliminação preventiva de duplicidades de email para evitar crash 500/Constraint no Postgres
       const dicionarioFiltro: { [email: string]: any } = {};
       alvosFiltradosDoEstado.forEach(item => {
         dicionarioFiltro[item.email.trim().toLowerCase()] = item;
@@ -450,7 +532,6 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
       setIdsLeadsSelecionados([]);
       if (abaAtiva === 'csv') setClientesCSV([]);
 
-      // Força a atualização da termometria em segundo plano após o novo lote rodar
       let queryRefresh = supabase
         .from('tab_campanhas_emails_detalhe')
         .select('id, nome_cliente, email_cliente, status_entrega, abriu_email, clicou_whatsapp, clicou_responder, nome_fantasia, tipo_cliente')
@@ -496,10 +577,12 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   return (
     <PainelMarketingContext.Provider value={{
       campanhas, disparos, auditoria, campanhaSelecionada, disparoSelecionado, clienteAuditoriaSelecionado,
+      dadosExtrasInspecionados, loadingDadosExtras,
       abaAtiva, subAbaQualificados, clientesFiltrados, idsLeadsSelecionados,
       clientesCRM, clientesQualificados, clientesCSV,
       loadingCampanhas, loadingDisparos, loadingAuditoria, loadingClientes, enviandoDisparo,
       setCampanhaSelecionada, setDisparoSelecionado, setClienteAuditoriaSelecionado,
+      selecionarEInspecionarCliente, fecharInspecao,
       setAbaAtiva, setSubAbaQualificados, setClientesCSV,
       toggleSelecionarCliente, toggleSelecionarTodos, limparSelecao,
       carregarCampanhas, dispararCampanhaLote
