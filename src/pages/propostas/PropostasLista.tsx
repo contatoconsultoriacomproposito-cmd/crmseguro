@@ -257,9 +257,7 @@ export default function PropostasLista() {
       return matchTerm && matchCorretor && matchStatus && matchParceiro && matchVencimento && matchVenda && matchPeriodicidade;
     });
   }, [filter, propostas, selectedCorretores, selectedStatus, selectedParceiros, vencimentoInicio, vencimentoFim, vendaInicio, vendaFim, selectedPeriodicidade]);
-
- 
-
+  
   const executarExclusaoSegura = async (proposta: any) => {
     if (!userProfile?.corretora_id) return;
     let totalSinistros = 0;
@@ -483,173 +481,75 @@ export default function PropostasLista() {
 
         {/* --- TABELA DE PROPOSTAS COMERCIAIS --- */}
         <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-          <table className="w-full text-left border-separate border-spacing-0">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/50">
-                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Proposta</th>
-                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Cliente</th>
-                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Nº Cotação</th>
-                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 text-center">Cotações</th>
-                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Produtos Cotados</th>
-                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Status</th>
-                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Total Estimado</th>
-                <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 text-center">Ações</th>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400">Proposta</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400">Cliente</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400">Cotações</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400">Produtos</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400">Status</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 text-right">Total</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 text-center">Ações</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr>
-                  <td colSpan={8} className="p-20 text-center">
-                    <Loader2 className="animate-spin mx-auto text-blue-500" />
+                <tr><td colSpan={7} className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" /></td></tr>
+              ) : propostasFiltradas.map((p) => (
+                <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="px-4 py-4">
+                    <div className="text-sm font-black text-blue-600 italic">{p.numero_proposta}</div>
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Vence: {formatarDataBR(p.data_validade)}</div>
                   </td>
-                </tr>
-              ) : propostasFiltradas.map((p) => {
-                const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
-                  opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
-                ))).filter(Boolean).join(', ');
+                  <td className="px-4 py-4">
+                    <div className="text-sm font-bold text-slate-700 uppercase">{p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome}</div>
+                    <div className="text-[10px] text-slate-400 font-medium italic">Corretor: {p.usuarios_perfis?.nome}</div>
+                  </td>
+                  {/* --- VISUALIZAÇÃO DA GRADE DE PROPOSTAS--- */}
+                  <td className="px-4 py-4">
+                    {(() => {
+                      // 1. Calcula os números primeiro
+                      const numeros = Array.from(new Set(
+                        p.tab_proposta_opcoes?.flatMap((opt: any) => 
+                          opt.tab_proposta_itens?.map((i: any) => String(i.numero_cotacao))
+                        )
+                      )).filter(Boolean) as string[];
 
-                return (
-                  <tr key={p.id} className="group hover:bg-blue-50/20 transition-all">
-                    <td className="p-5 border-b border-slate-50">
-                      <div className="text-sm font-black text-blue-600 italic leading-none">{p.numero_proposta}</div>
-                      <div className="text-[10px] text-slate-400 mt-1 font-bold italic uppercase">
-                        Vence: {formatarDataBR(p.data_validade)}
-                      </div>
-                    </td>
-
-                    <td className="p-5 border-b border-slate-50">
-                      <div className="text-sm font-bold text-slate-700 uppercase leading-none">
-                        {p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome}
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-1 font-medium italic">
-                        Corretor: {p.usuarios_perfis?.nome}
-                      </div>
-                    </td>
-
-                    <td className="p-5 border-b border-slate-50">
-                      <div className="flex flex-wrap gap-1 max-w-[180px]">
-                        {(() => {
-                          const numeros = Array.from(new Set(
-                            p.tab_proposta_opcoes?.flatMap((opt: any) => 
-                              opt.tab_proposta_itens?.map((i: any) => i.numero_cotacao)
-                            )
-                          )).filter(Boolean);
-
-                          return numeros.length > 0 ? numeros.map((num: any, idx) => (
-                            <span key={idx} className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 text-[10px] font-bold">
+                      // 2. Retorna a grade visual de 3 colunas
+                      return (
+                        <div className="grid grid-cols-3 gap-1 w-24">
+                          {numeros.map((num, index) => (
+                            <span 
+                              key={index} 
+                              className="text-[9px] font-mono bg-slate-50 border border-slate-200 text-slate-600 text-center rounded p-0.5"
+                            >
                               {num}
                             </span>
-                          )) : <span className="text-[10px] text-slate-300 italic font-medium uppercase">Não gerado</span>;
-                        })()}
-                      </div>
-                    </td>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </td>
 
-                    <td className="p-5 border-b border-slate-50 text-center">
-                      <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[11px] font-black">
-                        {p.tab_proposta_opcoes?.length || 0}
-                      </span>
-                    </td>
 
-                    <td className="p-5 border-b border-slate-50">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase leading-tight max-w-[200px] line-clamp-2" title={produtosNomes}>
-                        {produtosNomes || "NÃO INFORMADO"}
-                      </div>
-                    </td>
-
-                    <td className="p-5 border-b border-slate-50">
-                      <div className="flex flex-col gap-1">
-                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border shadow-sm w-fit
-                          ${p.status === 'Vendido' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                            p.status === 'Perdido' ? 'bg-red-50 text-red-600 border-red-100' : 
-                            'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                          {p.status}
-                        </span>
-                        <span className="text-[9px] font-bold text-slate-400 italic ml-1">
-                          {Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
-                            opt.tab_proposta_itens?.map((i: any) => i.periodicidade)
-                          ))).join(' / ')}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="p-5 border-b border-slate-50">
-                      <div className="text-sm font-black text-slate-700">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)}
-                      </div>
-                    </td>
-                    
-                    <td className="p-5 border-b border-slate-50">
-                      <div className="flex justify-center gap-1.5">
-                        
-                        {/* 1. STATUS VENDIDO */}
-                        <button 
-                          onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: p })} 
-                          disabled={p.status !== 'Em Negociação'}
-                          className={`p-2 rounded-lg transition-all ${
-                            p.status === 'Em Negociação' 
-                              ? 'hover:bg-emerald-50 text-slate-400 hover:text-emerald-600' 
-                              : 'text-slate-200 cursor-not-allowed'
-                          }`} 
-                          title={p.status === 'Em Negociação' ? "Marcar como Vendido" : `Status: ${p.status}`}
-                        >
-                          <CheckCircle size={18} />
-                        </button>
-
-                        {/* 2. STATUS PERDIDO */}
-                        <button 
-                          onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: p })}
-                          disabled={p.status !== 'Em Negociação'}
-                          className={`p-2 rounded-lg transition-all ${
-                            p.status === 'Em Negociação' 
-                              ? 'hover:bg-red-50 text-slate-400 hover:text-red-600' 
-                              : 'text-slate-200 cursor-not-allowed'
-                          }`} 
-                          title={p.status === 'Em Negociação' ? "Marcar como Perdido" : `Status: ${p.status}`}
-                        >
-                          <XCircle size={18} />
-                        </button>
-
-                        <div className="w-[1px] h-4 bg-slate-100 self-center mx-0.5" />
-
-                        {/* 3. EDITAR PROPOSTA */}
-                        <button 
-                          onClick={() => navigate(`/propostas/editar/${p.id}`)}
-                          disabled={p.status !== 'Em Negociação'}
-                          className={`p-2 rounded-lg transition-all ${
-                            p.status === 'Em Negociação' 
-                            ? 'hover:bg-blue-50 text-slate-400 hover:text-blue-600' 
-                            : 'text-slate-200 cursor-not-allowed'
-                          }`} 
-                          title={p.status === 'Em Negociação' ? "Editar Proposta" : "Propostas finalizadas não podem ser editadas"}
-                        >
-                          <Edit3 size={18} />
-                        </button>
-
-                        {/* 4. VER MODAL COMPARATIVO TELA (Chama o modal passando o objeto completo da proposta) */}
-                        <button
-                          onClick={() => setPropostaSelecionada(p)}
-                          className="p-2 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all"
-                          title="Visualizar Espelho Comparativo"
-                        >
-                          <FileText size={18} />
-                        </button>
-
-                        
-
-                        {/* 6. EXCLUIR REGISTRO */}
-                        <button 
-                          onClick={() => executarExclusaoSegura(p)}
-                          className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-all" 
-                          title="Excluir Registro"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                  <td className="px-4 py-4 text-[11px] text-slate-500 font-medium max-w-[200px] truncate">{Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)))).filter(Boolean).join(', ') || "-"}</td>
+                  <td className="px-4 py-4">
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${p.status === 'Vendido' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : p.status === 'Perdido' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{p.status}</span>
+                  </td>
+                  <td className="px-4 py-4 text-right font-black text-slate-700 font-mono">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valor_total_proposta)}</td>
+                  <td className="px-4 py-4">
+                    <div className="flex justify-center gap-2 text-slate-400">
+                      <button onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: p })} className="hover:text-emerald-600"><CheckCircle size={16} /></button>
+                      <button onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: p })} className="hover:text-red-600"><XCircle size={16} /></button>
+                      <div className="w-[1px] bg-slate-200 mx-1"></div>
+                      <button onClick={() => setPropostaSelecionada(p)} className="hover:text-blue-600"><FileText size={16} /></button>
+                      <button onClick={() => navigate(`/propostas/editar/${p.id}`)} className="hover:text-blue-600"><Edit3 size={16} /></button>
+                      <button onClick={() => executarExclusaoSegura(p)} className="hover:text-red-500"><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
