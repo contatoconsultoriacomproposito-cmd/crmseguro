@@ -5,14 +5,12 @@ import {
   CheckCircle, XCircle, Loader2, Calendar, Users, Handshake, Download, FileSpreadsheet
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { gerarPDFProposta } from "../../utils/gerarPDF";
 import { ModalFechamento } from '../../components/propostas/ModalFechamento';
 import { formatarDataBR } from "../../utils/dateUtils";
 import { ModalExclusaoSegura } from "./ModalExclusaoSegura";
 import { sincronizarStatusCliente } from "./sincronizarStatusCliente";
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import ModeloCotacaoAuto from "./modelos/ModeloCotacaoAuto";
 
 export default function PropostasLista() {
   const navigate = useNavigate();
@@ -23,6 +21,9 @@ export default function PropostasLista() {
   const [corretores, setCorretores] = useState<any[]>([]);
   const [parceiros, setParceiros] = useState<any[]>([]);
   
+  // Estado dinâmico que carrega o objeto completo da proposta selecionada
+  const [propostaSelecionada, setPropostaSelecionada] = useState<any | null>(null);
+
   // Estados de Filtro
   const [selectedCorretores, setSelectedCorretores] = useState<string[]>([]);
   const [selectedParceiros, setSelectedParceiros] = useState<string[]>([]);
@@ -82,14 +83,16 @@ export default function PropostasLista() {
     XLSX.writeFile(wb, `Relatorio_Propostas_${new Date().getTime()}.xlsx`);
   };
 
-  const exportarPDF = () => {
+  const exportarPDF = async () => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
     const doc = new jsPDF({ orientation: 'landscape' });
     
     doc.setFontSize(14);
     doc.text("Relatório de Propostas", 14, 15);
     
     const totalGeral = propostasFiltradas.reduce((sum, p) => sum + (Number(p.valor_total_proposta) || 0), 0);
-
     const tableData = propostasFiltradas.map(p => {
       const produtosNomes = Array.from(new Set(p.tab_proposta_opcoes?.flatMap((opt: any) => 
         opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
@@ -136,7 +139,6 @@ export default function PropostasLista() {
       headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
       footStyles: { fillColor: [241, 245, 249], textColor: 51, fontSize: 9 }
     });
-
     doc.save(`Relatorio_Propostas_${new Date().getTime()}.pdf`);
   };
 
@@ -149,6 +151,7 @@ export default function PropostasLista() {
           .select('id, corretora_id, tipo_usuario')
           .eq('id', user.id)
           .single();
+        
         setUserProfile(perfil);
 
         if (perfil) {
@@ -184,6 +187,8 @@ export default function PropostasLista() {
     if (!userProfile?.corretora_id) return;
     try {
       setLoading(true);
+      
+      // Query limpa: removemos o "tab_corretoras (...)" que causava o erro PGRST200
       let query = supabase
         .from("tab_propostas")
         .select(`
@@ -192,7 +197,9 @@ export default function PropostasLista() {
           usuarios_perfis!tab_propostas_corretor_id_fkey(nome),
           tab_proposta_opcoes (
             id,
+            ordem_opcao,
             tab_proposta_itens (
+              id,
               numero_cotacao,
               periodicidade,
               base_produtos (nome)
@@ -203,7 +210,7 @@ export default function PropostasLista() {
         .order("created_at", { ascending: false });
 
       if (userProfile.tipo_usuario === 'CORRETOR') {
-        query = query.eq('corretor_id', userProfile.id); 
+        query = query.eq('corretor_id', userProfile.id);
       }
 
       const { data, error } = await query;
@@ -212,10 +219,9 @@ export default function PropostasLista() {
     } catch (error) {
       console.error("Erro ao buscar propostas:", error);
     } finally {
-      setLoading(false);
+      loading && setLoading(false);
     }
   }
-
   const propostasFiltradas = useMemo(() => {
     if (!propostas) return [];
     const term = filter.toLowerCase().trim();
@@ -246,7 +252,7 @@ export default function PropostasLista() {
 
       const matchPeriodicidade = selectedPeriodicidade.length === 0 || p.tab_proposta_opcoes?.some((opt: any) => 
         opt.tab_proposta_itens?.some((item: any) => selectedPeriodicidade.includes(item.periodicidade))
-      );                   
+      );
 
       return matchTerm && matchCorretor && matchStatus && matchParceiro && matchVencimento && matchVenda && matchPeriodicidade;
     });
@@ -254,12 +260,11 @@ export default function PropostasLista() {
 
   const handleRegerarPDF = async (proposta: any) => {
     try {
-      // const { data: { user } } = await supabase.auth.getUser();
       const { data: opcoesDb, error } = await supabase
         .from('tab_proposta_opcoes')
         .select(`
           *,
-          base_seguradoras (nome),
+          base_seguradoras (id, nome, logo_url),
           tab_proposta_itens (
             *,
             base_produtos (nome)
@@ -269,40 +274,6 @@ export default function PropostasLista() {
         .order('ordem_opcao', { ascending: true });
 
       if (error || !opcoesDb) return alert("Erro ao recuperar dados da proposta.");
-
-      const produtosUnicos = Array.from(new Set(
-        opcoesDb.flatMap(opt => 
-          opt.tab_proposta_itens?.map((i: any) => i.base_produtos?.nome)
-        )
-      )).filter(Boolean) as string[];
-
-      const produtosCotadosTexto = produtosUnicos.join(', ');
-      const totalCotacoes = opcoesDb.length;
-
-      await gerarPDFProposta({
-        numeroProposta: proposta.numero_proposta,
-        corretorId: proposta.corretor_id,
-        validade: proposta.data_validade,
-        qtdeCotacoes: totalCotacoes,
-        produtosCotados: produtosCotadosTexto,
-        cliente: {
-          nome: proposta.tab_clientes?.tipo_cliente === 'PJ' ? proposta.tab_clientes?.razao_social : proposta.tab_clientes?.nome,
-          documento: proposta.tab_clientes?.tipo_cliente === 'PJ' ? proposta.tab_clientes?.cnpj : proposta.tab_clientes?.cpf,
-          whatsapp: proposta.tab_clientes?.telefone_whats || ''
-        },
-        produtosUnicos,
-        opcoes: opcoesDb.map(opt => ({
-          companhia: opt.base_seguradoras?.nome || 'N/A',
-          itens: opt.tab_proposta_itens?.map((i: any) => ({
-            nomeProduto: i.base_produtos?.nome || 'Produto',
-            valor: i.valor_premio,
-            cobertura: i.coberturas_franquias || '-',
-            parcelamento: i.parcelamento || '1x',
-            meio: i.meio_pagamento || 'Boleto',
-            periodicidade: i.periodicidade || 'MENSAL'
-          }))
-        }))
-      });
     } catch (err) {
       console.error("Erro ao gerar PDF:", err);
       alert("Ocorreu um erro inesperado ao gerar o PDF.");
@@ -314,17 +285,14 @@ export default function PropostasLista() {
     let totalSinistros = 0;
     let totalComissoes = 0;
     const isVendido = proposta.status?.toLowerCase() === 'vendido';
-
     try {
       if (isVendido) {
         const { data: itens } = await supabase
           .from('tab_proposta_itens')
           .select(`id, tab_proposta_opcoes!inner(proposta_id)`)
           .eq('tab_proposta_opcoes.proposta_id', proposta.id);
-
         const idsDosItens = itens?.map(i => i.id) || [];
         if (idsDosItens.length > 0) {
-          // Ajustado de 'tab_comissoes' para 'tab_comissoes_regras' conforme o banco real
           const [resSinistros, resComissoes] = await Promise.all([
             supabase.from('tab_sinistros').select('id', { count: 'exact' }).in('item_id', idsDosItens),
             supabase.from('tab_comissoes_regras').select('id', { count: 'exact' }).in('item_id', idsDosItens)
@@ -360,7 +328,6 @@ export default function PropostasLista() {
 
       const { error } = await query;
       if (error) throw error;
-
       if (proposta.cliente_id) {
         await sincronizarStatusCliente(proposta.cliente_id);
       }
@@ -393,7 +360,7 @@ export default function PropostasLista() {
                 onClick={exportarPDF}
                 className="flex items-center gap-2 px-4 h-11 bg-red-50 text-red-600 border border-red-100 rounded-xl text-[10px] font-black uppercase hover:bg-red-100 transition-all shadow-sm"
               >
-                <Download size={16} /> PDF
+                <Download size={16} /> PDF Relatório
               </button>
 
               <div className="w-[1px] h-8 bg-slate-200 mx-2" />
@@ -410,6 +377,7 @@ export default function PropostasLista() {
             </div>
           </div>
           
+          {/* --- BLOCO DE FILTROS AVANÇADOS --- */}
           <div className="flex flex-row flex-wrap items-end gap-5 bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm">
             <div className="flex-1 min-w-[160px]">
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
@@ -503,7 +471,7 @@ export default function PropostasLista() {
                 selectedParceiros.length > 0 || 
                 selectedPeriodicidade.length > 0 ||
                 selectedStatus.length > 0 ||
-                vencimentoInicio !== "" || 
+                vencimentoInicio !== "" ||
                 vencimentoFim !== "" || 
                 vendaInicio !== "" || 
                 vendaFim !== ""
@@ -533,6 +501,7 @@ export default function PropostasLista() {
           </div>
         </header>
 
+        {/* --- TABELA DE PROPOSTAS COMERCIAIS --- */}
         <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left border-separate border-spacing-0">
             <thead>
@@ -630,7 +599,9 @@ export default function PropostasLista() {
                     </td>
                     
                     <td className="p-5 border-b border-slate-50">
-                      <div className="flex justify-center gap-1">
+                      <div className="flex justify-center gap-1.5">
+                        
+                        {/* 1. STATUS VENDIDO */}
                         <button 
                           onClick={() => setModalStatus({ open: true, type: 'VENDIDO', proposta: p })} 
                           disabled={p.status !== 'Em Negociação'}
@@ -644,6 +615,7 @@ export default function PropostasLista() {
                           <CheckCircle size={18} />
                         </button>
 
+                        {/* 2. STATUS PERDIDO */}
                         <button 
                           onClick={() => setModalStatus({ open: true, type: 'PERDIDO', proposta: p })}
                           disabled={p.status !== 'Em Negociação'}
@@ -657,29 +629,41 @@ export default function PropostasLista() {
                           <XCircle size={18} />
                         </button>
 
-                        <div className="w-[1px] h-4 bg-slate-100 self-center mx-1" />
+                        <div className="w-[1px] h-4 bg-slate-100 self-center mx-0.5" />
 
+                        {/* 3. EDITAR PROPOSTA */}
                         <button 
                           onClick={() => navigate(`/propostas/editar/${p.id}`)}
                           disabled={p.status !== 'Em Negociação'}
                           className={`p-2 rounded-lg transition-all ${
                             p.status === 'Em Negociação' 
-                              ? 'hover:bg-blue-50 text-slate-400 hover:text-blue-600' 
-                              : 'text-slate-200 cursor-not-allowed'
+                            ? 'hover:bg-blue-50 text-slate-400 hover:text-blue-600' 
+                            : 'text-slate-200 cursor-not-allowed'
                           }`} 
                           title={p.status === 'Em Negociação' ? "Editar Proposta" : "Propostas finalizadas não podem ser editadas"}
                         >
                           <Edit3 size={18} />
                         </button>
 
-                        <button 
-                          onClick={() => handleRegerarPDF(p)}
-                          className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all" 
-                          title="Visualizar PDF"
+                        {/* 4. VER MODAL COMPARATIVO TELA (Chama o modal passando o objeto completo da proposta) */}
+                        <button
+                          onClick={() => setPropostaSelecionada(p)}
+                          className="p-2 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all"
+                          title="Visualizar Espelho Comparativo"
                         >
                           <FileText size={18} />
                         </button>
 
+                        {/* 5. BAIXAR PDF COMERCIAL */}
+                        <button 
+                          onClick={() => handleRegerarPDF(p)}
+                          className="p-2 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-lg transition-all" 
+                          title="Baixar PDF Comercial"
+                        >
+                          <Download size={18} />
+                        </button>
+
+                        {/* 6. EXCLUIR REGISTRO */}
                         <button 
                           onClick={() => executarExclusaoSegura(p)}
                           className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-all" 
@@ -687,6 +671,7 @@ export default function PropostasLista() {
                         >
                           <Trash2 size={18} />
                         </button>
+
                       </div>
                     </td>
                   </tr>
@@ -697,6 +682,7 @@ export default function PropostasLista() {
         </div>
       </div>
 
+      {/* --- INJEÇÃO DOS MODAIS --- */}
       <ModalFechamento 
         isOpen={modalStatus.open}
         tipo={modalStatus.type}
@@ -712,6 +698,14 @@ export default function PropostasLista() {
         clienteId={modalExclusao.proposta?.cliente_id} 
         dadosCriticos={modalExclusao.dadosCriticos}
       />
+
+      {/* --- MODAL DA PROPOSTA TOTALMENTE DINÂMICO E VINCULADO AO BANCO --- */}
+      {propostaSelecionada && (
+        <ModeloCotacaoAuto 
+          propostaId={propostaSelecionada.id} 
+          onClose={() => setPropostaSelecionada(null)} 
+        />
+      )}
     </div>
   );
 }
