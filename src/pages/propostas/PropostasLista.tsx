@@ -42,9 +42,13 @@ export default function PropostasLista() {
     proposta: null
   });
 
-  const [modalExclusao, setModalExclusao] = useState({
+  const [modalExclusao, setModalExclusao] = useState<{
+    isOpen: boolean;
+    proposta: any;
+    dadosCriticos: { sinistros: number; comissoes: number; isVendido: boolean; };
+  }>({
     isOpen: false,
-    proposta: null as any,
+    proposta: null,
     dadosCriticos: { sinistros: 0, comissoes: 0, isVendido: false }
   });
 
@@ -293,7 +297,10 @@ export default function PropostasLista() {
   const handleConfirmarExclusao = async () => {
     const { proposta } = modalExclusao;
     if (!proposta) return;
+    
     try {
+      setLoading(true); // Bloqueia a tela e evita cliques duplos
+
       let query = supabase
         .from('tab_propostas')
         .delete()
@@ -306,14 +313,25 @@ export default function PropostasLista() {
 
       const { error } = await query;
       if (error) throw error;
+
       if (proposta.cliente_id) {
         await sincronizarStatusCliente(proposta.cliente_id);
       }
 
-      setModalExclusao({ ...modalExclusao, isOpen: false });
-      fetchPropostas();
+      // LIMPA O ESTADO COMPLETAMENTE
+      setModalExclusao({ 
+        isOpen: false, 
+        proposta: null, 
+        dadosCriticos: { sinistros: 0, comissoes: 0, isVendido: false } 
+      });
+      
+      // AGUARDA A ATUALIZAÇÃO DA LISTA
+      await fetchPropostas();
+      
     } catch (error: any) {
       alert("Erro ao excluir: " + error.message);
+    } finally {
+      setLoading(false); // Libera a tela
     }
   };
 

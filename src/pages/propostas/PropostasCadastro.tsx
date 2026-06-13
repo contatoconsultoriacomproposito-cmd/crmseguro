@@ -115,12 +115,20 @@ useEffect(() => {
 
     if (!perfil?.corretora_id) return;
 
-    // 2. Busca Clientes normalmente
-    const { data: clis } = await supabase.from("tab_clientes").select("*");
+    // 2. Busca Clientes com isolamento por corretor
+    let queryClientes = supabase.from("tab_clientes").select("*");
+    
+    if (perfil.tipo_usuario === 'CORRETOR') {
+      queryClientes = queryClientes.eq("corretor_id", perfil.id);
+    } else {
+      queryClientes = queryClientes.eq("corretora_id", perfil.corretora_id);
+    }
+
+    const { data: clis, error: clisError } = await queryClientes;
+    if (clisError) throw clisError;
     setClientes(clis || []);
 
-    // 3. BUSCA O PORTFÓLIO DA CORRETORA (A grande mudança)
-    // Buscamos na tab_corretora_portfolio trazendo os dados das tabelas BASE
+    // 3. BUSCA O PORTFÓLIO DA CORRETORA
     const { data: portfolio, error: portError } = await supabase
       .from("tab_corretora_portfolio")
       .select(`
@@ -134,8 +142,7 @@ useEffect(() => {
     if (portError) throw portError;
     setPortfolioRaw(portfolio || []);
 
-    // 4. Extrair Seguradoras Únicas e Produtos Únicos do Portfólio
-    // Como a tabela de portfólio é uma matriz, precisamos filtrar os nulos e remover duplicatas
+    // 4. Extrair Seguradoras Únicas
     const seguradorasDistintas = Array.from(new Map(
       (portfolio || [])
         .filter(item => item?.base_seguradoras && (item.base_seguradoras as any).id)
@@ -147,7 +154,6 @@ useEffect(() => {
     
     setSeguradoras(seguradorasDistintas);
     
-    // Dentro da função fetchDados (Parte 1), adicione a busca:
     const { data: pars } = await supabase
       .from("tab_parceiros")
       .select("id, nome_parceiro")
@@ -155,9 +161,7 @@ useEffect(() => {
       .order('nome_parceiro', { ascending: true });
     setParceiros(pars || []);
 
-
-
-    // 5. Lógica de Corretores (mantém como estava)
+    // 5. Lógica de Corretores
     if (perfil.tipo_usuario === 'CORRETOR') {
       setCorretores([{ id: perfil.id, nome: perfil.nome }]);
       setSelectedCorretor(perfil.id);
