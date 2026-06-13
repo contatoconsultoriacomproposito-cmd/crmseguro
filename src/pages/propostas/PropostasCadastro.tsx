@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
-  Save, FileText, Search, Trash2, User, 
+  Save, Search, Trash2, User, 
   X, Hash, CheckCircle2, PlusCircle
   
 } from "lucide-react";
 import { useParams, useNavigate, useLocation } from "react-router-dom"; // Importante para detectar modo edição
 import { supabase } from "../../lib/supabaseClient";
-import { gerarPDFProposta } from '../../utils/gerarPDF';
 import { ModalGerenciarPortfolio } from './ModalGerenciarPortfolio';
 
 
@@ -331,35 +330,7 @@ useEffect(() => {
     );
   }, [searchTerm, clientes]);
 
-  const handleGerarPDF = () => {
-    if (!selectedClient) return alert("Selecione um cliente.");
-    const produtosUnicos = Array.from(new Set(opcoes.flatMap(opt => opt.cotacoes.map(c => c.nome_produto))));
-
-    gerarPDFProposta({
-      numeroProposta: numeroProposta,
-      corretorId: selectedCorretor,
-      validade: validadeProposta,
-      cliente: {
-        nome: selectedClient.tipo_cliente === 'PJ' ? selectedClient.razao_social : selectedClient.nome,
-        documento: selectedClient.tipo_cliente === 'PJ' ? selectedClient.cnpj : selectedClient.cpf,
-        whatsapp: selectedClient.telefone_whats || ''
-      },
-      produtosUnicos,
-      opcoes: opcoes
-        .filter(opt => opt.seguradora_id !== "")
-        .map(opt => ({
-          companhia: opt.nome_seguradora,
-          itens: opt.cotacoes.map(cot => ({
-            nomeProduto: cot.nome_produto,
-            valor: typeof cot.valor === 'string' ? parseFloat(cot.valor.replace(/\D/g, "")) / 100 : cot.valor,
-            cobertura: cot.cobertura,
-            parcelamento: cot.parcelamento,
-            meio: cot.meio,
-            numero_cotacao: cot.numero_cotacao // <--- Enviando para o PDF
-          }))
-        }))
-    });
-  };
+  
 
   const handleSalvarBanco = async () => {
     // Definimos o corretor final: Prioriza o selecionado ou o herdado do cliente
@@ -750,13 +721,7 @@ useEffect(() => {
       {/* Rodapé fixo ajustado */}
       <div className="fixed bottom-0 left-72 right-0 p-4 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-t border-slate-200 dark:border-zinc-800 z-40 pr-8">
         <div className="max-w-[1600px] mx-auto flex justify-end gap-4">
-          <button 
-            type="button"
-            onClick={handleGerarPDF}
-            className="flex items-center gap-2 px-8 py-3 rounded-2xl font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 hover:bg-emerald-100 transition-all"
-          >
-            <FileText size={20} /> PDF Proposta
-          </button>
+          
           
           <button 
             type="button"
@@ -875,13 +840,7 @@ useEffect(() => {
             </p>
 
             <div className="grid grid-cols-1 gap-3">
-              <button 
-                type="button"
-                onClick={handleGerarPDF}
-                className="flex items-center justify-center gap-2 w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100 dark:shadow-none"
-              >
-                <FileText size={18} /> Baixar PDF Agora
-              </button>
+              
 
               <button 
                 type="button"

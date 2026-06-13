@@ -258,27 +258,7 @@ export default function PropostasLista() {
     });
   }, [filter, propostas, selectedCorretores, selectedStatus, selectedParceiros, vencimentoInicio, vencimentoFim, vendaInicio, vendaFim, selectedPeriodicidade]);
 
-  const handleRegerarPDF = async (proposta: any) => {
-    try {
-      const { data: opcoesDb, error } = await supabase
-        .from('tab_proposta_opcoes')
-        .select(`
-          *,
-          base_seguradoras (id, nome, logo_url),
-          tab_proposta_itens (
-            *,
-            base_produtos (nome)
-          )
-        `)
-        .eq('proposta_id', proposta.id)
-        .order('ordem_opcao', { ascending: true });
-
-      if (error || !opcoesDb) return alert("Erro ao recuperar dados da proposta.");
-    } catch (err) {
-      console.error("Erro ao gerar PDF:", err);
-      alert("Ocorreu um erro inesperado ao gerar o PDF.");
-    }
-  };
+ 
 
   const executarExclusaoSegura = async (proposta: any) => {
     if (!userProfile?.corretora_id) return;
@@ -654,14 +634,7 @@ export default function PropostasLista() {
                           <FileText size={18} />
                         </button>
 
-                        {/* 5. BAIXAR PDF COMERCIAL */}
-                        <button 
-                          onClick={() => handleRegerarPDF(p)}
-                          className="p-2 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-lg transition-all" 
-                          title="Baixar PDF Comercial"
-                        >
-                          <Download size={18} />
-                        </button>
+                        
 
                         {/* 6. EXCLUIR REGISTRO */}
                         <button 
