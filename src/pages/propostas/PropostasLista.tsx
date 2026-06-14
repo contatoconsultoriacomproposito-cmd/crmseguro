@@ -11,6 +11,7 @@ import { ModalExclusaoSegura } from "./ModalExclusaoSegura";
 import { sincronizarStatusCliente } from "./sincronizarStatusCliente";
 import * as XLSX from 'xlsx';
 import ModeloCotacaoAuto from "./modelos/ModeloCotacaoAuto";
+import ModeloCotacaoEmpresarial from "./modelos/ModeloCotacaoEmpresarial";
 
 export default function PropostasLista() {
   const navigate = useNavigate();
@@ -590,12 +591,33 @@ export default function PropostasLista() {
         dadosCriticos={modalExclusao.dadosCriticos}
       />
 
-      {/* --- MODAL DA PROPOSTA TOTALMENTE DINÂMICO E VINCULADO AO BANCO --- */}
+      {/* --- MODAL DA PROPOSTA DINÂMICO --- */}
       {propostaSelecionada && (
-        <ModeloCotacaoAuto 
-          propostaId={propostaSelecionada.id} 
-          onClose={() => setPropostaSelecionada(null)} 
-        />
+        (() => {
+          // Verifica se existe algum item de "Empresarial" nos produtos cotados
+          const isEmpresarial = propostaSelecionada.tab_proposta_opcoes?.some((opt: any) => 
+            opt.tab_proposta_itens?.some((item: any) => 
+              item.base_produtos?.nome?.toLowerCase().includes("empresarial")
+            )
+          );
+
+          if (isEmpresarial) {
+            return (
+              <ModeloCotacaoEmpresarial 
+                propostaId={propostaSelecionada.id} 
+                onClose={() => setPropostaSelecionada(null)} 
+              />
+            );
+          }
+
+          // Caso contrário, abre o padrão (Auto)
+          return (
+            <ModeloCotacaoAuto 
+              propostaId={propostaSelecionada.id} 
+              onClose={() => setPropostaSelecionada(null)} 
+            />
+          );
+        })()
       )}
     </div>
   );
