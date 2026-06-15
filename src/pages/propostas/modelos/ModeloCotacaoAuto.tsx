@@ -42,6 +42,27 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
   const [loading, setLoading] = useState(true);
   const [dadosBase, setDadosBase] = useState<any>(null);
   const [valoresMatriz, setValoresMatriz] = useState<Record<string, Record<string, any>>>({});
+  const [nomeNovaCobertura, setNomeNovaCobertura] = useState("");
+  const [tipoInputNovaCobertura, setTipoInputNovaCobertura] = useState("moeda");
+  const [coberturasCustomizadas, setCoberturasCustomizadas] = useState<any[]>([]);
+
+  // Função para adicionar a cobertura customizada na lista
+  const adicionarCoberturaCustomizada = () => {
+    if (!nomeNovaCobertura.trim()) return;
+    
+    const novoId = `custom_${Date.now()}`; // Gera um ID único baseado no timestamp
+    setCoberturasCustomizadas(prev => [
+      ...prev, 
+      { id: novoId, nome: nomeNovaCobertura.trim(), tipoInput: tipoInputNovaCobertura }
+    ]);
+    
+    setNomeNovaCobertura(""); // Limpa o campo de texto
+  };
+  
+  // Estado para controlar quais coberturas estão selecionadas/ativas
+  const [coberturasAtivas, setCoberturasAtivas] = useState<CoberturaChave[]>(
+    ESTRUTURA_COBERTURAS.map(c => c.id)
+  );
   
   const [perfilRisco, setPerfilRisco] = useState<PerfilRisco>({
     sexo: "Masculino",
@@ -108,7 +129,6 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
         .limit(1)
         .maybeSingle();
 
-      // O restante da sua função continua EXATAMENTE IGUAL até o final...
       const { data: opcoesDb, error: errorOpcoes } = await supabase
         .from("tab_proposta_opcoes")
         .select(`
@@ -178,8 +198,6 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
 
       setValoresMatriz(matrizInicial);
       
-      // Aqui os novos objetos "corretora" (Elisangela) e "corretor" (Bruce Duarte) 
-      // são salvos perfeitamente no estado para alimentar o HTML e a geração do PDF.
       setDadosBase({
         proposta,
         corretora,
@@ -249,7 +267,7 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
     });
   };
 
-  // 📄 EXPORTAÇÃO DE PDF 100% CORRIGIDA (DIVISÃO ESQUERDA vs DIREITA)
+// 📄 EXPORTAÇÃO DE PDF 100% CORRIGIDA (DIVISÃO ESQUERDA vs DIREITA + COBERTURAS CUSTOMIZADAS)
   const exportarPDFProposta = async () => {
     if (!dadosBase) return;
 
@@ -358,7 +376,15 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
       tableHead[0].push(""); 
     });
 
-    const tableBody = ESTRUTURA_COBERTURAS.map((cob) => {
+    // -------------------------------------------------------------------------
+    // CORREÇÃO DA IMPRESSÃO DA MATRIZ: Unifica as padrões ativas com as livres
+    // -------------------------------------------------------------------------
+    const todasAsCoberturasDoPdf = [
+      ...ESTRUTURA_COBERTURAS.filter((cob) => coberturasAtivas.includes(cob.id)),
+      ...coberturasCustomizadas
+    ];
+
+    const tableBody = todasAsCoberturasDoPdf.map((cob) => {
       const row = [cob.nome];
       opcoes.forEach((opt: any) => {
         if (cob.id === "franquia") {
@@ -478,7 +504,7 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
 
   const { proposta, cliente, corretor, corretora, opcoes } = dadosBase;
 
-  return (
+return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-slate-50 w-full max-w-5xl rounded-xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col my-8">
         
@@ -530,16 +556,6 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
                 <p className="text-xs text-slate-500 mt-0.5 font-medium">
                   CNPJ: {corretora?.cnpj_corretora || "-"} | SUSEP: {corretora?.registro_susep || "-"}
                 </p>
-                
-                {/* Exibição dos novos dados estratégicos da tab_configuracoes_site */}
-                <div className="flex flex-wrap gap-x-3 mt-1.5 pt-1.5 border-t border-slate-100 text-xs text-slate-600">
-                  {corretora?.tab_configuracoes_site?.dominio && (
-                    <span><strong className="text-slate-400">Site:</strong> {corretora.tab_configuracoes_site.dominio}</span>
-                  )}
-                  {corretora?.tab_configuracoes_site?.whatsapp_notificacao && (
-                    <span><strong className="text-slate-400">Whats Atendimento:</strong> {corretora.tab_configuracoes_site.whatsapp_notificacao}</span>
-                  )}
-                </div>
               </div>
             </div>
             <div className="flex items-start gap-3 border-t md:border-t-0 md:border-l border-slate-100 md:pl-4">
@@ -584,7 +600,6 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
             </span>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm border-t border-slate-100 pt-3">
-              
               <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("sexo")}>
                 <span className="text-slate-400 block text-xs">1) Sexo:</span>
                 {perfilEditando === "sexo" ? (
@@ -681,7 +696,7 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
               <div className="p-2 rounded bg-slate-50/60 border border-slate-100 col-span-1 sm:col-span-2 md:col-span-1">
                 <span className="text-slate-400 block text-xs mb-1">6) Dispositivos de segurança:</span>
                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
-                  {["Rastreador", "Bloqueador", "Alarme"].map((disp) => (
+                  {["Rastreador", "Bloqueador", "Alarme"].map((disp: string) => (
                     <label key={disp} className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer">
                       <input
                         type="checkbox"
@@ -730,7 +745,60 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
                   <span className="font-bold text-blue-700">Classe {perfilRisco.classeBonus}</span>
                 )}
               </div>
+            </div>
+          </div>
 
+          {/* PAINEL DE GESTÃO E INCLUSÃO DE QUALQUER COBERTURA (IGUAL RESIDENCIAL/EMPRESARIAL) */}
+          <div className="bg-slate-100 p-4 rounded-lg border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-4 shadow-sm no-print">
+            
+            {/* Lado A: Incluir Coberturas do Sistema (Padrão) */}
+            <div className="flex flex-col gap-1.5 justify-center">
+              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Ativar Cobertura Padrão</span>
+              <select
+                value=""
+                onChange={(e) => {
+                  const novaCob = e.target.value as CoberturaChave;
+                  if (novaCob && !coberturasAtivas.includes(novaCob)) {
+                    setCoberturasAtivas((prev) => [...prev, novaCob]);
+                  }
+                }}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-blue-500 cursor-pointer shadow-sm"
+              >
+                <option value="" disabled hidden>+ Escolher Cobertura Automotiva Padrão</option>
+                {ESTRUTURA_COBERTURAS.filter((c: any) => !coberturasAtivas.includes(c.id)).map((cob: any) => (
+                  <option key={cob.id} value={cob.id}>{cob.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Lado B: Criar QUALQUER Cobertura Não Prevista */}
+            <div className="flex flex-col gap-1.5 border-t md:border-t-0 md:border-l border-slate-300 pt-3 md:pt-0 md:pl-4">
+              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Criar Cobertura Adicional (Livre)</span>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ex: Martelinho de Ouro, Rastreador Combo..."
+                  value={nomeNovaCobertura}
+                  onChange={(e) => setNomeNovaCobertura(e.target.value)}
+                  className="flex-1 border rounded-lg px-3 py-1.5 text-xs focus:outline-blue-500 bg-white"
+                />
+                <select
+                  value={tipoInputNovaCobertura}
+                  onChange={(e) => setTipoInputNovaCobertura(e.target.value)}
+                  className="border rounded-lg px-2 py-1.5 text-xs focus:outline-blue-500 bg-white cursor-pointer font-medium text-slate-600"
+                >
+                  <option value="moeda">Moeda (R$)</option>
+                  <option value="texto">Texto Livre</option>
+                  <option value="km">Km (Distância)</option>
+                  <option value="carro_reserva">Carro Reserva</option>
+                </select>
+                <button
+                  onClick={adicionarCoberturaCustomizada}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                >
+                  + Criar
+                </button>
+              </div>
             </div>
           </div>
 
@@ -758,9 +826,30 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
                   </tr>
                 </thead>
                 <tbody className="text-sm divide-y divide-slate-200">
-                  {ESTRUTURA_COBERTURAS.map((cob) => (
-                    <tr key={cob.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4 font-medium text-slate-700 bg-slate-50/50">{cob.nome}</td>
+                  
+                  {/* UNIFICA E MAPEIA AS DUAS LISTAS: PADRÕES ATIVAS + TOTALMENTE CUSTOMIZADAS */}
+                  {[
+                    ...ESTRUTURA_COBERTURAS.filter((c: any) => coberturasAtivas.includes(c.id)),
+                    ...coberturasCustomizadas
+                  ].map((cob: any) => (
+                    <tr key={cob.id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="py-3 px-4 font-medium text-slate-700 bg-slate-50/50 flex items-center justify-between gap-2">
+                        <span>{cob.nome}</span>
+                        <button
+                          onClick={() => {
+                            // Se o ID começar com 'custom_', remove do estado customizado, senão do padrão
+                            if (cob.id.toString().startsWith("custom_")) {
+                              setCoberturasCustomizadas((prev) => prev.filter((c) => c.id !== cob.id));
+                            } else {
+                              setCoberturasAtivas((prev: any) => prev.filter((id: string) => id !== cob.id));
+                            }
+                          }}
+                          className="text-slate-400 hover:text-red-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-all no-print"
+                          title="Excluir Cobertura"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
                       {opcoes.map((opt: any) => {
                         const esAtivo = celulaAtiva?.opcaoId === opt.id && celulaAtiva?.cobId === cob.id;
                         const valorAtual = valoresMatriz[opt.id]?.[cob.id];
