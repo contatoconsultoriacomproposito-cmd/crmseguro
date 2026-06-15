@@ -5,7 +5,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatarDataBR } from "../../../utils/dateUtils";
 
-interface ModeloCotacaoEmpresarialProps {
+interface ModeloCotacaoResidencialProps {
   propostaId: string;
   onClose: () => void;
 }
@@ -19,78 +19,47 @@ interface LinhaCobertura {
 
 // Significados base (Dicionário padrão)
 const SIGNIFICADOS_COBERTURAS: Record<string, string> = {
-  basica: "Suporte em danos por incêndio, queda de aeronaves/raio, explosão, tumulto, greve, fumaça e impacto de veículos.",
-  aluguel: "Auxílio por perda de arrecadação de aluguel ou necessidade de alugar outro imóvel devido a sinistros.",
-  vendaval: "Reposição de bens por danos causados por ventos fortes (vendaval, furacão, tornado, ciclone) ou granizo.",
-  danos_eletricos: "Reparação de componentes eletrônicos/elétricos por raio, variações de tensão, curto-circuito, arco voltaico, etc.",
-  roubo: "Suporte em caso de roubo/furto de bens e danos causados pelo arrombamento.",
-  valores: "Auxílio em caso de roubo/furto de valores no interior ou com portadores, e reparação de danos decorrentes.",
-  vidros: "Amparo para vidros, espelhos, mármores, balcões, prateleiras e vitrines.",
-  alagamento: "Amparo contra enchentes, chuvas, rompimento de encanamentos/reservatórios e aumento do nível de rios/canais.",
-  desmoronamento: "Auxílio para reparos por queda de paredes, colunas, tetos, etc.",
-  equipamentos: "Danos materiais em equipamentos eletrônicos/móveis por causas internas ou externas.",
-  rc_empregador: "Danos por morte ou invalidez permanente de funcionários (acidente súbito/inesperado) a serviço ou no trajeto.",
-  rc_guarda_veic_comp: "Danos a veículos de terceiros por incêndio, roubo, furto ou colisão sob guarda do estabelecimento.",
-  rc_guarda_veic_inc: "Danos a veículos de terceiros por incêndio, roubo ou furto total sob guarda do estabelecimento.",
-  circulacao_int: "Exclusivo para revendas: danos ao estoque próprio por acidentes/roubo/furto no interior.",
-  circulacao_ext: "Exclusivo para revendas: danos ao estoque próprio por acidentes/roubo/furto nas áreas internas ou externas.",
-  rc_estab: "Reembolso por danos involuntários (corporais/materiais) a terceiros em operações comerciais/industriais ou conservação do imóvel.",
-  rc_prop: "Danos involuntários a terceiros ou despesas emergenciais de contenção de danos.",
-  rc_hospedagem: "Reembolso por danos involuntários, corporais ou materiais a terceiros em atividades de hospedagem.",
-  acionamento_sprinkler: "Danos por infiltração/derrame de água/líquidos de sprinklers.",
-  recomposicao: "Reembolso de despesas para recompor registros e documentos destruídos por causa externa.",
-  fidelidade: "Danos patrimoniais sofridos por crimes praticados por funcionários.",
-  paralisacao: "Lucro bruto e gastos adicionais pela interrupção de negócios devido a sinistros cobertos.",
-  merc_refrigeradas: "Prejuízos com mercadorias perdidas por falhas no sistema de refrigeração/falta de energia.",
-  movimentacao: "Danos materiais ao imóvel ou conteúdo por empilhadeiras, esteiras ou pontes.",
-  desp_extra: "Custo adicional de horas extras e fretes expressos/afretamentos após sinistros.",
-  ruptura: "Ruptura acidental de caixa d'água, tubulação de gás, água ou esgoto.",
-  paineis: "Danos por causas externas a painéis, totens e letreiros do estabelecimento.",
-  portateis: "Danos por causas externas/internas, inclusive roubo/furto, em equipamentos portáteis do segurado.",
-  jardins: "Danos a jardins por impacto de veículos, vendaval, granizo, incêndio, etc."
+  basica: "Proteção em caso de incêndio, queda de raio, explosão, queda de aeronaves, além de fumaça, impacto de veículos, tumultos, greves, lockout e para emissão de novos documentos pessoais e do imóvel se forem danificados.",
+  moradia_temporaria: "Auxílio para gastos com aluguel, condomínio, hospedagem e alimentação durante todo o período de reparo do imóvel segurado caso algum problema impossibilite a moradia.",
+  vendaval_granizo: "Auxílio para reparos no imóvel em caso de ventos fortes, ciclone, granizo, neve e geada, além dos eventos citados.",
+  danos_eletricos: "Auxílio para reparo de eletrônicos, eletrodomésticos e instalações elétricas do imóvel em caso de queda de raio ou problema elétrico.",
+  roubo: "Auxílio caso os bens do segurado ou da família forem roubados ou danificados no interior do imóvel, inclusive em caso de estragos causados no imóvel, como arrombamento de portas ou janelas.",
+  vidros_marmores: "Proteção em caso de quebra ou danos a estes materiais, incluindo tampo de mesas e espelhos, seja por quebra, choque térmico, acidentes ou ventos e vendavais.",
+  alagamento: "Proteção em caso de rompimento de encanamento, canalização, enchentes, chuva forte, reservatórios externos ao imóvel e mais.",
+  desmoronamento: "Auxílio para reparos no imóvel decorrentes de desmoronamento total ou parcial, como queda de parede, coluna, teto e mais.",
+  rc_familiar: "Auxílio caso o segurado, seus familiares e até animais domésticos causarem danos a outras pessoas ou aos bens delas.",
+  tremor_terra: "Auxílio para reparos no imóvel em caso de tremor de terra, terremoto ou maremoto e, ainda, por incêndio ou explosão consequente desses eventos.",
+  equipamentos_eletronicos: "Proteção se caso algum acidente de causa externa estrague os eletrodomésticos ou equipamentos eletrônicos.",
+  ruptura_tubulacoes: "Proteção em caso de rompimento acidental de caixa d'água, tubulação de gás, água ou canalização de esgoto, além de auxílio no reparo de pias, vasos sanitários e chuveiros.",
+  desp_salvamento: "Auxílio com as despesas de salvamento, desentulho e demolição realizadas pelo segurado durante ou após a ocorrência de um sinistro."
 };
 
 const ESTRUTURA_COBERTURAS_PADRAO: LinhaCobertura[] = [
   { id: "basica", nome: "Básica (Incêndio, Raio, Explosão)", significado: SIGNIFICADOS_COBERTURAS["basica"], tipoInput: "texto" },
-  { id: "aluguel", nome: "Perda/Pagamento de Aluguel", significado: SIGNIFICADOS_COBERTURAS["aluguel"], tipoInput: "texto" },
-  { id: "vendaval", nome: "Vendaval/Granizo", significado: SIGNIFICADOS_COBERTURAS["vendaval"], tipoInput: "texto" },
+  { id: "moradia_temporaria", nome: "Moradia Temporária", significado: SIGNIFICADOS_COBERTURAS["moradia_temporaria"], tipoInput: "texto" },
+  { id: "vendaval_granizo", nome: "Vendaval, Granizo e Geada", significado: SIGNIFICADOS_COBERTURAS["vendaval_granizo"], tipoInput: "texto" },
   { id: "danos_eletricos", nome: "Danos Elétricos", significado: SIGNIFICADOS_COBERTURAS["danos_eletricos"], tipoInput: "texto" },
-  { id: "roubo", nome: "Roubo e Furto Qualificado", significado: SIGNIFICADOS_COBERTURAS["roubo"], tipoInput: "texto" },
-  { id: "valores", nome: "Valores", significado: SIGNIFICADOS_COBERTURAS["valores"], tipoInput: "texto" },
-  { id: "vidros", nome: "Quebra de Vidros ou Vitrines", significado: SIGNIFICADOS_COBERTURAS["vidros"], tipoInput: "texto" },
-  { id: "alagamento", nome: "Alagamento", significado: SIGNIFICADOS_COBERTURAS["alagamento"], tipoInput: "texto" },
+  { id: "roubo", nome: "Roubo e Furto", significado: SIGNIFICADOS_COBERTURAS["roubo"], tipoInput: "texto" },
+  { id: "vidros_marmores", nome: "Vidros, Mármores e Granitos", significado: SIGNIFICADOS_COBERTURAS["vidros_marmores"], tipoInput: "texto" },
+  { id: "alagamento", nome: "Alagamento e Inundação", significado: SIGNIFICADOS_COBERTURAS["alagamento"], tipoInput: "texto" },
   { id: "desmoronamento", nome: "Desmoronamento", significado: SIGNIFICADOS_COBERTURAS["desmoronamento"], tipoInput: "texto" },
-  { id: "equipamentos", nome: "Equipamentos", significado: SIGNIFICADOS_COBERTURAS["equipamentos"], tipoInput: "texto" },
-  { id: "rc_empregador", nome: "RC-Empregador", significado: SIGNIFICADOS_COBERTURAS["rc_empregador"], tipoInput: "moeda" },
-  { id: "rc_guarda_veic_comp", nome: "RC-Guarda de Veículos Comp.", significado: SIGNIFICADOS_COBERTURAS["rc_guarda_veic_comp"], tipoInput: "texto" },
-  { id: "rc_guarda_veic_inc", nome: "RC-Guarda Veículos Inc/Roubo", significado: SIGNIFICADOS_COBERTURAS["rc_guarda_veic_inc"], tipoInput: "texto" },
-  { id: "circulacao_int", nome: "Circulação Veículos Revenda (Int)", significado: SIGNIFICADOS_COBERTURAS["circulacao_int"], tipoInput: "texto" },
-  { id: "circulacao_ext", nome: "Circulação Veículos Revenda (Ext)", significado: SIGNIFICADOS_COBERTURAS["circulacao_ext"], tipoInput: "texto" },
-  { id: "rc_estab", nome: "RC-Estabelecimento (Com/Ind)", significado: SIGNIFICADOS_COBERTURAS["rc_estab"], tipoInput: "moeda" },
-  { id: "rc_prop", nome: "RC-Proprietários/Locatários", significado: SIGNIFICADOS_COBERTURAS["rc_prop"], tipoInput: "moeda" },
-  { id: "rc_hospedagem", nome: "RC-Hospedagem", significado: SIGNIFICADOS_COBERTURAS["rc_hospedagem"], tipoInput: "moeda" },
-  { id: "acionamento_sprinkler", nome: "Acionamento Acidental (Incêndio)", significado: SIGNIFICADOS_COBERTURAS["acionamento_sprinkler"], tipoInput: "texto" },
-  { id: "recomposicao", nome: "Recomposição de Registros", significado: SIGNIFICADOS_COBERTURAS["recomposicao"], tipoInput: "texto" },
-  { id: "fidelidade", nome: "Fidelidade de Empregados", significado: SIGNIFICADOS_COBERTURAS["fidelidade"], tipoInput: "texto" },
-  { id: "paralisacao", nome: "Dias de Paralisação", significado: SIGNIFICADOS_COBERTURAS["paralisacao"], tipoInput: "texto" },
-  { id: "merc_refrigeradas", nome: "Danos a Mercadorias Refrigeradas", significado: SIGNIFICADOS_COBERTURAS["merc_refrigeradas"], tipoInput: "texto" },
-  { id: "movimentacao", nome: "Movimentação Interna", significado: SIGNIFICADOS_COBERTURAS["movimentacao"], tipoInput: "texto" },
-  { id: "desp_extra", nome: "Despesas Extraordinárias", significado: SIGNIFICADOS_COBERTURAS["desp_extra"], tipoInput: "texto" },
-  { id: "ruptura", nome: "Ruptura de Tubulações", significado: SIGNIFICADOS_COBERTURAS["ruptura"], tipoInput: "texto" },
-  { id: "paineis", nome: "Painéis, Anúncios e Letreiros", significado: SIGNIFICADOS_COBERTURAS["paineis"], tipoInput: "texto" },
-  { id: "portateis", nome: "Equipamentos Portáteis II", significado: SIGNIFICADOS_COBERTURAS["portateis"], tipoInput: "texto" },
-  { id: "jardins", nome: "Jardins", significado: SIGNIFICADOS_COBERTURAS["jardins"], tipoInput: "texto" }
+  { id: "rc_familiar", nome: "Responsabilidade Civil Familiar", significado: SIGNIFICADOS_COBERTURAS["rc_familiar"], tipoInput: "moeda" },
+  { id: "tremor_terra", nome: "Tremor de Terra e Terremoto", significado: SIGNIFICADOS_COBERTURAS["tremor_terra"], tipoInput: "texto" },
+  { id: "equipamentos_eletronicos", nome: "Equipamentos Eletrônicos", significado: SIGNIFICADOS_COBERTURAS["equipamentos_eletronicos"], tipoInput: "texto" },
+  { id: "ruptura_tubulacoes", nome: "Ruptura de Tubulações", significado: SIGNIFICADOS_COBERTURAS["ruptura_tubulacoes"], tipoInput: "texto" },
+  { id: "desp_salvamento", nome: "Salvamento, Desentulho e Demolição", significado: SIGNIFICADOS_COBERTURAS["desp_salvamento"], tipoInput: "texto" }
 ];
 
-interface PerfilRiscoEmpresarial {
-  atividade: "Comercial" | "Industrial" | "Serviços";
+interface PerfilRiscoResidencial {
+  tipoResidencia: "Casa" | "Apartamento" | "Sobrado" | "Outros";
+  tipoMoradia: "Habitual" | "Veraneio" | "Desocupada";
   tipoConstrucao: "Alvenaria" | "Metálica" | "Mista" | "Madeira";
-  localizacao: "Rua/Avenida" | "Shopping/Galeria" | "Condomínio Fechado";
+  localizacao: "Rua/Avenida" | "Condomínio Fechado" | "Outros";
   sistemasProtecao: string[];
   sinistrosAnteriores: "Sim" | "Não";
 }
 
-export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: ModeloCotacaoEmpresarialProps) {
+export default function ModeloCotacaoResidencial({ propostaId, onClose }: ModeloCotacaoResidencialProps) {
   const [loading, setLoading] = useState(true);
   const [dadosBase, setDadosBase] = useState<any>(null);
   const [valoresMatriz, setValoresMatriz] = useState<Record<string, Record<string, any>>>({});
@@ -103,8 +72,9 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
   const [novoNome, setNovoNome] = useState("");
   const [novoSignificado, setNovoSignificado] = useState("");
 
-  const [perfilRisco, setPerfilRisco] = useState<PerfilRiscoEmpresarial>({
-    atividade: "Comercial",
+  const [perfilRisco, setPerfilRisco] = useState<PerfilRiscoResidencial>({
+    tipoResidencia: "Casa",
+    tipoMoradia: "Habitual",
     tipoConstrucao: "Alvenaria",
     localizacao: "Rua/Avenida",
     sistemasProtecao: [],
@@ -112,7 +82,7 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
   });
 
   const [celulaAtiva, setCelulaAtiva] = useState<{ opcaoId: string; cobId: string } | null>(null);
-  const [perfilEditando, setPerfilEditando] = useState<keyof PerfilRiscoEmpresarial | null>(null);
+  const [perfilEditando, setPerfilEditando] = useState<keyof PerfilRiscoResidencial | null>(null);
 
   useEffect(() => {
     if (propostaId) {
@@ -225,7 +195,7 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
     }));
   };
 
-  const atualizarPerfil = (campo: keyof PerfilRiscoEmpresarial, valor: any) => {
+  const atualizarPerfil = (campo: keyof PerfilRiscoResidencial, valor: any) => {
     setPerfilRisco(prev => ({ ...prev, [campo]: valor }));
   };
 
@@ -303,9 +273,8 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
     const { proposta, cliente, corretor, corretora, opcoes } = dadosBase;
 
     const formatarValorParaPDF = (val: any) => {
-      if (!val || val === "Não Contratado" || val === "") {
-        return "R$ 0,00";
-      }
+      if (typeof val === 'number') return formatarMoeda(val);
+      if (!val || val === "Não Contratado" || val === "" || val === "R$ NaN") return "R$ 0,00";
       return val;
     };
 
@@ -373,7 +342,7 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
     doc.text(`WhatsApp: ${cliente?.telefone_whats || "-"} | Email: ${cliente?.email || "-"}`, 15, 64);
     doc.text(`CEP de Risco: ${isPJ ? cliente?.cep : cliente?.cep_pf || "-"} (${isPJ ? `${cliente?.municipio} - ${cliente?.uf}` : `${cliente?.municipio_pf} - ${cliente?.uf_pf}` || "-"})`, 15, 69);
 
-    // PERFIL DE RISCO
+    // PERFIL DO RISCO
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.text("PERFIL DO RISCO", 15, 78);
@@ -381,11 +350,19 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
 
     doc.setFontSize(8.5);
     doc.setFont("helvetica", "normal");
-    doc.text(`Atividade: ${perfilRisco.atividade}`, 15, 86);
-    doc.text(`Construção: ${perfilRisco.tipoConstrucao}`, 75, 86);
-    doc.text(`Localização: ${perfilRisco.localizacao}`, 135, 86);
-    doc.text(`Sistemas de Proteção: ${perfilRisco.sistemasProtecao?.length > 0 ? perfilRisco.sistemasProtecao.join(", ") : "Nenhum"}`, 15, 91);
+
+    // Linha 1 (Posição Y: 86)
+    doc.text(`Residência: ${perfilRisco.tipoResidencia}`, 15, 86);
+    doc.text(`Moradia: ${perfilRisco.tipoMoradia}`, 75, 86);
+    doc.text(`Construção: ${perfilRisco.tipoConstrucao}`, 135, 86);
+
+    // Linha 2 (Posição Y: 91)
+    doc.text(`Localização: ${perfilRisco.localizacao}`, 15, 91);
     doc.text(`Sinistros Anteriores: ${perfilRisco.sinistrosAnteriores}`, 135, 91);
+
+    // Sistemas de Proteção (Como pode ser uma lista longa, colocamos em uma linha dedicada, Y: 96)
+    // Ajuste o startY da tabela para começar em 102 (ao invés de 96) para não encavalar
+    doc.text(`Sistemas de Proteção: ${perfilRisco.sistemasProtecao?.length > 0 ? perfilRisco.sistemasProtecao.join(", ") : "Nenhum"}`, 15, 96);
 
     // TABELA DE COBERTURAS - FILTRADAS DINAMICAMENTE (Apenas ativas/marcadas vão para o PDF)
     const tableHead = [["Cobertura", "O que significa", ...opcoes.map((o: any) => o.base_seguradoras?.nome || "Opção")]];
@@ -409,22 +386,22 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
       const vMatriz = valoresMatriz[opt.id];
       rowFormaPgto.push(vMatriz?.formaPagamento || "Boleto");
       rowParcelas.push(vMatriz?.parcelamento || "1x");
-      rowPremioTotal.push(formatarValorParaPDF(formatarMoeda(vMatriz?.valorTotal || 0)));
+      rowPremioTotal.push(formatarMoeda(vMatriz?.valorTotal || 0));
     });
 
     tableBody.push(rowFormaPgto, rowParcelas, rowPremioTotal);
 
     autoTable(doc, {
-      startY: 96,
+      startY: 102,
       margin: { left: 15, right: 15 },
       head: tableHead,
       body: tableBody,
       theme: "grid",
-      styles: { fontSize: 7, cellPadding: 2, valign: "middle" },
+      styles: { fontSize: 7, cellPadding: 2, valign: "middle", overflow: 'linebreak' },
       headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: "center" },
       columnStyles: { 
         0: { cellWidth: 35 }, 
-        1: { cellWidth: 40 } 
+        1: { cellWidth: 60, minCellHeight: 10 },
       },
       didDrawCell: (data) => {
         if (data.section === "head" && data.column.index >= 2) {
@@ -564,24 +541,44 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
             <span className="text-xs uppercase font-bold text-slate-400 flex items-center gap-1.5 tracking-wider">
               <ClipboardCheck className="h-4 w-4 text-emerald-600" /> Informações Complementares do Risco
             </span>
+
+            <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("tipoResidencia")}>
+                <span className="text-slate-400 block text-xs">1) Tipo de Residência:</span>
+                {perfilEditando === "tipoResidencia" ? (
+                    <select
+                    value={perfilRisco.tipoResidencia}
+                    onChange={(e) => atualizarPerfil("tipoResidencia", e.target.value)}
+                    onBlur={() => setPerfilEditando(null)}
+                    autoFocus
+                    className="w-full mt-1 border rounded p-1 text-xs focus:outline-emerald-500"
+                    >
+                    <option value="Casa">Casa</option>
+                    <option value="Apartamento">Apartamento</option>
+                    <option value="Sobrado">Sobrado</option>
+                    <option value="Condomínio de Casas">Condomínio de Casas</option>
+                    </select>
+                ) : (
+                    <span className="font-semibold text-slate-700">{perfilRisco.tipoResidencia || "Não informado"}</span>
+                )}
+            </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm border-t border-slate-100 pt-3">
-              <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("atividade")}>
+              <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("tipoMoradia")}>
                 <span className="text-slate-400 block text-xs">1) Atividade Principal:</span>
-                {perfilEditando === "atividade" ? (
+                {perfilEditando === "tipoMoradia" ? (
                   <select
-                    value={perfilRisco.atividade}
-                    onChange={(e) => atualizarPerfil("atividade", e.target.value)}
+                    value={perfilRisco.tipoMoradia}
+                    onChange={(e) => atualizarPerfil("tipoMoradia", e.target.value)}
                     onBlur={() => setPerfilEditando(null)}
                     autoFocus
                     className="w-full mt-1 border rounded p-1 text-xs focus:outline-emerald-500"
                   >
-                    <option value="Comercial">Comercial</option>
-                    <option value="Industrial">Industrial</option>
-                    <option value="Serviços">Serviços</option>
+                    <option value="Habitual">Habitual</option>
+                    <option value="Veraneio">Veraneio</option>
+                    <option value="Desocupada">Desocupada</option>
                   </select>
                 ) : (
-                  <span className="font-semibold text-slate-700">{perfilRisco.atividade}</span>
+                  <span className="font-semibold text-slate-700">{perfilRisco.tipoMoradia}</span>
                 )}
               </div>
 
@@ -616,8 +613,8 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
                     className="w-full mt-1 border rounded p-1 text-xs focus:outline-emerald-500"
                   >
                     <option value="Rua/Avenida">Rua/Avenida</option>
-                    <option value="Shopping/Galeria">Shopping/Galeria</option>
                     <option value="Condomínio Fechado">Condomínio Fechado</option>
+                    <option value="Outros">Outros</option>
                   </select>
                 ) : (
                   <span className="font-semibold text-slate-700">{perfilRisco.localizacao}</span>
@@ -645,7 +642,7 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
               <div className="p-2 rounded bg-slate-50/60 border border-slate-100 col-span-1 sm:col-span-2 md:col-span-4">
                 <span className="text-slate-400 block text-xs mb-1">Sistemas de Proteção:</span>
                 <div className="flex flex-wrap gap-x-4 gap-y-2 mt-1">
-                  {["Extintores", "Hidrantes", "Sprinklers", "Alarme Monitorado", "Câmeras (CFTV)", "Vigilância Armada"].map((disp) => (
+                  {["Câmeras", "Alarme Monitorado", "Cerca Elétrica", "Vigilância Armada"].map((disp) => (
                     <label key={disp} className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer">
                       <input
                         type="checkbox"

@@ -12,6 +12,7 @@ import { sincronizarStatusCliente } from "./sincronizarStatusCliente";
 import * as XLSX from 'xlsx';
 import ModeloCotacaoAuto from "./modelos/ModeloCotacaoAuto";
 import ModeloCotacaoEmpresarial from "./modelos/ModeloCotacaoEmpresarial";
+import ModeloCotacaoResidencial from "./modelos/ModeloCotacaoResidencial";
 
 export default function PropostasLista() {
   const navigate = useNavigate();
@@ -592,15 +593,24 @@ export default function PropostasLista() {
       />
 
       {/* --- MODAL DA PROPOSTA DINÂMICO --- */}
+      {/* --- MODAL DA PROPOSTA DINÂMICO --- */}
       {propostaSelecionada && (
         (() => {
-          // Verifica se existe algum item de "Empresarial" nos produtos cotados
+          // 1. Identifica se é Empresarial
           const isEmpresarial = propostaSelecionada.tab_proposta_opcoes?.some((opt: any) => 
             opt.tab_proposta_itens?.some((item: any) => 
               item.base_produtos?.nome?.toLowerCase().includes("empresarial")
             )
           );
 
+          // 2. Identifica se é Residencial
+          const isResidencial = propostaSelecionada.tab_proposta_opcoes?.some((opt: any) => 
+            opt.tab_proposta_itens?.some((item: any) => 
+              item.base_produtos?.nome?.toLowerCase().includes("residencial")
+            )
+          );
+
+          // 3. Renderização Condicional (Cascata)
           if (isEmpresarial) {
             return (
               <ModeloCotacaoEmpresarial 
@@ -610,7 +620,16 @@ export default function PropostasLista() {
             );
           }
 
-          // Caso contrário, abre o padrão (Auto)
+          if (isResidencial) {
+            return (
+              <ModeloCotacaoResidencial 
+                propostaId={propostaSelecionada.id} 
+                onClose={() => setPropostaSelecionada(null)} 
+              />
+            );
+          }
+
+          // 4. Caso contrário, abre o padrão (Auto)
           return (
             <ModeloCotacaoAuto 
               propostaId={propostaSelecionada.id} 
