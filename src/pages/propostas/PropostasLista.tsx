@@ -13,6 +13,7 @@ import * as XLSX from 'xlsx';
 import ModeloCotacaoAuto from "./modelos/ModeloCotacaoAuto";
 import ModeloCotacaoEmpresarial from "./modelos/ModeloCotacaoEmpresarial";
 import ModeloCotacaoResidencial from "./modelos/ModeloCotacaoResidencial";
+import ModeloCotacaoSaude from "./modelos/ModeloCotacaoSaude";
 
 export default function PropostasLista() {
   const navigate = useNavigate();
@@ -592,7 +593,7 @@ export default function PropostasLista() {
         dadosCriticos={modalExclusao.dadosCriticos}
       />
 
-      {/* --- MODAL DA PROPOSTA DINÂMICO --- */}
+      
       {/* --- MODAL DA PROPOSTA DINÂMICO --- */}
       {propostaSelecionada && (
         (() => {
@@ -610,7 +611,15 @@ export default function PropostasLista() {
             )
           );
 
-          // 3. Renderização Condicional (Cascata)
+          // 3. Identifica se é Saúde (Verifica com e sem acento por segurança)
+          const isSaude = propostaSelecionada.tab_proposta_opcoes?.some((opt: any) => 
+            opt.tab_proposta_itens?.some((item: any) => {
+              const nomeProd = item.base_produtos?.nome?.toLowerCase() || "";
+              return nomeProd.includes("saúde") || nomeProd.includes("saude");
+            })
+          );
+
+          // 4. Renderização Condicional (Cascata)
           if (isEmpresarial) {
             return (
               <ModeloCotacaoEmpresarial 
@@ -629,7 +638,16 @@ export default function PropostasLista() {
             );
           }
 
-          // 4. Caso contrário, abre o padrão (Auto)
+          if (isSaude) {
+            return (
+              <ModeloCotacaoSaude 
+                propostaId={propostaSelecionada.id} 
+                onClose={() => setPropostaSelecionada(null)} 
+              />
+            );
+          }
+
+          // 5. Caso contrário, abre o padrão (Auto)
           return (
             <ModeloCotacaoAuto 
               propostaId={propostaSelecionada.id} 
