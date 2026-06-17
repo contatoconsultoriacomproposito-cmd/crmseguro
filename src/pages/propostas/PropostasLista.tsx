@@ -17,8 +17,25 @@ import ModeloCotacaoSaude from "./modelos/ModeloCotacaoSaude";
 import ModeloCotacaoVida from "./modelos/ModeloCotacaoVida";
 
 export default function PropostasLista() {
+  console.count("🔄 RENDER_PROPOSTAS_LISTA");
   const navigate = useNavigate();
   const [propostas, setPropostas] = useState<any[]>([]);
+  useEffect(() => {
+    console.group("🟩 EFFECT propostas");
+
+    console.log(
+      "Quantidade de propostas:",
+      propostas.length
+    );
+
+    console.log(
+      "Horário:",
+      new Date().toISOString()
+    );
+
+    console.groupEnd();
+
+  }, [propostas]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -151,6 +168,8 @@ export default function PropostasLista() {
   };
 
   useEffect(() => {
+    console.group("🟦 EFFECT getInitialData");
+    console.log("Executou getInitialData");
     async function getInitialData() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -183,26 +202,48 @@ export default function PropostasLista() {
       }
     }
     getInitialData();
+    console.groupEnd();
   }, []);
 
   useEffect(() => {
+    console.group("🟨 EFFECT userProfile");
+
+    console.log("userProfile mudou:", userProfile);
+
     if (userProfile?.corretora_id) {
+      console.log("🚀 Chamando fetchPropostas()");
       fetchPropostas();
+    } else {
+      console.log("⛔ Não chamou fetchPropostas()");
     }
+
+    console.groupEnd();
+
   }, [userProfile]);
 
+  
   async function fetchPropostas() {
     if (!userProfile?.corretora_id) return;
+
     try {
       setLoading(true);
-      
-      // Query limpa: removemos o "tab_corretoras (...)" que causava o erro PGRST200
+
       let query = supabase
         .from("tab_propostas")
         .select(`
           *,
-          tab_clientes (id, nome, razao_social, tipo_cliente, cpf, cnpj, telefone_whats),
-          usuarios_perfis!tab_propostas_corretor_id_fkey(nome),
+          tab_clientes (
+            id,
+            nome,
+            razao_social,
+            tipo_cliente,
+            cpf,
+            cnpj,
+            telefone_whats
+          ),
+          usuarios_perfis!tab_propostas_corretor_id_fkey(
+            nome
+          ),
           tab_proposta_opcoes (
             id,
             ordem_opcao,
@@ -210,24 +251,29 @@ export default function PropostasLista() {
               id,
               numero_cotacao,
               periodicidade,
-              base_produtos (nome)
+              base_produtos (
+                nome
+              )
             )
           )
         `)
         .eq("corretora_id", userProfile.corretora_id)
         .order("created_at", { ascending: false });
 
-      if (userProfile.tipo_usuario === 'CORRETOR') {
-        query = query.eq('corretor_id', userProfile.id);
+      if (userProfile.tipo_usuario === "CORRETOR") {
+        query = query.eq("corretor_id", userProfile.id);
       }
 
       const { data, error } = await query;
+
       if (error) throw error;
+
       setPropostas(data || []);
+
     } catch (error) {
       console.error("Erro ao buscar propostas:", error);
     } finally {
-      loading && setLoading(false);
+      setLoading(false); // Correção aplicada: removemos o if(loading) para evitar o deadlock
     }
   }
   const propostasFiltradas = useMemo(() => {
@@ -338,6 +384,11 @@ export default function PropostasLista() {
       setLoading(false); // Libera a tela
     }
   };
+
+  // Adicione esta const antes do return (
+  const propostaParaModal = useMemo(() => {
+    return modalStatus.proposta ? [modalStatus.proposta] : [];
+  }, [modalStatus.proposta]);
 
   return (
     <div className="p-8 bg-[#F8FAFC] min-h-screen">
@@ -581,9 +632,14 @@ export default function PropostasLista() {
       <ModalFechamento 
         isOpen={modalStatus.open}
         tipo={modalStatus.type}
-        proposta={modalStatus.proposta ? [modalStatus.proposta] : []} 
-        onClose={() => setModalStatus({ ...modalStatus, open: false })}
-        onSuccess={() => fetchPropostas()}
+        proposta={propostaParaModal} 
+        onClose={() => setModalStatus(prev => ({ ...prev, open: false }))}
+        onSuccess={async () => {
+          // 1. Fecha o modal imediatamente para não reagir a novas renderizações
+          setModalStatus(prev => ({ ...prev, open: false }));
+          // 2. Busca a lista atualizada
+          await fetchPropostas();
+        }}
       />
 
       <ModalExclusaoSegura 
