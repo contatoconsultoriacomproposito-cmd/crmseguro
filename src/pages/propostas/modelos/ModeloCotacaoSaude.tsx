@@ -43,8 +43,8 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
   const [valoresIOF, setValoresIOF] = useState<ValoresPlano>({ enfCom: 0, aptCom: 0, enfSem: 0, aptSem: 0 });
 
   // Estados dos Benefícios e Hospitais
-  const [topBeneficios, setTopBeneficios] = useState<string[]>(["Telemedicina 24h", "Cobertura Nacional", "Reembolso Descomplicado"]);
-  const [topHospitais, setTopHospitais] = useState<string[]>(["Hospital Israelita Albert Einstein", "Sírio-Libanês", "Rede D'Or"]);
+  const [topBeneficios, setTopBeneficios] = useState<string[]>(["Telemedicina 24h", "Cobertura Nacional", "Reembolso pelo APP", "Dental incluso"]);
+  const [topHospitais, setTopHospitais] = useState<string[]>(["Hospital Conceição", "Lagumed", "Pró-vida", "Outros"]);
   const [novoBeneficio, setNovoBeneficio] = useState("");
   const [novoHospital, setNovoHospital] = useState("");
 
@@ -119,8 +119,8 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor || 0);
   };
 
-  // =======================================================================
-  // PARTE 3: EXPORTAÇÃO DO PDF COMPLETO COM 6 COLUNAS E LAYOUT SAÚDE (CORRIGIDO TS)
+// =======================================================================
+  // PARTE 3: EXPORTAÇÃO DO PDF COMPLETO COM 6 COLUNAS E LAYOUT SAÚDE (CORRIGIDO)
   // =======================================================================
   const exportarPDFProposta = async () => {
     if (!dadosBase) return;
@@ -204,12 +204,11 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
       aptSem: totaisSaude.aptSem + totalDental + (Number(valoresIOF.aptSem) || 0),
     };
 
-    // Forçamos a tipagem como any[][] para contornar a validação complexa de sub-objetos do autoTable
     const tableHead: any[][] = [
       [
         { content: "", colSpan: 2, styles: { fillColor: [255, 255, 255] } },
         { content: "COM COPARTICIPAÇÃO", colSpan: 2, styles: { halign: "center", fillColor: [217, 119, 6], textColor: [255, 255, 255], fontStyle: "bold" } },
-        { content: "SEM COPARTICIPAÇÃO", colSpan: 2, styles: { halign: "center", fillColor: [217, 119, 6], textColor: [255, 255, 255], fontStyle: "bold" } }
+        { content: "SEM COPARTICIPAÇÃO", colSpan: 2, styles: { halign: "center", fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: "bold" } }
       ],
       [
         { content: "FAIXA ETÁRIA", styles: { halign: "center", fillColor: [30, 41, 59] } },
@@ -253,17 +252,54 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
         5: { halign: "right" }
       },
       didParseCell: (data) => {
+        // 1. FUNDO BRANCO PARA TODOS OS DADOS (Remove as cores alternadas)
+        if (data.section === 'body') {
+          data.cell.styles.fillColor = [255, 255, 255] as [number, number, number];
+        }
+
+        // 2. Configurações especiais para as linhas de Totais (Base cinza claro apenas nos totais)
         if (data.row.index >= tableBody.length - 4) {
           data.cell.styles.fontStyle = "bold";
-          // Forçamos o casting dos arrays de cor como a tupla esperada pelo jsPDF [number, number, number]
           data.cell.styles.fillColor = [241, 245, 249] as [number, number, number];
           
+          // Estilização da linha do TOTAL GERAL
           if (data.row.index === tableBody.length - 1) {
             data.cell.styles.textColor = [255, 255, 255] as [number, number, number];
             if (data.column.index === 0 || data.column.index === 1) data.cell.styles.fillColor = [20, 83, 45] as [number, number, number];
             if (data.column.index === 2 || data.column.index === 4) data.cell.styles.fillColor = [22, 101, 52] as [number, number, number];
             if (data.column.index === 3 || data.column.index === 5) data.cell.styles.fillColor = [29, 78, 216] as [number, number, number];
           }
+        }
+      },
+      
+      // 2. O PULO DO GATO: Desenha a divisão grossa mapeando as colunas exatas até no cabeçalho agrupado
+      didDrawCell: (data) => {
+        let isFimDoBloco = false;
+
+        if (data.section === 'head' && data.row.index === 0) {
+          // Na primeira linha do cabeçalho, as células estão unidas (colSpan: 2)
+          // Índice 0 (vazia) | Índice 2 (Com Copar)
+          if (data.column.index === 0 || data.column.index === 2) {
+            isFimDoBloco = true;
+          }
+        } else {
+          // Em todo o resto da tabela (Cabeçalho Inferior, Body e Foot)
+          // Fim do bloco Vidas (1) | Fim do Bloco Com Copar (3)
+          if (data.column.index === 1 || data.column.index === 3) {
+            isFimDoBloco = true;
+          }
+        }
+
+        if (isFimDoBloco) {
+          const docCanvas = data.doc;
+          const posX = data.cell.x + data.cell.width; // Aresta direita da célula
+          const startY = data.cell.y;
+          const endY = data.cell.y + data.cell.height;
+
+          // Desenha uma parede branca espessa de 3mm rasgando a grade
+          docCanvas.setDrawColor(255, 255, 255); 
+          docCanvas.setLineWidth(3.0);
+          docCanvas.line(posX, startY, posX, endY);
         }
       }
     });
@@ -294,7 +330,7 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
         margin: { left: 15, right: 15 },
         head: headAdicionais,
         body: bodyAdicionais,
-        theme: "plain", // Alterado de "clean" para "plain"
+        theme: "plain", 
         headStyles: { fillColor: [71, 85, 105], textColor: 255, fontStyle: "bold", fontSize: 8 },
         styles: { fontSize: 8, cellPadding: 1.5 }
       });
