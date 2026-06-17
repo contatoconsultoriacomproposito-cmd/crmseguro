@@ -14,6 +14,7 @@ import ModeloCotacaoAuto from "./modelos/ModeloCotacaoAuto";
 import ModeloCotacaoEmpresarial from "./modelos/ModeloCotacaoEmpresarial";
 import ModeloCotacaoResidencial from "./modelos/ModeloCotacaoResidencial";
 import ModeloCotacaoSaude from "./modelos/ModeloCotacaoSaude";
+import ModeloCotacaoVida from "./modelos/ModeloCotacaoVida";
 
 export default function PropostasLista() {
   const navigate = useNavigate();
@@ -619,7 +620,14 @@ export default function PropostasLista() {
             })
           );
 
-          // 4. Renderização Condicional (Cascata)
+          // 4. Identifica se é Seguro de Vida
+          const isVida = propostaSelecionada.tab_proposta_opcoes?.some((opt: any) => 
+            opt.tab_proposta_itens?.some((item: any) => 
+              item.base_produtos?.nome?.toLowerCase().includes("vida")
+            )
+          );
+
+          // 5. Renderização Condicional (Cascata)
           if (isEmpresarial) {
             return (
               <ModeloCotacaoEmpresarial 
@@ -647,7 +655,16 @@ export default function PropostasLista() {
             );
           }
 
-          // 5. Caso contrário, abre o padrão (Auto)
+          if (isVida) {
+            return (
+              <ModeloCotacaoVida 
+                propostaId={propostaSelecionada.id} 
+                onClose={() => setPropostaSelecionada(null)} 
+              />
+            );
+          }
+
+          // 6. Caso contrário, abre o padrão (Auto)
           return (
             <ModeloCotacaoAuto 
               propostaId={propostaSelecionada.id} 
