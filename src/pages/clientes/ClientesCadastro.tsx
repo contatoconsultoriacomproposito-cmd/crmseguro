@@ -44,7 +44,8 @@ export default function ClientesCadastro() {
     nome: "", cpf: "", rg: "", data_nascimento: "", sexo:"",
     cep_pf: "", uf_pf: "", municipio_pf: "", bairro_pf: "", logradouro_pf: "", numero_pf: "", complemento_pf: "",
     email: "", telefone_whats: "", telefone_adicional: "", 
-    origem_cliente: "Google", fase_kanban: "lead", status_kanban: "novo", corretor_id: ""
+    origem_cliente: "Google", fase_kanban: "lead", status_kanban: "novo", corretor_id: "",
+    socios: [] as Array<{ nome: string; cpf_cnpj: string; telefone: string }> // Novo campo adicionado
   });
 
 
@@ -111,7 +112,8 @@ useEffect(() => {
               data_nascimento: data.data_nascimento || "",
               capital_social: data.capital_social 
                 ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(data.capital_social)
-                : ""
+                : "",
+              socios: data.socios || [] // Garante o carregamento dos sócios salvos
             });
             setTipoCliente(data.tipo_cliente as TipoCliente);
             
@@ -155,6 +157,34 @@ useEffect(() => {
     setForm(prev => ({ ...prev, [name]: masked }));
   };
 
+  const handleSocioChange = (index: number, field: "cpf_cnpj" | "telefone", value: string) => {
+    setForm(prev => {
+      const listaAtualizada = [...prev.socios];
+      let valorMascarado = value;
+
+      if (field === "cpf_cnpj") {
+        const apenasNumeros = value.replace(/\D/g, "");
+        // Se o usuário apagar os asteriscos e digitar um documento limpo, aplica a máscara correspondente
+        if (apenasNumeros.length <= 11) {
+          valorMascarado = maskCPF(value);
+        } else {
+          valorMascarado = maskCNPJ(value);
+        }
+      }
+      
+      if (field === "telefone") {
+        valorMascarado = maskPhone(value);
+      }
+
+      listaAtualizada[index] = {
+        ...listaAtualizada[index],
+        [field]: valorMascarado
+      };
+
+      return { ...prev, socios: listaAtualizada };
+    });
+  };
+
   async function handleBuscarCNPJ() {
     const cnpjLimpo = form.cnpj.replace(/\D/g, "");
     if (cnpjLimpo.length !== 14) return alert("CNPJ inválido");
@@ -184,8 +214,13 @@ useEffect(() => {
         bairro: (data.bairro || prev.bairro).toUpperCase(), 
         numero: data.numero || prev.numero,
         complemento: (data.complemento || prev.complemento).toUpperCase(),
+        socios: (data.qsa || []).map((s: any) => ({
+          nome: (s.nome_socio || "").toUpperCase(),
+          cpf_cnpj: s.cnpj_cpf_do_socio || "", // Vem mascarado da receita ex: ***123456**
+          telefone: "" // Campo vazio para preenchimento manual posterior
+        }))
       }));
-    } catch (error) { 
+    } catch (error) {
       // Em vez de apenas um alert genérico, avisamos e destravamos os campos!
       console.error("Erro na busca automatizada de CNPJ:", error);
       alert("Não foi possível consultar os dados automaticamente (Limite de requisições atingido ou instabilidade). Liberamos os campos para preenchimento manual.");
@@ -313,6 +348,7 @@ useEffect(() => {
         origem_cliente: toUpper(form.origem_cliente),
         fase_kanban: form.fase_kanban.toLowerCase(),
         status_kanban: statusFinal,
+        socios: form.socios // Envia o array diretamente (o Supabase lida nativamente com JSONB)
     };
 
     try {
@@ -563,7 +599,52 @@ useEffect(() => {
               <div className="md:col-span-1"><Input label="UF" name={tipoCliente === "PJ" ? "uf" : "uf_pf"} value={tipoCliente === "PJ" ? form.uf : form.uf_pf} onChange={handleChange} /></div>
               <div className="md:col-span-6"><Input label="Complemento" name={tipoCliente === "PJ" ? "complemento" : "complemento_pf"} value={tipoCliente === "PJ" ? form.complemento : form.complemento_pf} onChange={handleChange} /></div>
             </div>
+            
           </Section>
+
+          {/* NOVA SEÇÃO: QUADRO DE SÓCIOS (QSA) */}
+          {tipoCliente === "PJ" && form.socios && form.socios.length > 0 && (
+            <Section icon={<Building2 className="text-violet-500" />} title="Quadro de Sócios e Administradores (QSA)">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-zinc-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                      <th className="pb-3 pl-1">Nome do Sócio</th>
+                      <th className="pb-3 w-48">CPF / CNPJ</th>
+                      <th className="pb-3 w-48">Telefone de Contato</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-zinc-850 text-sm">
+                    {form.socios.map((socio, index) => (
+                      <tr key={index} className="group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10">
+                        <td className="py-3.5 pr-4 font-medium text-slate-700 dark:text-zinc-300 pl-1 uppercase">
+                          {socio.nome}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <input
+                            type="text"
+                            value={socio.cpf_cnpj}
+                            onChange={(e) => handleSocioChange(index, "cpf_cnpj", e.target.value)}
+                            placeholder="000.000.000-00"
+                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-xs font-mono"
+                          />
+                        </td>
+                        <td className="py-2">
+                          <input
+                            type="text"
+                            value={socio.telefone}
+                            onChange={(e) => handleSocioChange(index, "telefone", e.target.value)}
+                            placeholder="(00) 00000-0000"
+                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-xs font-mono"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          )}
 
           {tipoCliente === "PJ" && (
             <Section icon={<User className="text-indigo-500" />} title="Dados do contato principal da empresa">
