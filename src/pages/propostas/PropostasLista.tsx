@@ -15,27 +15,12 @@ import ModeloCotacaoEmpresarial from "./modelos/ModeloCotacaoEmpresarial";
 import ModeloCotacaoResidencial from "./modelos/ModeloCotacaoResidencial";
 import ModeloCotacaoSaude from "./modelos/ModeloCotacaoSaude";
 import ModeloCotacaoVida from "./modelos/ModeloCotacaoVida";
+import ModeloCotacaoDental from "./modelos/ModeloCotacaoDental";
 
 export default function PropostasLista() {
-  console.count("🔄 RENDER_PROPOSTAS_LISTA");
+  
   const navigate = useNavigate();
   const [propostas, setPropostas] = useState<any[]>([]);
-  useEffect(() => {
-    console.group("🟩 EFFECT propostas");
-
-    console.log(
-      "Quantidade de propostas:",
-      propostas.length
-    );
-
-    console.log(
-      "Horário:",
-      new Date().toISOString()
-    );
-
-    console.groupEnd();
-
-  }, [propostas]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -168,8 +153,6 @@ export default function PropostasLista() {
   };
 
   useEffect(() => {
-    console.group("🟦 EFFECT getInitialData");
-    console.log("Executou getInitialData");
     async function getInitialData() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -202,79 +185,52 @@ export default function PropostasLista() {
       }
     }
     getInitialData();
-    console.groupEnd();
   }, []);
 
   useEffect(() => {
-    console.group("🟨 EFFECT userProfile");
-
-    console.log("userProfile mudou:", userProfile);
-
+    // Só busca se já tivermos o perfil carregado
     if (userProfile?.corretora_id) {
-      console.log("🚀 Chamando fetchPropostas()");
       fetchPropostas();
     } else {
-      console.log("⛔ Não chamou fetchPropostas()");
+      
     }
 
-    console.groupEnd();
-
-  }, [userProfile]);
+    // Adicionamos as dependências de data para recarregar a lista ao mudar o filtro
+    }, [userProfile]);
 
   
   async function fetchPropostas() {
     if (!userProfile?.corretora_id) return;
+    setLoading(true);
 
-    try {
-      setLoading(true);
+    let query = supabase
+      .from("tab_propostas")
+      .select(`
+        *,
+        tab_clientes (id, nome, razao_social, tipo_cliente, cpf, cnpj, telefone_whats),
+        usuarios_perfis!tab_propostas_corretor_id_fkey(nome),
+        tab_proposta_opcoes (
+          id, ordem_opcao,
+          tab_proposta_itens (id, numero_cotacao, periodicidade, corretor_id, base_produtos (nome))
+        )
+      `)
+      .eq("corretora_id", userProfile.corretora_id)
+      .order("created_at", { ascending: false });
 
-      let query = supabase
-        .from("tab_propostas")
-        .select(`
-          *,
-          tab_clientes (
-            id,
-            nome,
-            razao_social,
-            tipo_cliente,
-            cpf,
-            cnpj,
-            telefone_whats
-          ),
-          usuarios_perfis!tab_propostas_corretor_id_fkey(
-            nome
-          ),
-          tab_proposta_opcoes (
-            id,
-            ordem_opcao,
-            tab_proposta_itens (
-              id,
-              numero_cotacao,
-              periodicidade,
-              base_produtos (
-                nome
-              )
-            )
-          )
-        `)
-        .eq("corretora_id", userProfile.corretora_id)
-        .order("created_at", { ascending: false });
+    // FILTROS DE DATA (Apenas se preenchidos)
+    if (vencimentoInicio) query = query.gte("data_validade", vencimentoInicio);
+    if (vencimentoFim) query = query.lte("data_validade", vencimentoFim);
+    if (vendaInicio) query = query.gte("data_venda", vendaInicio);
+    if (vendaFim) query = query.lte("data_venda", vendaFim);
 
-      if (userProfile.tipo_usuario === "CORRETOR") {
-        query = query.eq("corretor_id", userProfile.id);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      setPropostas(data || []);
-
-    } catch (error) {
-      console.error("Erro ao buscar propostas:", error);
-    } finally {
-      setLoading(false); // Correção aplicada: removemos o if(loading) para evitar o deadlock
+    // FILTRO DE CORRETOR (Se aplicável)
+    if (userProfile.tipo_usuario === "CORRETOR") {
+      query = query.eq("corretor_id", userProfile.id);
     }
+
+    const { data } = await query;
+    setPropostas(data || []);
+    setLoading(false);
   }
   const propostasFiltradas = useMemo(() => {
     if (!propostas) return [];
@@ -340,7 +296,6 @@ export default function PropostasLista() {
         dadosCriticos: { sinistros: totalSinistros, comissoes: totalComissoes, isVendido }
       });
     } catch (error) {
-      console.error("Erro na investigação:", error);
     }
   };
 
@@ -651,6 +606,7 @@ export default function PropostasLista() {
       />
 
       
+      
       {/* --- MODAL DA PROPOSTA DINÂMICO --- */}
       {propostaSelecionada && (
         (() => {
@@ -673,6 +629,14 @@ export default function PropostasLista() {
             opt.tab_proposta_itens?.some((item: any) => {
               const nomeProd = item.base_produtos?.nome?.toLowerCase() || "";
               return nomeProd.includes("saúde") || nomeProd.includes("saude");
+            })
+          );
+
+          // 3.5. Identifica se é Odonto / Dental
+          const isDental = propostaSelecionada.tab_proposta_opcoes?.some((opt: any) => 
+            opt.tab_proposta_itens?.some((item: any) => {
+              const nomeProd = item.base_produtos?.nome?.toLowerCase() || "";
+              return nomeProd.includes("odonto") || nomeProd.includes("dental") || nomeProd.includes("dentária") || nomeProd.includes("dentaria");
             })
           );
 
@@ -711,24 +675,33 @@ export default function PropostasLista() {
             );
           }
 
-          if (isVida) {
+          if (isDental) {
             return (
-              <ModeloCotacaoVida 
+              <ModeloCotacaoDental 
                 propostaId={propostaSelecionada.id} 
                 onClose={() => setPropostaSelecionada(null)} 
               />
             );
           }
 
-          // 6. Caso contrário, abre o padrão (Auto)
-          return (
-            <ModeloCotacaoAuto 
-              propostaId={propostaSelecionada.id} 
-              onClose={() => setPropostaSelecionada(null)} 
-            />
-          );
-        })()
-      )}
+          if (isVida) {
+            return (
+              <ModeloCotacaoVida 
+                propostaId={propostaSelecionada.id} 
+                onClose={() => setPropostaSelecionada(null)} 
+                    />
+                  );
+                }
+
+                // 6. Caso contrário, abre o padrão (Auto)
+                return (
+                  <ModeloCotacaoAuto 
+                    propostaId={propostaSelecionada.id} 
+                    onClose={() => setPropostaSelecionada(null)} 
+                  />
+                );
+              })()
+            )}
     </div>
   );
 }
