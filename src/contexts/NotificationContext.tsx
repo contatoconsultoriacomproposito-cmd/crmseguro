@@ -7,9 +7,10 @@ import { toast } from 'sonner';
 import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
 import ModalContato from '../pages/agenda/modalcontatos';
 
-interface Notificacao {
+export interface Notificacao {
   id: string;
   tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO' | 'RENOVACAO' | 'ANIVERSARIO' | 'PROSPECCAO';
+  prioridade: 'NORMAL' | 'ALTA' | 'CRITICA';
   titulo: string;
   subtitulo?: string;
   data: string;
@@ -45,6 +46,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const hojeLocalStr = `${anoBr}-${mesBr}-${diaBr}`; // Formato YYYY-MM-DD
       const mesDiaHoje = `${mesBr}-${diaBr}`;         // Formato MM-DD
       
+      // Inteligência de Antecedência: Calcula a data limite para alertas de renovação (30 dias no futuro)
+      const dataFutura = new Date();
+      dataFutura.setDate(dataFutura.getDate() + 30);
+      const [diaFut, mesFut, anoFut] = dataFutura.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).split('/');
+      const dataLimiteRenovacaoStr = `${anoFut}-${mesFut}-${diaFut}`;
+      
       const listaGeral: Notificacao[] = [];
 
       // 1. BUSCAR PERFIL DO USUÁRIO
@@ -59,7 +66,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // --- CONFIGURAÇÃO DE QUERIES EM PARALELO ---
 
-      // Query Indicações
+      // Query Indicações (Prioridade: ALTA)
       let queryInd = supabase
         .from('tab_indicacoes')
         .select(`id, nome_cliente, created_at, status_indicacao, tab_parceiros(nome_parceiro)`)
@@ -68,7 +75,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryInd = queryInd.or(`corretor_id.eq.${user.id},corretor_id.is.null`);
 
-      // Query Clientes otimizada
+      // Query Clientes (Retornos Comerciais, Sinistros e Aniversariantes)
       let queryClientes = supabase
         .from('tab_clientes')
         .select('id, nome, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, data_nascimento')
@@ -76,7 +83,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryClientes = queryClientes.eq('corretor_id', user.id);
 
-      // Query Renovações Otimizada (CORRIGIDA)
+      // Query Renovações (Prioridade: CRITICA - Mapeamento de 3 Níveis Ajustado para o PostgREST)
       let queryRenovacoes = supabase
         .from('tab_proposta_itens')
         .select(`
@@ -89,21 +96,24 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           tab_proposta_opcoes!inner (
             tab_propostas!inner (
               corretora_id,
-              tab_clientes (nome)
+              tab_clientes (
+                nome
+              )
             )
           )
         `)
         .eq('notificacao_ativa', true)
         .eq('status_renovacao', 'A RENOVAR')
-        .lte('data_renovacao', hojeLocalStr)
-        .eq('tab_proposta_opcoes.tab_propostas.corretora_id', corretoraDonaId);
+        .lte('data_renovacao', dataLimiteRenovacaoStr);
 
-      // Filtragem direta e segura por corretor logado:
-      if (!isAdmin) {
+      // Aplicação segura dos filtros de hierarquia para evitar erros de JOIN no Supabase
+      if (isAdmin) {
+        queryRenovacoes = queryRenovacoes.eq('tab_proposta_opcoes.tab_propostas.corretora_id', corretoraDonaId);
+      } else {
         queryRenovacoes = queryRenovacoes.eq('corretor_id', user.id);
       }
 
-      // Query de Prospecção Fria (Substituindo tab_campanhas) trazendo data e horário de retorno
+      // Query de Prospecção Fria (Prioridade: NORMAL)
       let queryFrios = supabase
         .from('tab_clientes_frios')
         .select('id, razao_social, nome_fantasia, data_retorno, horario_retorno')
@@ -113,7 +123,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryFrios = queryFrios.eq('corretor_id', user.id);
 
-      // 🔥 DISPARO SIMULTÂNEO (Executa as 4 queries de dados de forma paralela e performática)
+      // 🔥 DISPARO SIMULTÂNEO
       const [resIndicacoes, resClientes, resRenovacoes, resFrios] = await Promise.all([
         queryInd,
         queryClientes,
@@ -123,12 +133,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // --- PROCESSAMENTO DOS RESULTADOS ---
 
-      // Processar Indicações
+      // Processar Indicações (ALTA)
       resIndicacoes.data?.forEach((ind: any) => {
         const parceiro = Array.isArray(ind.tab_parceiros) ? ind.tab_parceiros[0] : ind.tab_parceiros;
         listaGeral.push({
           id: `ind-${ind.id}`,
           tipo: 'INDICACAO',
+          prioridade: 'ALTA',
           titulo: `INDICAÇÃO: ${ind.nome_cliente}`,
           subtitulo: parceiro?.nome_parceiro || 'Link Direto',
           data: ind.created_at,
@@ -137,15 +148,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Clientes (Retornos Comerciais, Sinistros + Inteligência de Aniversário)
+      // Processar Clientes (NORMAL / ALTA)
       resClientes.data?.forEach(c => {
         const nomeExibicao = c.nome || 'Cliente sem nome';
         
-        // A) Verifica retorno comercial expirado ou de hoje
+        // A) Retorno comercial (NORMAL)
         if (c.data_retorno && c.data_retorno <= hojeLocalStr) {
           listaGeral.push({
             id: `com-${c.id}`,
             tipo: 'COMERCIAL',
+            prioridade: 'NORMAL',
             titulo: `RETORNO COMERCIAL: ${nomeExibicao}`,
             data: c.data_retorno,
             horario: c.horario_retorno,
@@ -154,11 +166,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           });
         }
         
-        // B) Verifica retorno de sinistro expirado ou de hoje
+        // B) Retorno de sinistro (ALTA)
         if (c.data_retorno_sinistro && c.data_retorno_sinistro <= hojeLocalStr) {
           listaGeral.push({
             id: `sin-${c.id}`,
             tipo: 'SINISTRO',
+            prioridade: 'ALTA',
             titulo: `SINISTRO (RETORNO): ${nomeExibicao}`,
             data: c.data_retorno_sinistro,
             horario: c.horario_retorno_sinistro,
@@ -167,36 +180,48 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           });
         }
 
-        // C) Filtro Seguro de Aniversariantes
+        // C) Aniversariantes (NORMAL)
         if (c.data_nascimento) {
           const partes = c.data_nascimento.split('-');
-          if (partes.length === 3) {
-            const mesDiaCliente = `${partes[1]}-${partes[2]}`;
-            
-            if (mesDiaCliente === mesDiaHoje) {
-              listaGeral.push({
-                id: `aniv-${c.id}`,
-                tipo: 'ANIVERSARIO',
-                titulo: `🎈 ANIVERSÁRIO HOJE: ${nomeExibicao}`,
-                subtitulo: 'Parabenize seu cliente!',
-                data: hojeLocalStr,
-                atrasado: false,
-                ref_id: c.id
-              });
-            }
+          if (partes.length === 3 && `${partes[1]}-${partes[2]}` === mesDiaHoje) {
+            listaGeral.push({
+              id: `aniv-${c.id}`,
+              tipo: 'ANIVERSARIO',
+              prioridade: 'NORMAL',
+              titulo: `🎈 ANIVERSÁRIO HOJE: ${nomeExibicao}`,
+              subtitulo: 'Parabenize seu cliente!',
+              data: hojeLocalStr,
+              atrasado: false,
+              ref_id: c.id
+            });
           }
         }
       });
 
-      // Processar Renovações
+      // Processar Renovações (CRÍTICA)
       resRenovacoes.data?.forEach((ren: any) => {
-        const itemOpcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
-        const nomeCli = itemOpcao?.tab_propostas?.tab_clientes?.nome || 'Cliente';
+        // Desestruturação segura considerando as estruturas de array trazidas pelo Supabase
+        const opcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
+        const proposta = opcao?.tab_propostas;
+        const cliente = Array.isArray(proposta?.tab_clientes) ? proposta.tab_clientes[0] : proposta?.tab_clientes;
+        
+        const nomeCli = cliente?.nome || 'Cliente';
+        
+        const dataRenova = new Date(ren.data_renovacao + 'T00:00:00');
+        const dataHoje = new Date(hojeLocalStr + 'T00:00:00');
+        const diferencaTempo = dataRenova.getTime() - dataHoje.getTime();
+        const diasRestantes = Math.ceil(diferencaTempo / (1000 * 60 * 60 * 24));
+
+        let avisoVencimento = `Vence em ${diasRestantes} dias!`;
+        if (diasRestantes === 0) avisoVencimento = "Vence HOJE!";
+        if (diasRestantes < 0) avisoVencimento = `Vencida há ${Math.abs(diasRestantes)} dias!`;
+
         listaGeral.push({
           id: `ren-${ren.id}`,
           tipo: 'RENOVACAO',
-          titulo: `RENOVAÇÃO: ${nomeCli}`,
-          subtitulo: 'Ajuste de vigência',
+          prioridade: 'CRITICA',
+          titulo: `🚨 RENOVAÇÃO: ${nomeCli}`,
+          subtitulo: avisoVencimento,
           data: ren.data_renovacao,
           horario: ren.horario_renovacao,
           atrasado: ren.data_renovacao < hojeLocalStr,
@@ -204,28 +229,25 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Prospecção Fria (Leitura de data_retorno e horario_retorno diretamente da tabela principal)
+      // Processar Prospecção Fria (NORMAL)
       resFrios.data?.forEach((lead: any) => {
         const nomeExibicao = lead.nome_fantasia || lead.razao_social || 'Prospect Frio';
 
         listaGeral.push({
           id: `frio-${lead.id}`,
           tipo: 'PROSPECCAO',
-          titulo: `PROSPECÇÃO (RETORNO): ${nomeExibicao}`,
+          prioridade: 'NORMAL',
+          titulo: `PROSPECÇÃO: ${nomeExibicao}`,
           subtitulo: 'Retorno agendado',
           data: lead.data_retorno,
           horario: lead.horario_retorno,
           atrasado: lead.data_retorno < hojeLocalStr,
           ref_id: lead.id
         });
-      })
+      });
 
-      // Ordenação Final: Indicações primeiro, depois o restante ordenado por data
-      setNotificacoes(listaGeral.sort((a, b) => {
-        if (a.tipo === 'INDICACAO' && b.tipo !== 'INDICACAO') return -1;
-        if (a.tipo !== 'INDICACAO' && b.tipo === 'INDICACAO') return 1;
-        return (a.data || '').localeCompare(b.data || '');
-      }));
+      // Ordenação base por data cronológica
+      setNotificacoes(listaGeral.sort((a, b) => (a.data || '').localeCompare(b.data || '')));
       
     } catch (error) {
       console.error("Erro ao carregar notificações:", error);
@@ -243,7 +265,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    // Se clicar em Comercial, Sinistro ou Aniversário, abre a ficha do cliente
     if (n.tipo === 'COMERCIAL' || n.tipo === 'SINISTRO' || n.tipo === 'ANIVERSARIO') {
       const { data: cliente } = await supabase
         .from('tab_clientes')
@@ -260,12 +281,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    // Se clicar em Prospecção Fria, redireciona para a rota correta com o ID do lead na URL
-    if (n.tipo === 'PROSPECCAO') {
-      window.location.href = `/clientes/leads?leadId=${n.ref_id}`;
-      return;
-    }
-  }
+    if (n.tipo === 'PROSPECCAO') {
+      window.location.href = `/clientes/leads?leadId=${n.ref_id}`;
+      return;
+    }
+  };
 
   const markAsReadByIndicacao = async (indicacaoId: string) => {
     setNotificacoes(prev => prev.filter(n => n.ref_id !== indicacaoId));
@@ -274,7 +294,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     if (!user) return;
     
-    // Subscrições Realtime atualizadas para escutar a tabela de ações frias no lugar de campanhas
     const channel = supabase
       .channel('notificacoes-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
