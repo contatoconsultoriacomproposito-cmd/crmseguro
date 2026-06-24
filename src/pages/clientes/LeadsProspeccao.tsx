@@ -111,7 +111,9 @@ export default function LeadsProspeccao() {
     temperatura: "frio",
     nome: "",
     cpf: "",
-    telefone_whats: ""
+    telefone_whats: "",
+    data_nascimento: ""
+    
   });
 
   // Filtro de datas
@@ -234,8 +236,8 @@ export default function LeadsProspeccao() {
       // 🎯 CORREÇÃO CRÍTICA DO FILTRO DE STATUS DA GRADE PRINCIPAL
       if (filtroStatus) {
         query = query.eq("status_prospeccao", filtroStatus);
-      } else {
-        // Se não houver filtro de status ativo, traz tudo do fluxo normal ocultando APENAS quem já virou cliente do CRM (convertido)
+      } else if (!pesquisaGeralDebounced) {
+        // Oculta convertidos por padrão, MAS se o usuário usar a Busca Global, pesquisa em toda a base (incluindo convertidos)
         query = query.neq("status_prospeccao", "convertido");
       }
 
@@ -284,7 +286,7 @@ export default function LeadsProspeccao() {
         // 🎯 CORREÇÃO CRÍTICA DO FILTRO DE STATUS NA CONTAGEM DO DROPDOWN DE CNAE
         if (filtroStatus) {
           cnaeQuery = cnaeQuery.eq("status_prospeccao", filtroStatus);
-        } else {
+        } else if (!pesquisaGeralDebounced) {
           cnaeQuery = cnaeQuery.neq("status_prospeccao", "convertido");
         }
 
@@ -550,6 +552,7 @@ export default function LeadsProspeccao() {
   // O Botão de Ouro: Motor de Conversão Direta para a Tab_Clientes CRM
   const processarConversaoOuroFinal = async () => {
     try {
+      // 1. Validação de Unicidade
       const { data: existente } = await supabase
         .from("tab_clientes")
         .select("id")
@@ -562,6 +565,18 @@ export default function LeadsProspeccao() {
         return;
       }
 
+      // 2. Processamento Seguro de Sócios
+      let sociosJson: any[] = [];
+      if (leadConversao.nomes_socios && typeof leadConversao.nomes_socios === 'string') {
+        const nomesArray = leadConversao.nomes_socios.split(" | ");
+        const cpfsArray = leadConversao.cpfs_socios ? leadConversao.cpfs_socios.split(" | ") : [];
+        sociosJson = nomesArray.map((nome: string, index: number) => ({
+          nome: nome.trim(),
+          cpf: cpfsArray[index] ? cpfsArray[index].trim() : ""
+        }));
+      }
+
+      // 3. Montagem do Payload com os ajustes de fluxo padrão solicitados
       const crmPayload = {
         tipo_cliente: "PJ",
         corretora_id: perfilUsuario.corretora_id,
@@ -569,7 +584,7 @@ export default function LeadsProspeccao() {
         cnpj: leadConversao.cnpj,
         razao_social: leadConversao.razao_social,
         nome_fantasia: leadConversao.nome_fantasia,
-        cnae_principal: leadConversao.cnae_principal, 
+        cnae_principal: leadConversao.cnae_principal,
         porte: leadConversao.porte,
         capital_social: leadConversao.capital_social,
         ddd_telefone_1: leadConversao.ddd_telefone_1,
@@ -587,24 +602,47 @@ export default function LeadsProspeccao() {
         email: leadConversao.email,
         telefone_adicional: leadConversao.telefone_adicional,
         origem_cliente: dadosConversaoCRM.origem_cliente,
-        status_kanban: dadosConversaoCRM.status_kanban,
-        temperatura: dadosConversaoCRM.temperatura,
+        data_nascimento: dadosConversaoCRM.data_nascimento || null,
+        
+        // Ajustes solicitados para fluxo direto:
+        status_kanban: "novo", 
+        fase_kanban: "lead",
+        posicao_kanban: 0,
+        temperatura: "morno",
+        
         nome: dadosConversaoCRM.nome || null,
         cpf: dadosConversaoCRM.cpf || null,
         telefone_whats: dadosConversaoCRM.telefone_whats || null,
-        data_abertura: leadConversao.data_abertura
+        data_abertura: leadConversao.data_abertura || null,
+        situacao_cadastral: leadConversao.situacao_cadastral || null,
+        socios: sociosJson
       };
 
       const { error: insertErr } = await supabase.from("tab_clientes").insert(crmPayload);
-      if (insertErr) throw insertErr;
+      
+      if (insertErr) {
+        console.error("Erro detalhado do Supabase:", insertErr);
+        throw new Error(insertErr.message);
+      }
 
       await supabase.from("tab_clientes_frios").update({ status_prospeccao: "convertido" }).eq("id", leadConversao.id);
 
-      toast.success("✨ Lead convertido com absoluto sucesso para o seu CRM!");
+      toast.success("✨ Processo concluído! Lead convertido para o CRM com sucesso.");
+      
+      // Limpeza de estados
       setLeadConversao(null);
+      setDadosConversaoCRM({ 
+        origem_cliente: "Prospecção Ativa", 
+        status_kanban: "novo", 
+        temperatura: "frio", 
+        nome: "", 
+        cpf: "", 
+        telefone_whats: "" 
+      });
+      
       buscarLeadsFrios();
     } catch (err: any) {
-      toast.error("Erro crítico na conversão: " + err.message);
+      toast.error("Erro na conversão: " + err.message);
     }
   };
 
@@ -1319,9 +1357,16 @@ return (
                       <button onClick={() => excluirLoteOuUnico(lead.id)} title="Remover" className="p-1.5 hover:bg-slate-100 text-red-600 rounded-lg transition">
                         <Trash2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => { setLeadConversao(lead); setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); }} className="ml-2 px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition">
-                        🏆 Converter
-                      </button>
+                      {lead.status_prospeccao === 'convertido' ? (
+                        <span className="ml-2 px-2 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold uppercase shadow-sm">
+                          ✅ Convertido
+                        </span>
+                      ) : (
+                        <button onClick={() => { setLeadConversao(lead);
+                          setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); }} className="ml-2 px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition">
+                          🏆 Converter
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1368,60 +1413,77 @@ return (
         </div>
       )}
 
-      {/* Modal: Conversão Ouro */}
+      {/* Modal: Conversão Ouro (Interface Otimizada) */}
       {leadConversao && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-xl shadow-xl">
-            <div className="p-4 border-b flex justify-between items-center bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-t-2xl">
+            <div className="p-4 border-b flex justify-between items-center bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-t-2xl">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5"/>
-                <h3 className="font-bold">Validação da Conversão para o CRM</h3>
+                <h3 className="font-bold">Efetivar Conversão para o CRM</h3>
               </div>
               <button onClick={() => setLeadConversao(null)} className="p-1 rounded-lg hover:bg-white/20"><X className="w-5 h-5"/></button>
             </div>
+            
             <div className="p-6 space-y-4">
-              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-800 space-y-1">
+              <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-xs text-emerald-800 space-y-1">
                 <div><strong>Empresa Alvo:</strong> {leadConversao.nome_fantasia || leadConversao.razao_social}</div>
                 <div><strong>CNPJ Vinculado:</strong> {maskCNPJ(leadConversao.cnpj)}</div>
-                <p className="mt-1 font-medium">Os dados de endereço, telefones brutos e dados corporativos da planilha serão injetados de forma automática na tab_clientes.</p>
+                <p className="mt-1 font-medium">Os dados serão integrados automaticamente como um novo Lead no seu Kanban.</p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Nome do Contato Principal (Obrigatório para CRM)</label>
-                <input type="text" value={dadosConversaoCRM.nome} onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, nome: e.target.value}))} placeholder="Ex: Nome do Sócio Diretor" className="w-full p-2.5 border rounded-lg text-sm" />
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Nome do Contato Principal</label>
+                <input 
+                  type="text" 
+                  value={dadosConversaoCRM.nome} 
+                  onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, nome: e.target.value}))} 
+                  placeholder="Ex: Nome do Sócio ou Decisor" 
+                  className="w-full p-2.5 border rounded-lg text-sm" 
+                />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">WhatsApp direto</label>
-                  <input type="text" value={dadosConversaoCRM.telefone_whats} onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, telefone_whats: maskPhone(e.target.value)}))} placeholder="(00) 00000-0000" className="w-full p-2.5 border rounded-lg text-sm" />
+                  <input 
+                    type="text" 
+                    value={dadosConversaoCRM.telefone_whats} 
+                    onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, telefone_whats: maskPhone(e.target.value)}))} 
+                    placeholder="(00) 00000-0000" 
+                    className="w-full p-2.5 border rounded-lg text-sm" 
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">CPF (Opcional)</label>
-                  <input type="text" value={dadosConversaoCRM.cpf} onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, cpf: maskCPF(e.target.value)}))} placeholder="000.000.000-00" className="w-full p-2.5 border rounded-lg text-sm" />
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">CPF</label>
+                  <input 
+                    type="text" 
+                    value={dadosConversaoCRM.cpf} 
+                    onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, cpf: maskCPF(e.target.value)}))} 
+                    placeholder="000.000.000-00" 
+                    className="w-full p-2.5 border rounded-lg text-sm" 
+                  />
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Fase Inicial Kanban</label>
-                  <select value={dadosConversaoCRM.status_kanban} onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, status_kanban: e.target.value}))} className="w-full p-2.5 border rounded-lg text-sm bg-transparent">
-                    <option value="novo">Novo Lead</option>
-                    <option value="fase_kanban">Em Qualificação</option>
-                  </select>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Data de Nascimento</label>
+                  <input 
+                    type="date" 
+                    value={dadosConversaoCRM.data_nascimento} 
+                    onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, data_nascimento: e.target.value}))} 
+                    className="w-full p-2.5 border rounded-lg text-sm" 
+                  />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Temperatura Comercial</label>
-                  <select value={dadosConversaoCRM.temperatura} onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, temperatura: e.target.value}))} className="w-full p-2.5 border rounded-lg text-sm bg-transparent">
-                    <option value="frio">Frio</option>
-                    <option value="morno">Morno</option>
-                    <option value="quente">Quente</option>
-                  </select>
-                </div>
+                
               </div>
             </div>
+
             <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-2xl">
               <button onClick={() => setLeadConversao(null)} className="px-4 py-2 text-sm font-semibold border rounded-xl hover:bg-white">Cancelar</button>
-              <button onClick={processarConversaoOuroFinal} className="px-5 py-2 text-sm font-semibold bg-gradient-to-r from-amber-500 to-yellow-500 hover:brightness-105 text-white rounded-xl shadow font-bold">
-                Efetivar Conversão Ouro 🏆
+              <button onClick={processarConversaoOuroFinal} className="px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow font-bold">
+                Confirmar Conversão 🏆
               </button>
             </div>
           </div>
