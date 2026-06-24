@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { 
   Search, Plus, Pencil, Trash2, Building2, User, Phone,
-  AlertTriangle, Loader2, FileSpreadsheet, Users2, ArrowLeftRight
+  AlertTriangle, Loader2, FileSpreadsheet, Users2, ArrowLeftRight,
+  BarChart3
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
@@ -99,7 +100,6 @@ export default function ClientesLista() {
 
       if (error) throw error;
       
-      // SUBSTITUIÇÃO DO ALERT AQUI:
       toast.success("Carteira transferida com sucesso!", {
         style: {
           borderRadius: '16px',
@@ -117,7 +117,7 @@ export default function ClientesLista() {
       carregarClientes();
     } catch (error) {
       console.error("Erro na transferência:", error);
-      toast.error("Falha ao transferir carteira."); // Toast de erro
+      toast.error("Falha ao transferir carteira.");
     } finally {
       setTransferindo(false);
     }
@@ -172,8 +172,10 @@ export default function ClientesLista() {
 
       setClientes(prev => prev.filter(c => c.id !== confirmarExclusao.id));
       setConfirmarExclusao(null);
+      toast.success("Cliente removido com sucesso!");
     } catch (error) {
       console.error("Erro ao excluir:", error);
+      toast.error("Erro ao remover cliente.");
     } finally {
       setExcluindoId(null);
     }
@@ -200,6 +202,12 @@ export default function ClientesLista() {
     }
     return nome.includes(termo) || razaoSocial.includes(termo) || nomeFantasia.includes(termo);
   });
+
+  // 📊 INDICADORES EM TEMPO REAL COM BASE NA BASE FILTRADA/ATUAL
+  const totalGeral = clientesFiltrados.length;
+  const totalPJ = clientesFiltrados.filter(c => c.tipo_cliente === "PJ").length;
+  const totalPF = clientesFiltrados.filter(c => c.tipo_cliente === "PF").length;
+  const totalDireto = clientesFiltrados.filter(c => c.corretor_id === c.corretora_id).length;
 
   return (
     <div className="p-6 min-h-screen bg-[#F8FAFC] dark:bg-[#09090B] transition-colors pb-20">
@@ -240,6 +248,49 @@ export default function ClientesLista() {
         </div>
       </div>
 
+      {/* 📊 SEÇÃO DE CARDS DE INDICADORES (KPIs DETALHADOS) */}
+      <div className="max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-3xl shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Carteira</p>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100 italic tracking-tighter mt-1">{loading ? "---" : totalGeral}</h3>
+          </div>
+          <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center font-bold">
+            <BarChart3 size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-3xl shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Empresas (PJ)</p>
+            <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 italic tracking-tighter mt-1">{loading ? "---" : totalPJ}</h3>
+          </div>
+          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center font-bold">
+            <Building2 size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-3xl shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pessoas (PF)</p>
+            <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400 italic tracking-tighter mt-1">{loading ? "---" : totalPF}</h3>
+          </div>
+          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-2xl flex items-center justify-center font-bold">
+            <User size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-3xl shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Atend. Direto</p>
+            <h3 className="text-2xl font-black text-amber-600 dark:text-amber-400 italic tracking-tighter mt-1">{loading ? "---" : totalDireto}</h3>
+          </div>
+          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 text-amber-600 rounded-2xl flex items-center justify-center font-bold">
+            <Users2 size={20} />
+          </div>
+        </div>
+      </div>
+
       {/* FILTROS E BUSCA */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 mb-6">
         <div className="relative flex-1">
@@ -262,7 +313,6 @@ export default function ClientesLista() {
             className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl px-4 py-4 shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 min-w-[200px]"
           >
             <option value="todos">Todos os Corretores</option>
-            {/* Opção Corretora para o filtro de visualização */}
             <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
             {corretores.map(cor => (
               <option key={cor.id} value={cor.id}>{cor.nome}</option>
@@ -281,7 +331,7 @@ export default function ClientesLista() {
                 <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Documento</th>
                 <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
                 <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">WhatsApp</th>
-                <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Corretor</th>
+                <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Gestão de Conta</th>
                 <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
@@ -318,14 +368,30 @@ export default function ClientesLista() {
                       </div>
                     </td>
                     <td className="p-5 text-center">
-                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-black border border-emerald-100/50">
-                        <Phone size={14} /> {cliente.telefone_whats || "---"}
-                      </div>
+                      {cliente.telefone_whats ? (
+                        <a 
+                          href={`https://wa.me/${cliente.telefone_whats.replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-black border border-emerald-100/50 hover:bg-emerald-600 hover:text-white transition-all shadow-sm active:scale-95"
+                        >
+                          <Phone size={14} /> {cliente.telefone_whats}
+                        </a>
+                      ) : (
+                        <span className="text-slate-300 dark:text-zinc-700 text-xs font-bold">---</span>
+                      )}
                     </td>
                     <td className="p-5">
-                      <span className="bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase">
-                        {cliente.corretor_id === cliente.corretora_id ? "DIRETO CORRETORA" : (cliente.usuarios_perfis?.nome || "GERAL")}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase max-w-fit">
+                          👤 {cliente.corretor_id === cliente.corretora_id ? "DIRETO CORRETORA" : (cliente.usuarios_perfis?.nome || "GERAL")}
+                        </span>
+                        {cliente.created_at && (
+                          <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider ml-1">
+                            📅 Entrada: {new Date(cliente.created_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-5 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
@@ -368,7 +434,6 @@ export default function ClientesLista() {
                   className="w-full p-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold uppercase"
                 >
                   <option value="">Selecione a origem</option>
-                  {/* Opção Corretora (Atendimento Direto) */}
                   <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
                   {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
@@ -386,7 +451,6 @@ export default function ClientesLista() {
                   className="w-full p-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold uppercase"
                 >
                   <option value="">Selecione o destino</option>
-                  {/* Opção Corretora (Atendimento Direto) */}
                   <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
                   {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
@@ -409,7 +473,7 @@ export default function ClientesLista() {
         </div>
       )}
 
-     {/* MODAL DE EXCLUSÃO (MANTIDO) */}
+      {/* MODAL DE EXCLUSÃO */}
       {confirmarExclusao && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-zinc-900 rounded-[40px] p-8 max-w-sm w-full shadow-2xl border border-slate-200 dark:border-zinc-800 transform animate-in zoom-in-95 duration-200">
@@ -436,7 +500,6 @@ export default function ClientesLista() {
         </div>
       )}
 
-      {/* AQUI É O LUGAR EXATO: Antes de fechar a div principal */}
       <Toaster position="bottom-right" reverseOrder={false} />
     </div>
   );

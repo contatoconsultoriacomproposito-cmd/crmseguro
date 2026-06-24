@@ -57,7 +57,7 @@ export default function LeadsProspeccao() {
   // Estados paginação
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [totalRegistros, setTotalRegistros] = useState(0);
-  const ITENS_POR_PAGINA = 100;
+  const ITENS_POR_PAGINA = 25;
 
    // Estados rotas
   const [pontoPartida, setPontoPartida] = useState("");
