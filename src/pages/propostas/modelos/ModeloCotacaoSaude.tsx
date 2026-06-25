@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
-import { X, Printer, Loader2, Shield, User, Building2, MapPin, Plus, Trash2, HeartPulse } from "lucide-react";
+import { X, Printer, Loader2, Shield, User, Building2, MapPin, Plus, Trash2, HeartPulse,Clock } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatarDataBR } from "../../../utils/dateUtils";
@@ -45,8 +45,20 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
   // Estados dos Benefícios e Hospitais
   const [topBeneficios, setTopBeneficios] = useState<string[]>(["Telemedicina 24h", "Cobertura Nacional", "Reembolso pelo APP", "Dental incluso"]);
   const [topHospitais, setTopHospitais] = useState<string[]>(["Hospital Conceição", "Lagumed", "Pró-vida", "Outros"]);
+  const [prazosCarencia, setPrazosCarencia] = useState<string[]>([
+  "Urgência e emergência: 24h",
+  "Consultas: 15 dias",
+  "Exames do tipo A : 15 dias",
+  "Exames do tipo B : 180 dias",
+  "Terapias não médicas : 180 dias",
+  "Internações clínicas : 180 dias",
+  "Cirurgias em geral (exceto baríatrica): 180 dias",
+  "Cirurgia bariátrica: 180 dias",
+  "Parto: 300 dias"
+]);
   const [novoBeneficio, setNovoBeneficio] = useState("");
   const [novoHospital, setNovoHospital] = useState("");
+  const [novaCarencia, setNovaCarencia] = useState("");
 
   useEffect(() => {
     if (propostaId) {
@@ -314,14 +326,15 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
       doc.line(15, currentY + 2, 195, currentY + 2);
       currentY += 8;
 
-      const headAdicionais = [["Principais Benefícios Inclusos", "Rede Credenciada de Destaque"]];
+      const headAdicionais = [["Principais Benefícios", "Rede Credenciada", "Prazos de Carência (Rol Exemplificativo)"]];
       const bodyAdicionais: any[] = [];
-      const maxRows = Math.max(topBeneficios.length, topHospitais.length);
+      const maxRows = Math.max(topBeneficios.length, topHospitais.length, prazosCarencia.length);
 
       for (let i = 0; i < maxRows; i++) {
         bodyAdicionais.push([
           topBeneficios[i] ? `• ${topBeneficios[i]}` : "",
-          topHospitais[i] ? `• ${topHospitais[i]}` : ""
+          topHospitais[i] ? `• ${topHospitais[i]}` : "",
+          prazosCarencia[i] ? `• ${prazosCarencia[i]}` : ""
         ]);
       }
 
@@ -626,8 +639,8 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
                   </table>
                 </div>
 
-                {/* BLOCO DE BENEFÍCIOS E HOSPITAIS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                {/* BLOCO DE BENEFÍCIOS, HOSPITAIS E CARÊNCIAS */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
                   
                   {/* Top Benefícios */}
                   <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
@@ -652,7 +665,7 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
                         className="flex-1 border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         value={novoBeneficio}
                         onChange={(e) => setNovoBeneficio(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { if(novoBeneficio) { setTopBeneficios([...topBeneficios, novoBeneficio]); setNovoBeneficio(""); } } }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && novoBeneficio) { setTopBeneficios([...topBeneficios, novoBeneficio]); setNovoBeneficio(""); } }}
                       />
                       <button 
                         onClick={() => { if(novoBeneficio) { setTopBeneficios([...topBeneficios, novoBeneficio]); setNovoBeneficio(""); } }}
@@ -666,7 +679,7 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
                   {/* Top Hospitais/Clínicas */}
                   <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
                     <h4 className="font-bold text-slate-800 mb-4 border-b pb-2 flex items-center gap-2">
-                      <MapPin className="h-5 w-5 text-blue-500" /> Rede Credenciada de Destaque
+                      <MapPin className="h-5 w-5 text-blue-500" /> Rede Credenciada
                     </h4>
                     <ul className="space-y-2 mb-4">
                       {topHospitais.map((hosp, idx) => (
@@ -686,10 +699,44 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
                         className="flex-1 border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         value={novoHospital}
                         onChange={(e) => setNovoHospital(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { if(novoHospital) { setTopHospitais([...topHospitais, novoHospital]); setNovoHospital(""); } } }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && novoHospital) { setTopHospitais([...topHospitais, novoHospital]); setNovoHospital(""); } }}
                       />
                       <button 
                         onClick={() => { if(novoHospital) { setTopHospitais([...topHospitais, novoHospital]); setNovoHospital(""); } }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded transition-colors flex items-center gap-1 text-sm font-medium"
+                      >
+                        <Plus className="h-4 w-4" /> Add
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Prazos de Carência */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <h4 className="font-bold text-slate-800 mb-4 border-b pb-2 flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-blue-500" /> Prazos de Carência (Rol Exemplificativo)
+                    </h4>
+                    <ul className="space-y-2 mb-4">
+                      {prazosCarencia.map((item, idx) => (
+                        <li key={idx} className="flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-100 text-sm">
+                          <span className="font-medium text-slate-700">{item}</span>
+                          <button onClick={() => setPrazosCarencia(prazosCarencia.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </li>
+                      ))}
+                      {prazosCarencia.length === 0 && <p className="text-sm text-slate-400 italic">Nenhuma carência definida.</p>}
+                    </ul>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ex: Parto: 300 dias"
+                        className="flex-1 border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        value={novaCarencia}
+                        onChange={(e) => setNovaCarencia(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && novaCarencia) { setPrazosCarencia([...prazosCarencia, novaCarencia]); setNovaCarencia(""); } }}
+                      />
+                      <button 
+                        onClick={() => { if(novaCarencia) { setPrazosCarencia([...prazosCarencia, novaCarencia]); setNovaCarencia(""); } }}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded transition-colors flex items-center gap-1 text-sm font-medium"
                       >
                         <Plus className="h-4 w-4" /> Add
