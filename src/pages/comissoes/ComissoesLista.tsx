@@ -370,7 +370,8 @@ export const ComissoesLista = () => {
     }).sort((a, b) => new Date(b.dataIso).getTime() - new Date(a.dataIso).getTime());
   };
 
-  // IMPRESSÃO EXCLUSIVA DO NOVO LAYOUT DO FLUXO DE CAIXA EM PDF
+
+  // 4. IMPRESSÃO DO FLUXO DE CAIXA
   const imprimirRelatorioCaixaPDF = () => {
     const janelaImpressao = window.open('', '_blank', 'width=1200,height=800');
     if (!janelaImpressao) {
@@ -380,6 +381,22 @@ export const ComissoesLista = () => {
 
     const dadosCaixa = calcularFluxoCaixaConsolidado();
 
+    // 1. CÁLCULOS EXATOS CONFORME SUA DEFINIÇÃO
+    const totalEntradas = dadosCaixa.reduce((acc, dia) => acc + dia.totalCredito, 0);
+    const totalBaixas = dadosCaixa.reduce((acc, dia) => acc + dia.totalDebitoLiquido, 0);
+    
+    // O SALDO DIFERENÇA CONFORME SUA FÓRMULA:
+    const saldoDiferenca = totalEntradas - totalBaixas;
+    
+    // O A RECEBER LÍQUIDO CONFORME SUA FÓRMULA:
+    // (Total previsto no sistema - O saldo que já foi consumido/ajustado no caixa)
+    const totalPrevistoBruto = provisoes
+      .filter(p => p.status_recebimento_seguradora === 'PREVISTO')
+      .reduce((acc, p) => acc + parseToNumber(p.valor_direito_corretor), 0);
+      
+    const totalAReceberLiquido = totalPrevistoBruto - saldoDiferenca;
+
+    // 2. MONTAGEM DO HTML (Mantida a estrutura de listagem)
     const linhasHtml = dadosCaixa.map(dia => {
       const dataFormatada = dia.dataIso.split('-').reverse().join('/');
       const corSaldo = dia.saldoDia >= 0 ? '#15803d' : '#b91c1c';
@@ -388,7 +405,7 @@ export const ComissoesLista = () => {
         <tr>
           <td>↳ Parcela: ${p.cliente.toUpperCase()} (Parc. ${p.parcela})</td>
           <td style="text-align: right; color:#64748b;">${formatBRL(p.bruto)}</td>
-          <td style="text-align: right; font-weight:bold; color:#b91c1c;">-${formatBRL(p.liquido)} ${p.desconto > 0 ? `(${p.desconto}%)` : ''}</td>
+          <td style="text-align: right; font-weight:bold; color:#b91c1c;">-${formatBRL(p.liquido)}</td>
         </tr>
       `).join('');
 
@@ -414,36 +431,43 @@ export const ComissoesLista = () => {
       `;
     }).join('');
 
+    // 3. GERAÇÃO DO DOCUMENTO COM CARDS CORRIGIDOS
     janelaImpressao.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Extrato Consolidado do Fluxo de Caixa</title>
+        <title>Extrato Consolidado</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 25px; color: #1e293b; }
-          .header { border-bottom: 3px solid #0f172a; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-          th { background-color: #0f172a; color: white; font-size: 9pt; text-transform: uppercase; padding: 10px; }
-          td { font-size: 8.5pt; padding: 6px 10px; border-bottom: 1px solid #e2e8f0; }
+          body { font-family: Arial, sans-serif; margin: 25px; }
+          .card-container { display: flex; gap: 10px; margin-bottom: 20px; }
+          .card { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #ddd; }
+          table { width: 100%; border-collapse: collapse; }
         </style>
       </head>
       <body>
-        <div class="header">
-          <div><h2>Extrato Auditado - Fluxo de Caixa Diário</h2><p style="font-size:9pt; margin:4px 0 0 0; color:#64748b;">Conciliação: Crédito (Aportes) x Débito (Comissões Baixadas Líquidas)</p></div>
-          <div>Emissão: <strong>${new Date().toLocaleDateString('pt-BR')}</strong></div>
+        <h2>Extrato Auditado de Caixa</h2>
+        <div class="card-container">
+          <div class="card">
+            <div style="font-size:7pt; color:#666;">TOTAL ENTRADAS</div>
+            <div style="font-size:12pt; font-weight:bold;">${formatBRL(totalEntradas)}</div>
+          </div>
+          <div class="card">
+            <div style="font-size:7pt; color:#666;">TOTAL BAIXAS</div>
+            <div style="font-size:12pt; font-weight:bold;">${formatBRL(totalBaixas)}</div>
+          </div>
+          <div class="card" style="background: ${saldoDiferenca < 0 ? '#fee2e2' : '#f0fdf4'};">
+            <div style="font-size:7pt; color:#666;">SALDO DIFERENÇA</div>
+            <div style="font-size:12pt; font-weight:bold; color: ${saldoDiferenca < 0 ? '#b91c1c' : '#15803d'};">
+              ${formatBRL(saldoDiferenca)}
+            </div>
+          </div>
+          <div class="card" style="background: #fffbeb;">
+            <div style="font-size:7pt; color:#666;">A RECEBER LÍQ.</div>
+            <div style="font-size:12pt; font-weight:bold;">${formatBRL(totalAReceberLiquido)}</div>
+          </div>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th style="text-align: left;">Movimento / Dia</th>
-              <th style="text-align: right;">Crédito (Aportes)</th>
-              <th style="text-align: right;">Débito (Baixas Líquidas)</th>
-              <th style="text-align: right;">Saldo do Caixa</th>
-            </tr>
-          </thead>
-          ${linhasHtml}
-        </table>
+        <table>${linhasHtml}</table>
         <script>window.onload = function() { window.print(); setTimeout(() => { window.close(); }, 500); };</script>
       </body>
       </html>
@@ -520,12 +544,7 @@ export const ComissoesLista = () => {
           th { background-color: #f3f4f6; border-bottom: 1px solid #1f2937; padding: 6px; text-align: left; font-size: 8.5px; }
           td { padding: 6px; border-bottom: 1px dashed #d1d5db; vertical-align: top; font-size: 8.5px; }
           
-          /* Sub-grid de Detalhes (A Auditoria) */
-          .detalhes-grid { display: flex; justify-content: space-between; background-color: #f8fafc; padding: 8px; border: 1px solid #e2e8f0; margin-top: 4px; margin-bottom: 16px; border-radius: 6px; }
-          .bloco-detalhe { width: 24%; }
-          .bloco-detalhe h4 { margin: 0 0 4px 0; font-size: 8.5px; text-transform: uppercase; color: #475569; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px; }
-          .bloco-detalhe p { margin: 2px 0; font-size: 8px; color: #1e293b; font-weight: bold; }
-          .bloco-detalhe p span { font-weight: normal; color: #64748b; }
+          
           
           /* Footer */
           .footer { position: fixed; bottom: 0; width: 100%; font-size: 8px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 5px; }
@@ -586,48 +605,29 @@ export const ComissoesLista = () => {
               
               return `
               <tr>
-                <td colspan="9" style="padding: 0; border: none;">
-                  
-                  <table style="margin-bottom: 0;">
-                    <tr>
-                      <td width="20%"><strong>${clienteNome}</strong></td>
-                      <td width="15%">${p.tab_comissoes_regras?.base_produtos?.nome?.toUpperCase() || '—'}</td>
-                      <td width="12%">${p.tab_comissoes_regras?.base_seguradoras?.nome?.toUpperCase() || '—'}</td>
-                      <td width="12%">${p.tab_comissoes_regras?.tab_proposta_itens?.numero_apolice || '—'}</td>
-                      <td width="8%">${p.numero_parcela}/${p.tab_comissoes_regras?.quantidade_parcelas || 1}</td>
-                      <td width="10%"><strong>${formatBRL(parseToNumber(p.valor_direito_corretor))}</strong></td>
-                      <td width="10%">${dataVenc}</td>
-                      <td width="10%">${dataRec}</td>
-                      <td width="10%">${p.status_recebimento_seguradora}</td>
-                    </tr>
-                  </table>
-
-                  <div class="detalhes-grid">
-                    <div class="bloco-detalhe">
-                      <h4>DADOS DE VENDA</h4>
-                      <p><span>Data Venda:</span> ${dataVenda}</p>
-                      <p><span>Contrato ID:</span> ${p.tab_comissoes_regras?.id ? p.tab_comissoes_regras.id.substring(0,8).toUpperCase() : '—'}</p>
-                    </div>
-                    <div class="bloco-detalhe">
-                      <h4>VALORES DE ORIGEM</h4>
-                      <p><span>Base Cálculo:</span> ${formatBRL(parseToNumber(p.tab_comissoes_regras?.base_calculo_valor))}</p>
-                      <p><span>Com. Bruta:</span> ${formatBRL(parseToNumber(p.valor_comissao_total))}</p>
-                    </div>
-                    <div class="bloco-detalhe">
-                      <h4>SPLIT CORRETOR</h4>
-                      <p><span>Percentual:</span> ${parseToNumber(p.tab_comissoes_regras?.pct_corretor)}%</p>
-                      <p><span>Líquido Corr.:</span> ${formatBRL(liqExibicao)}</p>
-                    </div>
-                    <div class="bloco-detalhe">
-                      <h4>DIVISÃO INSTITUCIONAL</h4>
-                      <p><span>Retido Mãe:</span> ${formatBRL(parseToNumber(p.valor_direito_corretora_mae))}</p>
-                      <p><span>Split Parceiro:</span> ${formatBRL(parseToNumber(p.valor_direito_parceiro))} (${parseToNumber(p.tab_comissoes_regras?.pct_parceiro)}%)</p>
-                    </div>
-                  </div>
-
+                <td style="padding: 8px 4px;">
+                  <strong>${clienteNome}</strong><br/>
+                  <span style="font-size: 7px; color: #6b7280;">Venda: ${dataVenda}</span>
+                </td>
+                <td style="padding: 8px 4px;">${p.tab_comissoes_regras?.base_produtos?.nome?.toUpperCase() || '—'}</td>
+                <td style="padding: 8px 4px;">${p.tab_comissoes_regras?.base_seguradoras?.nome?.toUpperCase() || '—'}</td>
+                <td style="padding: 8px 4px;">${p.tab_comissoes_regras?.tab_proposta_itens?.numero_apolice || '—'}</td>
+                <td style="padding: 8px 4px; text-align: center;">${p.numero_parcela}/${p.tab_comissoes_regras?.quantidade_parcelas || 1}</td>
+                <td style="padding: 8px 4px; text-align: left;">
+                  <span style="font-size: 7.5px; color: #6b7280;">B: ${formatBRL(parseToNumber(p.valor_direito_corretor))}</span><br/>
+                  <strong style="color: #15803d;">L: ${formatBRL(liqExibicao)}</strong>
+                </td>
+                <td style="padding: 8px 4px; text-align: center;">${dataVenc}</td>
+                <td style="padding: 8px 4px; text-align: center;">${dataRec}</td>
+                <td style="padding: 8px 4px; text-align: center;">
+                   <span style="background-color: ${p.status_recebimento_seguradora === 'RECEBIDO' ? '#dcfce7' : p.status_recebimento_seguradora === 'CANCELADO' ? '#fee2e2' : '#fef3c7'}; 
+                                color: ${p.status_recebimento_seguradora === 'RECEBIDO' ? '#166534' : p.status_recebimento_seguradora === 'CANCELADO' ? '#991b1b' : '#92400e'}; 
+                                padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold;">
+                     ${p.status_recebimento_seguradora}
+                   </span>
                 </td>
               </tr>
-            `}).join('')}
+             `}).join('')}
           </tbody>
         </table>
 
@@ -1055,6 +1055,42 @@ export const ComissoesLista = () => {
             
             {/* Corpo do Extrato */}
             <div className="flex-1 overflow-y-auto p-6 bg-zinc-50/50 dark:bg-zinc-950/50 space-y-4">
+              
+              {/* CARDS DE RESUMO GERENCIAL - LÓGICA ATUALIZADA */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                {(() => {
+                  const dados = calcularFluxoCaixaConsolidado();
+                  const totalEntradas = dados.reduce((acc, dia) => acc + dia.totalCredito, 0);
+                  const totalBaixas = dados.reduce((acc, dia) => acc + dia.totalDebitoLiquido, 0);
+                  const saldoDiferenca = totalEntradas - totalBaixas;
+                  const totalPrevistoBruto = provisoes
+                    .filter(p => p.status_recebimento_seguradora === 'PREVISTO')
+                    .reduce((acc, p) => acc + parseToNumber(p.valor_direito_corretor), 0);
+                  const totalAReceberLiquido = totalPrevistoBruto - saldoDiferenca;
+
+                  return (
+                    <>
+                      <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
+                        <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 block mb-1">Total Entradas</span>
+                        <span className="text-lg font-black text-emerald-700 dark:text-emerald-300 font-mono">{formatBRL(totalEntradas)}</span>
+                      </div>
+                      <div className="bg-rose-50 dark:bg-rose-900/20 p-4 rounded-2xl border border-rose-100 dark:border-rose-800/50">
+                        <span className="text-[10px] font-black uppercase text-rose-600 dark:text-rose-400 block mb-1">Total Baixas</span>
+                        <span className="text-lg font-black text-rose-700 dark:text-rose-300 font-mono">{formatBRL(totalBaixas)}</span>
+                      </div>
+                      <div className={`p-4 rounded-2xl border ${saldoDiferenca < 0 ? 'bg-rose-50 border-rose-200' : 'bg-zinc-100 border-zinc-200'}`}>
+                        <span className="text-[10px] font-black uppercase text-zinc-600 block mb-1">Saldo Diferença</span>
+                        <span className={`text-lg font-black font-mono ${saldoDiferenca < 0 ? 'text-rose-700' : 'text-zinc-900'}`}>{formatBRL(saldoDiferenca)}</span>
+                      </div>
+                      <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl border border-amber-100 dark:border-amber-800/50">
+                        <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 block mb-1">A Receber Líq.</span>
+                        <span className="text-lg font-black text-amber-700 dark:text-amber-300 font-mono">{formatBRL(totalAReceberLiquido)}</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
               {calcularFluxoCaixaConsolidado().length === 0 ? (
                 <div className="p-12 text-center text-zinc-400 font-black uppercase">Nenhuma movimentação de caixa registrada até o momento.</div>
               ) : (
@@ -1064,12 +1100,9 @@ export const ComissoesLista = () => {
                   
                   return (
                     <div key={dia.dataIso} className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 shadow-sm overflow-hidden">
-                      {/* Linha Cabeçalho do Dia (Resumo) */}
                       <div onClick={() => toggleDiaFluxoExpandido(dia.dataIso)} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 cursor-pointer hover:bg-zinc-50/60 transition-colors select-none">
                         <div className="flex items-center gap-3">
-                          <div className="bg-zinc-900 text-white p-2.5 rounded-2xl text-center font-mono font-black min-w-[70px] text-xs">
-                            {dataFormatada}
-                          </div>
+                          <div className="bg-zinc-900 text-white p-2.5 rounded-2xl text-center font-mono font-black min-w-[70px] text-xs">{dataFormatada}</div>
                           <div>
                             <p className="text-[10px] text-zinc-400 font-black uppercase tracking-wider">Movimentos do Dia</p>
                             <span className="text-xs font-black text-zinc-500 uppercase flex items-center gap-1">
@@ -1079,7 +1112,6 @@ export const ComissoesLista = () => {
                           </div>
                         </div>
 
-                        {/* Colunas Financeiras do Movimento do Dia */}
                         <div className="flex items-center gap-6 text-right w-full md:w-auto justify-end">
                           <div>
                             <span className="block text-[9px] font-black uppercase text-emerald-600">Crédito (+)</span>
@@ -1098,10 +1130,8 @@ export const ComissoesLista = () => {
                         </div>
                       </div>
 
-                      {/* Detalhamento Interno Expandido do Dia */}
                       {expandido && (
                         <div className="bg-zinc-50/50 border-t p-4 space-y-3 text-xs">
-                          {/* Subseção de Créditos */}
                           {dia.detalhesRepasses.length > 0 && (
                             <div className="space-y-1.5">
                               <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 block">Entradas de Crédito (Aportes/Repasses)</span>
@@ -1113,8 +1143,6 @@ export const ComissoesLista = () => {
                               ))}
                             </div>
                           )}
-
-                          {/* Subseção de Débitos */}
                           {dia.detalhesProvisoes.length > 0 && (
                             <div className="space-y-1.5 pt-1">
                               <span className="text-[9px] font-black uppercase tracking-wider text-rose-600 block">Saídas por Baixas/Liquidações (Comissões Corretor)</span>

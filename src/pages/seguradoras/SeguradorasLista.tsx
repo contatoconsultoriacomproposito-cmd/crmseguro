@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { 
   Building2, Loader2, Search, Shield, 
-  Power, Check, Plus, X 
+  Power, Check, Plus, X
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../auth/AuthContext";
