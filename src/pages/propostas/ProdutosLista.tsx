@@ -596,219 +596,236 @@ export default function ProdutosLista() {
           </div>
         </header>
 
-        {/* TABELA DE DADOS */}
-        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-separate border-spacing-0 min-w-[1400px]">
+        {/* CONTÊINER PRINCIPAL: Trava o componente na largura máxima da tela e impede vazamento */}
+        <div className="w-full max-w-full bg-white rounded-[24px] border border-slate-200 shadow-sm overflow-hidden block">
+          
+          {/* CONTÊINER DE ROLAGEM: Isolado com 'block' e 'w-full' para garantir o gatilho do scroll horizontal */}
+          <div className="overflow-x-auto w-full block clear-both scrollbar-thin">
+            
+            {/* TABELA: Ajustada para min-w-[1200px] para caber perfeitamente em telas padrão sem esmagar */}
+            <table className="w-full text-left border-separate border-spacing-0 min-w-[1200px] table-auto">
               <thead>
-                <tr className="bg-slate-50/50">
-                  <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Proposta</th>
-                  <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Cliente / Seguradora</th>
-                  <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Produto & Valores</th>
-                  <th className="p-5 text-[10px] font-black uppercase text-blue-600 border-b border-slate-100">Nº Cotação / Apólice</th>
-                  <th className="p-5 text-[10px] font-black uppercase text-emerald-500 border-b border-slate-100">Data Venda / Tipo</th>
-                  <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100">Vigência / Status</th>
-                  <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 text-center">Controle Renov.</th>
-                  <th className="p-5 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 text-center">Ações</th>
+                <tr className="bg-slate-50/75">
+                  <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 tracking-wider whitespace-nowrap w-[10%]">Proposta</th>
+                  <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 tracking-wider whitespace-nowrap w-[20%]">Cliente / Seguradora</th>
+                  <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 tracking-wider whitespace-nowrap w-[18%]">Produto & Valores</th>
+                  <th className="px-4 py-3 text-[10px] font-black uppercase text-blue-600 border-b border-slate-100 tracking-wider whitespace-nowrap w-[15%]">Nº Cotação / Apólice</th>
+                  <th className="px-4 py-3 text-[10px] font-black uppercase text-emerald-500 border-b border-slate-100 tracking-wider whitespace-nowrap w-[12%]">Data Venda / Tipo</th>
+                  <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 tracking-wider whitespace-nowrap w-[13%]">Vigência / Status</th>
+                  <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 tracking-wider whitespace-nowrap text-center w-[12%]">Controle Renov.</th>
+                  <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 tracking-wider whitespace-nowrap text-center w-[10%]">Ações</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={8} className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-500" /></td></tr>
+                  <tr>
+                    <td colSpan={8} className="p-16 text-center">
+                      <Loader2 className="animate-spin mx-auto text-blue-500" size={24} />
+                    </td>
+                  </tr>
                 ) : itensFiltrados.length === 0 ? (
-                  <tr><td colSpan={8} className="p-10 text-center text-slate-400 font-bold uppercase text-xs">Nenhum item encontrado</td></tr>
-                ) : itensFiltrados.map((item) => {
-                  const comissaoLancada = itensComComissao.has(item.id_item);
-                  
-                  return (
-                    <tr key={item.id_item} className="group hover:bg-slate-50/50 transition-all">
-                      
-                      {/* 1. Proposta */}
-                      <td className="p-5 border-b border-slate-50 font-black text-blue-600 italic text-sm">
-                        {item.numero_proposta}
-                      </td>
-                      
-                      {/* 2. Cliente / Seguradora + Botão de Visualização Rápida */}
-                      <td className="p-5 border-b border-slate-50">
-                        <div className="flex items-center gap-2 group/btn">
-                          <div className="text-sm font-bold text-slate-700 uppercase leading-none truncate max-w-[200px]">
-                            {item.cliente}
+                  <tr>
+                    <td colSpan={8} className="p-12 text-center text-slate-400 font-bold uppercase text-xs tracking-wider">
+                      Nenhum item encontrado
+                    </td>
+                  </tr>
+                ) : (
+                  itensFiltrados.map((item) => {
+                    const comissaoLancada = itensComComissao.has(item.id_item);
+                    
+                    return (
+                      <tr key={item.id_item} className="group hover:bg-slate-50/40 transition-colors">
+                        
+                        {/* 1. Proposta */}
+                        <td className="px-4 py-3.5 font-black text-blue-600 italic text-sm whitespace-nowrap">
+                          {item.numero_proposta}
+                        </td>
+                        
+                        {/* 2. Cliente / Seguradora */}
+                        <td className="px-4 py-3.5 max-w-[240px]">
+                          <div className="flex items-center gap-1.5 group/btn">
+                            <div className="text-sm font-bold text-slate-700 uppercase leading-none truncate" title={item.cliente}>
+                              {item.cliente}
+                            </div>
+                            <button
+                              onClick={() => abrirVisualizacaoCliente(item.cliente_id)}
+                              className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
+                              title="Visualização rápida do cliente"
+                            >
+                              <Eye size={13} />
+                            </button>
                           </div>
-                          <button
-                            onClick={() => abrirVisualizacaoCliente(item.cliente_id)}
-                            className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-                            title="Visualização rápida do cliente"
-                          >
-                            <Eye size={14} />
-                          </button>
-                        </div>
-                        <div className="text-[12px] text-blue-500 mt-1 font-black uppercase italic tracking-tighter">
-                          {item.seguradora}
-                        </div>
-                      </td>
-
-                      {/* 3. Produto & Valores */}
-                      <td className="p-5 border-b border-slate-50">
-                        <span className="text-xs font-black text-slate-600 uppercase tracking-tight block mb-2">
-                          {item.produto}
-                        </span>
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase w-10">Bruto:</span>
-                            <span className="text-[11px] font-bold text-slate-600">
-                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor)}
-                            </span>
+                          <div className="text-[11px] text-blue-500 mt-1 font-black uppercase italic tracking-tight whitespace-nowrap truncate">
+                            {item.seguradora}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-bold text-emerald-500 uppercase w-10">Líquido:</span>
-                            <input 
-                              type="number"
-                              defaultValue={item.valor_liquido}
-                              onBlur={(e) => handleUpdateItem(item.id_item, "valor_liquido", parseFloat(e.target.value) || 0)}
-                              className="w-24 bg-emerald-50/50 border-transparent border focus:border-emerald-500 focus:bg-white rounded px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 outline-none transition-all"
-                            />
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* 4. Números */}
-                      <td className="p-5 border-b border-slate-50">
-                        <div className="flex flex-col gap-2 max-w-[180px]">
-                           <div className="relative">
-                              <Hash size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" />
-                              <input 
-                                defaultValue={item.numero_cotacao}
-                                placeholder="Cotação"
-                                onBlur={(e) => handleUpdateItem(item.id_item, "numero_cotacao", e.target.value)}
-                                className="w-full bg-slate-100/50 border-transparent border focus:border-blue-500 focus:bg-white rounded-lg py-1 pl-6 pr-2 text-[11px] font-bold text-slate-600 outline-none transition-all"
-                              />
-                           </div>
-                           <div className="relative">
-                              <ShieldCheck size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300" />
-                              <input 
-                                defaultValue={item.numero_apolice}
-                                placeholder="Nº Apólice"
-                                onBlur={(e) => handleUpdateItem(item.id_item, "numero_apolice", e.target.value)}
-                                className="w-full bg-slate-100/50 border-transparent border focus:border-emerald-500 focus:bg-white rounded-lg py-1 pl-6 pr-2 text-[11px] font-bold text-slate-600 outline-none transition-all"
-                              />
-                           </div>
-                        </div>
-                      </td>
-
-                      {/* 5. Data Venda / Tipo de Negócio */}
-                      <td className="p-5 border-b border-slate-50">
-                        <div className="flex flex-col gap-2">
-                          <input 
-                            type="date"
-                            defaultValue={item.data_venda}
-                            onChange={(e) => handleUpdateProposta(item.proposta_id, "data_venda", e.target.value)}
-                            className="bg-transparent border-none text-[13px] font-bold text-slate-600 focus:ring-0 p-0 cursor-pointer"
-                          />
-                          <select 
-                            value={item.tipo_negocio}
-                            onChange={(e) => handleUpdateProposta(item.proposta_id, "tipo_negocio", e.target.value)}
-                            className={`text-[9px] font-black uppercase px-2 py-1 rounded-full w-fit border-none cursor-pointer
-                              ${item.tipo_negocio === 'Novo' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}
-                          >
-                            <option value="Novo">NOVO</option>
-                            <option value="Renovação">RENOVAÇÃO</option>
-                          </select>
-                        </div>
-                      </td>
-
-                      {/* 6. Vigência / Status Proposta + Badge de Comissão Lançada */}
-                      <td className="p-5 border-b border-slate-50">
-                        <div className="text-[12px] font-bold text-slate-600">
-                           {formatarDataBR(item.data_inicio_vigencia)} a {formatarDataBR(item.data_fim_vigencia)}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-1 items-center">
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${item.status === 'Vendido' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                            {item.status}
+                        {/* 3. Produto & Valores */}
+                        <td className="px-4 py-3.5 min-w-[160px]">
+                          <span className="text-[11px] font-black text-slate-600 uppercase tracking-tight block mb-1.5 truncate">
+                            {item.produto}
                           </span>
-                          {item.status === 'Vendido' && comissaoLancada && (
-                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center gap-1">
-                              <CheckCircle size={10} /> Comissão Lançada
+                          <div className="flex flex-col gap-1 w-full">
+                            <div className="flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase w-9 shrink-0">Bruto:</span>
+                              <span className="text-[11px] font-bold text-slate-600">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="text-[9px] font-bold text-emerald-500 uppercase w-9 shrink-0">Líq:</span>
+                              <input 
+                                type="number"
+                                defaultValue={item.valor_liquido}
+                                onBlur={(e) => handleUpdateItem(item.id_item, "valor_liquido", parseFloat(e.target.value) || 0)}
+                                className="w-20 bg-emerald-50/50 border border-transparent focus:border-emerald-500 focus:bg-white rounded px-1 py-0.5 text-[11px] font-bold text-emerald-700 outline-none transition-all"
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 4. Números (Inputs protegidos contra esmagamento) */}
+                        <td className="px-4 py-3.5 min-w-[150px]">
+                          <div className="flex flex-col gap-1.5 max-w-[160px]">
+                            <div className="relative w-full">
+                                <Hash size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                                <input 
+                                  defaultValue={item.numero_cotacao}
+                                  placeholder="Cotação"
+                                  onBlur={(e) => handleUpdateItem(item.id_item, "numero_cotacao", e.target.value)}
+                                  className="w-full bg-slate-100/50 border border-transparent focus:border-blue-500 focus:bg-white rounded-md py-0.5 pl-5 pr-1.5 text-[11px] font-bold text-slate-600 outline-none transition-all"
+                                />
+                            </div>
+                            <div className="relative w-full">
+                                <ShieldCheck size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                                <input 
+                                  defaultValue={item.numero_apolice}
+                                  placeholder="Nº Apólice"
+                                  onBlur={(e) => handleUpdateItem(item.id_item, "numero_apolice", e.target.value)}
+                                  className="w-full bg-slate-100/50 border border-transparent focus:border-emerald-500 focus:bg-white rounded-md py-0.5 pl-5 pr-1.5 text-[11px] font-bold text-slate-600 outline-none transition-all"
+                                />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 5. Data Venda / Tipo de Negócio */}
+                        <td className="px-4 py-3.5 min-w-[110px]">
+                          <div className="flex flex-col gap-1.5">
+                            <input 
+                              type="date"
+                              defaultValue={item.data_venda}
+                              onChange={(e) => handleUpdateProposta(item.proposta_id, "data_venda", e.target.value)}
+                              className="bg-transparent border-none text-[12px] font-bold text-slate-600 focus:ring-0 p-0 cursor-pointer w-full shrink-0"
+                            />
+                            <select 
+                              value={item.tipo_negocio}
+                              onChange={(e) => handleUpdateProposta(item.proposta_id, "tipo_negocio", e.target.value)}
+                              className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full w-fit border-none cursor-pointer shrink-0
+                                ${item.tipo_negocio === 'Novo' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}
+                            >
+                              <option value="Novo">NOVO</option>
+                              <option value="Renovação">RENOVAÇÃO</option>
+                            </select>
+                          </div>
+                        </td>
+
+                        {/* 6. Vigência / Status Proposta */}
+                        <td className="px-4 py-3.5 min-w-[140px]">
+                          <div className="text-[12px] font-bold text-slate-600 whitespace-nowrap">
+                            {formatarDataBR(item.data_inicio_vigencia)} a {formatarDataBR(item.data_fim_vigencia)}
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-1 items-center w-full">
+                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded whitespace-nowrap ${item.status === 'Vendido' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                              {item.status}
                             </span>
-                          )}
-                        </div>
-                      </td>
+                            {item.status === 'Vendido' && comissaoLancada && (
+                              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center gap-0.5 whitespace-nowrap">
+                                <CheckCircle size={9} /> Lançada
+                              </span>
+                            )}
+                          </div>
+                        </td>
 
-                      {/* 7. Controle de Renovação */}
-                      <td className="p-5 border-b border-slate-50 text-center">
-                        <div className="flex flex-col items-center gap-2">
-                          <select
-                            value={item.status_renovacao}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === 'CANCELADA') {
-                                const confirmar = window.confirm("Deseja realmente cancelar esta apólice?");
-                                if (confirmar) {
-                                  const motivo = window.prompt("Informe o motivo: (Preço, Concorrência, Outros)");
-                                  if (motivo) {
-                                    handleUpdateItem(item.id_item, "motivo_cancelamento", motivo);
-                                    handleUpdateItem(item.id_item, "status_renovacao", "CANCELADA");
+                        {/* 7. Controle de Renovação */}
+                        <td className="px-4 py-3.5 text-center min-w-[130px]">
+                          <div className="flex flex-col items-center gap-1">
+                            <select
+                              value={item.status_renovacao}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === 'CANCELADA') {
+                                  const confirmar = window.confirm("Deseja realmente cancelar esta apólice?");
+                                  if (confirmar) {
+                                    const motivo = window.prompt("Informe o motivo: (Preço, Concorrência, Outros)");
+                                    if (motivo) {
+                                      handleUpdateItem(item.id_item, "motivo_cancelamento", motivo);
+                                      handleUpdateItem(item.id_item, "status_renovacao", "CANCELADA");
+                                    }
                                   }
+                                } else {
+                                  handleUpdateItem(item.id_item, "status_renovacao", val);
                                 }
-                              } else {
-                                handleUpdateItem(item.id_item, "status_renovacao", val);
-                              }
-                            }}
-                            className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-xl border border-transparent shadow-sm transition-all cursor-pointer
-                              ${item.status_renovacao === 'RENOVADO' ? 'bg-emerald-500 text-white' : 
-                                item.status_renovacao === 'CANCELADA' ? 'bg-red-500 text-white' :
-                                item.status_renovacao === 'RENOVAÇÃO AUTOMÁTICA' ? 'bg-indigo-600 text-white' : 
-                                'bg-amber-100 text-amber-700'}`}
-                          >
-                            <option value="A RENOVAR">A RENOVAR</option>
-                            <option value="RENOVADO">RENOVADO</option>
-                            <option value="RENOVAÇÃO AUTOMÁTICA">AUTOMÁTICA</option>
-                            <option value="CANCELADA">CANCELADA</option>
-                            <option value="NAO_RENOVADO">NÃO RENOVADO</option>
-                            <option value="NÃO SE APLICA">N/A</option>
-                          </select>
-                          {item.motivo_cancelamento && item.status_renovacao === 'CANCELADA' && (
-                            <span className="text-[9px] font-bold text-red-400 uppercase italic">Motivo: {item.motivo_cancelamento}</span>
-                          )}
-                        </div>
-                      </td>
+                              }}
+                              className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border border-transparent shadow-sm transition-all cursor-pointer w-full text-center shrink-0 max-w-[130px]
+                                ${item.status_renovacao === 'RENOVADO' ? 'bg-emerald-500 text-white' : 
+                                  item.status_renovacao === 'CANCELADA' ? 'bg-red-500 text-white' :
+                                  item.status_renovacao === 'RENOVAÇÃO AUTOMÁTICA' ? 'bg-indigo-600 text-white' : 
+                                  'bg-amber-100 text-amber-700'}`}
+                            >
+                              <option value="A RENOVAR">A RENOVAR</option>
+                              <option value="RENOVADO">RENOVADO</option>
+                              <option value="RENOVAÇÃO AUTOMÁTICA">AUTOMÁTICA</option>
+                              <option value="CANCELADA">CANCELADA</option>
+                              <option value="NAO_RENOVADO">NÃO RENOVADO</option>
+                              <option value="NÃO SE APLICA">N/A</option>
+                            </select>
+                            {item.motivo_cancelamento && item.status_renovacao === 'CANCELADA' && (
+                              <span className="text-[9px] font-bold text-red-400 uppercase italic truncate max-w-[120px]" title={item.motivo_cancelamento}>
+                                Motivo: {item.motivo_cancelamento}
+                              </span>
+                            )}
+                          </div>
+                        </td>
 
-                      {/* 8. Ações + Mutação Visual do Cifrão */}
-                      <td className="p-5 border-b border-slate-50 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button 
-                            onClick={() => navigate(`/propostas/editar/${item.proposta_id}`)}
-                            className="p-2.5 bg-white border border-slate-200 rounded-xl hover:border-blue-500 hover:text-blue-500 transition-all shadow-sm"
-                          >
-                            <Edit3 size={16} />
-                          </button>
+                        {/* 8. Ações (Totalmente travado contra quebras e centralizado) */}
+                        <td className="px-4 py-3.5 text-center min-w-[120px]">
+                          <div className="flex items-center justify-center gap-1.5 flex-nowrap w-max mx-auto">
+                            <button 
+                              onClick={() => navigate(`/propostas/editar/${item.proposta_id}`)}
+                              className="p-2 bg-white border border-slate-200 rounded-lg hover:border-blue-500 hover:text-blue-500 transition-all shadow-sm shrink-0"
+                              title="Editar Proposta"
+                            >
+                              <Edit3 size={14} />
+                            </button>
 
-                          {item.status === 'Vendido' && (
-                            <>
-                              <button 
-                                onClick={() => abrirModalComissao(item.id_item)}
-                                className={`p-2.5 rounded-xl transition-all shadow-sm border focus:outline-none
-                                  ${comissaoLancada 
-                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100' 
-                                    : 'bg-white border-slate-200 text-emerald-600 hover:bg-emerald-50'}`}
-                                title={comissaoLancada ? "Ver / Editar Distribuição da Comissão" : "Lançar Nova Comissão"}
-                              >
-                                <DollarSign size={16} className={comissaoLancada ? "animate-pulse" : ""} />
-                              </button>
+                            {item.status === 'Vendido' && (
+                              <>
+                                <button 
+                                  onClick={() => abrirModalComissao(item.id_item)}
+                                  className={`p-2 rounded-lg transition-all shadow-sm border focus:outline-none shrink-0
+                                    ${comissaoLancada 
+                                      ? 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100' 
+                                      : 'bg-white border-slate-200 text-emerald-600 hover:bg-emerald-50'}`}
+                                  title={comissaoLancada ? "Ver / Editar Distribuição da Comissão" : "Lançar Nova Comissão"}
+                                >
+                                  <DollarSign size={14} className={comissaoLancada ? "animate-pulse" : ""} />
+                                </button>
 
-                              <button 
-                                onClick={() => setModalRenovacao({ isOpen: true, item: item })}
-                                className="p-2.5 bg-blue-50 border border-blue-100 text-blue-600 hover:bg-blue-100 rounded-xl transition-all shadow-sm group"
-                                title="Renovação"
-                              >
-                                <RefreshCw size={16} className="group-hover:rotate-180 duration-700 transition-transform" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                                <button 
+                                  onClick={() => setModalRenovacao({ isOpen: true, item: item })}
+                                  className="p-2 bg-blue-50 border border-blue-100 text-blue-600 hover:bg-blue-100 rounded-lg transition-all shadow-sm group shrink-0"
+                                  title="Renovação"
+                                >
+                                  <RefreshCw size={14} className="group-hover:rotate-180 duration-500 transition-transform" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
