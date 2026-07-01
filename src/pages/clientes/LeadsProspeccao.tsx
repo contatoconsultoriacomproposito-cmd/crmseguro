@@ -57,7 +57,8 @@ export default function LeadsProspeccao() {
   // Estados paginação
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [totalRegistros, setTotalRegistros] = useState(0);
-  const ITENS_POR_PAGINA = 25;
+  // const ITENS_POR_PAGINA = 250;
+  const [itensPorPagina, setItensPorPagina] = useState(25);
 
    // Estados rotas
   const [pontoPartida, setPontoPartida] = useState("");
@@ -156,7 +157,7 @@ export default function LeadsProspeccao() {
     filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, 
     filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, 
     paginaAtual, pesquisaGeralDebounced, filtroDataRetornoMin, filtroDataRetornoMax, filtroCep, 
-    filtroSituacaoCadastral, filtroDataAberturaMin, filtroDataAberturaMax]);
+    filtroSituacaoCadastral, filtroDataAberturaMin, filtroDataAberturaMax, itensPorPagina]);
 
   //Resetar a Página ao Mudar os Filtros
   useEffect(() => {
@@ -165,7 +166,7 @@ export default function LeadsProspeccao() {
     filtroStatus, filtroPorte, filtroMei, filtroSimples, filtroMatriz, 
     filtroCapitalMin, filtroCapitalMax, pesquisaGeralDebounced,
     filtroDataRetornoMin, filtroDataRetornoMax, filtroCep, 
-    filtroSituacaoCadastral,filtroDataAberturaMin, filtroDataAberturaMax]);
+    filtroSituacaoCadastral,filtroDataAberturaMin, filtroDataAberturaMax, itensPorPagina]);
 
 // useEffect Definitivo: Abre o modal por ID local ou buscando diretamente no Supabase se paginado/filtrado
   useEffect(() => {
@@ -219,8 +220,8 @@ export default function LeadsProspeccao() {
     setLoading(true);
     try {
       // 1. Define os limites matemáticos da paginação (Ex: pág 1 -> 0 a 99)
-      const de = (paginaAtual - 1) * ITENS_POR_PAGINA;
-      const ate = de + ITENS_POR_PAGINA - 1;
+      const de = (paginaAtual - 1) * itensPorPagina;
+      const ate = de + itensPorPagina - 1;
 
       // 2. Solicita a contagem exata ({ count: "exact" ou "planned"}) para sabermos o total de páginas
       let query = supabase
@@ -1071,7 +1072,11 @@ export default function LeadsProspeccao() {
     }, {});
   };
 
-
+  const handleMudancaItensPorPagina = (quantidade: number) => {
+    setItensPorPagina(quantidade);
+    setPaginaAtual(1); // Reseta para a primeira página para evitar descompasso na paginação
+  };
+  
 return (
   <div className="p-6 max-w-[1600px] mx-auto space-y-6 bg-slate-50 dark:bg-zinc-900 min-h-screen">
       
@@ -2170,7 +2175,7 @@ return (
               Anterior
             </button>
             <button
-              disabled={paginaAtual >= Math.ceil(totalRegistros / ITENS_POR_PAGINA)}
+              disabled={paginaAtual >= Math.ceil(totalRegistros / itensPorPagina)}
               onClick={() => setPaginaAtual(prev => prev + 1)}
               className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-750 bg-white hover:bg-gray-50 disabled:opacity-50"
             >
@@ -2178,35 +2183,50 @@ return (
             </button>
           </div>
           <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-            <div>
+            <div className="flex items-center gap-4">
               <p className="text-sm text-slate-700 font-medium">
-                Exibindo de <span className="font-bold text-blue-600">{((paginaAtual - 1) * ITENS_POR_PAGINA) + 1}</span> até{" "}
-                <span className="font-bold text-blue-600">{Math.min(paginaAtual * ITENS_POR_PAGINA, totalRegistros)}</span> de{" "}
+                Exibindo de <span className="font-bold text-blue-600">{((paginaAtual - 1) * itensPorPagina) + 1}</span> até{" "}
+                <span className="font-bold text-blue-600">{Math.min(paginaAtual * itensPorPagina, totalRegistros)}</span> de{" "}
                 <span className="font-bold text-slate-800">{totalRegistros}</span> registros
               </p>
-            </div>
-            <div>
-              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                <button
-                  disabled={paginaAtual === 1}
-                  onClick={() => setPaginaAtual(prev => Math.max(prev - 1, 1))}
-                  className="relative inline-flex items-center px-3 py-2 rounded-l-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+
+              <div className="flex items-center gap-1.5 text-sm text-slate-600">
+                <span>Ver:</span>
+                <select
+                  value={itensPorPagina}
+                  onChange={(e) => handleMudancaItensPorPagina(Number(e.target.value))}
+                  className="rounded-lg border border-gray-300 bg-white py-1 px-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none cursor-pointer transition hover:bg-gray-50"
                 >
-                  ◀ Anterior
-                </button>
-                <div className="bg-slate-50 border-t border-b border-gray-300 px-4 py-2 text-sm font-semibold text-slate-700 min-w-[100px] text-center select-none">
-                  Pág. {paginaAtual} de {Math.ceil(totalRegistros / ITENS_POR_PAGINA) || 1}
-                </div>
-                <button
-                  disabled={paginaAtual >= Math.ceil(totalRegistros / ITENS_POR_PAGINA)}
-                  onClick={() => setPaginaAtual(prev => prev + 1)}
-                  className="relative inline-flex items-center px-3 py-2 rounded-r-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                >
-                  Próximo ▶
-                </button>
-              </nav>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={500}>500</option>
+                </select>
+              </div>
             </div>
-          </div>
+  <div>
+    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+      <button
+        disabled={paginaAtual === 1}
+        onClick={() => setPaginaAtual(prev => Math.max(prev - 1, 1))}
+        className="relative inline-flex items-center px-3 py-2 rounded-l-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+      >
+        ◀ Anterior
+      </button>
+      <div className="bg-slate-50 border-t border-b border-gray-300 px-4 py-2 text-sm font-semibold text-slate-700 min-w-[100px] text-center select-none">
+        Pág. {paginaAtual} de {Math.ceil(totalRegistros / itensPorPagina) || 1}
+      </div>
+      <button
+        disabled={paginaAtual >= Math.ceil(totalRegistros / itensPorPagina)}
+        onClick={() => setPaginaAtual(prev => prev + 1)}
+        className="relative inline-flex items-center px-3 py-2 rounded-r-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+      >
+        Próximo ▶
+      </button>
+    </nav>
+  </div>
+</div>
         </div>
       )}
 
