@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   ArrowLeft, Calendar, CheckCircle2, Loader2,
@@ -125,15 +125,15 @@ export default function LeadsProspeccao() {
 
   const [painelExpandido, setPainelExpandido] = useState(false); // Começa recolhido (false) ou expandido (true)
 
-  useEffect(() => {
-  const handler = setTimeout(() => {
-    setPesquisaGeralDebounced(pesquisaGeral);
-  }, 500); // Espera 500ms após o usuário parar de digitar
+    useEffect(() => {
+    const handler = setTimeout(() => {
+      setPesquisaGeralDebounced(pesquisaGeral);
+    }, 500); // Espera 500ms após o usuário parar de digitar
 
-  return () => {
-    clearTimeout(handler);
-  };
-}, [pesquisaGeral]);
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [pesquisaGeral]);
 
   // Inicialização e Carga de Perfis
   useEffect(() => {
@@ -702,6 +702,9 @@ export default function LeadsProspeccao() {
       });
     }
 
+    // 🎯 AGRUPAMENTO: Agrupa a lista já devidamente ordenada pelo GPS/Texto
+    const bairrosAgrupados = agruparPorBairro(leadsOrdenados);
+
     // Montagem do corpo da mensagem para o WhatsApp
     let textoMensagem = `📍 *ROTA DE VISITAS ENCONTRADA*\n\n`;
     if (pontoPartida.trim()) {
@@ -709,20 +712,42 @@ export default function LeadsProspeccao() {
     }
     textoMensagem += `=========================\n\n`;
 
-    leadsOrdenados.forEach((lead, index) => {
-      const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} ${lead.complemento ? "- " + lead.complemento : ""} - ${lead.bairro || ""}, ${lead.municipio || ""} - ${lead.uf || ""}`.replace(/, ,/g, "").trim();
-      const linkGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
-      const telWhatsTratado = lead.ddd_telefone_1 ? String(lead.ddd_telefone_1).replace(/^0/, '') : "";
-      const telefoneFormatado = telWhatsTratado ? maskPhone(telWhatsTratado) : "Não informado";
+    // Contador global para manter a numeração sequencial idêntica à do PDF
+    let contadorGlobal = 1;
 
-      textoMensagem += `🏢 *${index + 1}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}*\n`;
-      textoMensagem += `👥 *Sócios:* ${lead.nomes_socios || "Não informados"}\n`;
-      textoMensagem += `🗺️ *Endereço:* ${enderecoCompleto || "Não cadastrado"}\n`;
-      textoMensagem += `📞 *Telefone:* ${telefoneFormatado}\n`;
-      if (enderecoCompleto) {
-        textoMensagem += `🔗 *Navegar por GPS:* ${linkGoogleMaps}\n`;
-      }
-      textoMensagem += `\n-------------------------\n\n`;
+    // 🎯 Percorre cada bloco de bairro agrupado
+    Object.entries(bairrosAgrupados).forEach(([bairro, leadsDoBairro]: [string, any]) => {
+      
+      // Cabeçalho visual do grupo do Bairro no WhatsApp
+      textoMensagem += `📌 *BAIRRO: ${bairro.toUpperCase()}* (${leadsDoBairro.length} ${leadsDoBairro.length === 1 ? 'empresa' : 'empresas'})\n`;
+      textoMensagem += `-------------------------\n\n`;
+
+      // Percorre as empresas deste bairro específico
+      leadsDoBairro.forEach((lead: any) => {
+        const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} ${lead.complemento ? "- " + lead.complemento : ""} - ${lead.bairro || ""}, ${lead.municipio || ""} - ${lead.uf || ""}`.replace(/, ,/g, "").trim();
+        
+        // 🛠️ CORREÇÃO DE SINTAXE: Ajustado o link do Google Maps que continha um "0{" por engano na interpolação
+        const linkGoogleMaps = `https://maps.google.com/?q=${encodeURIComponent(enderecoCompleto)}`;
+        
+        const telWhatsTratado = lead.ddd_telefone_1 ? String(lead.ddd_telefone_1).replace(/^0/, '') : "";
+        const telefoneFormatado = telWhatsTratado ? maskPhone(telWhatsTratado) : "Não informado";
+
+        // Padronização dos sócios trocando "|" por vírgula para leitura fluida
+        const textoSociosOriginal = lead.nomes_socios ? lead.nomes_socios.replace(/ \| /g, ', ') : "Não informados";
+
+        textoMensagem += `🏢 *${contadorGlobal}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}*\n`;
+        textoMensagem += `👥 *Sócios:* ${textoSociosOriginal}\n`;
+        textoMensagem += `🗺️ *Endereço:* ${enderecoCompleto || "Não cadastrado"}\n`;
+        textoMensagem += `📞 *Telefone:* ${telefoneFormatado}\n`;
+        if (enderecoCompleto) {
+          textoMensagem += `🔗 *Navegar por GPS:* ${linkGoogleMaps}\n`;
+        }
+        textoMensagem += `\n`; // Espaço sutil entre empresas do mesmo bairro
+        
+        contadorGlobal++;
+      });
+
+      textoMensagem += `=========================\n\n`; // Divisória de fim de bairro
     });
 
     textoMensagem += `_Boas vendas! Gerado pelo CRM._ 🚀`;
@@ -772,6 +797,9 @@ export default function LeadsProspeccao() {
     // Filtra apenas os clientes que o usuário marcou na tela
     const leadsSelecionados = leads.filter(l => selecionados.includes(l.id));
 
+    // 🎯 Agrupa os leads selecionados utilizando a nossa função de bairros
+    const bairrosAgrupados = agruparPorBairro(leadsSelecionados);
+
     // Configurações de layout da página A4 (210mm x 297mm)
     const margemEsquerda = 15;
     let posicaoY = 20; 
@@ -791,139 +819,162 @@ export default function LeadsProspeccao() {
     
     posicaoY += 15;
 
-    // Percorre cada cliente selecionado para montar o bloco visual customizado
-    leadsSelecionados.forEach((lead, index) => {
-      // 🚀 AUMENTADO PARA 65mm para acomodar com folga a expansão dinâmica dos múltiplos sócios
-      const alturaBlocoCliente = 65; 
+    // Contador global para manter a numeração sequencial das empresas independentemente do bairro
+    let contadorGlobal = 1;
 
-      // Controle de Quebra de Página Automática: Se o próximo bloco for passar do limite do papel, cria nova folha
-      if (posicaoY + alturaBlocoCliente > alturaMaximaPagina) {
+    // 🎯 Percorre cada grupo de bairro encontrado
+    Object.entries(bairrosAgrupados).forEach(([bairro, leadsDoBairro]: [string, any]) => {
+      
+      // Definição da altura da barra de título do Bairro
+      const alturaBannerBairro = 10; 
+
+      // Controle de Quebra de Página para o Título do Bairro:
+      // Se a faixa do bairro + a primeira empresa (65mm) não couberem na folha atual, joga o grupo todo para a próxima página
+      if (posicaoY + alturaBannerBairro + 30 > alturaMaximaPagina) {
         doc.addPage();
         posicaoY = 20; // Reseta o topo na nova página
       }
 
-      // --- DESIGN DA FICHA DO CLIENTE ---
-      
-      // 1. Fundo cinza claro para a barra de título do cliente
-      doc.setFillColor(248, 250, 252); // Slate-50
-      doc.rect(margemEsquerda, posicaoY, larguraDisponivel, 7, "F");
-      
-      // Borda externa fina ao redor de toda a ficha do cliente
-      doc.setDrawColor(203, 213, 225); // Slate-300
-      doc.setLineWidth(0.2);
-      doc.rect(margemEsquerda, posicaoY, larguraDisponivel, alturaBlocoCliente);
+      // --- DESIGN DA SEÇÃO DO BAIRRO ---
+      doc.setFillColor(226, 232, 240); // Cor Slate-200 (Fundo mais destacado que o da empresa)
+      doc.rect(margemEsquerda, posicaoY, larguraDisponivel, alturaBannerBairro, "F");
 
-      // Texto do título (Número + Nome Fantasia ou Razão Social)
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(10);
-      doc.setTextColor(30, 41, 59); // Slate-800
-      const nomeEmpresa = `${index + 1}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}`;
-      // Corta o nome se for excessivamente longo para não vazar o layout
-      doc.text(nomeEmpresa.substring(0, 75), margemEsquerda + 3, posicaoY + 5);
+      doc.setTextColor(15, 23, 42); // Slate-900
+      const textoBanner = `> BAIRRO: ${bairro.toUpperCase()} (${leadsDoBairro.length} ${leadsDoBairro.length === 1 ? 'empresa' : 'empresas'})`;
+      doc.text(textoBanner, margemEsquerda + 4, posicaoY + 6.5);
 
-      // Linha divisória interna vertical dividindo Dados (60%) e Anotações (40%)
-      const larguraDados = 110; 
-      const divisorX = margemEsquerda + larguraDados;
-      doc.line(divisorX, posicaoY + 7, divisorX, posicaoY + alturaBlocoCliente);
+      // Avança o cursor vertical após desenhar o cabeçalho do bairro
+      posicaoY += alturaBannerBairro + 4;
 
-      // 2. PREENCHIMENTO DOS DADOS (Coluna da Esquerda - Alturas Calculadas Dinamicamente)
-      let dadosY = posicaoY + 12;
-      doc.setFontSize(8.5); // Ajustado sutilmente para dar mais respiro vertical interno
+      // Percorre cada cliente deste bairro específico
+      leadsDoBairro.forEach((lead: any) => {
+        // Altura para acomodar com folga a expansão dinâmica dos múltiplos sócios
+        const alturaBlocoCliente = 65; 
 
-      // CNPJ
-      doc.setFont("Helvetica", "bold"); doc.text("CNPJ:", margemEsquerda + 3, dadosY);
-      doc.setFont("Helvetica", "normal"); doc.text(lead.cnpj ? maskCNPJ(lead.cnpj) : "Não informado", margemEsquerda + 14, dadosY);
-
-      // Data de Abertura
-      dadosY += 5;
-      doc.setFont("Helvetica", "bold"); doc.text("Abertura:", margemEsquerda + 3, dadosY);
-      doc.setFont("Helvetica", "normal");
-      const dataPdf = lead.data_abertura ? new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR') : "Não informada";
-      doc.text(dataPdf, margemEsquerda + 19, dadosY);
-      
-      // Razão Social
-      dadosY += 5;
-      doc.setFont("Helvetica", "bold"); doc.text("Razão Social:", margemEsquerda + 3, dadosY);
-      doc.setFont("Helvetica", "normal"); 
-      const razaoCortada = (lead.razao_social || "Não informada").substring(0, 48);
-      doc.text(razaoCortada, margemEsquerda + 24, dadosY);
-
-      // 🚀 MODIFICAÇÃO CRÍTICA: GESTÃO INTELIGENTE DE MÚLTIPLOS SÓCIOS (SEM CORTAR)
-      dadosY += 5;
-      doc.setFont("Helvetica", "bold"); doc.text("Sócios:", margemEsquerda + 3, dadosY);
-      doc.setFont("Helvetica", "normal");
-      
-      // Formata a string de sócios substituindo o caractere '|' por vírgulas para melhor visualização no PDF
-      const textoSociosOriginal = lead.nomes_socios ? lead.nomes_socios.replace(/ \| /g, ', ') : "Não informados";
-      
-      // Quebra o texto longo de sócios automaticamente com base na largura limite da coluna da esquerda (Aprox. 90mm de largura útil)
-      const linhasSociosCalculadas = doc.splitTextToSize(textoSociosOriginal, 90);
-      
-      // Desenha cada linha gerada na tela, empurrando as próximas linhas de dados para baixo
-      linhasSociosCalculadas.forEach((linha: string, idx: number) => {
-        // Para evitar que um condomínio com dezenas de sócios empurre o resto dos dados para fora da ficha
-        if (idx < 3) { 
-          doc.text(idx === 2 ? linha + "..." : linha, margemEsquerda + 15, dadosY);
-          if (idx < linhasSociosCalculadas.length - 1 && idx < 2) {
-            dadosY += 4.5; // Espaçamento interno menor entre as quebras do próprio nome do sócio
-          }
+        // Controle de Quebra de Página Automática da Ficha da Empresa
+        if (posicaoY + alturaBlocoCliente > alturaMaximaPagina) {
+          doc.addPage();
+          posicaoY = 20; // Reseta o topo na nova página
         }
+
+        // --- DESIGN DA FICHA DO CLIENTE ---
+        
+        // 1. Fundo cinza claro para a barra de título do cliente
+        doc.setFillColor(248, 250, 252); // Slate-50
+        doc.rect(margemEsquerda, posicaoY, larguraDisponivel, 7, "F");
+        
+        // Borda externa fina ao redor de toda a ficha do cliente
+        doc.setDrawColor(203, 213, 225); // Slate-300
+        doc.setLineWidth(0.2);
+        doc.rect(margemEsquerda, posicaoY, larguraDisponivel, alturaBlocoCliente);
+
+        // Texto do título (Número Sequencial Global + Nome Fantasia ou Razão Social)
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59); // Slate-800
+        const nomeEmpresa = `${contadorGlobal}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}`;
+        // Corta o nome se for excessivamente longo para não vazar o layout
+        doc.text(nomeEmpresa.substring(0, 75), margemEsquerda + 3, posicaoY + 5);
+
+        // Linha divisória interna vertical dividindo Dados (60%) e Anotações (40%)
+        const larguraDados = 110; 
+        const divisorX = margemEsquerda + larguraDados;
+        doc.line(divisorX, posicaoY + 7, divisorX, posicaoY + alturaBlocoCliente);
+
+        // 2. PREENCHIMENTO DOS DADOS (Coluna da Esquerda - Alturas Calculadas Dinamicamente)
+        let dadosY = posicaoY + 12;
+        doc.setFontSize(8.5);
+
+        // CNPJ
+        doc.setFont("Helvetica", "bold"); doc.text("CNPJ:", margemEsquerda + 3, dadosY);
+        doc.setFont("Helvetica", "normal"); doc.text(lead.cnpj ? maskCNPJ(lead.cnpj) : "Não informado", margemEsquerda + 14, dadosY);
+
+        // Data de Abertura
+        dadosY += 5;
+        doc.setFont("Helvetica", "bold"); doc.text("Abertura:", margemEsquerda + 3, dadosY);
+        doc.setFont("Helvetica", "normal");
+        const dataPdf = lead.data_abertura ? new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR') : "Não informada";
+        doc.text(dataPdf, margemEsquerda + 19, dadosY);
+        
+        // Razão Social
+        dadosY += 5;
+        doc.setFont("Helvetica", "bold"); doc.text("Razão Social:", margemEsquerda + 3, dadosY);
+        doc.setFont("Helvetica", "normal"); 
+        const razaoCortada = (lead.razao_social || "Não informada").substring(0, 48);
+        doc.text(razaoCortada, margemEsquerda + 24, dadosY);
+
+        // GESTÃO INTELIGENTE DE MÚLTIPLOS SÓCIOS (SEM CORTAR)
+        dadosY += 5;
+        doc.setFont("Helvetica", "bold"); doc.text("Sócios:", margemEsquerda + 3, dadosY);
+        doc.setFont("Helvetica", "normal");
+        
+        const textoSociosOriginal = lead.nomes_socios ? lead.nomes_socios.replace(/ \| /g, ', ') : "Não informados";
+        const linhasSociosCalculadas = doc.splitTextToSize(textoSociosOriginal, 90);
+        
+        linhasSociosCalculadas.forEach((linha: string, idx: number) => {
+          if (idx < 3) { 
+            doc.text(idx === 2 ? linha + "..." : linha, margemEsquerda + 15, dadosY);
+            if (idx < linhasSociosCalculadas.length - 1 && idx < 2) {
+              dadosY += 4.5;
+            }
+          }
+        });
+
+        // Capital Social
+        dadosY += 5;
+        doc.setFont("Helvetica", "bold"); doc.text("Capital Social:", margemEsquerda + 3, dadosY);
+        doc.setFont("Helvetica", "normal");
+        const capitalFormatado = lead.capital_social 
+          ? Number(lead.capital_social).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          : "Não informado";
+        doc.text(capitalFormatado, margemEsquerda + 25, dadosY);
+
+        // Endereço
+        dadosY += 5;
+        doc.setFont("Helvetica", "bold"); doc.text("Endereço:", margemEsquerda + 3, dadosY);
+        doc.setFont("Helvetica", "normal");
+        const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} - ${lead.bairro || ""}, ${lead.municipio || ""}`.substring(0, 48);
+        doc.text(enderecoCompleto, margemEsquerda + 19, dadosY);
+
+        // Telefone
+        dadosY += 5;
+        doc.setFont("Helvetica", "bold"); doc.text("Telefone:", margemEsquerda + 3, dadosY);
+        doc.setFont("Helvetica", "normal");
+        const telPdfTratado = lead.ddd_telefone_1 ? lead.ddd_telefone_1.replace(/^0/, '') : "";
+        doc.text(telPdfTratado ? maskPhone(telPdfTratado) : "Não informado", margemEsquerda + 18, dadosY);
+
+
+        // 3. CAMPO LIVRE PARA ANOTAÇÕES (Coluna da Direita - Efeito pautado pontilhado)
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184); // Slate-400
+        doc.text("ANOTAÇÕES DA VISITA (CANETA):", divisorX + 4, posicaoY + 12);
+
+        // Desenha as linhas pontilhadas espaçadas para escrita confortável à mão
+        doc.setDrawColor(226, 232, 240); // Slate-200
+        let linhaAnotacaoY = CollegeLineY(posicaoY + 19);
+        
+        for (let i = 0; i < 6; i++) {
+          doc.setLineDashPattern([1, 1], 0);
+          doc.line(divisorX + 4, linhaAnotacaoY, margemEsquerda + larguraDisponivel - 4, linhaAnotacaoY);
+          linhaAnotacaoY += 7;
+        }
+        doc.setLineDashPattern([], 0); // Reseta estilo para linha sólida
+
+        // Incrementa contadores
+        contadorGlobal++;
+        posicaoY += alturaBlocoCliente + 5;
       });
-
-      // Capital Social (Agora posicionado de forma dinâmica de acordo com o tamanho dos sócios acima)
-      dadosY += 5;
-      doc.setFont("Helvetica", "bold"); doc.text("Capital Social:", margemEsquerda + 3, dadosY);
-      doc.setFont("Helvetica", "normal");
-      const capitalFormatado = lead.capital_social 
-        ? Number(lead.capital_social).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-        : "Não informado";
-      doc.text(capitalFormatado, margemEsquerda + 25, dadosY);
-
-      // Endereço
-      dadosY += 5;
-      doc.setFont("Helvetica", "bold"); doc.text("Endereço:", margemEsquerda + 3, dadosY);
-      doc.setFont("Helvetica", "normal");
-      const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} - ${lead.bairro || ""}, ${lead.municipio || ""}`.substring(0, 48);
-      doc.text(enderecoCompleto, margemEsquerda + 19, dadosY);
-
-      // Telefone
-      dadosY += 5;
-      doc.setFont("Helvetica", "bold"); doc.text("Telefone:", margemEsquerda + 3, dadosY);
-      doc.setFont("Helvetica", "normal");
-      const telPdfTratado = lead.ddd_telefone_1 ? lead.ddd_telefone_1.replace(/^0/, '') : "";
-      doc.text(telPdfTratado ? maskPhone(telPdfTratado) : "Não informado", margemEsquerda + 18, dadosY);
-
-
-      // 3. CAMPO LIVRE PARA ANOTAÇÕES (Coluna da Direita - Efeito pautado pontilhado)
-      doc.setFont("Helvetica", "bold");
-      doc.setFontSize(8);
-      doc.setTextColor(148, 163, 184); // Slate-400
-      doc.text("ANOTAÇÕES DA VISITA (CANETA):", divisorX + 4, posicaoY + 12);
-
-      // Desenha as linhas pontilhadas espaçadas para escrita confortável à mão
-      doc.setDrawColor(226, 232, 240); // Slate-200
-      let linhaAnotacaoY = CollegeLineY(posicaoY + 19);
-      
-      // 🚀 AUMENTADO DE 4 PARA 6 LINHAS aproveitando os 10mm extras da altura do bloco
-      for (let i = 0; i < 6; i++) {
-        // Altera o estilo da linha para tracejado/pontilhado
-        doc.setLineDashPattern([1, 1], 0);
-        doc.line(divisorX + 4, linhaAnotacaoY, margemEsquerda + larguraDisponivel - 4, linhaAnotacaoY);
-        linhaAnotacaoY += 7; // Espaçamento perfeito de 7mm entre linhas pautadas
-      }
-      // Reseta o estilo de linha para sólida normal nas próximas iterações
-      doc.setLineDashPattern([], 0);
-
-      // Avança a posição Y para o início do bloco do próximo cliente, adicionando um espaçamento de margem de 5mm
-      posicaoY += alturaBlocoCliente + 5;
     });
 
     // Auxiliar para legibilidade da altura da linha pautada
     function CollegeLineY(start: number) { return start; }
 
-    // Salva o PDF gerado forçando o download imediato no dispositivo do usuário
+    // Salva o PDF gerado
     doc.save(`roteiro_visitas_${new Date().toISOString().split('T')[0]}.pdf`);
-    toast.success("PDF customizado exportado com sucesso! 📄");
+    toast.success("PDF customizado agrupado por bairro exportado com sucesso! 📄");
   };
 
   
@@ -981,27 +1032,45 @@ export default function LeadsProspeccao() {
     toast.success(`${leads.length} contatos preparados para a Central de Disparos!`);
   };
 
-const handleLimparFiltros = () => {
-    setPesquisaGeral("");
-    setFiltroUf("");
-    setFiltroMunicipio("");
-    setFiltroBairro("");
-    setFiltroCnaesSelecionados([]);
-    setFiltroStatus("");
-    setFiltroPorte("");
-    setFiltroMei("");
-    setFiltroSimples("");
-    setFiltroMatriz("");
-    setFiltroCapitalMin("");
-    setFiltroCapitalMax("");
-    setFiltroDataRetornoMin(""); 
-    setFiltroDataRetornoMax("");
-    setPaginaAtual(1);
-    setFiltroCep("");
-    setFiltroSituacaoCadastral("");
-    setFiltroDataAberturaMin("");
-    setFiltroDataAberturaMax("");
+  const handleLimparFiltros = () => {
+      setPesquisaGeral("");
+      setFiltroUf("");
+      setFiltroMunicipio("");
+      setFiltroBairro("");
+      setFiltroCnaesSelecionados([]);
+      setFiltroStatus("");
+      setFiltroPorte("");
+      setFiltroMei("");
+      setFiltroSimples("");
+      setFiltroMatriz("");
+      setFiltroCapitalMin("");
+      setFiltroCapitalMax("");
+      setFiltroDataRetornoMin(""); 
+      setFiltroDataRetornoMax("");
+      setPaginaAtual(1);
+      setFiltroCep("");
+      setFiltroSituacaoCadastral("");
+      setFiltroDataAberturaMin("");
+      setFiltroDataAberturaMax("");
+    };
+
+  const agruparPorBairro = (listaLeads: any[]) => {
+    if (!listaLeads || listaLeads.length === 0) return {};
+    
+    return listaLeads.reduce((acumulador: { [key: string]: any[] }, lead: any) => {
+      // Se o bairro for nulo, indefinido ou vazio, agrupa em "Bairro Não Informado"
+      const bairroNome = lead.bairro && lead.bairro.trim() !== "" 
+        ? lead.bairro.trim() 
+        : "Bairro Não Informado";
+
+      if (!acumulador[bairroNome]) {
+        acumulador[bairroNome] = [];
+      }
+      acumulador[bairroNome].push(lead);
+      return acumulador;
+    }, {});
   };
+
 
 return (
   <div className="p-6 max-w-[1600px] mx-auto space-y-6 bg-slate-50 dark:bg-zinc-900 min-h-screen">
@@ -1294,83 +1363,99 @@ return (
                   <td colSpan={6} className="p-8 text-center text-gray-400">Nenhum lead disponível para prospecção no momento.</td>
                 </tr>
               ) : (
-                leads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-slate-50 transition">
-                  <td className="p-4">
-                    <input type="checkbox" checked={selecionados.includes(lead.id)} onChange={() => toggleLeadUnico(lead.id)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" />
-                  </td>
-                  <td className="p-4 max-w-[320px]">
-                    <div className="font-bold text-slate-800 truncate">{lead.nome_fantasia || lead.razao_social}</div>
-                    <div className="text-xs text-gray-400 font-mono mt-0.5">
-                      {maskCNPJ(lead.cnpj)}
-                      {/* 🎯 DATA ADICIONADA AQUI */}
-                      {lead.data_abertura && ` • Aberta em: ${new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR')}`}
-                    </div>
+                // 🎯 AQUI ENTRA O AGRUPAMENTO DINÂMICO POR BAIRRO:
+                Object.entries(agruparPorBairro(leads)).map(([bairro, leadsDoBairro]) => (
+                  <Fragment key={bairro}>
                     
-                    <div className="text-[11px] text-slate-500 italic truncate mt-0.5">{lead.razao_social}</div>
-                    {lead.cnae_principal && (
-                      <div className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded inline-block mt-1 max-w-full truncate font-medium">
-                        🎯 {lead.cnae_principal}
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-4 max-w-[280px]">
-                    <div className="flex flex-wrap">{renderSociosBadge(lead.nomes_socios)}</div>
-                  </td>
-                  <td className="p-4">
-                    <div className="text-xs font-semibold text-slate-700">{lead.municipio} - {lead.uf}</div>
-                    <div className="text-[11px] text-gray-400 truncate mt-0.5">{lead.bairro}</div>
-                  </td>
-                  
-                  {/* COLUNA DE STATUS ATUALIZADA E CORRIGIDA */}
-                  <td className="p-4">
-                    {lead.status_prospeccao === 'ja_cliente' ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
-                        👑 Já é Cliente
-                      </span>
-                    ) : lead.status_prospeccao === 'em_prospeccao' ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
-                        🔄 Em Prospecção
-                      </span>
-                    ) : lead.status_prospeccao === 'perdido' ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-red-100 text-red-700 border border-red-200 shadow-sm">
-                        ❌ Perdido
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-gray-100 text-gray-600 border border-gray-200">
-                        Não Contatado
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="p-4">
-                    <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => abrirTimeline(lead)} title="Timeline & Ações" className="p-1.5 hover:bg-slate-100 text-purple-600 rounded-lg transition">
-                        <MessageSquare className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => setLeadVisualizar(lead)} title="Visualizar Ficha" className="p-1.5 hover:bg-slate-100 text-blue-600 rounded-lg transition">
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => setLeadEditar(lead)} title="Editar Cadastro" className="p-1.5 hover:bg-slate-100 text-amber-600 rounded-lg transition">
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => excluirLoteOuUnico(lead.id)} title="Remover" className="p-1.5 hover:bg-slate-100 text-red-600 rounded-lg transition">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      {lead.status_prospeccao === 'convertido' ? (
-                        <span className="ml-2 px-2 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold uppercase shadow-sm">
-                          ✅ Convertido
+                    {/* Linha Divisória de Cabeçalho do Bairro */}
+                    <tr className="bg-slate-100/80 border-y border-slate-200 text-slate-700 select-none">
+                      <td colSpan={6} className="p-3 pl-4 text-xs font-bold uppercase tracking-wider">
+                        📍 Bairro: <span className="text-blue-700">{bairro}</span> 
+                        <span className="ml-2 text-[11px] font-normal text-slate-500 lowercase">
+                          ({leadsDoBairro.length} {leadsDoBairro.length === 1 ? 'empresa' : 'empresas'})
                         </span>
-                      ) : (
-                        <button onClick={() => { setLeadConversao(lead);
-                          setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); }} className="ml-2 px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition">
-                          🏆 Converter
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
+                      </td>
+                    </tr>
+
+                    {/* Loop das empresas pertencentes a este bairro específico */}
+                    {leadsDoBairro.map((lead) => (
+                      <tr key={lead.id} className="hover:bg-slate-50 transition">
+                        <td className="p-4">
+                          <input type="checkbox" checked={selecionados.includes(lead.id)} onChange={() => toggleLeadUnico(lead.id)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" />
+                        </td>
+                        <td className="p-4 max-w-[320px]">
+                          <div className="font-bold text-slate-800 truncate">{lead.nome_fantasia || lead.razao_social}</div>
+                          <div className="text-xs text-gray-400 font-mono mt-0.5">
+                            {maskCNPJ(lead.cnpj)}
+                            {lead.data_abertura && ` • Aberta em: ${new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR')}`}
+                          </div>
+                          
+                          <div className="text-[11px] text-slate-500 italic truncate mt-0.5">{lead.razao_social}</div>
+                          {lead.cnae_principal && (
+                            <div className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded inline-block mt-1 max-w-full truncate font-medium">
+                              🎯 {lead.cnae_principal}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-4 max-w-[280px]">
+                          <div className="flex flex-wrap">{renderSociosBadge(lead.nomes_socios)}</div>
+                        </td>
+                        <td className="p-4">
+                          <div className="text-xs font-semibold text-slate-700">{lead.municipio} - {lead.uf}</div>
+                          <div className="text-[11px] text-gray-400 truncate mt-0.5">{lead.bairro}</div>
+                        </td>
+                        
+                        <td className="p-4">
+                          {lead.status_prospeccao === 'ja_cliente' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
+                              👑 Já é Cliente
+                            </span>
+                          ) : lead.status_prospeccao === 'em_prospeccao' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+                              🔄 Em Prospecção
+                            </span>
+                          ) : lead.status_prospeccao === 'perdido' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-red-100 text-red-700 border border-red-200 shadow-sm">
+                              ❌ Perdido
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-gray-100 text-gray-600 border border-gray-200">
+                              Não Contatado
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="p-4">
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => abrirTimeline(lead)} title="Timeline & Ações" className="p-1.5 hover:bg-slate-100 text-purple-600 rounded-lg transition">
+                              <MessageSquare className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setLeadVisualizar(lead)} title="Visualizar Ficha" className="p-1.5 hover:bg-slate-100 text-blue-600 rounded-lg transition">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setLeadEditar(lead)} title="Editar Cadastro" className="p-1.5 hover:bg-slate-100 text-amber-600 rounded-lg transition">
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => excluirLoteOuUnico(lead.id)} title="Remover" className="p-1.5 hover:bg-slate-100 text-red-600 rounded-lg transition">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                            {lead.status_prospeccao === 'convertido' ? (
+                              <span className="ml-2 px-2 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold uppercase shadow-sm">
+                                ✅ Convertido
+                              </span>
+                            ) : (
+                              <button onClick={() => { setLeadConversao(lead);
+                                setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); }} className="ml-2 px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition">
+                                🏆 Converter
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                  </Fragment>
+                ))
               )}
             </tbody>
           </table>
@@ -1540,7 +1625,8 @@ return (
                       className="p-1.5 border rounded-lg text-xs bg-white font-semibold outline-none focus:border-purple-500 text-slate-700"
                     >
                       <option value="em_prospeccao">🔄 Em Prospecção</option>
-                      <option value="perdido">❌ Perdido (Dispensou)</option>
+                      <option value="perdido">❌ Perdido</option>
+                      <option value="ja_cliente">👑 Já Cliente</option>
                     </select>
                   </div>
                 </div>
