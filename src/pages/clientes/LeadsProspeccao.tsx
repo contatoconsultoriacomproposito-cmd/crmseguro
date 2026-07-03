@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   ArrowLeft, Calendar, CheckCircle2, Loader2,
-  Upload, Trash2, Eye, Edit3, Check, Plus, X, MessageSquare, Clock, Printer, Search
+  Upload, Trash2, MapPin, Edit3, Check, Plus, X, MessageSquare, Clock, Printer, Search
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../auth/AuthContext";
@@ -1203,7 +1203,8 @@ return (
                     disabled={higienizandoLote}
                     className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition disabled:opacity-50"
                   >
-                    {higienizandoLote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                    {/* Substituído Eye por MapPin */}
+                    {higienizandoLote ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                     Validar {selecionados.length} no Google
                   </button>
                 )}
@@ -1607,7 +1608,8 @@ return (
                                     disabled={leadIdEmProcessamento === lead.id}
                                     className="p-1.5 hover:bg-slate-100 text-emerald-600 rounded-lg transition disabled:opacity-50"
                                   >
-                                    {leadIdEmProcessamento === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                                    {/* Substituído Eye por MapPin */}
+                                    {leadIdEmProcessamento === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                                   </button>
                                   {/* --------------------------------------------------------------------------------- */}
 
