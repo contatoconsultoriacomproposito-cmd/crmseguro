@@ -102,7 +102,7 @@ export default function LeadsProspeccao() {
   const [leadIdEmProcessamento, setLeadIdEmProcessamento] = useState<string | null>(null);
 
   // FILTROS DE PRECISÃO DO GOOGLE
-  const [filtroGoogleStatus, setFiltroGoogleStatus] = useState("");
+  const [filtroGoogleStatus, setFiltroGoogleStatus] = useState<string[]>([]);
   const [filtroGoogleScoreMin, setFiltroGoogleScoreMin] = useState("");
 
   // Função 1: Validação Individual de um Lead no Google
@@ -385,12 +385,11 @@ export default function LeadsProspeccao() {
       if (filtroCapitalMax) query = query.lte("capital_social", Number(filtroCapitalMax));
       if (filtroDataRetornoMin) query = query.gte("data_retorno", filtroDataRetornoMin);
       if (filtroDataRetornoMax) query = query.lte("data_retorno", filtroDataRetornoMax);
-            // Filtro Google Status
-      if (filtroGoogleStatus) {
-        query = query.eq('google_status', filtroGoogleStatus);
+      // Filtro Google Status
+      if (filtroGoogleStatus && filtroGoogleStatus.length > 0) {
+        query = query.in('google_status', filtroGoogleStatus);
       }
 
-      // Filtro Google Score
       if (filtroGoogleScoreMin !== "") {
         query = query.gte('google_score', parseInt(filtroGoogleScoreMin));
       }
@@ -432,11 +431,13 @@ export default function LeadsProspeccao() {
         if (filtroCapitalMax) cnaeQuery = cnaeQuery.lte("capital_social", Number(filtroCapitalMax));
         if (filtroDataRetornoMin) cnaeQuery = cnaeQuery.gte("data_retorno", filtroDataRetornoMin);
         if (filtroDataRetornoMax) cnaeQuery = cnaeQuery.lte("data_retorno", filtroDataRetornoMax);
-        if (filtroGoogleStatus) {
-          cnaeQuery = cnaeQuery.eq('google_status', filtroGoogleStatus);
+        if (filtroGoogleStatus && filtroGoogleStatus.length > 0) {
+        cnaeQuery = cnaeQuery.in('google_status', filtroGoogleStatus);
         }
+        
         if (filtroGoogleScoreMin !== "") {
-          query = query.gte('google_score', parseInt(filtroGoogleScoreMin));
+          // 🔥 CORREÇÃO IMPORTANTE AQUI: Você tinha colocado 'query =' em vez de 'cnaeQuery ='
+          cnaeQuery = cnaeQuery.gte('google_score', parseInt(filtroGoogleScoreMin));
         }
         const { data: cnaeData } = await cnaeQuery;
 
@@ -1144,7 +1145,7 @@ export default function LeadsProspeccao() {
     setFiltroSituacaoCadastral("");
     setFiltroDataAberturaMin("");
     setFiltroDataAberturaMax("");
-    setFiltroGoogleStatus("");
+    setFiltroGoogleStatus([]);
     setFiltroGoogleScoreMin("");
 
   };
@@ -1450,21 +1451,40 @@ return (
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Agendado Para (Fim)</label>
                           <input type="date" value={filtroDataRetornoMax} onChange={(e) => setFiltroDataRetornoMax(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
                         </div>
-                        {/* Novo Filtro: Status Google */}
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Status Google</label>
-                            <select 
-                              value={filtroGoogleStatus} 
-                              onChange={(e) => setFiltroGoogleStatus(e.target.value)} 
-                              className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700 font-medium"
-                            >
-                              <option value="">Todos os Status</option>
-                              <option value="nao_verificado">⚪ Não Verificado</option>
-                              <option value="alta_precisao">{"🎯 Alta Precisão (Score > 70)"}</option>
-                              <option value="media_precisao">{"⚠️ Média Precisão (50 - 70)"}</option>
-                              <option value="baixa_precisao">❌ Baixa Precisão (&lt; 50)</option>
-                            </select>
+                        {/* Novo Filtro: Status Google com Seleção Múltipla */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1.5 uppercase">Status Google</label>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {[
+                              { id: 'nao_verificado', label: '⚪ Não Verif.' },
+                              { id: 'alta_precisao', label: '🎯 Alta Prec.' },
+                              { id: 'media_precisao', label: '⚠️ Média Prec.' },
+                              { id: 'baixa_precisao', label: '❌ Baixa Prec.' }
+                            ].map((opcao) => {
+                              const isSelected = filtroGoogleStatus.includes(opcao.id);
+                              return (
+                                <button
+                                  key={opcao.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setFiltroGoogleStatus(filtroGoogleStatus.filter(s => s !== opcao.id));
+                                    } else {
+                                      setFiltroGoogleStatus([...filtroGoogleStatus, opcao.id]);
+                                    }
+                                  }}
+                                  className={`text-[10px] px-2 py-1.5 rounded border font-bold transition-all ${
+                                    isSelected 
+                                      ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm' 
+                                      : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {opcao.label}
+                                </button>
+                              );
+                            })}
                           </div>
+                        </div>
 
                           {/* Novo Filtro: Score Mínimo */}
                           <div>
