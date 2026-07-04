@@ -31,6 +31,7 @@ import { useAuth } from "../auth/AuthContext"
 import LogoutButton from "./LogoutButton"
 import { supabase } from "../lib/supabaseClient" // Garanta que o caminho está correto
 
+
 type Props = {
   collapsed: boolean
   setCollapsed: Dispatch<SetStateAction<boolean>>
@@ -51,6 +52,7 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
     kanban: false,
     sinistros: false, 
     comissoes: false,
+    financeiro: false,
     seguradoras: false,
     agenda: false, 
   })
@@ -355,6 +357,23 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
             {!collapsed && openMenus.comissoes && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/comissoes/lista" label="Lançamentos" icon={<List size={16} />} />
+              </div>
+            )}
+          </div>
+
+          {/* GRUPO FINANCEIRO */}
+          <div className="space-y-1">
+            <MenuHeader 
+              icon={<DollarSign size={20} className="text-emerald-600" />} 
+              label="Financeiro" 
+              isOpen={openMenus.financeiro} 
+              onClick={() => toggleMenu("financeiro")}
+              collapsed={collapsed}
+            />
+            {!collapsed && openMenus.financeiro && (
+              <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
+                <SubNavItem to="/financeiro/plano-contas" label="Plano de Contas" icon={<List size={16} />} />
+                {/* Aqui você adicionará "Lançamentos" futuramente */}
               </div>
             )}
           </div>
