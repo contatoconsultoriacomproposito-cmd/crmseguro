@@ -20,7 +20,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Plus, Trash2, GripVertical, X, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient'; // Ajustado conforme sua estrutura comercial
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner'; // Importado o Toaster aqui
 
 // ================= TIPOS =================
 interface AccountNode {
@@ -273,7 +273,6 @@ export default function PlanoContas({ corretoraId = '', usuarioId = '' }: PlanoC
           }));
           setData(buildTree(mappedFlat));
         } else {
-          // Estrutura padrão inicial caso a corretora seja nova no sistema
           setData([
             { 
               id: 'd3b07384-d113-4ec8-a5f1-111111111111', 
@@ -329,6 +328,7 @@ export default function PlanoContas({ corretoraId = '', usuarioId = '' }: PlanoC
 
       if (error) throw error;
       
+      // Mensagem disparada com sucesso
       toast.success("Plano de contas salvo com sucesso!");
 
     } catch (error: any) {
@@ -470,6 +470,9 @@ export default function PlanoContas({ corretoraId = '', usuarioId = '' }: PlanoC
 
   return (
     <div className="max-w-2xl p-6 min-h-screen font-sans">
+      {/* O Toaster foi adicionado aqui para garantir que ele renderize localmente */}
+      <Toaster position="top-right" richColors />
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Plano de Contas</h2>
