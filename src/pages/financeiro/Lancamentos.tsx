@@ -43,6 +43,7 @@ type FiltroStatusParcela = 'todos' | 'vencidas' | 'a_vencer' | 'hoje';
 interface LancamentosProps {
   corretoraId?: string;
   corretorId?: string;
+  usuarioId: string | undefined;
 }
 
 export default function Lancamentos({ 
