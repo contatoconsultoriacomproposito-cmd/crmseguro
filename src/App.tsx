@@ -39,6 +39,7 @@ import KanbanPerdas from "./pages/kanban/KanbanPerdas"
 import { RelatorioSinistros } from "./pages/sinistros/SinistrosLista"
 import { ComissoesLista } from "./pages/comissoes/ComissoesLista"
 import PlanoContas from "./pages/financeiro/PlanoContas"
+import Lancamentos from "./pages/financeiro/Lancamentos"
 
 
 
@@ -157,6 +158,15 @@ export default function App() {
               path="/financeiro/plano-contas" 
               element={
                 <PlanoContas 
+                  corretoraId={userProfile?.corretora_id} 
+                  usuarioId={userProfile?.id} 
+                />
+              } 
+            />
+            <Route 
+              path="/financeiro/lancamentos" 
+              element={
+                <Lancamentos 
                   corretoraId={userProfile?.corretora_id} 
                   usuarioId={userProfile?.id} 
                 />

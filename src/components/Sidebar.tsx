@@ -23,6 +23,7 @@ import {
   Handshake,
   Settings,
   Target,
+  Receipt,
   User
 } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
@@ -373,7 +374,7 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
             {!collapsed && openMenus.financeiro && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/financeiro/plano-contas" label="Plano de Contas" icon={<List size={16} />} />
-                {/* Aqui você adicionará "Lançamentos" futuramente */}
+                <SubNavItem to="/financeiro/lancamentos" label="Lançamentos" icon={<Receipt size={16} />} />
               </div>
             )}
           </div>
