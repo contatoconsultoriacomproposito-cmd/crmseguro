@@ -78,6 +78,7 @@ export default function Lancamentos({
   const [formDesconto, setFormDesconto] = useState<number>(0);
   const [formRecorrencia, setFormRecorrencia] = useState<number>(1);
   const [formDataVencimento, setFormDataVencimento] = useState('');
+  const [configCorretora, setConfigCorretora] = useState<any | null>(null);
 
   // ================= ESTADOS DO MODAL DO PLANO DE CONTAS =================
   const [isPlanoModalOpen, setIsPlanoModalOpen] = useState(false);
@@ -142,6 +143,27 @@ export default function Lancamentos({
       carregarDadosIniciais();
     }
   }, [corretoraId]);
+
+  useEffect(() => {
+    const buscarConfigCorretora = async () => {
+        try {
+        if (!corretoraId) return; // Certifique-se de ter o ID da corretora do contexto
+        
+        const { data, error } = await supabase
+            .from('tab_corretora_config')
+            .select('*')
+            .eq('id', corretoraId)
+            .single();
+
+        if (error) throw error;
+        setConfigCorretora(data);
+        } catch (error) {
+        console.error('Erro ao buscar configurações da corretora:', error);
+        }
+    };
+
+    buscarConfigCorretora();
+    }, [corretoraId]);
 
   // ================= LÓGICA DE FILTRAGEM =================
   const lancamentosFiltrados = useMemo(() => {
@@ -436,7 +458,7 @@ export default function Lancamentos({
   const handleExportarPDF = () => {
     toast.promise(
       new Promise(resolve => setTimeout(() => {
-        gerarPDFLancamentos(lancamentosFiltrados, resumo);
+        gerarPDFLancamentos(lancamentosFiltrados, resumo,categorias,configCorretora);
         resolve(true);
       }, 200)),
       {
@@ -446,6 +468,52 @@ export default function Lancamentos({
       }
     );
   };
+
+  const handleCriarCategoriaInline = async (novaCategoria: { 
+    name: string; 
+    tipo: 'entrada' | 'saida'; 
+    parent_id: string | null; 
+    }) => {
+    try {
+        const idGerado = crypto.randomUUID();
+        
+        // 1. Descobre o depth (nível) com base no pai selecionado
+        let novoDepth = 0;
+        if (novaCategoria.parent_id) {
+        const pai = categorias.find(c => c.id === novaCategoria.parent_id);
+        if (pai) novoDepth = pai.depth + 1;
+        }
+
+        // 2. Monta o objeto exatamente no padrão da tabela 'tab_financeiro_plano_de_contas'
+        const novaRegra = {
+        id: idGerado,
+        name: novaCategoria.name,
+        tipo: novaCategoria.tipo,
+        parent_id: novaCategoria.parent_id,
+        depth: novoDepth,
+        ordem: categorias.length, // joga para o final da lista temporariamente
+        corretora_id: corretoraId, // Certifique-se de que possui essa variável de contexto escopo
+        usuario_id: corretorId      // Certifique-se de que possui essa variável de contexto escopo
+        };
+
+        // 3. Envia para o Supabase
+        const { error } = await supabase
+        .from('tab_financeiro_plano_de_contas')
+        .insert([novaRegra]);
+
+        if (error) throw error;
+
+        // 4. Atualiza o estado local de categorias para que o <select> do modal atualize na hora
+        setCategorias(prev => [...prev, novaRegra]);
+        
+        toast.success(`Categoria "${novaCategoria.name}" criada com sucesso!`);
+        return idGerado; // Retorna o ID gerado para o modal selecioná-lo automaticamente
+    } catch (error: any) {
+        console.error("Erro ao criar categoria inline:", error);
+        toast.error(`Não foi possível criar a categoria: ${error.message}`);
+        return null;
+    }
+    };
 
   return (
     <div className="max-w-6xl mx-auto p-6 font-sans bg-gray-50/50 min-h-screen">
@@ -458,12 +526,6 @@ export default function Lancamentos({
           <p className="text-sm text-gray-500">Fluxo operacional consolidado de caixas e contas conectado ao banco.</p>
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={() => setIsPlanoModalOpen(true)}
-            className="border border-gray-200 bg-white hover:bg-gray-50 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 shadow-sm transition"
-          >
-            Estruturar Categorias
-          </button>
           <button 
             onClick={handleExportarPDF} 
             className="flex items-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 shadow-sm transition"
@@ -596,6 +658,7 @@ export default function Lancamentos({
         formRecorrencia={formRecorrencia} setFormRecorrencia={setFormRecorrencia}
         formDataVencimento={formDataVencimento} setFormDataVencimento={setFormDataVencimento}
         onSalvar={handleSalvarLancamento}
+        onCriarCategoria={handleCriarCategoriaInline}
       />
 
       {/* MODAL DO PLANO DE CONTAS */}

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { X, Calendar } from 'lucide-react';
+import { X, Calendar, Plus, Check, Loader2 } from 'lucide-react';
 
 // Interface para o Plano de Contas conforme estrutura do banco
 interface CategoriaPlano {
@@ -58,11 +58,13 @@ interface ModalLancamentoProps {
   formDataVencimento: string;
   setFormDataVencimento: (v: string) => void;
   
-  // Modificado para poder enviar o array de parcelas customizadas ao pai
   onSalvar: (parcelas?: { dataVencimento: string; valor: number }[]) => void;
+  
+  // NOVA PROP: Função para salvar a nova categoria no banco e retornar o ID gerado
+  onCriarCategoria: (novaCategoria: { name: string; tipo: 'entrada' | 'saida'; parent_id: string | null }) => Promise<string | null>;
 }
 
-// Função utilitária para avançar meses preservando o dia de vencimento de forma segura
+// Função utilitária para avançar meses preservando o dia de vencimento
 const adicionarMeses = (dataStr: string, meses: number): string => {
   if (!dataStr) return '';
   const [ano, mes, dia] = dataStr.split('-').map(Number);
@@ -96,29 +98,34 @@ export default function ModalLancamento({
   setFormRecorrencia,
   formDataVencimento,
   setFormDataVencimento,
-  onSalvar
+  onSalvar,
+  onCriarCategoria
 }: ModalLancamentoProps) {
   
-  // Estado local para armazenar e editar a grade de parcelas em tempo real
+  // Estado para parcelas
   const [parcelas, setParcelas] = useState<ParcelaAjustada[]>([]);
 
-  // 1. Processamento da árvore do Plano de Contas em tempo real
+  // Estados para a criação INLINE de nova categoria
+  const [isAddingCategoria, setIsAddingCategoria] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatTipo, setNewCatTipo] = useState<'entrada' | 'saida'>(formTipo);
+  const [newCatParentId, setNewCatParentId] = useState<string>('');
+  const [isSavingCat, setIsSavingCat] = useState(false);
+
+  // 1. Processamento da árvore
   const categoriasFiltradasEDecoradas = useMemo(() => {
     if (!categorias || categorias.length === 0) return [];
-
     const doTipoAtual = categorias.filter(cat => cat.tipo === formTipo);
-
+    
     const obterCaminhoCompleto = (cat: CategoriaPlano): string => {
       const partes = [cat.name];
       let atual = cat;
-
       while (atual.parent_id) {
         const pai = categorias.find(c => c.id === atual.parent_id);
         if (!pai) break;
         partes.unshift(pai.name);
         atual = pai;
       }
-
       return partes.join(' > ');
     };
 
@@ -130,7 +137,22 @@ export default function ModalLancamento({
       .sort((a, b) => a.caminhoExibicao.localeCompare(b.caminhoExibicao));
   }, [categorias, formTipo]);
 
-  // Efeito para gerar a grade de parcelas sempre que os valores bases mudarem
+  // EFEITO INTELIGENTE: Sincroniza o tipo global (Entrada/Saída) caso o usuário selecione uma categoria
+  useEffect(() => {
+    if (formCategoria && categorias.length > 0) {
+      const categoriaSelecionada = categorias.find(cat => cat.id === formCategoria);
+      if (categoriaSelecionada && categoriaSelecionada.tipo !== formTipo) {
+        setFormTipo(categoriaSelecionada.tipo);
+      }
+    }
+  }, [formCategoria, categorias, formTipo, setFormTipo]);
+
+  // EFEITO: Mantém o tipo da nova categoria sincronizado com a aba ativa
+  useEffect(() => {
+    if (isAddingCategoria) setNewCatTipo(formTipo);
+  }, [formTipo, isAddingCategoria]);
+
+  // EFEITO: Grade de parcelas
   useEffect(() => {
     if (isOpen && modo === 'criar' && formRecorrencia > 1 && formDataVencimento) {
       const novasParcelas: ParcelaAjustada[] = [];
@@ -149,31 +171,51 @@ export default function ModalLancamento({
 
   if (!isOpen) return null;
 
-  // Função para atualizar uma propriedade específica de uma parcela na grade
   const handleAtualizarParcela = (numero: number, campo: 'dataVencimento' | 'valor', valor: any) => {
     setParcelas(prev => prev.map(p => {
-      if (p.numero === numero) {
-        return { ...p, [campo]: valor };
-      }
+      if (p.numero === numero) return { ...p, [campo]: valor };
       return p;
     }));
   };
 
-  // Cálculo rápido do valor líquido apenas para exibição em tempo real no rodapé do modal
   const valorLiquido = (formValor + formJuros) - formDesconto;
 
   const handleConfirmarEnvio = () => {
     if (formRecorrencia > 1 && parcelas.length > 0) {
-      // Passa a lista customizada mapeada para o formato simplificado esperado pelo backend
       onSalvar(parcelas.map(p => ({ dataVencimento: p.dataVencimento, valor: p.valor })));
     } else {
       onSalvar();
     }
   };
 
+  const handleSalvarNovaCategoria = async () => {
+    if (!newCatName.trim()) return;
+    setIsSavingCat(true);
+    
+    try {
+      const newId = await onCriarCategoria({
+        name: newCatName.trim(),
+        tipo: newCatTipo,
+        parent_id: newCatParentId || null
+      });
+
+      if (newId) {
+        setFormTipo(newCatTipo);
+        setFormCategoria(newId);
+        setIsAddingCategoria(false);
+        setNewCatName('');
+        setNewCatParentId('');
+      }
+    } catch (error) {
+      console.error("Erro ao criar categoria inline:", error);
+    } finally {
+      setIsSavingCat(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 border animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-6 border animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
         
         {/* Cabeçalho */}
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
@@ -187,6 +229,7 @@ export default function ModalLancamento({
 
         {/* Área de conteúdo rolável */}
         <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 custom-scrollbar">
+          
           {/* Seletor Entrada / Saída */}
           <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
             <button 
@@ -211,21 +254,81 @@ export default function ModalLancamento({
             </button>
           </div>
 
-          {/* Categoria do Plano de Contas */}
+          {/* Categoria do Plano de Contas com Botão Adicionar */}
           <div>
             <label className="text-xs font-bold text-gray-500 block mb-1">Categoria do Plano de Contas</label>
-            <select 
-              value={formCategoria}
-              onChange={(e) => setFormCategoria(e.target.value)}
-              className="w-full border border-gray-200 bg-gray-50 px-3 py-2.5 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition cursor-pointer"
-            >
-              <option value="">Selecione uma categoria...</option>
-              {categoriasFiltradasEDecoradas.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.caminhoExibicao}
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select 
+                value={formCategoria}
+                onChange={(e) => setFormCategoria(e.target.value)}
+                disabled={isAddingCategoria}
+                className="flex-1 border border-gray-200 bg-gray-50 px-3 py-2.5 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition cursor-pointer disabled:opacity-60"
+              >
+                <option value="">Selecione uma categoria...</option>
+                {categoriasFiltradasEDecoradas.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {formTipo === 'entrada' ? '🟩 ' : '🟥 '} {cat.caminhoExibicao}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setIsAddingCategoria(!isAddingCategoria)}
+                className={`p-2.5 rounded-xl border transition flex items-center justify-center ${isAddingCategoria ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-blue-600'}`}
+                title="Criar nova categoria"
+              >
+                {isAddingCategoria ? <X size={18} /> : <Plus size={18} />}
+              </button>
+            </div>
+
+            {/* FORMULÁRIO INLINE: Criar Nova Categoria */}
+            {isAddingCategoria && (
+              <div className="mt-3 p-3 bg-blue-50/50 border border-blue-100 rounded-xl animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <Plus size={14} className="text-blue-600" />
+                  <span className="text-xs font-bold text-blue-800">Inclusão Rápida de Categoria</span>
+                </div>
+                
+                <div className="flex flex-col gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="Nome da nova categoria..."
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    className="w-full border border-blue-200 bg-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                  />
+                  
+                  <select 
+                    value={newCatParentId}
+                    onChange={(e) => setNewCatParentId(e.target.value)}
+                    className="w-full border border-blue-200 bg-white px-3 py-2 rounded-lg text-xs focus:outline-none focus:border-blue-500 text-gray-600"
+                  >
+                    <option value="">Raiz (Nível Principal)</option>
+                    {categoriasFiltradasEDecoradas.map((cat) => (
+                      <option key={cat.id} value={cat.id}>Vincular em: {cat.caminhoExibicao}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex justify-end gap-2 mt-1">
+                    <button 
+                      onClick={() => setIsAddingCategoria(false)}
+                      disabled={isSavingCat}
+                      className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      onClick={handleSalvarNovaCategoria}
+                      disabled={!newCatName.trim() || isSavingCat}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 transition"
+                    >
+                      {isSavingCat ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                      Salvar Categoria
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Descrição */}

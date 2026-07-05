@@ -24,6 +24,7 @@ import {
   Settings,
   Target,
   Receipt,
+  HandCoins,
   User
 } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
@@ -349,7 +350,8 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
           {/* GRUPO COMISSÕES */}
           <div className="space-y-1">
             <MenuHeader 
-              icon={<DollarSign size={20} className="text-emerald-500" />} 
+              // Trocado de DollarSign para HandCoins (representa o recebimento de comissões)
+              icon={<HandCoins size={20} className="text-amber-500" />} // Usei um tom Amber/Laranja para diferenciar o visual do verde
               label="Comissões" 
               isOpen={openMenus.comissoes} 
               onClick={() => toggleMenu("comissoes")}
