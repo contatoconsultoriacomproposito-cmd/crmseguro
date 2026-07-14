@@ -83,7 +83,7 @@ export default function RegistroModal({ onClose }: any) {
         uf: (data.uf || "").toUpperCase(),
         complemento: (data.complemento || "").toUpperCase(),
         ddd_telefone_1: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : "",
-        email_corporativo: data.email?.toLowerCase() || prev.email_corporativo
+        email_corporativo: (data as any).email?.toLowerCase() || prev.email_corporativo
       }));
     } catch { alert("Erro ao buscar CNPJ."); }
     finally { setLoadingCNPJ(false); }
