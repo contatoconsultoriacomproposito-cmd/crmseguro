@@ -41,11 +41,16 @@ export default function ClientesCadastro() {
     natureza_juridica: "", opcao_pelo_mei: false, opcao_pelo_simples: false,
     ddd_telefone_1: "", descricao_identificador_matriz_filial: "",
     cep: "", uf: "", municipio: "", bairro: "", logradouro: "", numero: "", complemento: "",
-    nome: "", cpf: "", rg: "", data_nascimento: "", sexo:"",
+    nome: "", cpf: "", rg: "", data_nascimento: "", sexo:"",naturalidade: "",ocupacao: "",data_emissao: "",
     cep_pf: "", uf_pf: "", municipio_pf: "", bairro_pf: "", logradouro_pf: "", numero_pf: "", complemento_pf: "",
     email: "", telefone_whats: "", telefone_adicional: "", 
     origem_cliente: "Google", fase_kanban: "lead", status_kanban: "novo", corretor_id: "",
-    socios: [] as Array<{ nome: string; cpf_cnpj: string; telefone: string }> // Novo campo adicionado
+    socios: [] as Array<{ nome: string; cpf_cnpj: string; telefone: string; faixa_etaria: string }>,
+    
+    // NOVOS CAMPOS ADICIONADOS PARA BATER COM O BANCO:
+    cnae_principal: "",
+    data_abertura: "",
+    situacao_cadastral: ""
   });
 
 
@@ -107,14 +112,68 @@ useEffect(() => {
           if (error) throw error;
 
           if (data) {
-            setForm({
-              ...data,
-              data_nascimento: data.data_nascimento || "",
+            // Criamos um objeto com todos os campos normalizados
+            // Usamos o operador ?? "" para garantir que, se for null, vire string vazia
+            const formData = {
+              // Campos de Empresa
+              cnpj: data.cnpj ?? "",
+              razao_social: data.razao_social ?? "",
+              nome_fantasia: data.nome_fantasia ?? "",
+              porte: data.porte ?? "",
+              natureza_juridica: data.natureza_juridica ?? "",
+              opcao_pelo_mei: data.opcao_pelo_mei ?? false,
+              opcao_pelo_simples: data.opcao_pelo_simples ?? false,
+              cnae_principal: data.cnae_principal ?? "",
+              data_abertura: data.data_abertura ?? "",
+              situacao_cadastral: data.situacao_cadastral ?? "",
               capital_social: data.capital_social 
                 ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(data.capital_social)
                 : "",
-              socios: data.socios || [] // Garante o carregamento dos sócios salvos
-            });
+
+              // Campos de Pessoa Física
+              nome: data.nome ?? "",
+              cpf: data.cpf ?? "",
+              rg: data.rg ?? "",
+              data_nascimento: data.data_nascimento ?? "",
+              sexo: data.sexo ?? "",
+              naturalidade: data.naturalidade ?? "",
+              ocupacao: data.ocupacao ?? "",
+              data_emissao: data.data_emissao_doc ?? "", // Mapeamento correto do DB para o Estado
+              
+              // Contatos e Origem
+              ddd_telefone_1: data.ddd_telefone_1 ?? "",
+              email: data.email ?? "",
+              telefone_whats: data.telefone_whats ?? "",
+              telefone_adicional: data.telefone_adicional ?? "",
+              origem_cliente: data.origem_cliente ?? "Google",
+              
+              // Endereços
+              cep: data.cep ?? "",
+              uf: data.uf ?? "",
+              municipio: data.municipio ?? "",
+              bairro: data.bairro ?? "",
+              logradouro: data.logradouro ?? "",
+              numero: data.numero ?? "",
+              complemento: data.complemento ?? "",
+              cep_pf: data.cep_pf ?? "",
+              uf_pf: data.uf_pf ?? "",
+              municipio_pf: data.municipio_pf ?? "",
+              bairro_pf: data.bairro_pf ?? "",
+              logradouro_pf: data.logradouro_pf ?? "",
+              numero_pf: data.numero_pf ?? "",
+              complemento_pf: data.complemento_pf ?? "",
+              
+              // Kanban e Sistema
+              descricao_identificador_matriz_filial: data.descricao_identificador_matriz_filial ?? "",
+              fase_kanban: data.fase_kanban ?? "lead",
+              status_kanban: data.status_kanban ?? "novo",
+              corretor_id: data.corretor_id ?? "",
+              
+              // JSONB
+              socios: data.socios || []
+            };
+
+            setForm(formData);
             setTipoCliente(data.tipo_cliente as TipoCliente);
             
             // Verifica se os endereços são iguais para marcar o checkbox
@@ -214,11 +273,17 @@ useEffect(() => {
         bairro: (data.bairro || prev.bairro).toUpperCase(), 
         numero: data.numero || prev.numero,
         complemento: (data.complemento || prev.complemento).toUpperCase(),
-        socios: (data.qsa || []).map((s: any) => ({
-          nome: (s.nome_socio || "").toUpperCase(),
-          cpf_cnpj: s.cnpj_cpf_do_socio || "", // Vem mascarado da receita ex: ***123456**
-          telefone: "" // Campo vazio para preenchimento manual posterior
-        }))
+        socios: (data.socios || []).map((s) => ({
+          nome: (s.nome || "").toUpperCase(),
+          cpf_cnpj: s.cpf_cnpj || "",
+          telefone: "",
+          faixa_etaria: s.faixa_etaria || "Não informada"
+        })),
+        
+        // ADICIONADO AQUI:
+        cnae_principal: (data.cnae_principal || "").toUpperCase(),
+        data_abertura: data.data_abertura || "",
+        situacao_cadastral: (data.situacao_cadastral || "").toUpperCase()
       }));
     } catch (error) {
       // Em vez de apenas um alert genérico, avisamos e destravamos os campos!
@@ -310,45 +375,53 @@ useEffect(() => {
     const statusFinal = isEditing ? form.status_kanban : "novo";
 
     const payload = {
-        tipo_cliente: tipoCliente,
-        corretora_id: finalCorretoraId, // Agora herda corretamente!
-        corretor_id: finalCorretorId,
-        cnpj: form.cnpj,
-        razao_social: toUpper(form.razao_social),
-        nome_fantasia: toUpper(form.nome_fantasia),
-        porte: toUpper(form.porte),
-        capital_social: capitalNumerico,
-        natureza_juridica: toUpper(form.natureza_juridica),
-        opcao_pelo_mei: form.opcao_pelo_mei,
-        opcao_pelo_simples: form.opcao_pelo_simples,
-        ddd_telefone_1: form.ddd_telefone_1,
-        descricao_identificador_matriz_filial: toUpper(form.descricao_identificador_matriz_filial),
-        nome: toUpper(form.nome),
-        cpf: form.cpf,
-        rg: form.rg,
-        data_nascimento: form.data_nascimento === "" ? null : form.data_nascimento,
-        sexo: form.sexo,
-        cep: form.cep,
-        uf: toUpper(form.uf),
-        municipio: toUpper(form.municipio),
-        bairro: toUpper(form.bairro),
-        logradouro: toUpper(form.logradouro),
-        numero: form.numero,
-        complemento: toUpper(form.complemento),
-        cep_pf: form.cep_pf,
-        uf_pf: toUpper(form.uf_pf),
-        municipio_pf: toUpper(form.municipio_pf),
-        bairro_pf: toUpper(form.bairro_pf),
-        logradouro_pf: toUpper(form.logradouro_pf),
-        numero_pf: form.numero_pf,
-        complemento_pf: toUpper(form.complemento_pf),
-        email: form.email,
-        telefone_whats: form.telefone_whats,
-        telefone_adicional: form.telefone_adicional,
-        origem_cliente: toUpper(form.origem_cliente),
-        fase_kanban: form.fase_kanban.toLowerCase(),
-        status_kanban: statusFinal,
-        socios: form.socios // Envia o array diretamente (o Supabase lida nativamente com JSONB)
+      tipo_cliente: tipoCliente,
+      corretora_id: finalCorretoraId,
+      corretor_id: finalCorretorId,
+      cnpj: form.cnpj,
+      razao_social: toUpper(form.razao_social),
+      nome_fantasia: toUpper(form.nome_fantasia),
+      porte: toUpper(form.porte),
+      capital_social: capitalNumerico,
+      natureza_juridica: toUpper(form.natureza_juridica),
+      opcao_pelo_mei: form.opcao_pelo_mei,
+      opcao_pelo_simples: form.opcao_pelo_simples,
+      ddd_telefone_1: form.ddd_telefone_1,
+      descricao_identificador_matriz_filial: toUpper(form.descricao_identificador_matriz_filial),
+      nome: toUpper(form.nome),
+      cpf: form.cpf,
+      rg: form.rg,
+      data_nascimento: form.data_nascimento === "" ? null : form.data_nascimento,
+      data_emissao_doc: form.data_emissao === "" ? null : form.data_emissao,
+      naturalidade: toUpper(form.naturalidade),
+      ocupacao: toUpper(form.ocupacao),
+      sexo: form.sexo,
+      cep: form.cep,
+      uf: toUpper(form.uf),
+      municipio: toUpper(form.municipio),
+      bairro: toUpper(form.bairro),
+      logradouro: toUpper(form.logradouro),
+      numero: form.numero,
+      complemento: toUpper(form.complemento),
+      cep_pf: form.cep_pf,
+      uf_pf: toUpper(form.uf_pf),
+      municipio_pf: toUpper(form.municipio_pf),
+      bairro_pf: toUpper(form.bairro_pf),
+      logradouro_pf: toUpper(form.logradouro_pf),
+      numero_pf: form.numero_pf,
+      complemento_pf: toUpper(form.complemento_pf),
+      email: form.email,
+      telefone_whats: form.telefone_whats,
+      telefone_adicional: form.telefone_adicional,
+      origem_cliente: toUpper(form.origem_cliente),
+      fase_kanban: form.fase_kanban.toLowerCase(),
+      status_kanban: statusFinal,
+      socios: form.socios,
+      
+      // NOVOS CAMPOS MAPEADOS DIRETAMENTE PARA O BANCO:
+      cnae_principal: toUpper(form.cnae_principal),
+      data_abertura: form.data_abertura === "" ? null : form.data_abertura,
+      situacao_cadastral: toUpper(form.situacao_cadastral)
     };
 
     try {
@@ -465,6 +538,35 @@ useEffect(() => {
                     className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
                   />
                 </div>
+
+                {/* NOVOS CAMPOS EMPRESARIAIS */}
+                <div className="md:col-span-4">
+                  <Input label="CNAE Principal" 
+                  name="cnae_principal" 
+                  value={form.cnae_principal} 
+                  onChange={handleChange} 
+                  readOnly={!isEditing && !isPreenchimentoManual}
+                  className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                   />
+                </div>
+                <div className="md:col-span-2">
+                  <Input label="Data de Abertura" 
+                  name="data_abertura" type="date" 
+                  value={form.data_abertura} 
+                  onChange={handleChange} 
+                  readOnly={!isEditing && !isPreenchimentoManual} 
+                  className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                  />
+                </div>
+                <div className="md:col-span-6">
+                  <Input label="Situação Cadastral" 
+                  name="situacao_cadastral" 
+                  value={form.situacao_cadastral} 
+                  onChange={handleChange} 
+                  readOnly={!isEditing && !isPreenchimentoManual}
+                  className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
+                   />
+                </div>
                 
                 {/* Natureza Jurídica e Porte liberados sob demanda */}
                 <div className="md:col-span-4">
@@ -534,8 +636,8 @@ useEffect(() => {
               </div>
             ) : (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-              {/* PRIMEIRA LINHA: Nome (2/4), CPF (1/4), RG (1/4) */}
-              <div className="md:col-span-2">
+            {/* PRIMEIRA LINHA: Nome, CPF, RG, Data de Emissão */}
+              <div className="md:col-span-1">
                 <Input label="Nome Completo" name="nome" value={form.nome} onChange={handleChange} />
               </div>
               
@@ -556,7 +658,18 @@ useEffect(() => {
                 <Input label="RG" name="rg" value={form.rg} onChange={handleChange} />
               </div>
 
-              {/* SEGUNDA LINHA: Data de Nascimento (1/4), Sexo (1/4) */}
+              <div className="md:col-span-1">
+                <Input 
+                  label="Data de Emissão" 
+                  name="data_emissao" 
+                  type="date" 
+                  value={form.data_emissao} 
+                  onChange={handleChange} 
+                  icon={<Calendar size={14}/>} 
+                />
+              </div>
+
+              {/* SEGUNDA LINHA: Data de Nascimento, Sexo, Naturalidade, Ocupação */}
               <div className="md:col-span-1">
                 <Input 
                   label="Data de Nascimento" 
@@ -583,10 +696,16 @@ useEffect(() => {
                   <option value="Prefere não responder">Prefere não responder</option>
                 </select>
               </div>
-              
-              {/* As outras 2 colunas da segunda linha ficam vazias por padrão */}
+
+              <div className="md:col-span-1">
+                <Input label="Naturalidade" name="naturalidade" value={form.naturalidade} onChange={handleChange} />
+              </div>
+
+              <div className="md:col-span-1">
+                <Input label="Ocupação" name="ocupacao" value={form.ocupacao} onChange={handleChange} />
+              </div>
             </div>
-          )}
+            )}
           </Section>
 
           <Section icon={<MapPin className="text-orange-500" />} title={tipoCliente === "PJ" ? "Endereço da Empresa" : "Endereço Residencial"}>
@@ -610,6 +729,7 @@ useEffect(() => {
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-zinc-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
                       <th className="pb-3 pl-1">Nome do Sócio</th>
+                      <th className="pb-3 w-40">Faixa Etária</th>
                       <th className="pb-3 w-48">CPF / CNPJ</th>
                       <th className="pb-3 w-48">Telefone de Contato</th>
                     </tr>
@@ -619,6 +739,9 @@ useEffect(() => {
                       <tr key={index} className="group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10">
                         <td className="py-3.5 pr-4 font-medium text-slate-700 dark:text-zinc-300 pl-1 uppercase">
                           {socio.nome}
+                        </td>
+                        <td className="py-3.5 pr-4 text-xs text-slate-500 dark:text-zinc-400 italic">
+                          {socio.faixa_etaria}
                         </td>
                         <td className="py-2 pr-4">
                           <input
@@ -651,8 +774,9 @@ useEffect(() => {
               <div className="space-y-6">
                 {/* LINHA 1 E 2: DADOS PESSOAIS */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                  {/* Primeira Linha */}
-                  <div className="md:col-span-2">
+  
+                  {/* LINHA 1: Nome, CPF, RG, Data de Emissão */}
+                  <div className="md:col-span-1">
                     <Input label="Nome Completo" name="nome" value={form.nome} onChange={handleChange} />
                   </div>
                   <div className="md:col-span-1">
@@ -670,8 +794,18 @@ useEffect(() => {
                   <div className="md:col-span-1">
                     <Input label="RG" name="rg" value={form.rg} onChange={handleChange} />
                   </div>
+                  <div className="md:col-span-1">
+                    <Input 
+                      label="Data de Emissão" 
+                      name="data_emissao" 
+                      type="date" 
+                      value={form.data_emissao} 
+                      onChange={handleChange} 
+                      icon={<Calendar size={14}/>} 
+                    />
+                  </div>
 
-                  {/* Segunda Linha */}
+                  {/* LINHA 2: Data de Nascimento, Sexo, Naturalidade, Ocupação */}
                   <div className="md:col-span-1">
                     <Input 
                       label="Data de Nascimento" 
@@ -697,6 +831,13 @@ useEffect(() => {
                       <option value="Prefere não responder">Prefere não responder</option>
                     </select>
                   </div>
+                  <div className="md:col-span-1">
+                    <Input label="Naturalidade" name="naturalidade" value={form.naturalidade} onChange={handleChange} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Input label="Ocupação" name="ocupacao" value={form.ocupacao} onChange={handleChange} />
+                  </div>
+
                 </div>
 
                 {/* DIVISOR E LOGICA DE ENDEREÇO */}
