@@ -124,7 +124,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       // Query Agenda de Clientes (tab_clientes_agenda)
       let queryAgenda = supabase
         .from('tab_clientes_agenda')
-        .select('id, nome_cliente, data_retorno, horario_retorno, tel_cliente, email_cliente')
+        .select('id, nome_cliente, data_retorno, horario_retorno, tel_cliente, email_cliente, breve_descricao')
         .lte('data_retorno', hojeLocalStr)
         .eq('corretora_id', corretoraDonaId);
 
@@ -252,14 +252,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // Processar Agenda (tab_clientes_agenda)
       resAgenda.data?.forEach((item: any) => {
-        const subtituloContato = item.tel_cliente || item.email_cliente || 'Retorno de agenda';
+        // Dá prioridade para a breve descrição no subtítulo; se vazia, usa telefone/email
+        const subtituloNotificacao = item.breve_descricao || item.tel_cliente || item.email_cliente || 'Retorno de agenda';
 
         listaGeral.push({
           id: `ag-${item.id}`,
           tipo: 'AGENDA',
           prioridade: 'NORMAL',
           titulo: `AGENDA: ${item.nome_cliente}`,
-          subtitulo: subtituloContato,
+          subtitulo: subtituloNotificacao,
           data: item.data_retorno,
           horario: item.horario_retorno,
           atrasado: item.data_retorno < hojeLocalStr,

@@ -25,6 +25,8 @@ interface EventoAgenda {
     contatoFrio?: {
       telefone: string;
       email: string;
+      breve_descricao?: string;
+      
     };
   };
 }
@@ -48,10 +50,16 @@ export default function AgendaCorretor() {
     nome_cliente: '',
     tel_cliente: '',
     email_cliente: '',
+    breve_descricao: '',
     data_retorno: new Date().toISOString().split('T')[0],
     horario_retorno: '09:00'
   });
-  const [contatoFrioDetalhe, setContatoFrioDetalhe] = useState<any>(null);
+  const [contatoFrioDetalhe, setContatoFrioDetalhe] = useState<{
+    nome: string;
+    telefone: string;
+    email: string;
+    breve_descricao?: string;
+  } | null>(null);
 
   const fetchCompromissos = useCallback(async () => {
     try {
@@ -176,7 +184,7 @@ export default function AgendaCorretor() {
             tipo: 'FRIO', 
             fase: 'Contato Inicial', 
             origem: 'AGENDA_FRIA',
-            contatoFrio: { telefone: frio.tel_cliente, email: frio.email_cliente }
+            contatoFrio: { telefone: frio.tel_cliente, email: frio.email_cliente, breve_descricao: frio.breve_descricao }
           }
         });
       });
@@ -329,6 +337,7 @@ export default function AgendaCorretor() {
           nome_cliente: novoAgendamento.nome_cliente,
           tel_cliente: novoAgendamento.tel_cliente,
           email_cliente: novoAgendamento.email_cliente,
+          breve_descricao: novoAgendamento.breve_descricao || null,
           data_retorno: novoAgendamento.data_retorno,
           horario_retorno: novoAgendamento.horario_retorno
         });
@@ -341,6 +350,7 @@ export default function AgendaCorretor() {
         nome_cliente: '',
         tel_cliente: '',
         email_cliente: '',
+        breve_descricao: '',
         data_retorno: new Date().toISOString().split('T')[0],
         horario_retorno: '09:00'
       });
@@ -625,6 +635,20 @@ export default function AgendaCorretor() {
                 />
               </div>
 
+              {/* 🔥 NOVO CAMPO: BREVE DESCRIÇÃO */}
+              <div>
+                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">
+                  Breve Descrição / Observações
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Ex: Cliente busca seguro auto para SUV 2024..."
+                  value={novoAgendamento.breve_descricao}
+                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, breve_descricao: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white resize-none"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">
@@ -688,6 +712,13 @@ export default function AgendaCorretor() {
               <p><strong className="text-zinc-900 dark:text-white">Nome:</strong> {contatoFrioDetalhe.nome}</p>
               <p><strong className="text-zinc-900 dark:text-white">Telefone:</strong> {contatoFrioDetalhe.telefone || 'Não informado'}</p>
               <p><strong className="text-zinc-900 dark:text-white">E-mail:</strong> {contatoFrioDetalhe.email || 'Não informado'}</p>
+              {/* 🔥 EXIBIÇÃO DA BREVE DESCRIÇÃO */}
+              <div className="mt-1 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <strong className="text-zinc-900 dark:text-white block mb-1">Descrição / Observações:</strong>
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800/50 p-3 rounded-xl whitespace-pre-wrap">
+                  {contatoFrioDetalhe.breve_descricao || 'Nenhuma observação informada.'}
+                </p>
+              </div>
             </div>
             <div className="mt-6 flex justify-end">
               <button
