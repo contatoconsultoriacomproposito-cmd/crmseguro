@@ -9,7 +9,7 @@ import ModalContato from '../pages/agenda/modalcontatos';
 
 export interface Notificacao {
   id: string;
-  tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO' | 'RENOVACAO' | 'ANIVERSARIO' | 'PROSPECCAO';
+  tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO' | 'RENOVACAO' | 'ANIVERSARIO' | 'PROSPECCAO' | 'AGENDA';
   prioridade: 'NORMAL' | 'ALTA' | 'CRITICA';
   titulo: string;
   subtitulo?: string;
@@ -40,11 +40,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     try {
       // Força a captura da data baseando-se estritamente no Horário de Brasília
       const dataBrasilia = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-      
       const [diaBr, mesBr, anoBr] = dataBrasilia.split('/');
       
       const hojeLocalStr = `${anoBr}-${mesBr}-${diaBr}`; // Formato YYYY-MM-DD
-      const mesDiaHoje = `${mesBr}-${diaBr}`;         // Formato MM-DD
+      const mesDiaHoje = `${mesBr}-${diaBr}`;          // Formato MM-DD
       
       // Inteligência de Antecedência: Calcula a data limite para alertas de renovação (30 dias no futuro)
       const dataFutura = new Date();
@@ -83,7 +82,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryClientes = queryClientes.eq('corretor_id', user.id);
 
-      // Query Renovações (Prioridade: CRITICA - Mapeamento de 3 Níveis Ajustado para o PostgREST)
+      // Query Renovações (Prioridade: CRITICA)
       let queryRenovacoes = supabase
         .from('tab_proposta_itens')
         .select(`
@@ -106,7 +105,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         .eq('status_renovacao', 'A RENOVAR')
         .lte('data_renovacao', dataLimiteRenovacaoStr);
 
-      // Aplicação segura dos filtros de hierarquia para evitar erros de JOIN no Supabase
       if (isAdmin) {
         queryRenovacoes = queryRenovacoes.eq('tab_proposta_opcoes.tab_propostas.corretora_id', corretoraDonaId);
       } else {
@@ -123,12 +121,22 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryFrios = queryFrios.eq('corretor_id', user.id);
 
+      // Query Agenda de Clientes (tab_clientes_agenda)
+      let queryAgenda = supabase
+        .from('tab_clientes_agenda')
+        .select('id, nome_cliente, data_retorno, horario_retorno, tel_cliente, email_cliente')
+        .lte('data_retorno', hojeLocalStr)
+        .eq('corretora_id', corretoraDonaId);
+
+      if (!isAdmin) queryAgenda = queryAgenda.eq('corretor_id', user.id);
+
       // 🔥 DISPARO SIMULTÂNEO
-      const [resIndicacoes, resClientes, resRenovacoes, resFrios] = await Promise.all([
+      const [resIndicacoes, resClientes, resRenovacoes, resFrios, resAgenda] = await Promise.all([
         queryInd,
         queryClientes,
         queryRenovacoes,
-        queryFrios
+        queryFrios,
+        queryAgenda
       ]);
 
       // --- PROCESSAMENTO DOS RESULTADOS ---
@@ -152,7 +160,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       resClientes.data?.forEach(c => {
         const nomeExibicao = c.nome || 'Cliente sem nome';
         
-        // A) Retorno comercial (NORMAL)
         if (c.data_retorno && c.data_retorno <= hojeLocalStr) {
           listaGeral.push({
             id: `com-${c.id}`,
@@ -166,7 +173,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           });
         }
         
-        // B) Retorno de sinistro (ALTA)
         if (c.data_retorno_sinistro && c.data_retorno_sinistro <= hojeLocalStr) {
           listaGeral.push({
             id: `sin-${c.id}`,
@@ -180,7 +186,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           });
         }
 
-        // C) Aniversariantes (NORMAL)
         if (c.data_nascimento) {
           const partes = c.data_nascimento.split('-');
           if (partes.length === 3 && `${partes[1]}-${partes[2]}` === mesDiaHoje) {
@@ -200,7 +205,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // Processar Renovações (CRÍTICA)
       resRenovacoes.data?.forEach((ren: any) => {
-        // Desestruturação segura considerando as estruturas de array trazidas pelo Supabase
         const opcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
         const proposta = opcao?.tab_propostas;
         const cliente = Array.isArray(proposta?.tab_clientes) ? proposta.tab_clientes[0] : proposta?.tab_clientes;
@@ -246,6 +250,23 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
+      // Processar Agenda (tab_clientes_agenda)
+      resAgenda.data?.forEach((item: any) => {
+        const subtituloContato = item.tel_cliente || item.email_cliente || 'Retorno de agenda';
+
+        listaGeral.push({
+          id: `ag-${item.id}`,
+          tipo: 'AGENDA',
+          prioridade: 'NORMAL',
+          titulo: `AGENDA: ${item.nome_cliente}`,
+          subtitulo: subtituloContato,
+          data: item.data_retorno,
+          horario: item.horario_retorno,
+          atrasado: item.data_retorno < hojeLocalStr,
+          ref_id: item.id
+        });
+      });
+
       // Ordenação base por data cronológica
       setNotificacoes(listaGeral.sort((a, b) => (a.data || '').localeCompare(b.data || '')));
       
@@ -285,6 +306,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       window.location.href = `/clientes/leads?leadId=${n.ref_id}`;
       return;
     }
+
+    if (n.tipo === 'AGENDA') {
+      window.location.href = `/agenda?id=${n.ref_id}`;
+      return;
+    }
   };
 
   const markAsReadByIndicacao = async (indicacaoId: string) => {
@@ -300,6 +326,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_proposta_itens' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_frios' }, () => carregarNotificacoes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_agenda' }, () => carregarNotificacoes())
       .subscribe();
 
     carregarNotificacoes();
