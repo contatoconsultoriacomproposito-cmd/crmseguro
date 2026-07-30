@@ -87,6 +87,13 @@ export default function LeadsProspeccao() {
   const [filtroDataAberturaMin, setFiltroDataAberturaMin] = useState("");
   const [filtroDataAberturaMax, setFiltroDataAberturaMax] = useState("");
 
+  // 🎯 NOVOS ESTADOS DOS FILTROS ETÁRIOS
+  const [todasFaixasEtarias, setTodasFaixasEtarias] = useState<any[]>([]);
+  const [filtroFaixasSelecionadas, setFiltroFaixasSelecionadas] = useState<string[]>([]);
+  const [pesquisaFaixaEtaria, setPesquisaFaixaEtaria] = useState("");
+  const [dropdownFaixaAberto, setDropdownFaixaAberto] = useState(false);
+  
+
   // Estados dos Modais Modulares
   const [leadVisualizar, setLeadVisualizar] = useState<any>(null);
   const [leadEditar, setLeadEditar] = useState<any>(null);
@@ -295,7 +302,8 @@ export default function LeadsProspeccao() {
       filtroCnaesSelecionados, filtroStatus, filtroPorte, filtroMei, 
       filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, 
       filtroDataRetornoMin, filtroDataRetornoMax, filtroCep, 
-      filtroSituacaoCadastral, filtroDataAberturaMin, filtroDataAberturaMax,filtroGoogleStatus,filtroGoogleScoreMin]);
+      filtroSituacaoCadastral, filtroDataAberturaMin, filtroDataAberturaMax,
+      filtroGoogleStatus,filtroGoogleScoreMin,filtroFaixasSelecionadas]);
 
   // useEffect Definitivo: Abre o modal por ID local ou buscando diretamente no Supabase
   useEffect(() => {
@@ -341,134 +349,154 @@ export default function LeadsProspeccao() {
   // Leitura de Dados Básica e Filtros Inteligentes com Paginação Profissional
 
   async function buscarLeadsFrios() {
-    if (!perfilUsuario) return;
-    setLoading(true);
-    try {
-      const de = (paginaAtual - 1) * itensPorPagina;
-      const ate = de + itensPorPagina - 1;
+  if (!perfilUsuario) return;
+  setLoading(true);
 
-      let query = supabase
+  try {
+    const de = (paginaAtual - 1) * itensPorPagina;
+    const ate = de + itensPorPagina - 1;
+
+    // 1. QUERY PRINCIPAL UNIFICADA (Paginação + Dados)
+    let query = supabase
+      .from("tab_clientes_frios")
+      .select("*", { count: "exact" })
+      .eq("corretora_id", perfilUsuario.corretora_id);
+
+    // Tratamento de Pesquisa Geral
+    const termoGeral = pesquisaGeralDebounced?.trim();
+    if (termoGeral) {
+      query = query.or(
+        `razao_social.ilike.%${termoGeral}%,nome_fantasia.ilike.%${termoGeral}%,cnpj.ilike.%${termoGeral}%,nomes_socios.ilike.%${termoGeral}%`
+      );
+    }
+
+    // Status de Prospecção
+    if (filtroStatus) {
+      query = query.eq("status_prospeccao", filtroStatus);
+    } else if (!termoGeral) {
+      query = query.neq("status_prospeccao", "convertido");
+    }
+
+    // Regra de perfil Corretor
+    if (perfilUsuario.tipo_usuario === "CORRETOR") {
+      query = query.eq("corretor_id", perfilUsuario.id);
+    }
+
+    // Filtros Geográficos e Cadastrais
+    if (filtroUf) query = query.ilike("uf", `%${filtroUf.trim()}%`);
+    if (filtroMunicipio) query = query.ilike("municipio", `%${filtroMunicipio.trim()}%`);
+    if (filtroBairro) query = query.ilike("bairro", `%${filtroBairro.trim()}%`);
+    if (filtroCep) query = query.ilike("cep", `%${filtroCep.replace(/\D/g, '')}%`);
+    if (filtroSituacaoCadastral) query = query.eq("situacao_cadastral", filtroSituacaoCadastral);
+    
+    if (filtroCnaesSelecionados.length > 0) {
+      query = query.in("cnae_principal", filtroCnaesSelecionados);
+    }
+
+    if (filtroPorte) query = query.eq("porte", filtroPorte);
+    if (filtroMei !== "") query = query.eq("opcao_pelo_mei", filtroMei === "true");
+    if (filtroSimples !== "") query = query.eq("opcao_pelo_simples", filtroSimples === "true");
+    if (filtroMatriz) query = query.eq("descricao_identificador_matriz_filial", filtroMatriz);
+
+    if (filtroCapitalMin) query = query.gte("capital_social", Number(filtroCapitalMin));
+    if (filtroCapitalMax) query = query.lte("capital_social", Number(filtroCapitalMax));
+
+    if (filtroDataAberturaMin) query = query.gte("data_abertura", filtroDataAberturaMin);
+    if (filtroDataAberturaMax) query = query.lte("data_abertura", filtroDataAberturaMax);
+
+    if (filtroDataRetornoMin) query = query.gte("data_retorno", filtroDataRetornoMin);
+    if (filtroDataRetornoMax) query = query.lte("data_retorno", filtroDataRetornoMax);
+
+    // Filtro Faixas Etárias
+    if (filtroFaixasSelecionadas.length > 0) {
+      const filtrosFaixa = filtroFaixasSelecionadas
+        .map(f => `faixas_etarias.ilike.%${f}%`)
+        .join(",");
+      query = query.or(filtrosFaixa);
+    }
+
+    // Filtros Google Maps
+    if (filtroGoogleStatus && filtroGoogleStatus.length > 0) {
+      query = query.in('google_status', filtroGoogleStatus);
+    }
+    if (filtroGoogleScoreMin !== "") {
+      query = query.gte('google_score', parseInt(filtroGoogleScoreMin, 10));
+    }
+
+    // Executa paginação e ordenação principal
+    const { data, error, count } = await query
+      .order("importado_em", { ascending: false })
+      .range(de, ate);
+
+    if (error) throw error;
+
+    setLeads(data || []);
+    setTotalRegistros(count || 0);
+    
+    // 2. BUSCAS SECUNDÁRIAS DE CONTAGEM OTIMIZADAS (ÚNICA REQUISIÇÃO)
+    try {
+      let baseFiltroContagem = supabase
         .from("tab_clientes_frios")
-        .select("*", { count: "exact" })
+        .select("cnae_principal, faixas_etarias")
         .eq("corretora_id", perfilUsuario.corretora_id);
 
-      if (pesquisaGeralDebounced) {
-        query = query.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%,nomes_socios.ilike.%${pesquisaGeralDebounced}%`);
-      }
-
       if (filtroStatus) {
-        query = query.eq("status_prospeccao", filtroStatus);
-      } else if (!pesquisaGeralDebounced) {
-        query = query.neq("status_prospeccao", "convertido");
+        baseFiltroContagem = baseFiltroContagem.eq("status_prospeccao", filtroStatus);
+      } else if (!termoGeral) {
+        baseFiltroContagem = baseFiltroContagem.neq("status_prospeccao", "convertido");
       }
 
       if (perfilUsuario.tipo_usuario === "CORRETOR") {
-        query = query.eq("corretor_id", perfilUsuario.id);
+        baseFiltroContagem = baseFiltroContagem.eq("corretor_id", perfilUsuario.id);
       }
 
-      if (filtroUf) query = query.ilike("uf", `%${filtroUf}%`);
-      if (filtroMunicipio) query = query.ilike("municipio", `%${filtroMunicipio}%`);
-      if (filtroBairro) query = query.ilike("bairro", `%${filtroBairro}%`);
-      if (filtroCnaesSelecionados.length > 0) { 
-        query = query.in("cnae_principal", filtroCnaesSelecionados);
+      const { data: dadosContagem, error: erroContagem } = await baseFiltroContagem;
+
+      if (erroContagem) throw erroContagem;
+
+      if (dadosContagem) {
+        const contagemCnae: { [key: string]: number } = {};
+        const contagemFaixas: { [key: string]: number } = {};
+
+        dadosContagem.forEach((item: any) => {
+          const cnaeNome = item.cnae_principal?.trim();
+          if (cnaeNome) {
+            contagemCnae[cnaeNome] = (contagemCnae[cnaeNome] || 0) + 1;
+          }
+
+          if (item.faixas_etarias) {
+            const faixasUnicasNaEmpresa = new Set<string>(
+              item.faixas_etarias.split(" | ").map((f: string) => f.trim())
+            );
+
+            faixasUnicasNaEmpresa.forEach((faixa: string) => {
+              contagemFaixas[faixa] = (contagemFaixas[faixa] || 0) + 1;
+            });
+          }
+        });
+
+        setTodosCnaesDisponiveis(
+          Object.entries(contagemCnae)
+            .map(([cnae, quantidade]) => ({ cnae, quantidade }))
+            .sort((a, b) => b.quantidade - a.quantidade)
+        );
+
+        setTodasFaixasEtarias(
+          Object.entries(contagemFaixas)
+            .map(([faixa, quantidade]) => ({ faixa, quantidade }))
+            .sort((a, b) => b.quantidade - a.quantidade)
+        );
       }
-      if (filtroCep) query = query.ilike("cep", `%${filtroCep.replace(/\D/g, '')}%`);
-      if (filtroSituacaoCadastral) query = query.eq("situacao_cadastral", filtroSituacaoCadastral);
-      if (filtroDataAberturaMin) query = query.gte("data_abertura", filtroDataAberturaMin)
-      if (filtroDataAberturaMax) query = query.lte("data_abertura", filtroDataAberturaMax);
-
-      if (filtroPorte) query = query.eq("porte", filtroPorte);
-      if (filtroMei !== "") query = query.eq("opcao_pelo_mei", filtroMei === "true");
-      if (filtroSimples !== "") query = query.eq("opcao_pelo_simples", filtroSimples === "true");
-      if (filtroMatriz) query = query.eq("descricao_identificador_matriz_filial", filtroMatriz);
-      if (filtroCapitalMin) query = query.gte("capital_social", Number(filtroCapitalMin));
-      if (filtroCapitalMax) query = query.lte("capital_social", Number(filtroCapitalMax));
-      if (filtroDataRetornoMin) query = query.gte("data_retorno", filtroDataRetornoMin);
-      if (filtroDataRetornoMax) query = query.lte("data_retorno", filtroDataRetornoMax);
-      // Filtro Google Status
-      if (filtroGoogleStatus && filtroGoogleStatus.length > 0) {
-        query = query.in('google_status', filtroGoogleStatus);
-      }
-
-      if (filtroGoogleScoreMin !== "") {
-        query = query.gte('google_score', parseInt(filtroGoogleScoreMin));
-      }
-
-      const { data, error, count } = await query
-        .order("importado_em", { ascending: false })
-        .range(de, ate);
-
-      if (error) throw error;
-
-      try {
-        let cnaeQuery = supabase
-          .from("tab_clientes_frios")
-          .select("cnae_principal")
-          .eq("corretora_id", perfilUsuario.corretora_id);
-
-        if (filtroStatus) {
-          cnaeQuery = cnaeQuery.eq("status_prospeccao", filtroStatus);
-        } else if (!pesquisaGeralDebounced) {
-          cnaeQuery = cnaeQuery.neq("status_prospeccao", "convertido");
-        }
-
-        if (perfilUsuario.tipo_usuario === "CORRETOR") {
-          cnaeQuery = cnaeQuery.eq("corretor_id", perfilUsuario.id);
-        }
-
-        if (pesquisaGeralDebounced) {
-          cnaeQuery = cnaeQuery.or(`razao_social.ilike.%${pesquisaGeralDebounced}%,nome_fantasia.ilike.%${pesquisaGeralDebounced}%,cnpj.ilike.%${pesquisaGeralDebounced}%,nomes_socios.ilike.%${pesquisaGeralDebounced}%`);
-        }
-
-        if (filtroUf) cnaeQuery = cnaeQuery.ilike("uf", `%${filtroUf}%`);
-        if (filtroMunicipio) cnaeQuery = cnaeQuery.ilike("municipio", `%${filtroMunicipio}%`);
-        if (filtroBairro) cnaeQuery = cnaeQuery.ilike("bairro", `%${filtroBairro}%`);
-        if (filtroPorte) cnaeQuery = cnaeQuery.eq("porte", filtroPorte);
-        if (filtroMei !== "") cnaeQuery = cnaeQuery.eq("opcao_pelo_mei", filtroMei === "true");
-        if (filtroSimples !== "") cnaeQuery = cnaeQuery.eq("opcao_pelo_simples", filtroSimples === "true");
-        if (filtroMatriz) cnaeQuery = cnaeQuery.eq("descricao_identificador_matriz_filial", filtroMatriz);
-        if (filtroCapitalMin) cnaeQuery = cnaeQuery.gte("capital_social", Number(filtroCapitalMin));
-        if (filtroCapitalMax) cnaeQuery = cnaeQuery.lte("capital_social", Number(filtroCapitalMax));
-        if (filtroDataRetornoMin) cnaeQuery = cnaeQuery.gte("data_retorno", filtroDataRetornoMin);
-        if (filtroDataRetornoMax) cnaeQuery = cnaeQuery.lte("data_retorno", filtroDataRetornoMax);
-        if (filtroGoogleStatus && filtroGoogleStatus.length > 0) {
-        cnaeQuery = cnaeQuery.in('google_status', filtroGoogleStatus);
-        }
-        
-        if (filtroGoogleScoreMin !== "") {
-          // 🔥 CORREÇÃO IMPORTANTE AQUI: Você tinha colocado 'query =' em vez de 'cnaeQuery ='
-          cnaeQuery = cnaeQuery.gte('google_score', parseInt(filtroGoogleScoreMin));
-        }
-        const { data: cnaeData } = await cnaeQuery;
-
-        if (cnaeData) {
-          const contagem: { [key: string]: number } = {};
-          cnaeData.forEach((item: any) => {
-            const cnaeNome = item.cnae_principal?.trim();
-            if (cnaeNome) {
-              contagem[cnaeNome] = (contagem[cnaeNome] || 0) + 1;
-            }
-          });
-
-          const listaMapeada = Object.entries(contagem).map(([cnae, qtd]) => ({
-            cnae,
-            quantidade: qtd
-          })).sort((a, b) => b.quantidade - a.quantidade);
-
-          setTodosCnaesDisponiveis(listaMapeada);
-        }
-      } catch (err) {
-        console.error("Erro ao calcular contagem de CNAEs:", err);
-      }
-
-      setLeads(data || []);
-      setTotalRegistros(count || 0);
-    } catch (err: any) {
-      toast.error("Erro ao buscar registros: " + err.message);
-    } finally {
-      setLoading(false);
+    } catch (errContagem) {
+      console.error("Erro ao calcular metadados dos filtros:", errContagem);
     }
-  }
+
+      } catch (err: any) {
+        toast.error("Erro ao buscar registros: " + err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
 
 // Processamento de Upload e Leitura do Cabeçalho CSV (Blindado contra aspas e delimitadores)
   const handleProcessarCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1147,7 +1175,7 @@ export default function LeadsProspeccao() {
     setFiltroDataAberturaMax("");
     setFiltroGoogleStatus([]);
     setFiltroGoogleScoreMin("");
-
+    setFiltroFaixasSelecionadas([]);
   };
 
   const agruparPorBairro = (listaLeads: any[]) => {
@@ -1327,7 +1355,8 @@ return (
                     {/* LINHA 3: SEGMENTAÇÃO CORPORATIVA */}
                     <div className="border-t border-slate-100 pt-3">
                       <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">3. Perfil da Empresa</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                      {/* Alterado para garantir 3 colunas em medium e 6 em lg, ou forçar o wrap correto */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                         
                         {/* 1º ELEMENTO: Porte da Empresa */}
                         <div>
@@ -1339,7 +1368,7 @@ return (
                             <option value="DEMAIS">Demais Portes</option>
                           </select>
                         </div>
-          
+
                         {/* 2º ELEMENTO: Tipo de Unidade */}
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tipo de Unidade</label>
@@ -1349,7 +1378,7 @@ return (
                             <option value="2">🏬 Apenas Filial</option>
                           </select>
                         </div>
-          
+
                         {/* 3º ELEMENTO: É MEI? */}
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">É MEI?</label>
@@ -1359,7 +1388,7 @@ return (
                             <option value="false">Não</option>
                           </select>
                         </div>
-          
+
                         {/* 4º ELEMENTO: Optante Simples? */}
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Optante Simples?</label>
@@ -1368,13 +1397,11 @@ return (
                             <option value="true">Sim</option>
                             <option value="false">Não</option>
                           </select>
-                          
                         </div>
-          
+
                         {/* 5º ELEMENTO: Dropdown Customizado de CNAE */}
                         <div className="relative" id="cnae-dropdown-container">
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nicho (CNAE)</label>
-                          
                           <div 
                             onClick={() => setDropdownCnaeAberto(!dropdownCnaeAberto)}
                             className="w-full p-2 rounded-md border text-sm bg-white font-medium cursor-pointer flex justify-between items-center select-none min-h-[38px] hover:border-slate-300 transition-colors"
@@ -1384,47 +1411,97 @@ return (
                             </span>
                             <span className="text-xs text-gray-400">{dropdownCnaeAberto ? "▲" : "▼"}</span>
                           </div>
-                          
+
                           {dropdownCnaeAberto && (() => {
                             const cnaesFiltrados = todosCnaesDisponiveis.filter((item: any) => 
                               item.cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
                             );
                             return (
-                              <div className="absolute right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 space-y-2 animate-fade-in w-[90vw] sm:w-[400px] md:w-[480px]">
-                                <input type="text" autoFocus value={termoPesquisaCnae} onChange={(e) => setTermoPesquisaCnae(e.target.value)} placeholder="Digite para pesquisar..." className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 bg-slate-50 font-medium" />
-                                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
-
-                                  {cnaesFiltrados.length > 0 ? (
-                                    cnaesFiltrados.map((item: any) => {
-                                      const incluso = filtroCnaesSelecionados.includes(item.cnae);
-                                
-                                      return (
-                                        <label key={item.cnae} className="flex items-center justify-between gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none">
-                                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                                            <input type="checkbox" checked={incluso} onChange={() => setFiltroCnaesSelecionados(prev => incluso ? prev.filter(i => i !== item.cnae) : [...prev, item.cnae])} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer flex-shrink-0" />
-                                            <span className="text-slate-700 font-medium break-words leading-tight">{item.cnae}</span>
-                                          </div>
-                                          <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100">{item.quantidade}</span>
-                                        </label>
-                                      );
-                                    })
-                                  ) : (
-                                    <p className="text-center text-gray-400 py-4 italic">Nenhum segmento encontrado.</p>
+                            <div className="absolute right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 space-y-2 animate-fade-in w-[90vw] sm:w-[400px] md:w-[480px]">
+                              <input type="text" autoFocus value={termoPesquisaCnae} onChange={(e) => setTermoPesquisaCnae(e.target.value)} placeholder="Digite para pesquisar..." className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 bg-slate-50 font-medium" />
+                              <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
+                                {cnaesFiltrados.length > 0 ? (
+                                  cnaesFiltrados.map((item: any) => {
+                                    const incluso = filtroCnaesSelecionados.includes(item.cnae);
+                                    return (
+                                      <label key={item.cnae} className="flex items-center justify-between gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none">
+                                        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                          <input type="checkbox" checked={incluso} onChange={() => setFiltroCnaesSelecionados(prev => incluso ? prev.filter(i => i !== item.cnae) : [...prev, item.cnae])} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer flex-shrink-0" />
+                                          <span className="text-slate-700 font-medium break-words leading-tight">{item.cnae}</span>
+                                        </div>
+                                        <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100">{item.quantidade}</span>
+                                      </label>
+                                    );
+                                  })
+                                ) : (
+                                  <p className="text-center text-gray-400 py-4 italic">Nenhum segmento encontrado.</p>
+                                )}
+                              </div>
+                              <div className="border-t pt-2 flex justify-between items-center bg-slate-50 -mx-2 -mb-2 p-2 rounded-b-xl">
+                                <div>
+                                  {filtroCnaesSelecionados.length > 0 && (
+                                    <button type="button" onClick={() => setFiltroCnaesSelecionados([])} className="text-[10px] bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded font-bold uppercase transition">Limpar</button>
                                   )}
                                 </div>
-                                <div className="border-t pt-2 flex justify-between items-center bg-slate-50 -mx-2 -mb-2 p-2 rounded-b-xl">
-                                  <div>
-                                    {filtroCnaesSelecionados.length > 0 && (
-                                      <button type="button" onClick={() => setFiltroCnaesSelecionados([])} className="text-[10px] bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded font-bold uppercase transition">Limpar</button>
-                                    )}
-                                  </div>
-                                  <button type="button" onClick={() => { setDropdownCnaeAberto(false); setTermoPesquisaCnae(""); }} className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold uppercase transition shadow-sm">Fechar</button>
-                                </div>
+                                <button type="button" onClick={() => { setDropdownCnaeAberto(false); setTermoPesquisaCnae(""); }} className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold uppercase transition shadow-sm">Fechar</button>
                               </div>
+                            </div>
                             );
-                          })()} {/* <--- ESSA LINHA CORRIGE O SEU PROBLEMA (Fecha a função auto-executável) */}
+                          })()}
                         </div>
-          
+
+                        {/* 6º ELEMENTO: Dropdown Customizado de Faixa Etária */}
+                        <div className="relative" id="faixa-etaria-dropdown-container">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Idade dos Sócios</label>
+                          
+                          <div 
+                            onClick={() => setDropdownFaixaAberto(!dropdownFaixaAberto)}
+                            className="w-full p-2 rounded-md border text-sm bg-white font-medium cursor-pointer flex justify-between items-center select-none min-h-[38px] hover:border-slate-300 transition-colors"
+                          >
+                            <span className="truncate text-slate-700">
+                              {filtroFaixasSelecionadas.length === 0 ? "Todas as idades" : `${filtroFaixasSelecionadas.length} selecionadas`}
+                            </span>
+                            <span className="text-xs text-gray-400">{dropdownFaixaAberto ? "▲" : "▼"}</span>
+                          </div>
+
+                          {dropdownFaixaAberto && (() => {
+                            const faixasFiltradas = todasFaixasEtarias.filter((item: any) => 
+                              item.faixa.toLowerCase().includes(pesquisaFaixaEtaria.toLowerCase())
+                            );
+                            return (
+                            <div className="absolute right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 space-y-2 animate-fade-in w-[90vw] sm:w-[350px]">
+                              <input type="text" autoFocus value={pesquisaFaixaEtaria} onChange={(e) => setPesquisaFaixaEtaria(e.target.value)} placeholder="Pesquisar faixa etária..." className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 bg-slate-50 font-medium" />
+                              <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
+                                {faixasFiltradas.length > 0 ? (
+                                  faixasFiltradas.map((item: any) => {
+                                    const incluso = filtroFaixasSelecionadas.includes(item.faixa);
+                                    return (
+                                      <label key={item.faixa} className="flex items-center justify-between gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none">
+                                        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                          <input type="checkbox" checked={incluso} onChange={() => setFiltroFaixasSelecionadas(prev => incluso ? prev.filter(i => i !== item.faixa) : [...prev, item.faixa])} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer flex-shrink-0" />
+                                          <span className="text-slate-700 font-medium break-words leading-tight">{item.faixa}</span>
+                                        </div>
+                                        <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100">{item.quantidade}</span>
+                                      </label>
+                                    );
+                                  })
+                                ) : (
+                                  <p className="text-center text-gray-400 py-4 italic">Nenhuma faixa encontrada.</p>
+                                )}
+                              </div>
+                              <div className="border-t pt-2 flex justify-between items-center bg-slate-50 -mx-2 -mb-2 p-2 rounded-b-xl">
+                                <div>
+                                  {filtroFaixasSelecionadas.length > 0 && (
+                                    <button type="button" onClick={() => setFiltroFaixasSelecionadas([])} className="text-[10px] bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded font-bold uppercase transition">Limpar</button>
+                                  )}
+                                </div>
+                                <button type="button" onClick={() => { setDropdownFaixaAberto(false); setPesquisaFaixaEtaria(""); }} className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold uppercase transition shadow-sm">Fechar</button>
+                              </div>
+                            </div>
+                            );
+                          })()}
+                        </div>
+
                       </div>
                     </div>
           
@@ -1501,160 +1578,206 @@ return (
                           </div>
                       </div>
                     </div>
-          
                   </div>
                 )}
             </div>
       
-            {/* Tabela de Leads */}
-            <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
+            {/* Tabela de Leads Refatorada */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50 border-b text-slate-700 text-xs font-bold uppercase">
+                  <thead className="bg-slate-50/75 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
                     <tr>
-                      <th className="p-4 w-10">
-                        <input type="checkbox" checked={leads.length > 0 && selecionados.length === leads.length} onChange={toggleSelecionarTodos} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" />
+                      <th className="p-4 w-12 text-center">
+                        <input 
+                          type="checkbox" 
+                          checked={leads.length > 0 && selecionados.length === leads.length} 
+                          onChange={toggleSelecionarTodos} 
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                        />
                       </th>
-                      <th className="p-4">Identificação da Empresa</th>
-                      <th className="p-4">Quadro Societário</th>
-                      <th className="p-4">Localização</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4 text-center">Ações Operacionais</th>
+                      <th className="py-4 px-3">Identificação da Empresa</th>
+                      <th className="py-4 px-3">Quadro Societário & Idades</th>
+                      <th className="py-4 px-3">Localização</th>
+                      <th className="py-4 px-3">Status</th>
+                      <th className="py-4 px-3 text-center">Ações Operacionais</th>
                     </tr>
                   </thead>
-                  <tbody className="text-sm divide-y text-slate-600">
+                  <tbody className="text-sm divide-y divide-slate-100 text-slate-600">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-gray-400">
-                          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-500" /> Carregando registros...
+                        <td colSpan={6} className="p-12 text-center text-slate-400">
+                          <Loader2 className="w-7 h-7 animate-spin mx-auto mb-2 text-blue-500" /> 
+                          <span className="text-xs font-medium">Carregando registros...</span>
                         </td>
                       </tr>
                     ) : leads.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-gray-400">Nenhum lead disponível para prospecção no momento.</td>
+                        <td colSpan={6} className="p-12 text-center text-slate-400 text-xs font-medium">
+                          Nenhum lead disponível para prospecção no momento.
+                        </td>
                       </tr>
                     ) : (
                       Object.entries(agruparPorBairro(leads)).map(([bairro, leadsDoBairro]: [string, any]) => (
                         <Fragment key={bairro}>
                           
-                          {/* Linha Divisória de Cabeçalho do Bairro */}
-                          <tr className="bg-slate-100/80 border-y border-slate-200 text-slate-700 select-none">
-                            <td colSpan={6} className="p-3 pl-4 text-xs font-bold uppercase tracking-wider">
-                              📍 Bairro: <span className="text-blue-700">{bairro}</span> 
-                              <span className="ml-2 text-[11px] font-normal text-slate-500 lowercase">
-                                ({leadsDoBairro.length} {leadsDoBairro.length === 1 ? 'empresa' : 'empresas'})
+                          {/* Linha Divisória de Cabeçalho do Bairro Estilizada */}
+                          <tr className="bg-slate-100/60 border-y border-slate-200/80 text-slate-700 select-none">
+                            <td colSpan={6} className="py-2.5 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                              <span className="text-blue-600 font-extrabold">📍</span> 
+                              <span>Bairro: <span className="text-slate-900">{bairro}</span></span>
+                              <span className="ml-1 px-2 py-0.5 bg-white border border-slate-200 text-slate-500 rounded-full text-[10px] font-semibold lowercase">
+                                {leadsDoBairro.length} {leadsDoBairro.length === 1 ? 'empresa' : 'empresas'}
                               </span>
                             </td>
                           </tr>
-      
+              
                           {/* Loop das empresas pertencentes a este bairro específico */}
                           {leadsDoBairro.map((lead: any) => (
-                            <tr key={lead.id} className="hover:bg-slate-50 transition">
-                              <td className="p-4">
-                                <input type="checkbox" checked={selecionados.includes(lead.id)} onChange={() => toggleLeadUnico(lead.id)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" />
+                            <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors group">
+                              
+                              {/* Checkbox */}
+                              <td className="p-4 text-center">
+                                <input 
+                                  type="checkbox" 
+                                  checked={selecionados.includes(lead.id)} 
+                                  onChange={() => toggleLeadUnico(lead.id)} 
+                                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                                />
                               </td>
-                              <td className="p-4 max-w-[320px]">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-slate-800 truncate">{lead.nome_fantasia || lead.razao_social}</span>
-                                  {/* 🔥 Badge inteligente integrado do Robô do Google Maps */}
+
+                              {/* Identificação da Empresa */}
+                              <td className="py-4 px-3 max-w-[300px]">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-slate-900 text-sm tracking-tight truncate">
+                                    {lead.nome_fantasia || lead.razao_social}
+                                  </span>
+                                  
+                                  {/* Badge inteligente do Google Maps */}
                                   {lead.google_verificado && (() => {
                                     const statusConfig = {
                                       alta_precisao: { text: "ALTA PREC.", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-                                      media_precisao: { text: "MÉDIA PREC.", color: "bg-amber-50 text-amber-600 border-amber-200" },
-                                      baixa_precisao: { text: "BAIXA PREC.", color: "bg-red-50 text-red-600 border-red-200" },
+                                      media_precisao: { text: "MÉDIA PREC.", color: "bg-amber-50 text-amber-700 border-amber-200" },
+                                      baixa_precisao: { text: "BAIXA PREC.", color: "bg-rose-50 text-rose-700 border-rose-200" },
                                       nao_verificado: { text: "NÃO VERIF.", color: "bg-slate-50 text-slate-500 border-slate-200" }
                                     };
-
                                     const config = statusConfig[lead.google_status as keyof typeof statusConfig] || statusConfig.nao_verificado;
 
                                     return (
                                       <span 
                                         title={`Status: ${config.text} | Score: ${lead.google_score || 0}`}
-                                        className={`text-[9px] px-1.5 py-0.5 rounded font-extrabold shrink-0 border ml-2 ${config.color}`}
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-extrabold shrink-0 border ${config.color}`}
                                       >
-                                        {config.text}
-                                        {lead.google_score !== null && ` (${lead.google_score}%)`}
+                                        {config.text}{lead.google_score !== null && ` (${lead.google_score}%)`}
                                       </span>
                                     );
                                   })()}
                                 </div>
-                                <div className="text-xs text-gray-400 font-mono mt-0.5">
-                                  {maskCNPJ(lead.cnpj)}
-                                  {lead.data_abertura && ` • Aberta em: ${new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR')}`}
+
+                                <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5">
+                                  <span>{maskCNPJ(lead.cnpj)}</span>
+                                  {lead.data_abertura && (
+                                    <>
+                                      <span>•</span>
+                                      <span>Aberta em {new Date(lead.data_abertura + "T00:00:00").toLocaleDateString('pt-BR')}</span>
+                                    </>
+                                  )}
                                 </div>
                                 
-                                <div className="text-[11px] text-slate-500 italic truncate mt-0.5">{lead.razao_social}</div>
+                                <div className="text-[11px] text-slate-500 truncate mt-0.5 font-normal">{lead.razao_social}</div>
+                                
                                 {lead.cnae_principal && (
-                                  <div className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded inline-block mt-1 max-w-full truncate font-medium">
-                                    🎯 {lead.cnae_principal}
+                                  <div className="mt-1.5">
+                                    <span className="text-[10px] bg-blue-50/80 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-md inline-block max-w-full truncate font-medium">
+                                      🎯 {lead.cnae_principal}
+                                    </span>
                                   </div>
                                 )}
                               </td>
-                              <td className="p-4 max-w-[280px]">
-                                <div className="flex flex-wrap">{renderSociosBadge(lead.nomes_socios)}</div>
+
+                              {/* Quadro Societário & Faixa Etária (NOVO POSICIONAMENTO) */}
+                              <td className="py-4 px-3 max-w-[280px]">
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex flex-wrap gap-1">
+                                    {renderSociosBadge(lead.nomes_socios)}
+                                  </div>
+                                  {lead.faixas_etarias && (
+                                    <div className="flex items-center gap-1 text-[11px] text-slate-600 bg-slate-100/70 border border-slate-200/60 px-2 py-1 rounded-md w-fit">
+                                      <span className="text-slate-400 font-semibold">📅 Idades:</span>
+                                      <span className="font-medium text-slate-700">{lead.faixas_etarias}</span>
+                                    </div>
+                                  )}
+                                </div>
                               </td>
-                              <td className="p-4">
-                                <div className="text-xs font-semibold text-slate-700">{lead.municipio} - {lead.uf}</div>
-                                <div className="text-[11px] text-gray-400 truncate mt-0.5">{lead.bairro}</div>
+
+                              {/* Localização */}
+                              <td className="py-4 px-3">
+                                <div className="text-xs font-semibold text-slate-800">{lead.municipio} - {lead.uf}</div>
+                                <div className="text-[11px] text-slate-400 truncate mt-0.5">{lead.bairro}</div>
                               </td>
                               
-                              <td className="p-4">
+                              {/* Status */}
+                              <td className="py-4 px-3">
                                 {lead.status_prospeccao === 'ja_cliente' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
                                     👑 Já é Cliente
                                   </span>
                                 ) : lead.status_prospeccao === 'em_prospeccao' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
                                     🔄 Em Prospecção
                                   </span>
                                 ) : lead.status_prospeccao === 'perdido' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-red-100 text-red-700 border border-red-200 shadow-sm">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
                                     ❌ Perdido
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-gray-100 text-gray-600 border border-gray-200">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200 shadow-2xs">
                                     Não Contatado
                                   </span>
                                 )}
                               </td>
-      
-                              <td className="p-4">
+
+                              {/* Ações Operacionais */}
+                              <td className="py-4 px-3">
                                 <div className="flex items-center justify-center gap-1">
                                   
-                                  {/* --- BOTAO NOVO: Consumindo validarLeadGoogleIndividual e leadIdEmProcessamento --- */}
                                   <button 
                                     onClick={() => (validarLeadGoogleIndividual as Function)(lead.id)}
                                     title="Validar local no Google" 
                                     disabled={leadIdEmProcessamento === lead.id}
                                     className="p-1.5 hover:bg-slate-100 text-emerald-600 rounded-lg transition disabled:opacity-50"
                                   >
-                                    {/* Substituído Eye por MapPin */}
                                     {leadIdEmProcessamento === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                                   </button>
-                                  {/* --------------------------------------------------------------------------------- */}
 
                                   <button onClick={() => abrirTimeline(lead)} title="Timeline & Ações" className="p-1.5 hover:bg-slate-100 text-purple-600 rounded-lg transition">
                                     <MessageSquare className="w-4 h-4" />
                                   </button>
+                                  
                                   <button onClick={() => setLeadVisualizar(lead)} title="Visualizar Ficha" className="p-1.5 hover:bg-slate-100 text-blue-600 rounded-lg transition">
-                                    <Search className="w-4 h-4" /> {/* Alterado para Search pois Eye foi usado na validação acima */}
+                                    <Search className="w-4 h-4" />
                                   </button>
+                                  
                                   <button onClick={() => setLeadEditar(lead)} title="Editar Cadastro" className="p-1.5 hover:bg-slate-100 text-amber-600 rounded-lg transition">
                                     <Edit3 className="w-4 h-4" />
                                   </button>
 
-                                  {/* Resolvido o erro do TypeScript forçando a tipagem da chamada do botão */}
-                                  <button onClick={() => (excluirLoteOuUnico as Function)(lead.id)} title="Remover" className="p-1.5 hover:bg-slate-100 text-red-600 rounded-lg transition">
+                                  <button onClick={() => (excluirLoteOuUnico as Function)(lead.id)} title="Remover" className="p-1.5 hover:bg-slate-100 text-rose-600 rounded-lg transition">
                                     <Trash2 className="w-4 h-4" />
                                   </button>
 
                                   {lead.status_prospeccao === 'convertido' ? (
-                                    <span className="ml-2 px-2 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold uppercase shadow-sm">
+                                    <span className="ml-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold uppercase shadow-2xs">
                                       ✅ Convertido
                                     </span>
                                   ) : (
-                                    <button onClick={() => { setLeadConversao(lead);
-                                      setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); }} className="ml-2 px-2 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition">
+                                    <button 
+                                      onClick={() => { 
+                                        setLeadConversao(lead);
+                                        setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); 
+                                      }} 
+                                      className="ml-1 px-2.5 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition"
+                                    >
                                       🏆 Converter
                                     </button>
                                   )}
@@ -1662,7 +1785,6 @@ return (
                               </td>
                             </tr>
                           ))}
-      
                         </Fragment>
                       ))
                     )}
