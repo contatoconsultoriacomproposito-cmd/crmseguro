@@ -716,101 +716,195 @@ export default function LeadsProspeccao() {
   };
 
   // 🏅 O Botão de Ouro: Motor de Conversão Direta para a Tab_Clientes CRM
-  const processarConversaoOuroFinal = async () => {
-    try {
-      const { data: existente } = await supabase
-        .from("tab_clientes")
-        .select("id")
-        .eq("cnpj", leadConversao.cnpj)
-        .eq("corretora_id", perfilUsuario?.corretora_id)
-        .maybeSingle();
+  // 🏆 Inicializa os dados para a modal de conversão com mapeamento automático De/Para
+const prepararConversaoLead = (lead: any) => {
+  setLeadConversao(lead);
+  
+  setDadosConversaoCRM((prev: any) => ({
+    ...prev,
+    tipo_cliente: "PJ",
+    corretora_id: lead.corretora_id || perfilUsuario?.corretora_id,
+    corretor_id: lead.corretor_id || perfilUsuario?.id,
+    origem_cliente: "Prospecção Ativa",
+    
+    // Dados Cadastrais PJ (De/Para direto)
+    cnpj: lead.cnpj || "",
+    razao_social: lead.razao_social || "",
+    nome_fantasia: lead.nome_fantasia || "",
+    porte: lead.porte || "",
+    capital_social: lead.capital_social || 0,
+    cnae_principal: lead.cnae_principal || "",
+    natureza_juridica: lead.natureza_juridica || "",
+    opcao_pelo_mei: lead.opcao_pelo_mei || false,
+    opcao_pelo_simples: lead.opcao_pelo_simples || false,
+    
+    // Contatos e Endereço
+    ddd_telefone_1: lead.ddd_telefone_1 || "",
+    telefone_adicional: lead.telefone_adicional || "",
+    email: lead.email || "",
+    cep: lead.cep || "",
+    uf: lead.uf || "",
+    municipio: lead.municipio || "",
+    bairro: lead.bairro || "",
+    logradouro: lead.logradouro || "",
+    numero: lead.numero || "",
+    complemento: lead.complemento || "",
+    
+    // Metadados e Datas
+    data_abertura: lead.data_abertura || null,
+    situacao_cadastral: lead.situacao_cadastral || null,
+    
+    // Configurações do CRM
+    status_kanban: "novo", 
+    fase_kanban: "lead",
+    temperatura: "morno",
+  }));
+};
 
-      if (existente) {
-        toast.error("Este CNPJ já possui cadastro ativo no seu CRM!");
-        return;
-      }
+// 🚀 Motor de Execução Final da Conversão Blindado contra Tipos e Strings "NULL"
+const processarConversaoOuroFinal = async () => {
+  try {
+    if (!leadConversao) return;
 
-      let sociosJson: any[] = [];
-      if (leadConversao.nomes_socios && typeof leadConversao.nomes_socios === 'string') {
-        const nomesArray = leadConversao.nomes_socios.split(" | ");
-        const cpfsArray = leadConversao.cpfs_socios ? leadConversao.cpfs_socios.split(" | ") : [];
-        sociosJson = nomesArray.map((nome: string, index: number) => ({
-          nome: nome.trim(),
-          cpf: cpfsArray[index] ? cpfsArray[index].trim() : ""
-        }));
-      }
+    // 1. Validação prévia de duplicidade na tabela de destino
+    const { data: existente } = await supabase
+      .from("tab_clientes")
+      .select("id")
+      .eq("cnpj", leadConversao.cnpj)
+      .eq("corretora_id", perfilUsuario?.corretora_id)
+      .maybeSingle();
 
-      // Payload dinâmico e inteligente baseado nos estados visuais da modal
-      const crmPayload = {
-        tipo_cliente: "PJ",
-        corretora_id: perfilUsuario?.corretora_id,
-        corretor_id: leadConversao.corretor_id || perfilUsuario?.id,
-        cnpj: leadConversao.cnpj,
-        razao_social: leadConversao.razao_social,
-        nome_fantasia: leadConversao.nome_fantasia,
-        cnae_principal: leadConversao.cnae_principal,
-        porte: leadConversao.porte,
-        capital_social: leadConversao.capital_social,
-        ddd_telefone_1: leadConversao.ddd_telefone_1,
-        opcao_pelo_mei: leadConversao.opcao_pelo_mei,
-        opcao_pelo_simples: leadConversao.opcao_pelo_simples,
-        natureza_juridica: leadConversao.natureza_juridica,
-        descricao_identificador_matriz_filial: leadConversao.descricao_identificador_matriz_filial,
-        cep: leadConversao.cep,
-        uf: leadConversao.uf,
-        municipio: leadConversao.municipio,
-        bairro: leadConversao.bairro,
-        logradouro: leadConversao.logradouro,
-        numero: leadConversao.numero,
-        complemento: leadConversao.complemento,
-        email: leadConversao.email,
-        telefone_adicional: leadConversao.telefone_adicional,
-        origem_cliente: dadosConversaoCRM.origem_cliente || "Prospecção Ativa",
-        data_nascimento: dadosConversaoCRM.data_nascimento || null,
-        
-        google_verificado: leadConversao.google_verificado || false,
-        google_status: leadConversao.google_status || null,
-        google_place_id: leadConversao.google_place_id || null,
-        
-        status_kanban: dadosConversaoCRM.status_kanban || "novo", 
-        fase_kanban: "lead",
-        posicao_kanban: 0,
-        temperatura: dadosConversaoCRM.temperatura || "morno",
-        
-        nome: dadosConversaoCRM.nome || null,
-        cpf: dadosConversaoCRM.cpf || null,
-        telefone_whats: dadosConversaoCRM.telefone_whats || null,
-        data_abertura: leadConversao.data_abertura || null,
-        situacao_cadastral: leadConversao.situacao_cadastral || null,
-        socias: sociosJson
-      };
-
-      const { error: insertErr } = await supabase.from("tab_clientes").insert(crmPayload);
-      
-      if (insertErr) {
-        console.error("Erro detalhado do Supabase:", insertErr);
-        throw new Error(insertErr.message);
-      }
-
-      await supabase.from("tab_clientes_frios").update({ status_prospeccao: "convertido" }).eq("id", leadConversao.id);
-
-      toast.success("✨ Processo concluído! Lead convertido para o CRM com sucesso.");
-      
-      setLeadConversao(null);
-      setDadosConversaoCRM({ 
-        origem_cliente: "Prospecção Ativa", 
-        status_kanban: "novo", 
-        temperatura: "frio", 
-        nome: "", 
-        cpf: "", 
-        telefone_whats: "" 
-      });
-      
-      buscarLeadsFrios();
-    } catch (err: any) {
-      toast.error("Erro na conversão: " + err.message);
+    if (existente) {
+      toast.error("Este CNPJ já possui cadastro ativo no seu CRM!");
+      return;
     }
-  };
+
+    // Função auxiliar rigorosa para limpar strings "NULL" ou vazias
+    const limparValor = (val: any) => {
+      if (val === undefined || val === null) return null;
+      if (typeof val === 'string' && (val.trim() === "" || val.trim().toUpperCase() === "NULL")) return null;
+      return val;
+    };
+
+    // 2. Processamento seguro do quadro societário (ignorando "NULL" textual)
+    let sociosJson: Array<{ nome: string; cpf: string }> = [];
+    const nomesLimpos = limparValor(leadConversao.nomes_socios);
+    
+    if (nomesLimpos && typeof nomesLimpos === 'string') {
+      const nomesArray = nomesLimpos.split(" | ");
+      const cpfsLimpos = limparValor(leadConversao.cpfs_socios);
+      const cpfsArray = cpfsLimpos ? cpfsLimpos.split(" | ") : [];
+      
+      sociosJson = nomesArray.map((nome: string, index: number) => ({
+        nome: nome.trim(),
+        cpf: cpfsArray[index] ? cpfsArray[index].trim() : ""
+      }));
+    }
+
+    // 3. Conversão segura do Capital Social para número real (evitando erro de tipo numeric)
+    const capitalSocialTratado = leadConversao.capital_social 
+      ? Number(String(leadConversao.capital_social).replace(',', '.')) 
+      : 0;
+
+    // 4. Payload com tratamento absoluto para cada campo
+    const crmPayload = {
+      tipo_cliente: "PJ",
+      corretora_id: perfilUsuario?.corretora_id,
+      corretor_id: leadConversao.corretor_id || perfilUsuario?.id,
+      origem_cliente: dadosConversaoCRM.origem_cliente || "Prospecção Ativa",
+      
+      // Identificação e Dados PJ
+      cnpj: leadConversao.cnpj,
+      razao_social: limparValor(leadConversao.razao_social),
+      nome_fantasia: limparValor(leadConversao.nome_fantasia),
+      porte: limparValor(leadConversao.porte),
+      capital_social: isNaN(capitalSocialTratado) ? 0 : capitalSocialTratado,
+      cnae_principal: limparValor(leadConversao.cnae_principal),
+      natureza_juridica: limparValor(leadConversao.natureza_juridica),
+      descricao_identificador_matriz_filial: limparValor(leadConversao.descricao_identificador_matriz_filial),
+      opcao_pelo_mei: leadConversao.opcao_pelo_mei ?? false,
+      opcao_pelo_simples: leadConversao.opcao_pelo_simples ?? false,
+      
+      // Contatos
+      ddd_telefone_1: limparValor(leadConversao.ddd_telefone_1),
+      telefone_adicional: limparValor(leadConversao.telefone_adicional),
+      email: limparValor(leadConversao.email),
+      
+      // Endereço
+      cep: limparValor(leadConversao.cep),
+      uf: limparValor(leadConversao.uf),
+      municipio: limparValor(leadConversao.municipio),
+      bairro: limparValor(leadConversao.bairro),
+      logradouro: limparValor(leadConversao.logradouro),
+      numero: limparValor(leadConversao.numero),
+      complemento: limparValor(leadConversao.complemento),
+      
+      // Datas e Cadastros
+      data_abertura: limparValor(leadConversao.data_abertura),
+      situacao_cadastral: limparValor(leadConversao.situacao_cadastral),
+      
+      // Dados do Contato Principal (Inputs da Modal)
+      nome: limparValor(dadosConversaoCRM.nome),
+      cpf: limparValor(dadosConversaoCRM.cpf),
+      telefone_whats: limparValor(dadosConversaoCRM.telefone_whats),
+      data_nascimento: limparValor(dadosConversaoCRM.data_nascimento),
+      
+      // Controle do Kanban e CRM
+      status_kanban: dadosConversaoCRM.status_kanban || "novo",
+      fase_kanban: "lead",
+      posicao_kanban: 0,
+      temperatura: dadosConversaoCRM.temperatura || "morno",
+      
+      // Quadro Societário Formatado
+      socios: sociosJson
+    };
+
+    // 5. Inserção na tabela destino exigindo retorno explícito
+    const { data: insertedData, error: insertErr } = await supabase
+      .from("tab_clientes")
+      .insert([crmPayload])
+      .select();
+    
+    if (insertErr) {
+      console.error("❌ Erro detalhado do Supabase no Insert:", insertErr);
+      throw new Error(insertErr.message);
+    }
+
+    if (!insertedData || insertedData.length === 0) {
+      throw new Error("A inserção falhou silenciosamente no banco de dados.");
+    }
+
+    // 6. Atualização do status na origem para convertido somente após sucesso real
+    const { error: updateErr } = await supabase
+      .from("tab_clientes_frios")
+      .update({ status_prospeccao: "convertido" })
+      .eq("id", leadConversao.id);
+
+    if (updateErr) {
+      console.error("Erro ao atualizar status na origem:", updateErr);
+    }
+
+    toast.success("✨ Processo concluído! Lead convertido para o CRM com sucesso.");
+    
+    setLeadConversao(null);
+    setDadosConversaoCRM({ 
+      origem_cliente: "Prospecção Ativa", 
+      status_kanban: "novo", 
+      temperatura: "morno", 
+      nome: "", 
+      cpf: "", 
+      telefone_whats: "",
+      data_nascimento: ""
+    });
+    
+    buscarLeadsFrios();
+    
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : "Erro desconhecido";
+    console.error("🚨 Falha crítica na conversão:", err);
+    toast.error("Erro na conversão: " + errorMessage);
+  }
+};
 
   const renderSociosBadge = (nomes: string | null) => {
     if (!nomes) return <span className="text-xs text-gray-400">Não listado</span>;
@@ -1621,14 +1715,18 @@ return (
                       Object.entries(agruparPorBairro(leads)).map(([bairro, leadsDoBairro]: [string, any]) => (
                         <Fragment key={bairro}>
                           
-                          {/* Linha Divisória de Cabeçalho do Bairro Estilizada */}
-                          <tr className="bg-slate-100/60 border-y border-slate-200/80 text-slate-700 select-none">
-                            <td colSpan={6} className="py-2.5 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                              <span className="text-blue-600 font-extrabold">📍</span> 
-                              <span>Bairro: <span className="text-slate-900">{bairro}</span></span>
-                              <span className="ml-1 px-2 py-0.5 bg-white border border-slate-200 text-slate-500 rounded-full text-[10px] font-semibold lowercase">
-                                {leadsDoBairro.length} {leadsDoBairro.length === 1 ? 'empresa' : 'empresas'}
-                              </span>
+                          {/* Linha Divisória de Cabeçalho do Bairro Corrigida e Alinhada */}
+                          <tr className="bg-slate-100/80 border-y border-slate-200 text-slate-700 select-none">
+                            <td colSpan={6} className="py-2 px-4">
+                              <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-800">
+                                  <span className="text-blue-600">📍</span> 
+                                  <span>Bairro: <span className="text-slate-900 font-extrabold">{bairro}</span></span>
+                                </div>
+                                <span className="px-2.5 py-0.5 bg-white border border-slate-200 text-slate-600 rounded-full text-[10px] font-bold shadow-2xs">
+                                  {leadsDoBairro.length} {leadsDoBairro.length === 1 ? 'empresa' : 'empresas'}
+                                </span>
+                              </div>
                             </td>
                           </tr>
               
@@ -1650,7 +1748,7 @@ return (
                               <td className="py-4 px-3 max-w-[300px]">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-slate-900 text-sm tracking-tight truncate">
-                                    {lead.nome_fantasia || lead.razao_social}
+                                    {lead.nome_fantasia && lead.nome_fantasia !== 'NULL' ? lead.nome_fantasia : (lead.razao_social || 'Empresa sem nome')}
                                   </span>
                                   
                                   {/* Badge inteligente do Google Maps */}
@@ -1684,7 +1782,9 @@ return (
                                   )}
                                 </div>
                                 
-                                <div className="text-[11px] text-slate-500 truncate mt-0.5 font-normal">{lead.razao_social}</div>
+                                <div className="text-[11px] text-slate-500 truncate mt-0.5 font-normal">
+                                  {lead.razao_social && lead.razao_social !== 'NULL' ? lead.razao_social : ''}
+                                </div>
                                 
                                 {lead.cnae_principal && (
                                   <div className="mt-1.5">
@@ -1695,13 +1795,13 @@ return (
                                 )}
                               </td>
 
-                              {/* Quadro Societário & Faixa Etária (NOVO POSICIONAMENTO) */}
+                              {/* Quadro Societário & Faixa Etária */}
                               <td className="py-4 px-3 max-w-[280px]">
                                 <div className="flex flex-col gap-1.5">
                                   <div className="flex flex-wrap gap-1">
                                     {renderSociosBadge(lead.nomes_socios)}
                                   </div>
-                                  {lead.faixas_etarias && (
+                                  {lead.faixas_etarias && lead.faixas_etarias !== 'NULL' && (
                                     <div className="flex items-center gap-1 text-[11px] text-slate-600 bg-slate-100/70 border border-slate-200/60 px-2 py-1 rounded-md w-fit">
                                       <span className="text-slate-400 font-semibold">📅 Idades:</span>
                                       <span className="font-medium text-slate-700">{lead.faixas_etarias}</span>
@@ -1750,7 +1850,7 @@ return (
                                     {leadIdEmProcessamento === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                                   </button>
 
-                                  <button onClick={() => abrirTimeline(lead)} title="Timeline & Ações" className="p-1.5 hover:bg-slate-100 text-purple-600 rounded-lg transition">
+                                  <button onClick={() => typeof abrirTimeline === 'function' && abrirTimeline(lead)} title="Timeline & Ações" className="p-1.5 hover:bg-slate-100 text-purple-600 rounded-lg transition">
                                     <MessageSquare className="w-4 h-4" />
                                   </button>
                                   
@@ -1772,10 +1872,7 @@ return (
                                     </span>
                                   ) : (
                                     <button 
-                                      onClick={() => { 
-                                        setLeadConversao(lead);
-                                        setDadosConversaoCRM((prev: any) => ({...prev, nome: lead.nome_fantasia || lead.razao_social})); 
-                                      }} 
+                                      onClick={() => prepararConversaoLead(lead)}
                                       className="ml-1 px-2.5 py-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-lg text-xs font-bold shadow-sm hover:brightness-105 transition"
                                     >
                                       🏆 Converter
@@ -1854,7 +1951,7 @@ return (
                       <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Nome do Contato Principal</label>
                       <input 
                         type="text" 
-                        value={dadosConversaoCRM.nome} 
+                        value={dadosConversaoCRM.nome || ""} 
                         onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, nome: e.target.value}))} 
                         placeholder="Ex: Nome do Sócio ou Decisor" 
                         className="w-full p-2.5 border rounded-lg text-sm" 
@@ -1866,7 +1963,7 @@ return (
                         <label className="block text-xs font-bold text-slate-600 uppercase mb-1">WhatsApp direto</label>
                         <input 
                           type="text" 
-                          value={dadosConversaoCRM.telefone_whats} 
+                          value={dadosConversaoCRM.telefone_whats || ""} 
                           onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, telefone_whats: maskPhone(e.target.value)}))} 
                           placeholder="(00) 00000-0000" 
                           className="w-full p-2.5 border rounded-lg text-sm" 
@@ -1876,7 +1973,7 @@ return (
                         <label className="block text-xs font-bold text-slate-600 uppercase mb-1">CPF</label>
                         <input 
                           type="text" 
-                          value={dadosConversaoCRM.cpf} 
+                          value={dadosConversaoCRM.cpf || ""} 
                           onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, cpf: maskCPF(e.target.value)}))} 
                           placeholder="000.000.000-00" 
                           className="w-full p-2.5 border rounded-lg text-sm" 
@@ -1889,7 +1986,7 @@ return (
                         <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Data de Nascimento</label>
                         <input 
                           type="date" 
-                          value={dadosConversaoCRM.data_nascimento} 
+                          value={dadosConversaoCRM.data_nascimento || ""} 
                           onChange={e => setDadosConversaoCRM((prev: any) => ({...prev, data_nascimento: e.target.value}))} 
                           className="w-full p-2.5 border rounded-lg text-sm" 
                         />
@@ -1899,6 +1996,8 @@ return (
 
                   <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-2xl">
                     <button onClick={() => setLeadConversao(null)} className="px-4 py-2 text-sm font-semibold border rounded-xl hover:bg-white">Cancelar</button>
+                    
+                    {/* AQUI ESTÁ A CORREÇÃO: Chamando a função final de salvamento */}
                     <button onClick={processarConversaoOuroFinal} className="px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow transition active:scale-95 flex items-center gap-1.5">
                       Confirmar Conversão 🏆
                     </button>
