@@ -55,10 +55,13 @@ export default function AgendaCorretor() {
     horario_retorno: '09:00'
   });
   const [contatoFrioDetalhe, setContatoFrioDetalhe] = useState<{
+    id: string;
     nome: string;
     telefone: string;
     email: string;
     breve_descricao?: string;
+    data_retorno?: string;
+    horario_retorno?: string;
   } | null>(null);
 
   const fetchCompromissos = useCallback(async () => {
@@ -363,6 +366,61 @@ export default function AgendaCorretor() {
     }
   }
 
+  async function handleAtualizarContatoFrio(e: React.FormEvent) {
+    e.preventDefault();
+    if (!contatoFrioDetalhe) return;
+
+    try {
+      setLoadingSalvarAgenda(true);
+      const { error } = await supabase
+        .from('tab_clientes_agenda')
+        .update({
+          nome_cliente: contatoFrioDetalhe.nome,
+          tel_cliente: contatoFrioDetalhe.telefone,
+          email_cliente: contatoFrioDetalhe.email,
+          breve_descricao: contatoFrioDetalhe.breve_descricao || null,
+          data_retorno: contatoFrioDetalhe.data_retorno,
+          horario_retorno: contatoFrioDetalhe.horario_retorno
+        })
+        .eq('id', contatoFrioDetalhe.id);
+
+      if (error) throw error;
+
+      toast.success("Contato atualizado com sucesso!");
+      setContatoFrioDetalhe(null);
+      fetchCompromissos();
+    } catch (err: any) {
+      console.error("Erro ao atualizar contato frio:", err);
+      toast.error("Erro ao atualizar o contato");
+    } finally {
+      setLoadingSalvarAgenda(false);
+    }
+  }
+
+  async function handleExcluirContatoFrio() {
+    if (!contatoFrioDetalhe) return;
+    if (!confirm("Deseja realmente excluir este contato da agenda?")) return;
+
+    try {
+      setLoadingSalvarAgenda(true);
+      const { error } = await supabase
+        .from('tab_clientes_agenda')
+        .delete()
+        .eq('id', contatoFrioDetalhe.id);
+
+      if (error) throw error;
+
+      toast.success("Contato excluído com sucesso!");
+      setContatoFrioDetalhe(null);
+      fetchCompromissos();
+    } catch (err: any) {
+      console.error("Erro ao excluir contato frio:", err);
+      toast.error("Erro ao excluir o contato");
+    } finally {
+      setLoadingSalvarAgenda(false);
+    }
+  }
+
   async function handleGoogleAuth() {
     if (googleConectado) {
       if (!confirm("Deseja realmente desvincular sua conta Google?")) return;
@@ -451,7 +509,13 @@ export default function AgendaCorretor() {
     const { origem, clienteId, itemId, contatoFrio } = info.event.extendedProps;
 
     if (origem === 'AGENDA_FRIA') {
-      setContatoFrioDetalhe({ nome: info.event.title, ...contatoFrio });
+      setContatoFrioDetalhe({ 
+        id: clienteId, // o clienteId guardado no extendedProps do agenda fria é o id da tabela tab_clientes_agenda
+        nome: info.event.title, 
+        data_retorno: info.event.start.toLocaleDateString('en-CA'),
+        horario_retorno: info.event.start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        ...contatoFrio 
+      });
     } else if (origem === 'RENOVACAO') {
       const { data } = await supabase
         .from('tab_proposta_itens')
@@ -698,36 +762,117 @@ export default function AgendaCorretor() {
         </div>
       )}
 
-      {/* POP-UP SIMPLES PARA LER OS DADOS DO CONTATO FRIO QUANDO CLICADO NO CALENDÁRIO */}
+      {/* POP-UP / MODAL DE EDIÇÃO E DETALHES DO CONTATO FRIO */}
       {contatoFrioDetalhe && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-2xl">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-zinc-800">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
                 <Info className="text-indigo-600" size={20} />
-                Contato Inicial
+                Gerenciar Contato Inicial
               </h3>
-            </div>
-            <div className="mt-4 flex flex-col gap-3 text-sm text-zinc-700 dark:text-zinc-300">
-              <p><strong className="text-zinc-900 dark:text-white">Nome:</strong> {contatoFrioDetalhe.nome}</p>
-              <p><strong className="text-zinc-900 dark:text-white">Telefone:</strong> {contatoFrioDetalhe.telefone || 'Não informado'}</p>
-              <p><strong className="text-zinc-900 dark:text-white">E-mail:</strong> {contatoFrioDetalhe.email || 'Não informado'}</p>
-              {/* 🔥 EXIBIÇÃO DA BREVE DESCRIÇÃO */}
-              <div className="mt-1 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-                <strong className="text-zinc-900 dark:text-white block mb-1">Descrição / Observações:</strong>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800/50 p-3 rounded-xl whitespace-pre-wrap">
-                  {contatoFrioDetalhe.breve_descricao || 'Nenhuma observação informada.'}
-                </p>
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end">
-              <button
+              <button 
                 onClick={() => setContatoFrioDetalhe(null)}
-                className="px-5 py-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-xl text-sm font-semibold text-zinc-700 dark:text-zinc-300 transition-colors"
+                className="p-1 rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               >
-                Fechar
+                <X size={20} />
               </button>
             </div>
+
+            <form onSubmit={handleAtualizarContatoFrio} className="mt-4 flex flex-col gap-3 text-sm">
+              <div>
+                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Nome do Cliente</label>
+                <input
+                  type="text"
+                  required
+                  value={contatoFrioDetalhe.nome}
+                  onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, nome: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Telefone / WhatsApp</label>
+                <input
+                  type="text"
+                  value={contatoFrioDetalhe.telefone}
+                  onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, telefone: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">E-mail</label>
+                <input
+                  type="email"
+                  value={contatoFrioDetalhe.email}
+                  onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, email: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Nova Data</label>
+                  <input
+                    type="date"
+                    required
+                    value={contatoFrioDetalhe.data_retorno || ''}
+                    onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, data_retorno: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Novo Horário</label>
+                  <input
+                    type="time"
+                    required
+                    value={contatoFrioDetalhe.horario_retorno || ''}
+                    onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, horario_retorno: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Descrição / Observações</label>
+                <textarea
+                  rows={3}
+                  value={contatoFrioDetalhe.breve_descricao || ''}
+                  onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, breve_descricao: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-zinc-100 dark:border-zinc-800 mt-2">
+                <button
+                  type="button"
+                  onClick={handleExcluirContatoFrio}
+                  disabled={loadingSalvarAgenda}
+                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/30 dark:hover:bg-red-900/50 rounded-xl text-sm font-semibold transition-colors"
+                >
+                  Excluir Contato
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setContatoFrioDetalhe(null)}
+                    className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-xl text-sm font-semibold text-zinc-700 dark:text-zinc-300 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loadingSalvarAgenda}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-sm flex items-center gap-2"
+                  >
+                    {loadingSalvarAgenda && <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white" />}
+                    Salvar Alterações
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}
