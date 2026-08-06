@@ -11,7 +11,7 @@ import VisaoSinistros from './components/visaoSinistros';
 import VisaoSeguradoras from './components/visaoSeguradoras';
 import VisaoParceiros from './components/visaoParceiros';
 import VisaoProdutos from './components/visaoProdutos';
-import VisaoBuscaRapida from './components/VisaoBuscaRapida';
+import VisaoBuscaRapida from './components/visaoBuscaRapida';
 
 export default function Dashboard() {
   const [initializing, setInitializing] = useState(true);

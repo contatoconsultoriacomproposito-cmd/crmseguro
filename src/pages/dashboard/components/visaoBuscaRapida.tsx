@@ -1,14 +1,32 @@
-import React, { useState } from 'react';
-import { supabase } from '../../../lib/supabaseClient'; // Ajuste a quantidade de ../ conforme a pasta exata
-import { Search, Building2, Users, MapPin, FileText, Phone, MessageSquare, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { supabase } from '../../../lib/supabaseClient'; 
+import { Search, Users, MapPin, FileText, Phone, MessageSquare } from 'lucide-react';
 
-export default function VisaoBuscaRapida({ corretoraId }) {
-  const [termo, setTermo] = useState('');
-  const [resultados, setResultados] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [buscou, setBuscou] = useState(false);
+interface VisaoBuscaRapidaProps {
+  corretoraId: string;
+}
 
-  const buscarEmpresas = async (e) => {
+interface LeadCliente {
+  id: string;
+  razao_social: string;
+  nome_fantasia: string;
+  cnpj: string;
+  ddd_telefone_1: string;
+  telefone_adicional: string;
+  bairro: string;
+  municipio: string;
+  uf: string;
+  nomes_socios: string;
+  status_prospeccao: string;
+}
+
+export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps) {
+  const [termo, setTermo] = useState<string>('');
+  const [resultados, setResultados] = useState<LeadCliente[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [buscou, setBuscou] = useState<boolean>(false);
+
+  const buscarEmpresas = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!termo || termo.length < 3) return;
 
@@ -28,13 +46,15 @@ export default function VisaoBuscaRapida({ corretoraId }) {
       console.error('Erro ao buscar clientes frios:', error);
       setResultados([]);
     } else {
-      setResultados(data || []);
+      setResultados((data as LeadCliente[]) || []);
     }
 
     setLoading(false);
   };
 
-  const limparTelefone = (tel) => tel ? tel.replace(/\D/g, '') : '';
+  const limparTelefone = (tel: string | null | undefined): string => {
+    return tel ? tel.replace(/\D/g, '') : '';
+  };
 
   return (
     <div className="space-y-4 max-w-xl mx-auto">
@@ -109,7 +129,7 @@ export default function VisaoBuscaRapida({ corretoraId }) {
                   </div>
                 </div>
 
-                {/* Sócios (Destaque Principal para Visitas) */}
+                {/* Sócios */}
                 {lead.nomes_socios ? (
                   <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 flex items-start gap-2.5">
                     <Users size={16} className="text-indigo-600 shrink-0 mt-0.5" />
@@ -128,7 +148,7 @@ export default function VisaoBuscaRapida({ corretoraId }) {
                   </div>
                 )}
 
-                {/* Localização Simplificada */}
+                {/* Localização */}
                 <div className="flex items-center gap-1.5 text-xs text-slate-600">
                   <MapPin size={14} className="text-slate-400 shrink-0" />
                   <span>
@@ -136,7 +156,7 @@ export default function VisaoBuscaRapida({ corretoraId }) {
                   </span>
                 </div>
 
-                {/* Ações Rápidas de Telefone / WhatsApp */}
+                {/* Ações Rápidas */}
                 {(tel1 || tel2) && (
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
                     {tel1 && (
