@@ -25,14 +25,15 @@ import {
   Target,
   Receipt,
   HandCoins,
-  User
+  User,
+  Menu,
+  X
 } from "lucide-react"
-import { NavLink, useNavigate } from "react-router-dom"
+import { NavLink, useNavigate, useLocation } from "react-router-dom"
 import { useNotifications } from "../contexts/NotificationContext"
 import { useAuth } from "../auth/AuthContext"
 import LogoutButton from "./LogoutButton"
-import { supabase } from "../lib/supabaseClient" // Garanta que o caminho está correto
-
+import { supabase } from "../lib/supabaseClient"
 
 type Props = {
   collapsed: boolean
@@ -42,6 +43,10 @@ type Props = {
 export default function Sidebar({ collapsed, setCollapsed }: Props) {
   const { user, userProfile } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // ESTADO DO MENU MÓVEL (HAMBÚRGUER)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   // ESTADO PARA ARMAZENAR A LOGO DA CORRETORA
   const [corretoraLogo, setCorretoraLogo] = useState<string | null>(null)
@@ -59,51 +64,50 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
     agenda: false, 
   })
 
+  // Fechar o menu mobile automaticamente ao mudar de rota
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+
   // BUSCAR LOGO NO BANCO DE DADOS
   useEffect(() => {
-  // 1. Função para carregar a logo inicial do banco de dados
-  async function loadLogo() {
-    if (!user?.id) return;
-    try {
-      const { data, error } = await supabase
-        .from('tab_corretora_config')
-        .select('logotipo_url')
-        .eq('id', user.id)
-        .maybeSingle();
+    async function loadLogo() {
+      if (!user?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from('tab_corretora_config')
+          .select('logotipo_url')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (data?.logotipo_url) {
-        const absoluteUrl = data.logotipo_url.trim().toLowerCase();
-        setCorretoraLogo(absoluteUrl);
+        if (data?.logotipo_url) {
+          const absoluteUrl = data.logotipo_url.trim().toLowerCase();
+          setCorretoraLogo(absoluteUrl);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar logo:", error);
       }
-    } catch (error) {
-      console.error("Erro ao carregar logo:", error);
     }
-  }
 
-  loadLogo();
+    loadLogo();
 
-  // 2. OUVINTE DE EVENTO: Escuta a mudança em tempo real
-  const handleLogoUpdate = (event: any) => {
-    if (event.detail) {
-      // Atualiza o estado do Sidebar na hora com a nova URL
-      setCorretoraLogo(event.detail.toLowerCase());
-    }
-  };
+    const handleLogoUpdate = (event: any) => {
+      if (event.detail) {
+        setCorretoraLogo(event.detail.toLowerCase());
+      }
+    };
 
-  // Registra o ouvinte no objeto window
-  window.addEventListener("logoUpdated", handleLogoUpdate);
+    window.addEventListener("logoUpdated", handleLogoUpdate);
 
-  // 3. LIMPEZA (Cleanup): Remove o ouvinte quando o componente for destruído
-  return () => {
-    window.removeEventListener("logoUpdated", handleLogoUpdate);
-  };
-}, [user?.id]);
-
+    return () => {
+      window.removeEventListener("logoUpdated", handleLogoUpdate);
+    };
+  }, [user?.id]);
 
   const toggleMenu = (menu: string) => {
-    if (collapsed) {
+    if (collapsed && !mobileOpen) {
       setCollapsed(false)
     }
     setOpenMenus(prev => ({
@@ -112,132 +116,24 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
     }))
   }
 
-  return (
-    <aside
-      className={`
-        h-screen flex flex-col
-        transition-all duration-300
-        ${collapsed ? "w-20" : "w-64"}
-        bg-surface-light dark:bg-[#171717]
-        border-r border-zinc-200 dark:border-zinc-800
-        flex-shrink-0
-      `}
-    >
-      {/* ================= TOP: LOGO E BOTÃO COLLAPSE ================= */}
-      <div className="flex items-center justify-between p-4 mb-2">
-        {!collapsed && (
-          <span className="text-lg font-bold tracking-tight text-primary-light dark:text-primary-dark">
-            CRM Seguro
-          </span>
-        )}
-        <button onClick={() => setCollapsed(!collapsed)} className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
-          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-        </button>
-      </div>
+  // CONTEÚDO PRINCIPAL DO MENU (REUTILIZADO EM DESKTOP E MOBILE)
+  const renderNavContent = (isMobileView = false) => {
+    const isCollapsed = isMobileView ? false : collapsed
 
-      {/* ================= USER INFO E LOGOUT ================= */}
-<div className="px-4 mb-6">
-  <div className={`p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800 ${collapsed ? "flex flex-col items-center gap-4" : ""}`}>
-    {!collapsed ? (
-      <>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3 overflow-hidden">
-            
-            
-            {/* AVATAR CIRCULAR - VERSÃO FINAL CORRIGIDA */}
-            <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 flex items-center justify-center border-2 border-zinc-200 dark:border-zinc-700 shadow-sm overflow-hidden">
-              {corretoraLogo ? (
-                <img 
-                  key={corretoraLogo}
-                  src={corretoraLogo} 
-                  alt="Logo Corretora" 
-                  className="w-full h-full object-contain p-1" // object-contain garante que a logo não corte
-                  onError={(_e) => {
-                    console.error("Falha ao renderizar imagem da URL:", corretoraLogo);
-                    setCorretoraLogo(null); // Se falhar, mostra o fallback abaixo
-                  }} 
-                />
-              ) : (
-                <div className="w-full h-full bg-blue-600 flex items-center justify-center text-white">
-                  <span className="text-xs font-black uppercase">
-                    {userProfile?.nome_completo?.substring(0, 2) || <User size={16} />}
-                  </span>
-                </div>
-              )}
-            </div>
-            
-            <div className="min-w-0 overflow-hidden">
-              <p className="text-[10px] uppercase font-black text-zinc-400 leading-none mb-1">Usuário Logado</p>
-              <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
-                {userProfile?.nome_completo || user?.email?.split('@')[0]}
-              </p>
-            </div>
-          </div>
-
-          <button 
-            onClick={() => navigate('/configuracao/perfil')}
-            className="p-2 rounded-xl bg-white dark:bg-zinc-800 text-zinc-400 hover:text-blue-600 hover:shadow-md transition-all border border-zinc-100 dark:border-zinc-700 flex-shrink-0"
-            title="Configurações"
-          >
-            <Settings size={16} />
-          </button>
-        </div>
-        
-        <div className="h-[1px] bg-zinc-200/50 dark:bg-zinc-700/50 mb-3" />
-
-        <LogoutButton>
-          <div className="flex items-center gap-2 text-red-500 hover:text-red-600 transition-colors cursor-pointer group">
-            <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 group-hover:bg-red-100 dark:group-hover:bg-red-500/20">
-              <LogOut size={14} />
-            </div>
-            <span className="text-xs font-bold">Sair da conta</span>
-          </div>
-        </LogoutButton>
-      </>
-    ) : (
-      <div className="flex flex-col items-center gap-4">
-        {/* AVATAR PARA MODO COLLAPSED - VERSÃO BLINDADA */}
-        <div 
-          className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center border-2 border-white dark:border-zinc-700 shadow-sm overflow-hidden cursor-pointer"
-          onClick={() => navigate('/configuracao/perfil')}
-        >
-          {corretoraLogo && corretoraLogo.length > 10 ? (
-            <img 
-              src={corretoraLogo} 
-              alt="Logo" 
-              className="w-full h-full object-contain bg-white p-1" 
-              onError={() => setCorretoraLogo(null)}
-            />
-          ) : (
-            <User size={20} className="text-white" />
-          )}
-        </div>
-        
-        <LogoutButton>
-          <div className="text-red-500 hover:scale-110 transition-transform cursor-pointer">
-            <LogOut size={20} />
-          </div>
-        </LogoutButton>
-      </div>
-    )}
-  </div>
-</div>
-
-      {/* ================= MIDDLE: MENU (SCROLLABLE) ================= */}
+    return (
       <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
         <nav className="px-3 space-y-1 flex-1 pb-10">
-          
           <div className="mb-2">
-            <NotificationBell collapsed={collapsed} />
+            <NotificationBell collapsed={isCollapsed} />
           </div>
 
-          <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Dashboard" collapsed={collapsed} />
+          <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Dashboard" collapsed={isCollapsed} />
 
           <NavItem 
             to="/agenda" 
             icon={<Calendar size={20} className="text-blue-500" />} 
             label="Agenda de Retornos" 
-            collapsed={collapsed} 
+            collapsed={isCollapsed} 
           />
 
           {/* GRUPO CORRETORES */}
@@ -247,9 +143,9 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               label="Corretores" 
               isOpen={openMenus.corretores} 
               onClick={() => toggleMenu("corretores")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.corretores && (
+            {!isCollapsed && openMenus.corretores && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/corretores/cadastro" label="Cadastro" icon={<UserPlus size={16} />} />
                 <SubNavItem to="/corretores/lista" label="Ver Listagem" icon={<List size={16} />} />
@@ -264,9 +160,9 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               label="Parceiros" 
               isOpen={openMenus.parceiros} 
               onClick={() => toggleMenu("parceiros")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.parceiros && (
+            {!isCollapsed && openMenus.parceiros && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/parceiros/triagem" label="Triagem de Indicações" icon={<Activity size={16} className="text-blue-500" />} />
                 <SubNavItem to="/parceiros/cadastro" label="Gerenciar Parceiros" icon={<UserPlus size={16} />} />
@@ -281,13 +177,12 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               label="Clientes" 
               isOpen={openMenus.clientes} 
               onClick={() => toggleMenu("clientes")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.clientes && (
+            {!isCollapsed && openMenus.clientes && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/clientes/cadastro" label="Novo Cadastro" icon={<UserPlus size={16} />} />
                 <SubNavItem to="/clientes/lista" label="Ver Listagem" icon={<List size={16} />} />
-                {/* NOVO ITEM ABAIXO */}
                 <SubNavItem to="/clientes/acoes" label="Relatório de Ações" icon={<History size={16} className="text-orange-500" />} />
                 <SubNavItem to="/clientes/campanhas" label="Email-Marketing" icon={<Activity size={16} className="text-emerald-500" />} />
                 <SubNavItem to="/clientes/leads" label="Prospecção de Leads" icon={<Target size={16} className="text-blue-500" />} />
@@ -302,9 +197,9 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               label="Propostas" 
               isOpen={openMenus.propostas} 
               onClick={() => toggleMenu("propostas")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.propostas && (
+            {!isCollapsed && openMenus.propostas && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/propostas/criar" label="Criar Proposta" icon={<FilePlus size={16} />} />
                 <SubNavItem to="/propostas/lista" label="Ver Propostas" icon={<List size={16} />} />
@@ -320,9 +215,9 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               label="Fluxos Kanban" 
               isOpen={openMenus.kanban} 
               onClick={() => toggleMenu("kanban")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.kanban && (
+            {!isCollapsed && openMenus.kanban && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/kanban/atendimento" label="Leads / Novos" icon={<MessageCircle size={16} />} />
                 <SubNavItem to="/kanban/venda" label="Vendas / Clientes" icon={<ShieldCheck size={16} />} />
@@ -338,9 +233,9 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               label="Sinistros" 
               isOpen={openMenus.sinistros} 
               onClick={() => toggleMenu("sinistros")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.sinistros && (
+            {!isCollapsed && openMenus.sinistros && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/sinistros/lista" label="Ver Lista Geral" icon={<List size={16} />} />
               </div>
@@ -350,14 +245,13 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
           {/* GRUPO COMISSÕES */}
           <div className="space-y-1">
             <MenuHeader 
-              // Trocado de DollarSign para HandCoins (representa o recebimento de comissões)
-              icon={<HandCoins size={20} className="text-amber-500" />} // Usei um tom Amber/Laranja para diferenciar o visual do verde
+              icon={<HandCoins size={20} className="text-amber-500" />} 
               label="Comissões" 
               isOpen={openMenus.comissoes} 
               onClick={() => toggleMenu("comissoes")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.comissoes && (
+            {!isCollapsed && openMenus.comissoes && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/comissoes/lista" label="Lançamentos" icon={<List size={16} />} />
               </div>
@@ -371,9 +265,9 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               label="Financeiro" 
               isOpen={openMenus.financeiro} 
               onClick={() => toggleMenu("financeiro")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.financeiro && (
+            {!isCollapsed && openMenus.financeiro && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/financeiro/plano-contas" label="Plano de Contas" icon={<List size={16} />} />
                 <SubNavItem to="/financeiro/lancamentos" label="Lançamentos" icon={<Receipt size={16} />} />
@@ -388,9 +282,9 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
               label="Seguradoras" 
               isOpen={openMenus.seguradoras} 
               onClick={() => toggleMenu("seguradoras")}
-              collapsed={collapsed}
+              collapsed={isCollapsed}
             />
-            {!collapsed && openMenus.seguradoras && (
+            {!isCollapsed && openMenus.seguradoras && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
                 <SubNavItem to="/seguradoras" label="Gerenciar Tudo" icon={<ShieldCheck size={16} />} />
               </div>
@@ -398,7 +292,191 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
           </div>
         </nav>
       </div>
-    </aside>
+    )
+  }
+
+  // BLOCO PERFIL DO USUÁRIO
+  const renderUserProfile = (isMobileView = false) => {
+    const isCollapsed = isMobileView ? false : collapsed
+
+    return (
+      <div className="px-4 mb-6">
+        <div className={`p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800 ${isCollapsed ? "flex flex-col items-center gap-4" : ""}`}>
+          {!isCollapsed ? (
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 flex items-center justify-center border-2 border-zinc-200 dark:border-zinc-700 shadow-sm overflow-hidden">
+                    {corretoraLogo ? (
+                      <img 
+                        key={corretoraLogo}
+                        src={corretoraLogo} 
+                        alt="Logo Corretora" 
+                        className="w-full h-full object-contain p-1" 
+                        onError={(_e) => setCorretoraLogo(null)} 
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-blue-600 flex items-center justify-center text-white">
+                        <span className="text-xs font-black uppercase">
+                          {userProfile?.nome_completo?.substring(0, 2) || <User size={16} />}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="min-w-0 overflow-hidden">
+                    <p className="text-[10px] uppercase font-black text-zinc-400 leading-none mb-1">Usuário Logado</p>
+                    <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                      {userProfile?.nome_completo || user?.email?.split('@')[0]}
+                    </p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    navigate('/configuracao/perfil');
+                    if (isMobileView) setMobileOpen(false);
+                  }}
+                  className="p-2 rounded-xl bg-white dark:bg-zinc-800 text-zinc-400 hover:text-blue-600 hover:shadow-md transition-all border border-zinc-100 dark:border-zinc-700 flex-shrink-0"
+                  title="Configurações"
+                >
+                  <Settings size={16} />
+                </button>
+              </div>
+              
+              <div className="h-[1px] bg-zinc-200/50 dark:bg-zinc-700/50 mb-3" />
+
+              <LogoutButton>
+                <div className="flex items-center gap-2 text-red-500 hover:text-red-600 transition-colors cursor-pointer group">
+                  <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 group-hover:bg-red-100 dark:group-hover:bg-red-500/20">
+                    <LogOut size={14} />
+                  </div>
+                  <span className="text-xs font-bold">Sair da conta</span>
+                </div>
+              </LogoutButton>
+            </>
+          ) : (
+            <div className="flex flex-col items-center gap-4">
+              <div 
+                className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center border-2 border-white dark:border-zinc-700 shadow-sm overflow-hidden cursor-pointer"
+                onClick={() => navigate('/configuracao/perfil')}
+              >
+                {corretoraLogo && corretoraLogo.length > 10 ? (
+                  <img 
+                    src={corretoraLogo} 
+                    alt="Logo" 
+                    className="w-full h-full object-contain bg-white p-1" 
+                    onError={() => setCorretoraLogo(null)}
+                  />
+                ) : (
+                  <User size={20} className="text-white" />
+                )}
+              </div>
+              
+              <LogoutButton>
+                <div className="text-red-500 hover:scale-110 transition-transform cursor-pointer">
+                  <LogOut size={20} />
+                </div>
+              </LogoutButton>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {/* ================= BARRA SUPERIOR MOBILE (Telas < 768px) ================= */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-[#171717] border-b border-zinc-200 dark:border-zinc-800 z-40 px-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 focus:outline-none"
+            aria-label="Abrir Menu"
+          >
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+          <span className="text-base font-bold tracking-tight text-primary-light dark:text-primary-dark">
+            CRM Seguro
+          </span>
+        </div>
+
+        {/* Mini perfil/logo no header móvel */}
+        <div 
+          className="w-9 h-9 rounded-full bg-blue-600 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center overflow-hidden cursor-pointer"
+          onClick={() => navigate('/configuracao/perfil')}
+        >
+          {corretoraLogo ? (
+            <img src={corretoraLogo} alt="Logo" className="w-full h-full object-contain bg-white p-0.5" />
+          ) : (
+            <User size={16} className="text-white" />
+          )}
+        </div>
+      </div>
+
+      {/* BACKDROP (FUNDO ESCURO) PARA MOBILE */}
+      {mobileOpen && (
+        <div 
+          className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40 animate-in fade-in duration-200"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* GAVETA SLIDE-IN (DRAWER) PARA MOBILE */}
+      <aside
+        className={`
+          md:hidden fixed top-0 bottom-0 left-0 w-72 bg-white dark:bg-[#171717] z-50 flex flex-col pt-4
+          transition-transform duration-300 ease-in-out border-r border-zinc-200 dark:border-zinc-800
+          ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
+      >
+        <div className="flex items-center justify-between px-4 mb-4">
+          <span className="text-lg font-bold tracking-tight text-primary-light dark:text-primary-dark">
+            CRM Seguro
+          </span>
+          <button 
+            onClick={() => setMobileOpen(false)} 
+            className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {renderUserProfile(true)}
+        {renderNavContent(true)}
+      </aside>
+
+      {/* ================= SIDEBAR DESKTOP PADRÃO (Telas >= 768px) ================= */}
+      <aside
+        className={`
+          hidden md:flex h-screen flex-col
+          transition-all duration-300
+          ${collapsed ? "w-20" : "w-64"}
+          bg-surface-light dark:bg-[#171717]
+          border-r border-zinc-200 dark:border-zinc-800
+          flex-shrink-0
+        `}
+      >
+        {/* TOP: LOGO E BOTÃO COLLAPSE */}
+        <div className="flex items-center justify-between p-4 mb-2">
+          {!collapsed && (
+            <span className="text-lg font-bold tracking-tight text-primary-light dark:text-primary-dark">
+              CRM Seguro
+            </span>
+          )}
+          <button 
+            onClick={() => setCollapsed(!collapsed)} 
+            className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
+        </div>
+
+        {renderUserProfile(false)}
+        {renderNavContent(false)}
+      </aside>
+    </>
   )
 }
 
