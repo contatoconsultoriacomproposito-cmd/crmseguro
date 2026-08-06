@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient'; // Ajustado para o padrão do projeto
-import { BarChart3, Loader2 } from 'lucide-react';
+import { BarChart3, Loader2, Search, X } from 'lucide-react';
 
 // Importação dos Componentes Modulares
 import VisaoCliente from './components/visaoCliente';
@@ -11,14 +11,19 @@ import VisaoSinistros from './components/visaoSinistros';
 import VisaoSeguradoras from './components/visaoSeguradoras';
 import VisaoParceiros from './components/visaoParceiros';
 import VisaoProdutos from './components/visaoProdutos';
+import VisaoBuscaRapida from './components/VisaoBuscaRapida';
 
 export default function Dashboard() {
   const [initializing, setInitializing] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState('clientes');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [corretores, setCorretores] = useState<any[]>([]);
+  
+  // Estado para controlar a exibição do Modal Flutuante no Celular
+  const [modalBuscaMobileAberto, setModalBuscaMobileAberto] = useState(false);
 
   const listaAbas = [
+    { id: 'busca_rapida', label: '🔍 Consulta Express' },
     { id: 'clientes', label: 'Clientes' },
     { id: 'propostas', label: 'Propostas' },
     { id: 'produtos', label: 'Produtos' },
@@ -46,10 +51,8 @@ export default function Dashboard() {
           setUserProfile(perfil);
 
           if (perfil.tipo_usuario === 'CORRETOR') {
-            // AJUSTE: Garante que o array tenha o formato esperado {id, nome}
             setCorretores([{ id: perfil.id, nome: perfil.nome }]);
           } else {
-            // ... lógica da CORRETORA (ID da Casa + Lista) permanece igual
             const { data: lista } = await supabase
               .from('usuarios_perfis')
               .select('id, nome')
@@ -72,7 +75,6 @@ export default function Dashboard() {
     initDashboard();
   }, []);
 
-  // Enquanto identifica o usuário e carrega a lista de corretores
   if (initializing) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4 bg-slate-50">
@@ -87,7 +89,7 @@ export default function Dashboard() {
   const cid = userProfile?.corretora_id;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8 space-y-12 pb-24 text-slate-800">
+    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8 space-y-12 pb-24 text-slate-800 relative">
       
       {/* HEADER SIMPLIFICADO */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
@@ -118,7 +120,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* RENDERIZAÇÃO CONDICIONAL - UNIFICADA E SEGURA */}
+      {/* RENDERIZAÇÃO CONDICIONAL */}
       <main className="animate-in fade-in slide-in-from-bottom-4 duration-500">
         {!cid ? (
           <div className="flex justify-center p-20">
@@ -126,6 +128,10 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            {abaAtiva === 'busca_rapida' && (
+              <VisaoBuscaRapida corretoraId={cid} />
+            )}
+
             {abaAtiva === 'clientes' && (
               <VisaoCliente 
                 corretoraId={cid} 
@@ -200,6 +206,41 @@ export default function Dashboard() {
           </>
         )}
       </main>
+
+      {/* ======================================================== */}
+      {/* BOTÃO FLUTUANTE (VISÍVEL APENAS NO CELULAR: md:hidden)   */}
+      {/* ======================================================== */}
+      {cid && (
+        <button
+          onClick={() => setModalBuscaMobileAberto(true)}
+          className="md:hidden fixed bottom-6 right-6 z-40 bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-full shadow-2xl shadow-indigo-900/50 flex items-center justify-center transition-all active:scale-95"
+          aria-label="Busca Rápida de Campo"
+        >
+          <Search size={24} />
+        </button>
+      )}
+
+      {/* MODAL FULLSCREEN APENAS PARA O CELULAR */}
+      {modalBuscaMobileAberto && cid && (
+        <div className="fixed inset-0 z-[999] bg-slate-100 p-4 overflow-y-auto flex flex-col">
+          <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm shrink-0">
+            <span className="font-black text-xs uppercase tracking-wider text-indigo-900 flex items-center gap-2">
+              <Search size={16} className="text-indigo-600" /> Consulta de Campo
+            </span>
+            <button
+              onClick={() => setModalBuscaMobileAberto(false)}
+              className="p-2 text-slate-500 hover:text-slate-800 bg-slate-100 rounded-lg"
+            >
+              <X size={20} />
+            </button>
           </div>
-        );
+
+          <div className="flex-1">
+            <VisaoBuscaRapida corretoraId={cid} />
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
 }
