@@ -2016,7 +2016,28 @@ return (
                       <div>
                         <h3 className="font-bold">Linha do Tempo de Interações</h3>
                         <p className="text-[11px] text-purple-100 font-medium">
-                          {leadTimeline.nome_fantasia || leadTimeline.razao_social}
+                          {(() => {
+                            // 1. Tenta pegar de objetos aninhados se existirem (ex: leadTimeline.lead ou leadTimeline.empresa)
+                            const target = leadTimeline?.lead || leadTimeline?.empresa || leadTimeline || {};
+
+                            // 2. Busca por TODAS as chaves comuns de nome/razão social
+                            const possiveisNomes = [
+                              target.nome_fantasia,
+                              target.razao_social,
+                              target.nome_empresa,
+                              target.empresa,
+                              target.nome,
+                              target.socio_nome,
+                              target.nome_contato
+                            ];
+
+                            // 3. Encontra o primeiro valor válido que não seja "null" / "undefined" / vazio
+                            const nomeEncontrado = possiveisNomes.find(
+                              (n) => n && String(n).trim() !== "" && String(n).toUpperCase() !== "NULL"
+                            );
+
+                            return nomeEncontrado || "Cliente sem nome";
+                          })()}
                           {leadTimeline.data_retorno && (
                             <span className="ml-2 bg-purple-700 text-amber-300 px-1.5 py-0.5 rounded font-bold text-[10px]">
                               ⏰ RETORNO: {new Date(leadTimeline.data_retorno + "T00:00:00").toLocaleDateString("pt-BR")}
