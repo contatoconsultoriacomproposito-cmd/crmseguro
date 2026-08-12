@@ -28,32 +28,53 @@ interface NotificationContextData {
 
 const NotificationContext = createContext<NotificationContextData>({} as NotificationContextData);
 
+/**
+ * Função para higienizar o nome e evitar textos como "NULL", "undefined" ou strings vazias.
+ */
+const obterNomeExibicao = (item: any, fallbackDefault = 'Cliente sem nome'): string => {
+  if (!item) return fallbackDefault;
+
+  // Busca em ordem de prioridade os campos comuns
+  const possiveisNomes = [
+    item.nome_fantasia,
+    item.razao_social,
+    item.nome_cliente,
+    item.nome,
+    item.empresa,
+    item.nome_contato
+  ];
+
+  const nomeValido = possiveisNomes.find(
+    (n) => n && String(n).trim() !== '' && String(n).trim().toUpperCase() !== 'NULL'
+  );
+
+  return (nomeValido as string) || fallbackDefault;
+};
+
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
-  const [modalAtivo, setModalAtivo] = useState<{ tipo: string, id: string } | null>(null);
+  const [modalAtivo, setModalAtivo] = useState<{ tipo: string; id: string } | null>(null);
   const [clienteParaModal, setClienteParaModal] = useState<any>(null);
 
   const carregarNotificacoes = useCallback(async () => {
     if (!user) return;
 
     try {
-      // Força a captura da data baseando-se estritamente no Horário de Brasília
       const dataBrasilia = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
       const [diaBr, mesBr, anoBr] = dataBrasilia.split('/');
-      
-      const hojeLocalStr = `${anoBr}-${mesBr}-${diaBr}`; // Formato YYYY-MM-DD
-      const mesDiaHoje = `${mesBr}-${diaBr}`;          // Formato MM-DD
-      
-      // Inteligência de Antecedência: Calcula a data limite para alertas de renovação (30 dias no futuro)
+
+      const hojeLocalStr = `${anoBr}-${mesBr}-${diaBr}`;
+      const mesDiaHoje = `${mesBr}-${diaBr}`;
+
       const dataFutura = new Date();
       dataFutura.setDate(dataFutura.getDate() + 30);
       const [diaFut, mesFut, anoFut] = dataFutura.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).split('/');
       const dataLimiteRenovacaoStr = `${anoFut}-${mesFut}-${diaFut}`;
-      
+
       const listaGeral: Notificacao[] = [];
 
-      // 1. BUSCAR PERFIL DO USUÁRIO
+      // 1. PERFIL DO USUÁRIO
       const { data: perfil } = await supabase
         .from('usuarios_perfis')
         .select('tipo_usuario, corretora_id')
@@ -63,9 +84,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const isAdmin = perfil?.tipo_usuario === 'CORRETORA';
       const corretoraDonaId = perfil?.corretora_id || user.id;
 
-      // --- CONFIGURAÇÃO DE QUERIES EM PARALELO ---
-
-      // Query Indicações (Prioridade: ALTA)
+      // 2. PREPARAÇÃO DAS QUERIES COM CAMPOS SEGUROS
       let queryInd = supabase
         .from('tab_indicacoes')
         .select(`id, nome_cliente, created_at, status_indicacao, tab_parceiros(nome_parceiro)`)
@@ -74,7 +93,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryInd = queryInd.or(`corretor_id.eq.${user.id},corretor_id.is.null`);
 
-      // Query Clientes (Retornos Comerciais, Sinistros e Aniversariantes)
       let queryClientes = supabase
         .from('tab_clientes')
         .select('id, nome, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, data_nascimento')
@@ -82,7 +100,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryClientes = queryClientes.eq('corretor_id', user.id);
 
-      // Query Renovações (Prioridade: CRITICA)
       let queryRenovacoes = supabase
         .from('tab_proposta_itens')
         .select(`
@@ -111,7 +128,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         queryRenovacoes = queryRenovacoes.eq('corretor_id', user.id);
       }
 
-      // Query de Prospecção Fria (Prioridade: NORMAL)
       let queryFrios = supabase
         .from('tab_clientes_frios')
         .select('id, razao_social, nome_fantasia, data_retorno, horario_retorno')
@@ -121,7 +137,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryFrios = queryFrios.eq('corretor_id', user.id);
 
-      // Query Agenda de Clientes (tab_clientes_agenda)
       let queryAgenda = supabase
         .from('tab_clientes_agenda')
         .select('id, nome_cliente, data_retorno, horario_retorno, tel_cliente, email_cliente, breve_descricao')
@@ -130,8 +145,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       if (!isAdmin) queryAgenda = queryAgenda.eq('corretor_id', user.id);
 
-      // 🔥 DISPARO SIMULTÂNEO
-      const [resIndicacoes, resClientes, resRenovacoes, resFrios, resAgenda] = await Promise.all([
+      // 3. EXECUÇÃO RESISTENTE A ERROS (Promise.allSettled)
+      const resultados = await Promise.allSettled([
         queryInd,
         queryClientes,
         queryRenovacoes,
@@ -139,16 +154,24 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         queryAgenda
       ]);
 
-      // --- PROCESSAMENTO DOS RESULTADOS ---
+      const resIndicacoes = resultados[0].status === 'fulfilled' ? resultados[0].value.data : [];
+      const resClientes   = resultados[1].status === 'fulfilled' ? resultados[1].value.data : [];
+      const resRenovacoes  = resultados[2].status === 'fulfilled' ? resultados[2].value.data : [];
+      const resFrios      = resultados[3].status === 'fulfilled' ? resultados[3].value.data : [];
+      const resAgenda     = resultados[4].status === 'fulfilled' ? resultados[4].value.data : [];
 
-      // Processar Indicações (ALTA)
-      resIndicacoes.data?.forEach((ind: any) => {
+      // 4. PROCESSAMENTO DOS RESULTADOS
+
+      // Processar Indicações
+      resIndicacoes?.forEach((ind: any) => {
         const parceiro = Array.isArray(ind.tab_parceiros) ? ind.tab_parceiros[0] : ind.tab_parceiros;
+        const nomeCliente = obterNomeExibicao(ind, 'Indicação sem nome');
+
         listaGeral.push({
           id: `ind-${ind.id}`,
           tipo: 'INDICACAO',
           prioridade: 'ALTA',
-          titulo: `INDICAÇÃO: ${ind.nome_cliente}`,
+          titulo: `INDICAÇÃO: ${nomeCliente}`,
           subtitulo: parceiro?.nome_parceiro || 'Link Direto',
           data: ind.created_at,
           atrasado: false,
@@ -156,10 +179,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Clientes (NORMAL / ALTA)
-      resClientes.data?.forEach(c => {
-        const nomeExibicao = c.nome || 'Cliente sem nome';
-        
+      // Processar Clientes
+      resClientes?.forEach(c => {
+        const nomeExibicao = obterNomeExibicao(c, 'Cliente sem nome');
+
         if (c.data_retorno && c.data_retorno <= hojeLocalStr) {
           listaGeral.push({
             id: `com-${c.id}`,
@@ -172,7 +195,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             ref_id: c.id
           });
         }
-        
+
         if (c.data_retorno_sinistro && c.data_retorno_sinistro <= hojeLocalStr) {
           listaGeral.push({
             id: `sin-${c.id}`,
@@ -203,21 +226,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       });
 
-      // Processar Renovações (CRÍTICA)
-      resRenovacoes.data?.forEach((ren: any) => {
+      // Processar Renovações
+      resRenovacoes?.forEach((ren: any) => {
         const opcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
         const proposta = opcao?.tab_propostas;
         const cliente = Array.isArray(proposta?.tab_clientes) ? proposta.tab_clientes[0] : proposta?.tab_clientes;
-        
-        const nomeCli = cliente?.nome || 'Cliente';
-        
+
+        const nomeCli = obterNomeExibicao(cliente, 'Cliente sem nome');
+
         const dataRenova = new Date(ren.data_renovacao + 'T00:00:00');
         const dataHoje = new Date(hojeLocalStr + 'T00:00:00');
         const diferencaTempo = dataRenova.getTime() - dataHoje.getTime();
         const diasRestantes = Math.ceil(diferencaTempo / (1000 * 60 * 60 * 24));
 
         let avisoVencimento = `Vence em ${diasRestantes} dias!`;
-        if (diasRestantes === 0) avisoVencimento = "Vence HOJE!";
+        if (diasRestantes === 0) avisoVencimento = 'Vence HOJE!';
         if (diasRestantes < 0) avisoVencimento = `Vencida há ${Math.abs(diasRestantes)} dias!`;
 
         listaGeral.push({
@@ -233,9 +256,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Prospecção Fria (NORMAL)
-      resFrios.data?.forEach((lead: any) => {
-        const nomeExibicao = lead.nome_fantasia || lead.razao_social || 'Prospect Frio';
+      // Processar Prospecção Fria
+      resFrios?.forEach((lead: any) => {
+        const nomeExibicao = obterNomeExibicao(lead, 'Prospect Frio');
 
         listaGeral.push({
           id: `frio-${lead.id}`,
@@ -250,16 +273,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Agenda (tab_clientes_agenda)
-      resAgenda.data?.forEach((item: any) => {
-        // Dá prioridade para a breve descrição no subtítulo; se vazia, usa telefone/email
+      // Processar Agenda
+      resAgenda?.forEach((item: any) => {
+        const nomeExibicao = obterNomeExibicao(item, 'Cliente Agenda');
         const subtituloNotificacao = item.breve_descricao || item.tel_cliente || item.email_cliente || 'Retorno de agenda';
 
         listaGeral.push({
           id: `ag-${item.id}`,
           tipo: 'AGENDA',
           prioridade: 'NORMAL',
-          titulo: `AGENDA: ${item.nome_cliente}`,
+          titulo: `AGENDA: ${nomeExibicao}`,
           subtitulo: subtituloNotificacao,
           data: item.data_retorno,
           horario: item.horario_retorno,
@@ -268,11 +291,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Ordenação base por data cronológica
+      // Ordenar por data cronológica
       setNotificacoes(listaGeral.sort((a, b) => (a.data || '').localeCompare(b.data || '')));
-      
     } catch (error) {
-      console.error("Erro ao carregar notificações:", error);
+      console.error('Erro ao carregar notificações:', error);
     }
   }, [user]);
 
@@ -298,7 +320,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setClienteParaModal(cliente);
         setModalAtivo({ tipo: 'CONTATO_GERAL', id: n.ref_id });
       } else {
-        toast.error("Cliente não encontrado.");
+        toast.error('Cliente não encontrado.');
       }
       return;
     }
@@ -315,12 +337,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   };
 
   const markAsReadByIndicacao = async (indicacaoId: string) => {
-    setNotificacoes(prev => prev.filter(n => n.ref_id !== indicacaoId));
+    setNotificacoes((prev) => prev.filter((n) => n.ref_id !== indicacaoId));
   };
 
   useEffect(() => {
     if (!user) return;
-    
+
     const channel = supabase
       .channel('notificacoes-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
@@ -331,35 +353,37 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .subscribe();
 
     carregarNotificacoes();
-    
-    return () => { 
-      supabase.removeChannel(channel); 
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, [user, carregarNotificacoes]);
 
   return (
-    <NotificationContext.Provider value={{ 
-      notificacoes, 
-      refresh: carregarNotificacoes, 
-      abrirNotificacao,
-      markAsReadByIndicacao 
-    }}>
+    <NotificationContext.Provider
+      value={{
+        notificacoes,
+        refresh: carregarNotificacoes,
+        abrirNotificacao,
+        markAsReadByIndicacao
+      }}
+    >
       {children}
-      
+
       {modalAtivo?.tipo === 'RENOVACAO' && (
-        <ModalGerenciamentoRenovacao 
-          isOpen={true} 
+        <ModalGerenciamentoRenovacao
+          isOpen={true}
           itemId={modalAtivo.id}
           onClose={() => setModalAtivo(null)}
-          onSuccess={() => { 
-            carregarNotificacoes(); 
-            setModalAtivo(null); 
+          onSuccess={() => {
+            carregarNotificacoes();
+            setModalAtivo(null);
           }}
         />
       )}
 
       {modalAtivo?.tipo === 'CONTATO_GERAL' && clienteParaModal && (
-        <ModalContato 
+        <ModalContato
           isOpen={true}
           cliente={clienteParaModal}
           onClose={() => {
