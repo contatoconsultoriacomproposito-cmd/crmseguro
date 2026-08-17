@@ -646,6 +646,7 @@ export default function LeadsProspeccao() {
 
   // Gestão do Módulo de Timeline e Agendamento Simplificado
   const abrirTimeline = async (lead: any) => {
+    
     setLeadTimeline(lead);
     setNovaAcaoObs("");
     setNovaAcaoRetorno(lead.data_retorno || ""); 
@@ -664,6 +665,8 @@ export default function LeadsProspeccao() {
       console.error(err);
     }
   };
+
+  
 
   const salvarNovaAcaoAcompanhamento = async () => {
     if (!novaAcaoObs.trim()) {
@@ -2059,58 +2062,105 @@ return (
             {leadTimeline && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                 <div className="bg-white rounded-2xl w-full max-w-2xl shadow-xl max-h-[90vh] flex flex-col">
-                  <div className="p-4 border-b flex justify-between items-center bg-purple-600 text-white rounded-t-2xl">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-5 h-5"/>
-                      <div>
-                        <h3 className="font-bold">Linha do Tempo de Interações</h3>
-                        <p className="text-[11px] text-purple-100 font-medium">
-                          {(() => {
-                            // 1. Tenta pegar de objetos aninhados se existirem (ex: leadTimeline.lead ou leadTimeline.empresa)
-                            const target = leadTimeline?.lead || leadTimeline?.empresa || leadTimeline || {};
+                  
+                  {/* Cabeçalho do Modal */}
+                  <div className="p-4 border-b flex justify-between items-start gap-3 bg-purple-600 text-white rounded-t-2xl">
+                    <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                      <Clock className="w-5 h-5 mt-0.5 shrink-0"/>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-base leading-tight">Linha do Tempo de Interações</h3>
+                        
+                        {/* Bloco 1: Nome da Empresa */}
+                        <div className="text-white font-bold text-sm mt-1 leading-snug break-words">
+                          {leadTimeline.nome_fantasia || 
+                          leadTimeline.razao_social || 
+                          leadTimeline.nome_empresa || 
+                          leadTimeline.empresa || 
+                          "Cliente sem nome"}
+                        </div>
 
-                            // 2. Busca por TODAS as chaves comuns de nome/razão social
-                            const possiveisNomes = [
-                              target.nome_fantasia,
-                              target.razao_social,
-                              target.nome_empresa,
-                              target.empresa,
-                              target.nome,
-                              target.socio_nome,
-                              target.nome_contato
-                            ];
+                        {/* Bloco 2: Linha Exclusiva para Sócios */}
+                        {(() => {
+                          const socios = 
+                            leadTimeline.nomes_socios || 
+                            leadTimeline.socio_nome || 
+                            leadTimeline.nome_socio || 
+                            leadTimeline.nome_contato;
 
-                            // 3. Encontra o primeiro valor válido que não seja "null" / "undefined" / vazio
-                            const nomeEncontrado = possiveisNomes.find(
-                              (n) => n && String(n).trim() !== "" && String(n).toUpperCase() !== "NULL"
-                            );
+                          const socioValido = 
+                            socios && 
+                            String(socios).trim() !== "" && 
+                            String(socios).trim().toUpperCase() !== "NULL";
 
-                            return nomeEncontrado || "Cliente sem nome";
-                          })()}
-                          {leadTimeline.data_retorno && (
-                            <span className="ml-2 bg-purple-700 text-amber-300 px-1.5 py-0.5 rounded font-bold text-[10px]">
-                              ⏰ RETORNO: {new Date(leadTimeline.data_retorno + "T00:00:00").toLocaleDateString("pt-BR")}
-                              {leadTimeline.horario_retorno ? ` às ${leadTimeline.horario_retorno.substring(0, 5)}` : ""}
-                            </span>
-                          )}
-                        </p>
+                          if (!socioValido) return null;
+
+                          return (
+                            <div className="text-purple-100 text-xs mt-1 leading-relaxed break-words font-medium">
+                              👤 <strong className="text-white">Sócio(s):</strong> {socios}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Bloco 3: Linha Exclusiva para Data/Hora de Retorno */}
+                        {(() => {
+                          const dataRetorno = leadTimeline.data_retorno;
+                          const horaRetorno = leadTimeline.horario_retorno;
+
+                          if (!dataRetorno) return null;
+
+                          const dataFormatada = new Date(
+                            String(dataRetorno).includes("T") ? dataRetorno : `${dataRetorno}T00:00:00`
+                          ).toLocaleDateString("pt-BR");
+
+                          return (
+                            <div className="mt-2.5">
+                              <span className="inline-flex items-center bg-amber-400 text-purple-950 px-2.5 py-1 rounded-md font-bold text-xs shadow-sm border border-amber-300">
+                                ⏰ RETORNO AGENDADO: {dataFormatada}
+                                {horaRetorno ? ` às ${String(horaRetorno).substring(0, 5)}` : ""}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
-                    <button onClick={() => setLeadTimeline(null)} className="p-1 rounded-lg hover:bg-purple-700"><X className="w-5 h-5"/></button>
+
+                    <button onClick={() => setLeadTimeline(null)} className="p-1 rounded-lg hover:bg-purple-700 shrink-0 transition-colors">
+                      <X className="w-5 h-5"/>
+                    </button>
                   </div>
-                  
+
+                  {/* Formulário de Registro de Nova Ação */}
                   <div className="p-4 border-b bg-slate-50 space-y-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 uppercase mb-1">O que foi conversado / Resumo do Acionamento</label>
-                      <textarea rows={2} value={novaAcaoObs} onChange={e => setNovaAcaoObs(e.target.value)} placeholder="Ex: Liguei para o sócio e ele pediu para retornar na próxima semana..." className="w-full p-2.5 border rounded-lg text-sm resize-none outline-none focus:border-purple-500"></textarea>
+                      <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                        O que foi conversado / Resumo do Acionamento
+                      </label>
+                      <textarea 
+                        rows={2} 
+                        value={novaAcaoObs} 
+                        onChange={e => setNovaAcaoObs(e.target.value)} 
+                        placeholder="Ex: Liguei para o sócio e ele pediu para retornar na próxima semana..." 
+                        className="w-full p-2.5 border rounded-lg text-sm resize-none outline-none focus:border-purple-500 bg-white"
+                      ></textarea>
                     </div>
+
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-4 flex-wrap w-full md:w-auto">
                         <div className="flex items-center gap-2 flex-wrap">
                           <Calendar className="w-4 h-4 text-purple-600" />
                           <span className="text-xs font-bold text-slate-600 uppercase">Agendar Retorno:</span>
-                          <input type="date" value={novaAcaoRetorno} onChange={e => setNovaAcaoRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500" />
-                          <input type="time" value={novaAcaoHorarioRetorno} onChange={e => setNovaAcaoHorarioRetorno(e.target.value)} className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500" />
+                          <input 
+                            type="date" 
+                            value={novaAcaoRetorno} 
+                            onChange={e => setNovaAcaoRetorno(e.target.value)} 
+                            className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500 bg-white" 
+                          />
+                          <input 
+                            type="time" 
+                            value={novaAcaoHorarioRetorno} 
+                            onChange={e => setNovaAcaoHorarioRetorno(e.target.value)} 
+                            className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500 bg-white" 
+                          />
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -2127,15 +2177,21 @@ return (
                         </div>
                       </div>
 
-                      <button onClick={salvarNovaAcaoAcompanhamento} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm whitespace-nowrap ml-auto">
+                      <button 
+                        onClick={salvarNovaAcaoAcompanhamento} 
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm whitespace-nowrap ml-auto"
+                      >
                         <Plus className="w-3.5 h-3.5"/> Registrar Ação
                       </button>
                     </div>
                   </div>
 
+                  {/* Lista do Histórico de Interações */}
                   <div className="p-6 overflow-y-auto flex-1 space-y-4">
                     {historicoAcoes.length === 0 ? (
-                      <p className="text-sm text-center text-gray-400 py-6">Nenhuma ação registrada. Comece a prospecção ativa agora!</p>
+                      <p className="text-sm text-center text-gray-400 py-6">
+                        Nenhuma ação registrada. Comece a prospecção ativa agora!
+                      </p>
                     ) : (
                       historicoAcoes.map((acao) => (
                         <div key={acao.id} className="relative pl-6 border-l-2 border-purple-200 pb-2">
@@ -2143,14 +2199,18 @@ return (
                           <div className="flex justify-between text-xs text-gray-400 font-semibold">
                             <span>📅 {new Date(acao.criado_em).toLocaleString("pt-BR")}</span>
                           </div>
-                          <p className="text-sm text-slate-700 mt-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 font-medium">{acao.observacao}</p>
+                          <p className="text-sm text-slate-700 mt-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 font-medium">
+                            {acao.observacao}
+                          </p>
                         </div>
                       ))
                     )}
                   </div>
+
                 </div>
               </div>
             )}
+
 
             {/* Modal: Visualizar Ficha */}
             {leadVisualizar && (
