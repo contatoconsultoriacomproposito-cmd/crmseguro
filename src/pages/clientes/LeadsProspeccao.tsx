@@ -1510,36 +1510,85 @@ return (
                             const cnaesFiltrados = todosCnaesDisponiveis.filter((item: any) => 
                               item.cnae.toLowerCase().includes(termoPesquisaCnae.toLowerCase())
                             );
+
+                            // Verifica se todos os itens atualmente filtrados já estão selecionados
+                            const todosFiltradosSelecionados = cnaesFiltrados.length > 0 && 
+                              cnaesFiltrados.every((item: any) => filtroCnaesSelecionados.includes(item.cnae));
+
+                            // Função para alternar entre selecionar todos e desmarcar todos os filtrados
+                            const handleSelecionarTodos = () => {
+                              if (todosFiltradosSelecionados) {
+                                // Remove da seleção apenas os itens visíveis/filtrados
+                                const cnaesFiltradosIds = cnaesFiltrados.map((item: any) => item.cnae);
+                                setFiltroCnaesSelecionados(prev => prev.filter(id => !cnaesFiltradosIds.includes(id)));
+                              } else {
+                                // Adiciona todos os itens filtrados mantendo os que já estavam selecionados
+                                const novosCnaes = cnaesFiltrados.map((item: any) => item.cnae);
+                                setFiltroCnaesSelecionados(prev => Array.from(new Set([...prev, ...novosCnaes])));
+                              }
+                            };
+
                             return (
-                            <div className="absolute right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 space-y-2 animate-fade-in w-[90vw] sm:w-[400px] md:w-[480px]">
-                              <input type="text" autoFocus value={termoPesquisaCnae} onChange={(e) => setTermoPesquisaCnae(e.target.value)} placeholder="Digite para pesquisar..." className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 bg-slate-50 font-medium" />
-                              <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
-                                {cnaesFiltrados.length > 0 ? (
-                                  cnaesFiltrados.map((item: any) => {
-                                    const incluso = filtroCnaesSelecionados.includes(item.cnae);
-                                    return (
-                                      <label key={item.cnae} className="flex items-center justify-between gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none">
-                                        <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                                          <input type="checkbox" checked={incluso} onChange={() => setFiltroCnaesSelecionados(prev => incluso ? prev.filter(i => i !== item.cnae) : [...prev, item.cnae])} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer flex-shrink-0" />
-                                          <span className="text-slate-700 font-medium break-words leading-tight">{item.cnae}</span>
-                                        </div>
-                                        <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100">{item.quantidade}</span>
-                                      </label>
-                                    );
-                                  })
-                                ) : (
-                                  <p className="text-center text-gray-400 py-4 italic">Nenhum segmento encontrado.</p>
-                                )}
-                              </div>
-                              <div className="border-t pt-2 flex justify-between items-center bg-slate-50 -mx-2 -mb-2 p-2 rounded-b-xl">
-                                <div>
-                                  {filtroCnaesSelecionados.length > 0 && (
-                                    <button type="button" onClick={() => setFiltroCnaesSelecionados([])} className="text-[10px] bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded font-bold uppercase transition">Limpar</button>
+                              <div className="absolute right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 space-y-2 animate-fade-in w-[90vw] sm:w-[400px] md:w-[480px]">
+                                
+                                {/* Campo de Pesquisa + Botão Selecionar Todos */}
+                                <div className="flex items-center gap-2">
+                                  <input 
+                                    type="text" 
+                                    autoFocus 
+                                    value={termoPesquisaCnae} 
+                                    onChange={(e) => setTermoPesquisaCnae(e.target.value)} 
+                                    placeholder="Digite para pesquisar..." 
+                                    className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 bg-slate-50 font-medium" 
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handleSelecionarTodos}
+                                    className="text-[10px] whitespace-nowrap bg-blue-50 hover:bg-blue-100 text-blue-600 px-2.5 py-2 rounded-lg font-bold transition border border-blue-200"
+                                  >
+                                    {todosFiltradosSelecionados ? "Desmarcar Filtrados" : "Selecionar Todos"}
+                                  </button>
+                                </div>
+
+                                {/* Lista de CNAEs */}
+                                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
+                                  {cnaesFiltrados.length > 0 ? (
+                                    cnaesFiltrados.map((item: any) => {
+                                      const incluso = filtroCnaesSelecionados.includes(item.cnae);
+                                      return (
+                                        <label key={item.cnae} className="flex items-center justify-between gap-2.5 p-2 hover:bg-slate-50 cursor-pointer transition rounded-md select-none">
+                                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                            <input 
+                                              type="checkbox" 
+                                              checked={incluso} 
+                                              onChange={() => setFiltroCnaesSelecionados(prev => incluso ? prev.filter(i => i !== item.cnae) : [...prev, item.cnae])} 
+                                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer flex-shrink-0" 
+                                            />
+                                            <span className="text-slate-700 font-medium break-words leading-tight">{item.cnae}</span>
+                                          </div>
+                                          <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 shadow-sm border border-blue-100">{item.quantidade}</span>
+                                        </label>
+                                      );
+                                    })
+                                  ) : (
+                                    <p className="text-center text-gray-400 py-4 italic">Nenhum segmento encontrado.</p>
                                   )}
                                 </div>
-                                <button type="button" onClick={() => { setDropdownCnaeAberto(false); setTermoPesquisaCnae(""); }} className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold uppercase transition shadow-sm">Fechar</button>
+
+                                {/* Rodapé com Limpar e Fechar */}
+                                <div className="border-t pt-2 flex justify-between items-center bg-slate-50 -mx-2 -mb-2 p-2 rounded-b-xl">
+                                  <div>
+                                    {filtroCnaesSelecionados.length > 0 && (
+                                      <button type="button" onClick={() => setFiltroCnaesSelecionados([])} className="text-[10px] bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded font-bold uppercase transition">
+                                        Limpar Todos ({filtroCnaesSelecionados.length})
+                                      </button>
+                                    )}
+                                  </div>
+                                  <button type="button" onClick={() => { setDropdownCnaeAberto(false); setTermoPesquisaCnae(""); }} className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-bold uppercase transition shadow-sm">
+                                    Fechar
+                                  </button>
+                                </div>
                               </div>
-                            </div>
                             );
                           })()}
                         </div>
