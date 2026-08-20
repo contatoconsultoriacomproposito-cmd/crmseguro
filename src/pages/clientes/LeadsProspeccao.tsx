@@ -2258,10 +2258,10 @@ return (
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-blue-100/40 dark:border-blue-900/20 text-[11px]">
                   <div>
-                    <span className="text-slate-400 font-medium">Vinculado à Corretora:</span> <span className="font-mono text-slate-600 dark:text-zinc-400">{leadVisualizar.corretora_id}</span>
+                    {/* <span className="text-slate-400 font-medium">Vinculado à Corretora:</span> <span className="font-mono text-slate-600 dark:text-zinc-400">{leadVisualizar.corretora_id}</span>*/}
                   </div>
                   <div>
-                    <span className="text-slate-400 font-medium">Corretor Responsável:</span> <span className="font-mono text-slate-600 dark:text-zinc-400">{leadVisualizar.corretor_id || 'Não atribuído'}</span>
+                    {/*<span className="text-slate-400 font-medium">Corretor Responsável:</span> <span className="font-mono text-slate-600 dark:text-zinc-400">{leadVisualizar.corretor_id || 'Não atribuído'}</span>*/}
                   </div>
                 </div>
               </div>
