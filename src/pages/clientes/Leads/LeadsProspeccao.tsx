@@ -2,14 +2,15 @@ import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   ArrowLeft, Calendar, CheckCircle2, Loader2,
-  Upload, Trash2, MapPin, Edit3, Check, Plus, X, MessageSquare, Clock, Printer, Search
+  Upload, Trash2, MapPin, Edit3, Check, Plus, X, MessageSquare, Clock, Printer, Search, TrendingUp
 } from "lucide-react";
-import { supabase } from "../../lib/supabaseClient";
-import { useAuth } from "../../auth/AuthContext";
-import { maskCPF, maskCNPJ, maskPhone } from "../../utils/masks";
+import { supabase } from "../../../lib/supabaseClient";
+import { useAuth } from "../../../auth/AuthContext";
+import { maskCPF, maskCNPJ, maskPhone } from "../../../utils/masks";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
+import RelatorioProdutividadeModal from "./RelatorioProdutividadeModal"; // Ajuste o caminho se necessário
 
 // Lista de colunas fixas mapeáveis do banco de dados destino (Removido duplicados)
 const COLUNAS_BANCO = [
@@ -92,17 +93,12 @@ export default function LeadsProspeccao() {
   const [filtroFaixasSelecionadas, setFiltroFaixasSelecionadas] = useState<string[]>([]);
   const [pesquisaFaixaEtaria, setPesquisaFaixaEtaria] = useState("");
   const [dropdownFaixaAberto, setDropdownFaixaAberto] = useState(false);
-  
 
-  // Estados dos Modais Modulares
+  // Estados dos Modais Modulares e Timeline
   const [leadVisualizar, setLeadVisualizar] = useState<any>(null);
   const [leadEditar, setLeadEditar] = useState<any>(null);
   const [leadTimeline, setLeadTimeline] = useState<any>(null);
   const [historicoAcoes, setHistoricoAcoes] = useState<any[]>([]);
-  const [novaAcaoObs, setNovaAcaoObs] = useState("");
-  const [novaAcaoRetorno, setNovaAcaoRetorno] = useState("");
-  const [novaAcaoHorarioRetorno, setNovaAcaoHorarioRetorno] = useState("");
-  const [resultadoAcao, setResultadoAcao] = useState("em_prospeccao");
 
   // 🔍 ESTADOS EXCLUSIVOS DO MOTOR DE BUSCA DO GOOGLE (SERPAPI)
   const [higienizandoLote, setHigienizandoLote] = useState(false);
@@ -111,6 +107,38 @@ export default function LeadsProspeccao() {
   // FILTROS DE PRECISÃO DO GOOGLE
   const [filtroGoogleStatus, setFiltroGoogleStatus] = useState<string[]>([]);
   const [filtroGoogleScoreMin, setFiltroGoogleScoreMin] = useState("");
+
+  // Estados unificados da Linha do Tempo / Nova Ação
+  const [faseAtendimento, setFaseAtendimento] = useState<string>("nao_contatado");
+  const [temperatura, setTemperatura] = useState<string>("frio");
+  const [resultadoAcao, setResultadoAcao] = useState("em_prospeccao"); // Status prospecção
+
+  // 1) O que fiz na ação & 1.1) O que aconteceu
+  const [tipoAcaoRealizada, setTipoAcaoRealizada] = useState<string>("ligar");
+  const [desfechoAcaoRealizada, setDesfechoAcaoRealizada] = useState<string>("atendeu");
+  const [novaAcaoObs, setNovaAcaoObs] = useState("");
+
+  // 2) Próximo Contato & Data/Hora de retorno
+  const [proximaAcao, setProximaAcao] = useState<string[]>([]);
+  const [novaAcaoRetorno, setNovaAcaoRetorno] = useState("");
+  const [novaAcaoHorarioRetorno, setNovaAcaoHorarioRetorno] = useState("");
+
+  // 🎯 ESTADOS DE FILTROS DE CRM E PROSPECÇÃO
+  const [filtroFaseAtendimento, setFiltroFaseAtendimento] = useState("");
+  const [filtroTemperatura, setFiltroTemperatura] = useState("");
+  const [filtroProximaAcao, setFiltroProximaAcao] = useState("");
+
+  // controle para abrir/fechar o modal:
+  const [mostrarModalRelatorio, setMostrarModalRelatorio] = useState(false);
+
+  // Contatos Adicionais (JSONB)
+  const [contatosAdicionais, setContatosAdicionais] = useState<Array<{
+    id: string;
+    nome: string;
+    cargo_relacao: string;
+    telefone: string;
+    email: string;
+  }>>([]);
 
   // Função 1: Validação Individual de um Lead no Google
   const validarLeadGoogleIndividual = async (leadId: string) => {
@@ -303,7 +331,8 @@ export default function LeadsProspeccao() {
       filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, 
       filtroDataRetornoMin, filtroDataRetornoMax, filtroCep, 
       filtroSituacaoCadastral, filtroDataAberturaMin, filtroDataAberturaMax,
-      filtroGoogleStatus,filtroGoogleScoreMin,filtroFaixasSelecionadas]);
+      filtroGoogleStatus, filtroGoogleScoreMin, filtroFaixasSelecionadas,
+      filtroFaseAtendimento, filtroTemperatura, filtroProximaAcao]);
 
   // useEffect Definitivo: Abre o modal por ID local ou buscando diretamente no Supabase
   useEffect(() => {
@@ -407,6 +436,19 @@ export default function LeadsProspeccao() {
     if (filtroDataRetornoMin) query = query.gte("data_retorno", filtroDataRetornoMin);
     if (filtroDataRetornoMax) query = query.lte("data_retorno", filtroDataRetornoMax);
 
+    // 🎯 ADICIONADOS: NOVOS FILTROS DE CRM E PROSPECÇÃO NA QUERY
+    if (filtroFaseAtendimento) {
+      query = query.eq("fase_atendimento", filtroFaseAtendimento);
+    }
+    if (filtroTemperatura) {
+      query = query.eq("temperatura", filtroTemperatura);
+    }
+    // 🎯 FILTRAGEM CORRIGIDA DA PRÓXIMA AÇÃO
+    if (filtroProximaAcao) {
+      // Como 'proxima_acao' é um array no banco (ex: ["visitar"]), usamos .contains()
+      query = query.contains("proxima_acao", [filtroProximaAcao]);
+    }
+
     // Filtro Faixas Etárias
     if (filtroFaixasSelecionadas.length > 0) {
       const filtrosFaixa = filtroFaixasSelecionadas
@@ -491,12 +533,12 @@ export default function LeadsProspeccao() {
       console.error("Erro ao calcular metadados dos filtros:", errContagem);
     }
 
-      } catch (err: any) {
-        toast.error("Erro ao buscar registros: " + err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
+  } catch (err: any) {
+    toast.error("Erro ao buscar registros: " + err.message);
+  } finally {
+    setLoading(false);
+  }
+}
 
 // Processamento de Upload e Leitura do Cabeçalho CSV (Blindado contra aspas e delimitadores)
   const handleProcessarCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -644,79 +686,113 @@ export default function LeadsProspeccao() {
     }
   };
 
-  // Gestão do Módulo de Timeline e Agendamento Simplificado
+  // Gerenciador do Multiselect "Próxima Ação"
+  const toggleProximaAcao = (opcao: string) => {
+    setProximaAcao(prev =>
+      prev.includes(opcao) ? prev.filter(item => item !== opcao) : [...prev, opcao]
+    );
+  };
+
+  // Manipulação do JSONB de Contatos Adicionais
+  const adicionarContato = () => {
+    setContatosAdicionais(prev => [
+      ...prev,
+      { id: crypto.randomUUID(), nome: "", cargo_relacao: "", telefone: "", email: "" }
+    ]);
+  };
+
+  const atualizarContato = (id: string, campo: string, valor: string) => {
+    setContatosAdicionais(prev =>
+      prev.map(c => (c.id === id ? { ...c, [campo]: valor } : c))
+    );
+  };
+
+  const removerContato = (id: string) => {
+    setContatosAdicionais(prev => prev.filter(c => c.id !== id));
+  };
+
+  
+  // Abertura do Modal e carga dos dados existentes
   const abrirTimeline = async (lead: any) => {
-    
     setLeadTimeline(lead);
     setNovaAcaoObs("");
-    setNovaAcaoRetorno(lead.data_retorno || ""); 
-    setNovaAcaoHorarioRetorno(lead.horario_retorno || ""); 
+    setNovaAcaoRetorno(lead.data_retorno || "");
+    setNovaAcaoHorarioRetorno(lead.horario_retorno || "");
     
+    // Carrega os dados mais recentes salvos no lead
+    setFaseAtendimento(lead.fase_atendimento || "nao_contatado");
+    setTemperatura(lead.temperatura || "frio");
+    setResultadoAcao(lead.status_prospeccao || "em_prospeccao");
+    setContatosAdicionais(lead.contatos_adicionais || []);
+    setProximaAcao(lead.proxima_acao || []);
+
     try {
       const { data, error } = await supabase
         .from("tab_clientes_frios_acoes")
         .select("*")
         .eq("cliente_frio_id", lead.id)
         .order("criado_em", { ascending: false });
-        
+
       if (error) throw error;
       setHistoricoAcoes(data || []);
     } catch (err: any) {
-      console.error(err);
+      console.error("Erro ao carregar histórico:", err);
     }
   };
 
-  
+// Função de Salvar Interação e Atualizar Lead
+const salvarNovaAcaoAcompanhamento = async () => {
+  try {
+    let novoStatus = resultadoAcao;
+    if (faseAtendimento === "vendido") novoStatus = "ja_cliente";
+    if (faseAtendimento === "perdido") novoStatus = "perdido";
 
-  const salvarNovaAcaoAcompanhamento = async () => {
-    if (!novaAcaoObs.trim()) {
-      toast.warning("Escreva o resumo da ação realizada.");
-      return;
-    }
+    // Mantém a data e horário preenchidos sempre que informados
+    const dataRetornoFinal = novaAcaoRetorno || null;
+    const horarioRetornoFinal = novaAcaoHorarioRetorno || null;
 
-    try {
-      let novoStatus = "em_prospeccao";
-      if (resultadoAcao === "ja_cliente") novoStatus = "ja_cliente";
-      if (resultadoAcao === "perdido") novoStatus = "perdido";
-
-      const dataRetornoFinal = novoStatus === "em_prospeccao" ? (novaAcaoRetorno || null) : null;
-      const horarioRetornoFinal = novoStatus === "em_prospeccao" ? (novaAcaoHorarioRetorno || null) : null;
-
-      const { error } = await supabase.from("tab_clientes_frios_acoes").insert({
+    // 1. Registra o histórico da ação com tipo e desfecho
+    const { error: errorAcao } = await supabase
+      .from("tab_clientes_frios_acoes")
+      .insert({
         cliente_frio_id: leadTimeline.id,
         corretor_id: perfilUsuario?.id,
-        observacao: novaAcaoObs
+        tipo_acao: tipoAcaoRealizada,
+        desfecho: desfechoAcaoRealizada,
+        observacao: novaAcaoObs.trim() || null
       });
-      
-      if (error) throw error;
 
-      const { error: errorUpdate } = await supabase.from("tab_clientes_frios").update({
-        status_prospeccao: novoStatus,
-        data_retorno: dataRetornoFinal,
-        horario_retorno: horarioRetornoFinal
-      }).eq("id", leadTimeline.id);
-      
-      if (errorUpdate) throw errorUpdate;
+    if (errorAcao) throw errorAcao;
 
-      toast.success("Ação registrada na linha do tempo!");
-      
-      setNovaAcaoObs("");
-      setNovaAcaoRetorno("");
-      setNovaAcaoHorarioRetorno("");
-      setResultadoAcao("em_prospeccao");
-      
-      abrirTimeline({
-        ...leadTimeline,
-        status_prospeccao: novoStatus,
-        data_retorno: dataRetornoFinal,
-        horario_retorno: horarioRetornoFinal
-      });
-      
-      buscarLeadsFrios();
-    } catch (err: any) {
-      toast.error("Falha ao salvar ação: " + err.message);
-    }
-  };
+    // 2. Atualiza os dados consolidados do lead na tabela principal
+    const payloadUpdate = {
+      status_prospeccao: novoStatus,
+      fase_atendimento: faseAtendimento,
+      temperatura: temperatura,
+      proxima_acao: proximaAcao,
+      contatos_adicionais: contatosAdicionais,
+      data_retorno: dataRetornoFinal,
+      horario_retorno: horarioRetornoFinal
+    };
+
+    const { error: errorUpdate } = await supabase
+      .from("tab_clientes_frios")
+      .update(payloadUpdate)
+      .eq("id", leadTimeline.id);
+
+    if (errorUpdate) throw errorUpdate;
+
+    toast.success("Ação registrada com sucesso!");
+
+    setNovaAcaoObs("");
+
+    const leadAtualizado = { ...leadTimeline, ...payloadUpdate };
+    abrirTimeline(leadAtualizado);
+    if (typeof buscarLeadsFrios === "function") buscarLeadsFrios();
+  } catch (err: any) {
+    toast.error("Falha ao salvar ação: " + err.message);
+  }
+};
 
   // 🏅 O Botão de Ouro: Motor de Conversão Direta para a Tab_Clientes CRM
   // 🏆 Inicializa os dados para a modal de conversão com mapeamento automático De/Para
@@ -1273,6 +1349,10 @@ const processarConversaoOuroFinal = async () => {
     setFiltroGoogleStatus([]);
     setFiltroGoogleScoreMin("");
     setFiltroFaixasSelecionadas([]);
+    // 🎯 NOVOS FILTROS RESETADOS AQUI:
+    setFiltroFaseAtendimento("");
+    setFiltroTemperatura("");
+    setFiltroProximaAcao("");
   };
 
   const agruparPorBairro = (listaLeads: any[]) => {
@@ -1320,7 +1400,7 @@ return (
                   <p className="text-xs text-gray-500">Importe e gerencie planilhas sem misturar com sua carteira ativa</p>
                 </div>
               </div>
-      
+
               <div className="flex items-center gap-2">
                 {/* Botão de Validação em Lote */}
                 {selecionados.length > 0 && (
@@ -1329,12 +1409,20 @@ return (
                     disabled={higienizandoLote}
                     className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition disabled:opacity-50"
                   >
-                    {/* Substituído Eye por MapPin */}
                     {higienizandoLote ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                     Validar {selecionados.length} no Google
                   </button>
                 )}
-      
+
+                {/* Botão do Painel de Desempenho */}
+                <button
+                  onClick={() => setMostrarModalRelatorio(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-semibold shadow-sm transition"
+                >
+                  <TrendingUp className="w-4 h-4 text-indigo-400" />
+                  Desempenho
+                </button>
+
                 <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold cursor-pointer shadow-sm transition">
                   <Upload className="w-4 h-4" />
                   Importar Planilha CSV
@@ -1653,8 +1741,10 @@ return (
           
                     {/* LINHA 4: CONTROLE E AÇÕES */}
                     <div className="border-t border-slate-100 pt-3">
-                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">4. Ações de Prospecção</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-5 md:grid-cols-5 gap-3">
+                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">4. Ações de Prospecção & CRM</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        
+                        {/* 1. Status na Fila */}
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Status na Fila</label>
                           <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700 font-medium">
@@ -1666,6 +1756,49 @@ return (
                             <option value="perdido">❌ Perdido</option>
                           </select>
                         </div>
+
+                        {/* 2. Fase de Atendimento */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Fase de Atendimento</label>
+                          <select value={filtroFaseAtendimento} onChange={(e) => setFiltroFaseAtendimento(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700 font-medium">
+                            <option value="">Todas as Fases</option>
+                            <option value="nao_contatado">⚪ Não Contatado</option>
+                            <option value="tentativa_contato">🟡 Tentativa de Contato</option>
+                            <option value="contato_realizado">🔵 Contato Realizado</option>
+                            <option value="cotacao_enviada">🟣 Cotação Enviada</option>
+                            <option value="em_negociacao">🟠 Em Negociação</option>
+                            <option value="vendido">🟢 Vendido</option>
+                            <option value="perdido">🔴 Perdido</option>
+                          </select>
+                        </div>
+
+                        {/* 3. Temperatura */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Temperatura</label>
+                          <select value={filtroTemperatura} onChange={(e) => setFiltroTemperatura(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700 font-medium">
+                            <option value="">Todas</option>
+                            <option value="frio">❄️ Frio</option>
+                            <option value="morno">⛅ Morno</option>
+                            <option value="quente">🔥 Quente</option>
+                          </select>
+                        </div>
+
+                        {/* 4. Próxima Ação Recomendada */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Próxima Ação Recomendada</label>
+                          <select value={filtroProximaAcao} onChange={(e) => setFiltroProximaAcao(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700 font-medium">
+                            <option value="">Todas as Ações</option>
+                            <option value="visitar">🏢 Visitar</option>
+                            <option value="chamar_whats">💬 Chamar no Whats</option>
+                            <option value="ligar">📞 Ligar</option>
+                            <option value="outros">📌 Outros</option>
+                          </select>
+                        </div>
+
+                      </div>
+
+                      {/* LINHA 5: DATAS E GOOGLE STATUS / SCORES */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-3 pt-3 border-t border-slate-100">
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Agendado Para (Início)</label>
                           <input type="date" value={filtroDataRetornoMin} onChange={(e) => setFiltroDataRetornoMin(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
@@ -1674,9 +1807,20 @@ return (
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Agendado Para (Fim)</label>
                           <input type="date" value={filtroDataRetornoMax} onChange={(e) => setFiltroDataRetornoMax(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
                         </div>
-                        {/* Novo Filtro: Status Google com Seleção Múltipla */}
                         <div>
-                          <label className="block text-[11px] font-semibold text-slate-600 mb-1.5 uppercase">Status Google</label>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Score Google Mín.</label>
+                          <input 
+                            type="number" 
+                            min="0"
+                            max="5"
+                            value={filtroGoogleScoreMin} 
+                            onChange={(e) => setFiltroGoogleScoreMin(e.target.value)} 
+                            placeholder="0 a 5"
+                            className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Status Google</label>
                           <div className="grid grid-cols-2 gap-1.5">
                             {[
                               { id: 'nao_verificado', label: '⚪ Não Verif.' },
@@ -1708,21 +1852,8 @@ return (
                             })}
                           </div>
                         </div>
-
-                          {/* Novo Filtro: Score Mínimo */}
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Score Google Mín.</label>
-                            <input 
-                              type="number" 
-                              min="0"
-                              max="5"
-                              value={filtroGoogleScoreMin} 
-                              onChange={(e) => setFiltroGoogleScoreMin(e.target.value)} 
-                              placeholder="0 a 5"
-                              className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" 
-                            />
-                          </div>
                       </div>
+
                     </div>
                   </div>
                 )}
@@ -1745,21 +1876,22 @@ return (
                       <th className="py-4 px-3">Identificação da Empresa</th>
                       <th className="py-4 px-3">Quadro Societário & Idades</th>
                       <th className="py-4 px-3">Localização</th>
-                      <th className="py-4 px-3">Status</th>
+                      <th className="py-4 px-3">Status, Fase & Temperatura</th>
+                      <th className="py-4 px-3">Próxima Ação & Agendamento</th>
                       <th className="py-4 px-3 text-center">Ações Operacionais</th>
                     </tr>
                   </thead>
                   <tbody className="text-sm divide-y divide-slate-100 text-slate-600">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="p-12 text-center text-slate-400">
+                        <td colSpan={7} className="p-12 text-center text-slate-400">
                           <Loader2 className="w-7 h-7 animate-spin mx-auto mb-2 text-blue-500" /> 
                           <span className="text-xs font-medium">Carregando registros...</span>
                         </td>
                       </tr>
                     ) : leads.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-12 text-center text-slate-400 text-xs font-medium">
+                        <td colSpan={7} className="p-12 text-center text-slate-400 text-xs font-medium">
                           Nenhum lead disponível para prospecção no momento.
                         </td>
                       </tr>
@@ -1767,9 +1899,9 @@ return (
                       Object.entries(agruparPorBairro(leads)).map(([bairro, leadsDoBairro]: [string, any]) => (
                         <Fragment key={bairro}>
                           
-                          {/* Linha Divisória de Cabeçalho do Bairro Corrigida e Alinhada */}
+                          {/* Linha Divisória de Cabeçalho do Bairro */}
                           <tr className="bg-slate-100/80 border-y border-slate-200 text-slate-700 select-none">
-                            <td colSpan={6} className="py-2 px-4">
+                            <td colSpan={7} className="py-2 px-4">
                               <div className="flex items-center justify-between w-full">
                                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-800">
                                   <span className="text-blue-600">📍</span> 
@@ -1782,7 +1914,7 @@ return (
                             </td>
                           </tr>
               
-                          {/* Loop das empresas pertencentes a este bairro específico */}
+                          {/* Loop das empresas do bairro lendo exclusivamente da tabela principal (clientes_frios) */}
                           {leadsDoBairro.map((lead: any) => (
                             <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors group">
                               
@@ -1797,7 +1929,7 @@ return (
                               </td>
 
                               {/* Identificação da Empresa */}
-                              <td className="py-4 px-3 max-w-[300px]">
+                              <td className="py-4 px-3 max-w-[280px]">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-slate-900 text-sm tracking-tight truncate">
                                     {lead.nome_fantasia && lead.nome_fantasia !== 'NULL' ? lead.nome_fantasia : (lead.razao_social || 'Empresa sem nome')}
@@ -1848,7 +1980,7 @@ return (
                               </td>
 
                               {/* Quadro Societário & Faixa Etária */}
-                              <td className="py-4 px-3 max-w-[280px]">
+                              <td className="py-4 px-3 max-w-[240px]">
                                 <div className="flex flex-col gap-1.5">
                                   <div className="flex flex-wrap gap-1">
                                     {renderSociosBadge(lead.nomes_socios)}
@@ -1868,25 +2000,115 @@ return (
                                 <div className="text-[11px] text-slate-400 truncate mt-0.5">{lead.bairro}</div>
                               </td>
                               
-                              {/* Status */}
-                              <td className="py-4 px-3">
-                                {lead.status_prospeccao === 'ja_cliente' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
-                                    👑 Já é Cliente
-                                  </span>
-                                ) : lead.status_prospeccao === 'em_prospeccao' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
-                                    🔄 Em Prospecção
-                                  </span>
-                                ) : lead.status_prospeccao === 'perdido' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
-                                    ❌ Perdido
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-full font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200 shadow-2xs">
-                                    Não Contatado
-                                  </span>
-                                )}
+                              {/* 1. Status Prospecção, 2. Fase de Atendimento, 3. Temperatura */}
+                              <td className="py-4 px-3 min-w-[200px]">
+                                <div className="flex flex-col gap-1.5 items-start">
+                                  {/* Status Prospecção */}
+                                  {lead.status_prospeccao === 'ja_cliente' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+                                      👑 Já é Cliente
+                                    </span>
+                                  ) : lead.status_prospeccao === 'em_prospeccao' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
+                                      🔄 Em Prospecção
+                                    </span>
+                                  ) : lead.status_prospeccao === 'perdido' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full font-bold uppercase bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
+                                      ❌ Perdido
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200 shadow-2xs">
+                                      Não Contatado
+                                    </span>
+                                  )}
+
+                                  {/* Fase de Atendimento com Indicadores Visuais Customizados por Bolinha */}
+                                  {(() => {
+                                    const faseConfig: Record<string, { label: string; dotColor: string; badgeColor: string }> = {
+                                      "não contatado": { label: "Não Contatado", dotColor: "bg-purple-300", badgeColor: "bg-purple-50 text-purple-700 border-purple-200" },
+                                      "tentativa de contato": { label: "Tentativa de Contato", dotColor: "bg-amber-400", badgeColor: "bg-amber-50 text-amber-800 border-amber-200" },
+                                      "contato realizado": { label: "Contato Realizado", dotColor: "bg-blue-500", badgeColor: "bg-blue-50 text-blue-700 border-blue-200" },
+                                      "cotação enviada": { label: "Cotação Enviada", dotColor: "bg-purple-600", badgeColor: "bg-purple-50 text-purple-800 border-purple-200" },
+                                      "em negociação": { label: "Em Negociação", dotColor: "bg-orange-500", badgeColor: "bg-orange-50 text-orange-700 border-orange-200" },
+                                      "vendido": { label: "Vendido", dotColor: "bg-emerald-500", badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                                      "perdido": { label: "Perdido", dotColor: "bg-rose-500", badgeColor: "bg-rose-50 text-rose-700 border-rose-200" }
+                                    };
+
+                                    const rawFase = (lead.fase_atendimento || '').trim().toLowerCase();
+                                    const fase = faseConfig[rawFase] || { 
+                                      label: lead.fase_atendimento ? lead.fase_atendimento.replace(/_/g, ' ') : 'Sem fase definida', 
+                                      dotColor: "bg-slate-400", 
+                                      badgeColor: "bg-slate-100 text-slate-600 border-slate-200" 
+                                    };
+
+                                    if (!lead.fase_atendimento) {
+                                      return <span className="text-[10px] text-slate-400 italic">Sem fase definida</span>;
+                                    }
+
+                                    return (
+                                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded-md font-bold border ${fase.badgeColor}`}>
+                                        <span className={`w-2 h-2 rounded-full shrink-0 ${fase.dotColor}`}></span>
+                                        <span>{fase.label}</span>
+                                      </span>
+                                    );
+                                  })()}
+
+                                  {/* Temperatura */}
+                                  {(() => {
+                                    const tempConfig = {
+                                      quente: { label: "Quente", emoji: "🔥", color: "bg-rose-50 text-rose-700 border-rose-200" },
+                                      morno: { label: "Morno", emoji: "⚡", color: "bg-amber-50 text-amber-700 border-amber-200" },
+                                      morto: { label: "Morto", emoji: "💀", color: "bg-slate-100 text-slate-700 border-slate-300" },
+                                      frio: { label: "Frio", emoji: "❄️", color: "bg-blue-50 text-blue-700 border-blue-200" }
+                                    };
+                                    
+                                    const chaveTemp = (lead.temperatura || 'frio').toLowerCase();
+                                    const temp = tempConfig[chaveTemp as keyof typeof tempConfig] || tempConfig.frio;
+
+                                    return (
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border inline-flex items-center gap-1 ${temp.color}`}>
+                                        <span>{temp.emoji}</span>
+                                        <span>{temp.label}</span>
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                              </td>
+
+                              {/* 4. Próxima Ação Recomendada & 5. Retorno (Data e Horário) */}
+                              <td className="py-4 px-3 max-w-[240px]">
+                                <div className="flex flex-col gap-1.5">
+                                  {/* Retorno (Data e Horário) */}
+                                  {lead.data_retorno ? (
+                                    <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-700 bg-slate-100/80 border border-slate-200 px-2 py-0.5 rounded-md w-fit">
+                                      <span className="text-slate-500">📅 Retorno:</span>
+                                      <span>
+                                        {new Date(lead.data_retorno + "T00:00:00").toLocaleDateString('pt-BR')}
+                                        {lead.horario_retorno && ` às ${lead.horario_retorno.substring(0, 5)}`}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 italic">
+                                      Sem retorno agendado
+                                    </span>
+                                  )}
+
+                                  {/* Próxima Ação Recomendada */}
+                                  <div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                                      Próxima Ação:
+                                    </span>
+                                    {lead.proxima_acao ? (
+                                      <span className="text-[11px] text-slate-700 font-medium truncate block" title={Array.isArray(lead.proxima_acao) ? lead.proxima_acao.join(', ') : lead.proxima_acao}>
+                                        {Array.isArray(lead.proxima_acao) ? lead.proxima_acao.join(', ') : lead.proxima_acao}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-slate-400 italic">
+                                        Nenhuma ação definida
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </td>
 
                               {/* Ações Operacionais */}
@@ -2059,157 +2281,297 @@ return (
             )}
 
             {/* Modal: Timeline */}
-            {leadTimeline && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-2xl w-full max-w-2xl shadow-xl max-h-[90vh] flex flex-col">
-                  
-                  {/* Cabeçalho do Modal */}
-                  <div className="p-4 border-b flex justify-between items-start gap-3 bg-purple-600 text-white rounded-t-2xl">
-                    <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                      <Clock className="w-5 h-5 mt-0.5 shrink-0"/>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-base leading-tight">Linha do Tempo de Interações</h3>
-                        
-                        {/* Bloco 1: Nome da Empresa */}
-                        <div className="text-white font-bold text-sm mt-1 leading-snug break-words">
-                          {leadTimeline.nome_fantasia || 
-                          leadTimeline.razao_social || 
-                          leadTimeline.nome_empresa || 
-                          leadTimeline.empresa || 
-                          "Cliente sem nome"}
-                        </div>
+{leadTimeline && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-2xl w-full max-w-3xl shadow-xl max-h-[92vh] flex flex-col">
+      
+      {/* Cabeçalho do Modal */}
+      <div className="p-4 border-b flex justify-between items-start gap-3 bg-purple-600 text-white rounded-t-2xl">
+        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+          <Clock className="w-5 h-5 mt-0.5 shrink-0"/>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold text-base leading-tight">Linha do Tempo de Interações</h3>
+            <div className="text-white font-bold text-sm mt-1 leading-snug break-words">
+              {leadTimeline.nome_fantasia || leadTimeline.razao_social || "Cliente sem nome"}
+            </div>
+          </div>
+        </div>
+        <button onClick={() => setLeadTimeline(null)} className="p-1 rounded-lg hover:bg-purple-700 transition-colors">
+          <X className="w-5 h-5"/>
+        </button>
+      </div>
 
-                        {/* Bloco 2: Linha Exclusiva para Sócios */}
-                        {(() => {
-                          const socios = 
-                            leadTimeline.nomes_socios || 
-                            leadTimeline.socio_nome || 
-                            leadTimeline.nome_socio || 
-                            leadTimeline.nome_contato;
+      <div className="p-4 overflow-y-auto flex-1 space-y-4">
+        {/* Painel do Formulário de Registro */}
+        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+          
+          {/* Seletor de Fase, Temperatura e Status */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Fase de Atendimento</label>
+              <select 
+                value={faseAtendimento} 
+                onChange={e => setFaseAtendimento(e.target.value)}
+                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+              >
+                <option value="nao_contatado">⚪ Não Contatado</option>
+                <option value="tentativa_contato">🟡 Tentativa de Contato</option>
+                <option value="contato_realizado">🔵 Contato Realizado</option>
+                <option value="cotacao_enviada">🟣 Cotação Enviada</option>
+                <option value="em_negociacao">🟠 Em Negociação</option>
+                <option value="vendido">🟢 Vendido</option>
+                <option value="perdido">🔴 Perdido</option>
+              </select>
+            </div>
 
-                          const socioValido = 
-                            socios && 
-                            String(socios).trim() !== "" && 
-                            String(socios).trim().toUpperCase() !== "NULL";
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Temperatura</label>
+              <select 
+                value={temperatura} 
+                onChange={e => setTemperatura(e.target.value)}
+                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+              >
+                <option value="frio">❄️ Frio</option>
+                <option value="quente">🔥 Quente</option>
+                <option value="morno">🟢 Morno</option>
+              </select>
+            </div>
 
-                          if (!socioValido) return null;
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Status Prospecção</label>
+              <select 
+                value={resultadoAcao} 
+                onChange={e => setResultadoAcao(e.target.value)}
+                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+              >
+                <option value="em_prospeccao">🔄 Em Prospecção</option>
+                <option value="perdido">❌ Perdido</option>
+                <option value="ja_cliente">👑 Já Cliente</option>
+              </select>
+            </div>
+          </div>
 
-                          return (
-                            <div className="text-purple-100 text-xs mt-1 leading-relaxed break-words font-medium">
-                              👤 <strong className="text-white">Sócio(s):</strong> {socios}
-                            </div>
-                          );
-                        })()}
+          {/* 1) O que fiz na ação & 1.1) O que aconteceu */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">1) O que fiz na ação</label>
+              <select 
+                value={tipoAcaoRealizada} 
+                onChange={e => setTipoAcaoRealizada(e.target.value)}
+                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+              >
+                <option value="ligar">📞 Ligação</option>
+                <option value="chamar_whats">💬 WhatsApp</option>
+                <option value="visitar">🏢 Visita Presencial</option>
+                <option value="enviar_email">📧 E-mail</option>
+                <option value="outros">📌 Outros</option>
+              </select>
+            </div>
 
-                        {/* Bloco 3: Linha Exclusiva para Data/Hora de Retorno */}
-                        {(() => {
-                          const dataRetorno = leadTimeline.data_retorno;
-                          const horaRetorno = leadTimeline.horario_retorno;
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">1.1) O que aconteceu (Desfecho)</label>
+              <select 
+                value={desfechoAcaoRealizada} 
+                onChange={e => setDesfechoAcaoRealizada(e.target.value)}
+                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+              >
+                <option value="atendeu">✅ Atendeu / Conversou</option>
+                <option value="caixa_postal">📭 Caixa Postal / Não Atendeu</option>
+                <option value="ocupado">⏳ Ocupado</option>
+                <option value="recado_secretaria">📝 Deixou Recado</option>
+                <option value="pediu_retorno_outro_momento">⏰ Pediu para ligar depois</option>
+                <option value="sem_interesse">❌ Sem Interesse</option>
+              </select>
+            </div>
+          </div>
 
-                          if (!dataRetorno) return null;
+          {/* Multiselect: Próxima Ação */}
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Próxima Ação Recomendada</label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: "chamar_whats", label: "💬 Chamar no Whats" },
+                { id: "ligar", label: "📞 Ligar" },
+                { id: "visitar", label: "🏢 Visitar" },
+                { id: "outros", label: "📌 Outros" }
+              ].map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => toggleProximaAcao(item.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                    proximaAcao.includes(item.id)
+                      ? "bg-purple-600 text-white border-purple-600"
+                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                          const dataFormatada = new Date(
-                            String(dataRetorno).includes("T") ? dataRetorno : `${dataRetorno}T00:00:00`
-                          ).toLocaleDateString("pt-BR");
+          {/* Agendamento de Retorno */}
+          <div className="flex items-center gap-3 flex-wrap pt-1">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-purple-600" />
+              <span className="text-xs font-bold text-slate-600 uppercase">Agendar Retorno:</span>
+            </div>
+            <input 
+              type="date" 
+              value={novaAcaoRetorno} 
+              onChange={e => setNovaAcaoRetorno(e.target.value)}
+              className="p-1.5 border rounded-lg text-xs bg-white outline-none focus:border-purple-500" 
+            />
+            <input 
+              type="time" 
+              value={novaAcaoHorarioRetorno} 
+              onChange={e => setNovaAcaoHorarioRetorno(e.target.value)}
+              className="p-1.5 border rounded-lg text-xs bg-white outline-none focus:border-purple-500" 
+            />
+          </div>
 
-                          return (
-                            <div className="mt-2.5">
-                              <span className="inline-flex items-center bg-amber-400 text-purple-950 px-2.5 py-1 rounded-md font-bold text-xs shadow-sm border border-amber-300">
-                                ⏰ RETORNO AGENDADO: {dataFormatada}
-                                {horaRetorno ? ` às ${String(horaRetorno).substring(0, 5)}` : ""}
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
+          {/* Observação (Opcional) */}
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+              Observação / Resumo do Acionamento (Opcional)
+            </label>
+            <textarea 
+              rows={2} 
+              value={novaAcaoObs} 
+              onChange={e => setNovaAcaoObs(e.target.value)} 
+              placeholder="Digite detalhes da conversa se houver..." 
+              className="w-full p-2 border rounded-lg text-xs resize-none outline-none focus:border-purple-500 bg-white"
+            />
+          </div>
 
-                    <button onClick={() => setLeadTimeline(null)} className="p-1 rounded-lg hover:bg-purple-700 shrink-0 transition-colors">
-                      <X className="w-5 h-5"/>
-                    </button>
-                  </div>
+          {/* Gerenciador de Contatos Adicionais (JSONB) */}
+          <div className="pt-2 border-t border-slate-200">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-bold text-slate-600 uppercase">👥 Contatos Adicionais / Indicações</span>
+              <button 
+                type="button" 
+                onClick={adicionarContato}
+                className="text-xs text-purple-600 hover:text-purple-800 font-bold flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5"/> Adicionar Contato
+              </button>
+            </div>
 
-                  {/* Formulário de Registro de Nova Ação */}
-                  <div className="p-4 border-b bg-slate-50 space-y-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                        O que foi conversado / Resumo do Acionamento
-                      </label>
-                      <textarea 
-                        rows={2} 
-                        value={novaAcaoObs} 
-                        onChange={e => setNovaAcaoObs(e.target.value)} 
-                        placeholder="Ex: Liguei para o sócio e ele pediu para retornar na próxima semana..." 
-                        className="w-full p-2.5 border rounded-lg text-sm resize-none outline-none focus:border-purple-500 bg-white"
-                      ></textarea>
-                    </div>
+            <div className="space-y-2 max-h-36 overflow-y-auto">
+              {contatosAdicionais.map((contato) => (
+                <div key={contato.id} className="grid grid-cols-12 gap-1.5 items-center bg-white p-2 rounded-lg border border-slate-200">
+                  <input 
+                    type="text" 
+                    placeholder="Nome" 
+                    value={contato.nome} 
+                    onChange={e => atualizarContato(contato.id, "nome", e.target.value)}
+                    className="col-span-3 p-1 border rounded text-xs outline-none"
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="Cargo/Relação" 
+                    value={contato.cargo_relacao} 
+                    onChange={e => atualizarContato(contato.id, "cargo_relacao", e.target.value)}
+                    className="col-span-3 p-1 border rounded text-xs outline-none"
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="Telefone" 
+                    value={contato.telefone} 
+                    onChange={e => atualizarContato(contato.id, "telefone", e.target.value)}
+                    className="col-span-3 p-1 border rounded text-xs outline-none"
+                  />
+                  <input 
+                    type="email" 
+                    placeholder="E-mail" 
+                    value={contato.email} 
+                    onChange={e => atualizarContato(contato.id, "email", e.target.value)}
+                    className="col-span-2 p-1 border rounded text-xs outline-none"
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => removerContato(contato.id)}
+                    className="col-span-1 text-red-500 hover:text-red-700 flex justify-center"
+                  >
+                    <Trash2 className="w-4 h-4"/>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
 
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <div className="flex items-center gap-4 flex-wrap w-full md:w-auto">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Calendar className="w-4 h-4 text-purple-600" />
-                          <span className="text-xs font-bold text-slate-600 uppercase">Agendar Retorno:</span>
-                          <input 
-                            type="date" 
-                            value={novaAcaoRetorno} 
-                            onChange={e => setNovaAcaoRetorno(e.target.value)} 
-                            className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500 bg-white" 
-                          />
-                          <input 
-                            type="time" 
-                            value={novaAcaoHorarioRetorno} 
-                            onChange={e => setNovaAcaoHorarioRetorno(e.target.value)} 
-                            className="p-1.5 border rounded-lg text-sm outline-none focus:border-purple-500 bg-white" 
-                          />
-                        </div>
+          {/* Botão Registrar Ação */}
+          <div className="flex justify-end pt-2">
+            <button 
+              onClick={salvarNovaAcaoAcompanhamento} 
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5"/> Registrar Ação
+            </button>
+          </div>
+        </div>
 
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-600 uppercase">Status:</span>
-                          <select 
-                            value={resultadoAcao} 
-                            onChange={e => setResultadoAcao(e.target.value)} 
-                            className="p-1.5 border rounded-lg text-xs bg-white font-semibold outline-none focus:border-purple-500 text-slate-700"
-                          >
-                            <option value="em_prospeccao">🔄 Em Prospecção</option>
-                            <option value="perdido">❌ Perdido</option>
-                            <option value="ja_cliente">👑 Já Cliente</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <button 
-                        onClick={salvarNovaAcaoAcompanhamento} 
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm whitespace-nowrap ml-auto"
-                      >
-                        <Plus className="w-3.5 h-3.5"/> Registrar Ação
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Lista do Histórico de Interações */}
-                  <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                    {historicoAcoes.length === 0 ? (
-                      <p className="text-sm text-center text-gray-400 py-6">
-                        Nenhuma ação registrada. Comece a prospecção ativa agora!
-                      </p>
-                    ) : (
-                      historicoAcoes.map((acao) => (
-                        <div key={acao.id} className="relative pl-6 border-l-2 border-purple-200 pb-2">
-                          <div className="absolute -left-[6px] top-1 w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
-                          <div className="flex justify-between text-xs text-gray-400 font-semibold">
-                            <span>📅 {new Date(acao.criado_em).toLocaleString("pt-BR")}</span>
-                          </div>
-                          <p className="text-sm text-slate-700 mt-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 font-medium">
-                            {acao.observacao}
-                          </p>
-                        </div>
-                      ))
+        {/* Lista de Histórico */}
+        <div className="space-y-3 pt-2">
+          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Histórico de Atendimentos</h4>
+          {historicoAcoes.length === 0 ? (
+            <p className="text-xs text-center text-gray-400 py-4">Nenhuma ação registrada anteriormente.</p>
+          ) : (
+            historicoAcoes.map((acao) => (
+              <div key={acao.id} className="relative pl-5 border-l-2 border-purple-300 space-y-1.5 pb-2">
+                <div className="absolute -left-[5.5px] top-1 w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
+                
+                <div className="flex justify-between items-center text-xs text-gray-500">
+                  <span className="font-semibold">📅 {new Date(acao.criado_em).toLocaleString("pt-BR")}</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {/* Badges de Tipo de Ação e Desfecho */}
+                    {acao.tipo_acao && (
+                      <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                        {acao.tipo_acao.replace("_", " ")}
+                      </span>
+                    )}
+                    {acao.desfecho && (
+                      <span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                        {acao.desfecho.replace(/_/g, " ")}
+                      </span>
+                    )}
+                    {acao.fase_atendimento && (
+                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                        {acao.fase_atendimento.replace("_", " ")}
+                      </span>
+                    )}
+                    {acao.temperatura && (
+                      <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                        {acao.temperatura}
+                      </span>
                     )}
                   </div>
-
                 </div>
+
+                {acao.proxima_acao && acao.proxima_acao.length > 0 && (
+                  <div className="flex gap-1 flex-wrap pt-0.5">
+                    {acao.proxima_acao.map((act: string, idx: number) => (
+                      <span key={idx} className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded text-[10px] font-medium">
+                        {act.replace("_", " ")}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {acao.observacao && (
+                  <p className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    {acao.observacao}
+                  </p>
+                )}
               </div>
-            )}
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
 
             {/* Modal: Visualizar Ficha */}
@@ -2846,6 +3208,13 @@ return (
 
               </div>
             )}
+
+            <RelatorioProdutividadeModal
+              isOpen={mostrarModalRelatorio}
+              onClose={() => setMostrarModalRelatorio(false)}
+              corretorId={perfilUsuario?.tipo_usuario === "CORRETOR" ? perfilUsuario?.id : undefined}
+              corretoraId={perfilUsuario?.corretora_id}
+            />
 
     </div>
   );
