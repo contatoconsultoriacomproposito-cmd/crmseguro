@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   ArrowLeft, Calendar, CheckCircle2, Loader2,
-  Upload, Trash2, MapPin, Edit3, Check, Plus, X, MessageSquare, Clock, Printer, Search, TrendingUp
+  Upload, Trash2, Edit3, Check, Plus, X, MessageSquare, Clock, Printer, Search, TrendingUp
 } from "lucide-react";
 import { supabase } from "../../../lib/supabaseClient";
 import { useAuth } from "../../../auth/AuthContext";
@@ -100,14 +100,6 @@ export default function LeadsProspeccao() {
   const [leadTimeline, setLeadTimeline] = useState<any>(null);
   const [historicoAcoes, setHistoricoAcoes] = useState<any[]>([]);
 
-  // 🔍 ESTADOS EXCLUSIVOS DO MOTOR DE BUSCA DO GOOGLE (SERPAPI)
-  const [higienizandoLote, setHigienizandoLote] = useState(false);
-  const [leadIdEmProcessamento, setLeadIdEmProcessamento] = useState<string | null>(null);
-
-  // FILTROS DE PRECISÃO DO GOOGLE
-  const [filtroGoogleStatus, setFiltroGoogleStatus] = useState<string[]>([]);
-  const [filtroGoogleScoreMin, setFiltroGoogleScoreMin] = useState("");
-
   // Estados unificados da Linha do Tempo / Nova Ação
   const [faseAtendimento, setFaseAtendimento] = useState<string>("nao_contatado");
   const [temperatura, setTemperatura] = useState<string>("frio");
@@ -140,134 +132,7 @@ export default function LeadsProspeccao() {
     email: string;
   }>>([]);
 
-  // Função 1: Validação Individual de um Lead no Google
-  const validarLeadGoogleIndividual = async (leadId: string) => {
-    try {
-      const leadAtual = leads.find((l: any) => l.id === leadId);
-      
-      const nomeEmpresa = leadAtual?.nome_empresa || leadAtual?.razao_social || '';
-      const cidadeEmpresa = leadAtual?.cidade || '';
-      const queryBusca = `${nomeEmpresa} ${cidadeEmpresa}`.trim();
-
-      if (!queryBusca) {
-        toast.error("Este lead não possui Nome ou Cidade cadastrados para busca.");
-        return;
-      }
-
-      setLeadIdEmProcessamento(leadId);
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/serpapi-search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-          "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY 
-        },
-        body: JSON.stringify({ 
-          leadId, 
-          query: queryBusca,
-          nome: leadAtual?.nome_fantasia || leadAtual?.razao_social, 
-          cidade: leadAtual?.municipio                       // Adicione isso
-        }),
-      });
-
-      const resultado = await response.json();
-
-      if (resultado.success) {
-        toast.success("Lead atualizado via Google Maps!");
-        buscarLeadsFrios(); 
-      } else {
-        toast.error(resultado.error || "Erro na validação.");
-      }
-    } catch (error) {
-      console.error(error);
-      toast.error("Falha ao conectar com o validador.");
-    } finally {
-      setLeadIdEmProcessamento(null);
-    }
-  };
-
-  // Função 2: Validação Controlada em Lote (Processa os itens marcados no Checkbox)
-  const validarLeadsGoogleEmLote = async () => {
-    if (selecionados.length === 0) {
-      toast.warning("Selecione ao menos um lead na tabela para higienizar.");
-      return;
-    }
-
-    if (!window.confirm(`Deseja iniciar a validação automatizada no Google para os ${selecionados.length} leads selecionados?`)) {
-      return;
-    }
-
-    setHigienizandoLote(true);
-    let processadosComSucesso = 0;
-
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-
-      if (!supabaseUrl) {
-        throw new Error("A variável VITE_SUPABASE_URL não está configurada no front-end.");
-      }
-
-      for (const id of selecionados) {
-        const leadAlvo = leads.find((l: any) => l.id === id);
-        if (leadAlvo) {
-          setLeadIdEmProcessamento(id);
-          
-          // 🎯 BLINDAGEM CONTRA VALORES NUMÉRICOS OU NULOS NAS STRINGS NO LOTE
-          const nomeParaBusca = String(leadAlvo.nome_fantasia || leadAlvo.razao_social || '').trim();
-          const enderecoParaBusca = `${leadAlvo.logradouro || ""} ${leadAlvo.numero || ""} ${leadAlvo.bairro || ""} ${leadAlvo.municipio || ""} ${leadAlvo.uf || ""}`;
-          const queryCompleta = String(`${nomeParaBusca} ${enderecoParaBusca}`).replace(/\s+/g, " ").trim();
-
-          if (!queryCompleta) continue;
-
-          try {
-            const leadEncontrado = leads.find((l: any) => l.id === id);
-            const response = await fetch(`${supabaseUrl}/functions/v1/serpapi-search`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`,
-                "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY
-              },
-              body: JSON.stringify({ 
-                leadId: id, 
-                query: queryCompleta,
-                // Troque 'leads' por 'lead' (ou 'leadAtual', dependendo de como a variável se chama aí)
-                nome: leadEncontrado?.nome_fantasia || leadEncontrado?.razao_social,
-                cidade: leadEncontrado?.municipio
-              }),
-            });
-
-            const data = await response.json();
-
-            if (response.ok && data.success) {
-              processadosComSucesso++;
-              setLeads((prev: any[]) =>
-                prev.map((l: any) =>
-                  l.id === id
-                    ? { ...l, google_verificado: true, google_status: data.google_status, google_place_id: data.google_place_id }
-                    : l
-                )
-              );
-            }
-          } catch (e) {
-            console.error(`Erro ao processar o ID ${id} no lote:`, e);
-          }
-        }
-      }
-
-      toast.success(`Higienização concluída! ${processadosComSucesso} de ${selecionados.length} leads atualizados.`);
-      setSelecionados([]); 
-
-    } catch (err: any) {
-      toast.error("Erro durante o processamento em lote: " + err.message);
-    } finally {
-      setHigienizandoLote(false);
-      setLeadIdEmProcessamento(null);
-    }
-  };
+  
   
   // Estado do Botão de Ouro (Conversor Realtime)
   const [leadConversao, setLeadConversao] = useState<any>(null);
@@ -331,7 +196,7 @@ export default function LeadsProspeccao() {
       filtroSimples, filtroMatriz, filtroCapitalMin, filtroCapitalMax, 
       filtroDataRetornoMin, filtroDataRetornoMax, filtroCep, 
       filtroSituacaoCadastral, filtroDataAberturaMin, filtroDataAberturaMax,
-      filtroGoogleStatus, filtroGoogleScoreMin, filtroFaixasSelecionadas,
+      filtroFaixasSelecionadas,
       filtroFaseAtendimento, filtroTemperatura, filtroProximaAcao]);
 
   // useEffect Definitivo: Abre o modal por ID local ou buscando diretamente no Supabase
@@ -457,13 +322,6 @@ export default function LeadsProspeccao() {
       query = query.or(filtrosFaixa);
     }
 
-    // Filtros Google Maps
-    if (filtroGoogleStatus && filtroGoogleStatus.length > 0) {
-      query = query.in('google_status', filtroGoogleStatus);
-    }
-    if (filtroGoogleScoreMin !== "") {
-      query = query.gte('google_score', parseInt(filtroGoogleScoreMin, 10));
-    }
 
     // Executa paginação e ordenação principal
     const { data, error, count } = await query
@@ -1057,26 +915,15 @@ const processarConversaoOuroFinal = async () => {
         const enderecoCompleto = `${lead.logradouro || ""}, ${lead.numero || ""} ${lead.complemento ? "- " + lead.complemento : ""} - ${lead.bairro || ""}, ${lead.municipio || ""} - ${lead.uf || ""}`.replace(/, ,/g, "").trim();
         
         // 🎯 CORRIGIDO: Injetado o caractere '$' ausente para o template string funcionar perfeitamente
-        const linkGoogleMaps = lead.google_place_id 
-          ? `https://www.google.com/maps/search/?api=1&query=$${encodeURIComponent(enderecoCompleto)}&query_place_id=${lead.google_place_id}`
-          : `https://maps.google.com/?q=$${encodeURIComponent(enderecoCompleto)}`;
         
         const telWhatsTratado = lead.ddd_telefone_1 ? String(lead.ddd_telefone_1).replace(/^0/, '') : "";
         const telefoneFormatado = telWhatsTratado ? maskPhone(telWhatsTratado) : "Não informado";
         const textoSociosOriginal = lead.nomes_socios ? lead.nomes_socios.replace(/ \| /g, ', ') : "Não informados";
 
-        const tagGoogle = lead.google_verificado 
-        ? ` (${getStatusLabel(lead.google_status)}${lead.google_score ? ` - ${lead.google_score}%` : ''})`
-        : '';
-
-        textoMensagem += `🏢 *${contadorGlobal}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}*${tagGoogle}\n`;
+        textoMensagem += `🏢 *${contadorGlobal}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}*\n`;
         textoMensagem += `👥 *Sócios:* ${textoSociosOriginal}\n`;
         textoMensagem += `🗺️ *Endereço:* ${enderecoCompleto || "Não cadastrado"}\n`;
         textoMensagem += `📞 *Telefone:* ${telefoneFormatado}\n`;
-        
-        if (enderecoCompleto) {
-          textoMensagem += `🔗 *Navegar por GPS:* ${linkGoogleMaps}\n`;
-        }
         
         textoMensagem += `\n`;
         contadorGlobal++;
@@ -1185,11 +1032,7 @@ const processarConversaoOuroFinal = async () => {
         doc.setFontSize(10);
         doc.setTextColor(30, 41, 59); 
         
-        const tagStatusGoogle = lead.google_verificado
-        ? ` [${lead.google_status === 'maps_ok' ? 'MAPS OK' : 
-              lead.google_status === 'pendente_verificacao' ? 'PENDENTE' : 'NÃO VERIFICADO'}]`
-        : '';
-        const nomeEmpresa = `${contadorGlobal}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}${tagStatusGoogle}`;
+        const nomeEmpresa = `${contadorGlobal}. ${lead.nome_fantasia || lead.razao_social || "Empresa sem Nome"}`;
         doc.text(nomeEmpresa.substring(0, 72), margemEsquerda + 3, posicaoY + 5);
 
         const larguraDados = 110; 
@@ -1346,8 +1189,6 @@ const processarConversaoOuroFinal = async () => {
     setFiltroSituacaoCadastral("");
     setFiltroDataAberturaMin("");
     setFiltroDataAberturaMax("");
-    setFiltroGoogleStatus([]);
-    setFiltroGoogleScoreMin("");
     setFiltroFaixasSelecionadas([]);
     // 🎯 NOVOS FILTROS RESETADOS AQUI:
     setFiltroFaseAtendimento("");
@@ -1375,17 +1216,7 @@ const processarConversaoOuroFinal = async () => {
     setItensPorPagina(quantidade);
     setPaginaAtual(1);
   };
-
-  const getStatusLabel = (status: string | null | undefined): string => {
-    switch (status) {
-      case 'maps_ok': return '✅ MAPS OK';
-      case 'pendente_verificacao': return '⚠️ PENDENTE';
-      default: return '❌ NÃO VERIFICADO';
-    }
-  };
-
   
-
 return (
         <div className="p-6 max-w-[1600px] mx-auto space-y-6 bg-slate-50 dark:bg-zinc-900 min-h-screen">
             
@@ -1402,18 +1233,6 @@ return (
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Botão de Validação em Lote */}
-                {selecionados.length > 0 && (
-                  <button 
-                    onClick={() => validarLeadsGoogleEmLote()}
-                    disabled={higienizandoLote}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition disabled:opacity-50"
-                  >
-                    {higienizandoLote ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-                    Validar {selecionados.length} no Google
-                  </button>
-                )}
-
                 {/* Botão do Painel de Desempenho */}
                 <button
                   onClick={() => setMostrarModalRelatorio(true)}
@@ -1797,63 +1616,6 @@ return (
 
                       </div>
 
-                      {/* LINHA 5: DATAS E GOOGLE STATUS / SCORES */}
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-3 pt-3 border-t border-slate-100">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Agendado Para (Início)</label>
-                          <input type="date" value={filtroDataRetornoMin} onChange={(e) => setFiltroDataRetornoMin(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Agendado Para (Fim)</label>
-                          <input type="date" value={filtroDataRetornoMax} onChange={(e) => setFiltroDataRetornoMax(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Score Google Mín.</label>
-                          <input 
-                            type="number" 
-                            min="0"
-                            max="5"
-                            value={filtroGoogleScoreMin} 
-                            onChange={(e) => setFiltroGoogleScoreMin(e.target.value)} 
-                            placeholder="0 a 5"
-                            className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700" 
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Status Google</label>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {[
-                              { id: 'nao_verificado', label: '⚪ Não Verif.' },
-                              { id: 'alta_precisao', label: '🎯 Alta Prec.' },
-                              { id: 'media_precisao', label: '⚠️ Média Prec.' },
-                              { id: 'baixa_precisao', label: '❌ Baixa Prec.' }
-                            ].map((opcao) => {
-                              const isSelected = filtroGoogleStatus.includes(opcao.id);
-                              return (
-                                <button
-                                  key={opcao.id}
-                                  type="button"
-                                  onClick={() => {
-                                    if (isSelected) {
-                                      setFiltroGoogleStatus(filtroGoogleStatus.filter(s => s !== opcao.id));
-                                    } else {
-                                      setFiltroGoogleStatus([...filtroGoogleStatus, opcao.id]);
-                                    }
-                                  }}
-                                  className={`text-[10px] px-2 py-1.5 rounded border font-bold transition-all ${
-                                    isSelected 
-                                      ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm' 
-                                      : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  {opcao.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-
                     </div>
                   </div>
                 )}
@@ -1935,25 +1697,7 @@ return (
                                     {lead.nome_fantasia && lead.nome_fantasia !== 'NULL' ? lead.nome_fantasia : (lead.razao_social || 'Empresa sem nome')}
                                   </span>
                                   
-                                  {/* Badge inteligente do Google Maps */}
-                                  {lead.google_verificado && (() => {
-                                    const statusConfig = {
-                                      alta_precisao: { text: "ALTA PREC.", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-                                      media_precisao: { text: "MÉDIA PREC.", color: "bg-amber-50 text-amber-700 border-amber-200" },
-                                      baixa_precisao: { text: "BAIXA PREC.", color: "bg-rose-50 text-rose-700 border-rose-200" },
-                                      nao_verificado: { text: "NÃO VERIF.", color: "bg-slate-50 text-slate-500 border-slate-200" }
-                                    };
-                                    const config = statusConfig[lead.google_status as keyof typeof statusConfig] || statusConfig.nao_verificado;
-
-                                    return (
-                                      <span 
-                                        title={`Status: ${config.text} | Score: ${lead.google_score || 0}`}
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-extrabold shrink-0 border ${config.color}`}
-                                      >
-                                        {config.text}{lead.google_score !== null && ` (${lead.google_score}%)`}
-                                      </span>
-                                    );
-                                  })()}
+                                  
                                 </div>
 
                                 <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5">
@@ -2115,14 +1859,6 @@ return (
                               <td className="py-4 px-3">
                                 <div className="flex items-center justify-center gap-1">
                                   
-                                  <button 
-                                    onClick={() => (validarLeadGoogleIndividual as Function)(lead.id)}
-                                    title="Validar local no Google" 
-                                    disabled={leadIdEmProcessamento === lead.id}
-                                    className="p-1.5 hover:bg-slate-100 text-emerald-600 rounded-lg transition disabled:opacity-50"
-                                  >
-                                    {leadIdEmProcessamento === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-                                  </button>
 
                                   <button onClick={() => typeof abrirTimeline === 'function' && abrirTimeline(lead)} title="Timeline & Ações" className="p-1.5 hover:bg-slate-100 text-purple-600 rounded-lg transition">
                                     <MessageSquare className="w-4 h-4" />
