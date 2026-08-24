@@ -2017,297 +2017,316 @@ return (
             )}
 
             {/* Modal: Timeline */}
-{leadTimeline && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-    <div className="bg-white rounded-2xl w-full max-w-3xl shadow-xl max-h-[92vh] flex flex-col">
-      
-      {/* Cabeçalho do Modal */}
-      <div className="p-4 border-b flex justify-between items-start gap-3 bg-purple-600 text-white rounded-t-2xl">
-        <div className="flex items-start gap-2.5 flex-1 min-w-0">
-          <Clock className="w-5 h-5 mt-0.5 shrink-0"/>
-          <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-base leading-tight">Linha do Tempo de Interações</h3>
-            <div className="text-white font-bold text-sm mt-1 leading-snug break-words">
-              {leadTimeline.nome_fantasia || leadTimeline.razao_social || "Cliente sem nome"}
-            </div>
-          </div>
-        </div>
-        <button onClick={() => setLeadTimeline(null)} className="p-1 rounded-lg hover:bg-purple-700 transition-colors">
-          <X className="w-5 h-5"/>
-        </button>
-      </div>
+            {leadTimeline && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-2xl w-full max-w-3xl shadow-xl max-h-[92vh] flex flex-col">
+                  
+                  {/* Cabeçalho do Modal */}
+                  <div className="p-4 border-b flex justify-between items-start gap-3 bg-purple-600 text-white rounded-t-2xl">
+                    <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                      <Clock className="w-5 h-5 mt-0.5 shrink-0"/>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-base leading-tight">Linha do Tempo de Interações</h3>
+                        <div className="text-white font-bold text-sm mt-1 leading-snug break-words flex flex-col gap-1">
+                          {/* 1. Tratamento do Nome da Empresa */}
+                          <span className="text-base uppercase block">
+                            {
+                              (leadTimeline.nome_fantasia && String(leadTimeline.nome_fantasia).trim() !== '******' && String(leadTimeline.nome_fantasia).toUpperCase() !== 'NULL')
+                                ? leadTimeline.nome_fantasia
+                                : (leadTimeline.razao_social && String(leadTimeline.razao_social).trim() !== '******' && String(leadTimeline.razao_social).toUpperCase() !== 'NULL')
+                                  ? leadTimeline.razao_social
+                                  : "Cliente sem nome"
+                            }
+                          </span>
+                          
+                          {/* 2. Tratamento do Nome dos Sócios (um por linha) */}
+                          {leadTimeline.nomes_socios && String(leadTimeline.nomes_socios).toUpperCase() !== 'NULL' && String(leadTimeline.nomes_socios).trim() !== '******' && (
+                            <div className="text-xs font-normal text-purple-100 flex flex-col mt-0.5">
+                              {String(leadTimeline.nomes_socios).split(/,|\n/).map((socio, idx) => {
+                                const nomeSocio = socio.trim();
+                                return nomeSocio ? <span key={idx}>{nomeSocio}</span> : null;
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => setLeadTimeline(null)} className="p-1 rounded-lg hover:bg-purple-700 transition-colors">
+                      <X className="w-5 h-5"/>
+                    </button>
+                  </div>
 
-      <div className="p-4 overflow-y-auto flex-1 space-y-4">
-        {/* Painel do Formulário de Registro */}
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-          
-          {/* Seletor de Fase, Temperatura e Status */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Fase de Atendimento</label>
-              <select 
-                value={faseAtendimento} 
-                onChange={e => setFaseAtendimento(e.target.value)}
-                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
-              >
-                <option value="nao_contatado">⚪ Não Contatado</option>
-                <option value="tentativa_contato">🟡 Tentativa de Contato</option>
-                <option value="contato_realizado">🔵 Contato Realizado</option>
-                <option value="cotacao_enviada">🟣 Cotação Enviada</option>
-                <option value="em_negociacao">🟠 Em Negociação</option>
-                <option value="vendido">🟢 Vendido</option>
-                <option value="perdido">🔴 Perdido</option>
-              </select>
-            </div>
+                  <div className="p-4 overflow-y-auto flex-1 space-y-4">
+                    {/* Painel do Formulário de Registro */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                      
+                      {/* Seletor de Fase, Temperatura e Status */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Fase de Atendimento</label>
+                          <select 
+                            value={faseAtendimento} 
+                            onChange={e => setFaseAtendimento(e.target.value)}
+                            className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+                          >
+                            <option value="nao_contatado">⚪ Não Contatado</option>
+                            <option value="tentativa_contato">🟡 Tentativa de Contato</option>
+                            <option value="contato_realizado">🔵 Contato Realizado</option>
+                            <option value="cotacao_enviada">🟣 Cotação Enviada</option>
+                            <option value="em_negociacao">🟠 Em Negociação</option>
+                            <option value="vendido">🟢 Vendido</option>
+                            <option value="perdido">🔴 Perdido</option>
+                          </select>
+                        </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Temperatura</label>
-              <select 
-                value={temperatura} 
-                onChange={e => setTemperatura(e.target.value)}
-                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
-              >
-                <option value="frio">❄️ Frio</option>
-                <option value="quente">🔥 Quente</option>
-                <option value="morno">🟢 Morno</option>
-              </select>
-            </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Temperatura</label>
+                          <select 
+                            value={temperatura} 
+                            onChange={e => setTemperatura(e.target.value)}
+                            className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+                          >
+                            <option value="frio">❄️ Frio</option>
+                            <option value="quente">🔥 Quente</option>
+                            <option value="morno">🟢 Morno</option>
+                          </select>
+                        </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Status Prospecção</label>
-              <select 
-                value={resultadoAcao} 
-                onChange={e => setResultadoAcao(e.target.value)}
-                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
-              >
-                <option value="em_prospeccao">🔄 Em Prospecção</option>
-                <option value="perdido">❌ Perdido</option>
-                <option value="ja_cliente">👑 Já Cliente</option>
-              </select>
-            </div>
-          </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Status Prospecção</label>
+                          <select 
+                            value={resultadoAcao} 
+                            onChange={e => setResultadoAcao(e.target.value)}
+                            className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+                          >
+                            <option value="em_prospeccao">🔄 Em Prospecção</option>
+                            <option value="perdido">❌ Perdido</option>
+                            <option value="ja_cliente">👑 Já Cliente</option>
+                          </select>
+                        </div>
+                      </div>
 
-          {/* 1) O que fiz na ação & 1.1) O que aconteceu */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">1) O que fiz na ação</label>
-              <select 
-                value={tipoAcaoRealizada} 
-                onChange={e => setTipoAcaoRealizada(e.target.value)}
-                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
-              >
-                <option value="ligar">📞 Ligação</option>
-                <option value="chamar_whats">💬 WhatsApp</option>
-                <option value="visitar">🏢 Visita Presencial</option>
-                <option value="enviar_email">📧 E-mail</option>
-                <option value="outros">📌 Outros</option>
-              </select>
-            </div>
+                      {/* 1) O que fiz na ação & 1.1) O que aconteceu */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">1) O que fiz na ação</label>
+                          <select 
+                            value={tipoAcaoRealizada} 
+                            onChange={e => setTipoAcaoRealizada(e.target.value)}
+                            className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+                          >
+                            <option value="ligar">📞 Ligação</option>
+                            <option value="chamar_whats">💬 WhatsApp</option>
+                            <option value="visitar">🏢 Visita Presencial</option>
+                            <option value="enviar_email">📧 E-mail</option>
+                            <option value="outros">📌 Outros</option>
+                          </select>
+                        </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">1.1) O que aconteceu (Desfecho)</label>
-              <select 
-                value={desfechoAcaoRealizada} 
-                onChange={e => setDesfechoAcaoRealizada(e.target.value)}
-                className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
-              >
-                <option value="atendeu">✅ Atendeu / Conversou</option>
-                <option value="caixa_postal">📭 Caixa Postal / Não Atendeu</option>
-                <option value="ocupado">⏳ Ocupado</option>
-                <option value="recado_secretaria">📝 Deixou Recado</option>
-                <option value="pediu_retorno_outro_momento">⏰ Pediu para ligar depois</option>
-                <option value="sem_interesse">❌ Sem Interesse</option>
-              </select>
-            </div>
-          </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">1.1) O que aconteceu (Desfecho)</label>
+                          <select 
+                            value={desfechoAcaoRealizada} 
+                            onChange={e => setDesfechoAcaoRealizada(e.target.value)}
+                            className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
+                          >
+                            <option value="atendeu">✅ Atendeu / Conversou</option>
+                            <option value="caixa_postal">📭 Caixa Postal / Não Atendeu</option>
+                            <option value="ocupado">⏳ Ocupado</option>
+                            <option value="recado_secretaria">📝 Deixou Recado</option>
+                            <option value="pediu_retorno_outro_momento">⏰ Pediu para ligar depois</option>
+                            <option value="sem_interesse">❌ Sem Interesse</option>
+                          </select>
+                        </div>
+                      </div>
 
-          {/* Multiselect: Próxima Ação */}
-          <div>
-            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Próxima Ação Recomendada</label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { id: "chamar_whats", label: "💬 Chamar no Whats" },
-                { id: "ligar", label: "📞 Ligar" },
-                { id: "visitar", label: "🏢 Visitar" },
-                { id: "outros", label: "📌 Outros" }
-              ].map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => toggleProximaAcao(item.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
-                    proximaAcao.includes(item.id)
-                      ? "bg-purple-600 text-white border-purple-600"
-                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                      {/* Multiselect: Próxima Ação */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Próxima Ação Recomendada</label>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { id: "chamar_whats", label: "💬 Chamar no Whats" },
+                            { id: "ligar", label: "📞 Ligar" },
+                            { id: "visitar", label: "🏢 Visitar" },
+                            { id: "outros", label: "📌 Outros" }
+                          ].map(item => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => toggleProximaAcao(item.id)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                                proximaAcao.includes(item.id)
+                                  ? "bg-purple-600 text-white border-purple-600"
+                                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-          {/* Agendamento de Retorno */}
-          <div className="flex items-center gap-3 flex-wrap pt-1">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-purple-600" />
-              <span className="text-xs font-bold text-slate-600 uppercase">Agendar Retorno:</span>
-            </div>
-            <input 
-              type="date" 
-              value={novaAcaoRetorno} 
-              onChange={e => setNovaAcaoRetorno(e.target.value)}
-              className="p-1.5 border rounded-lg text-xs bg-white outline-none focus:border-purple-500" 
-            />
-            <input 
-              type="time" 
-              value={novaAcaoHorarioRetorno} 
-              onChange={e => setNovaAcaoHorarioRetorno(e.target.value)}
-              className="p-1.5 border rounded-lg text-xs bg-white outline-none focus:border-purple-500" 
-            />
-          </div>
+                      {/* Agendamento de Retorno */}
+                      <div className="flex items-center gap-3 flex-wrap pt-1">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-purple-600" />
+                          <span className="text-xs font-bold text-slate-600 uppercase">Agendar Retorno:</span>
+                        </div>
+                        <input 
+                          type="date" 
+                          value={novaAcaoRetorno} 
+                          onChange={e => setNovaAcaoRetorno(e.target.value)}
+                          className="p-1.5 border rounded-lg text-xs bg-white outline-none focus:border-purple-500" 
+                        />
+                        <input 
+                          type="time" 
+                          value={novaAcaoHorarioRetorno} 
+                          onChange={e => setNovaAcaoHorarioRetorno(e.target.value)}
+                          className="p-1.5 border rounded-lg text-xs bg-white outline-none focus:border-purple-500" 
+                        />
+                      </div>
 
-          {/* Observação (Opcional) */}
-          <div>
-            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-              Observação / Resumo do Acionamento (Opcional)
-            </label>
-            <textarea 
-              rows={2} 
-              value={novaAcaoObs} 
-              onChange={e => setNovaAcaoObs(e.target.value)} 
-              placeholder="Digite detalhes da conversa se houver..." 
-              className="w-full p-2 border rounded-lg text-xs resize-none outline-none focus:border-purple-500 bg-white"
-            />
-          </div>
+                      {/* Observação (Opcional) */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                          Observação / Resumo do Acionamento (Opcional)
+                        </label>
+                        <textarea 
+                          rows={2} 
+                          value={novaAcaoObs} 
+                          onChange={e => setNovaAcaoObs(e.target.value)} 
+                          placeholder="Digite detalhes da conversa se houver..." 
+                          className="w-full p-2 border rounded-lg text-xs resize-none outline-none focus:border-purple-500 bg-white"
+                        />
+                      </div>
 
-          {/* Gerenciador de Contatos Adicionais (JSONB) */}
-          <div className="pt-2 border-t border-slate-200">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs font-bold text-slate-600 uppercase">👥 Contatos Adicionais / Indicações</span>
-              <button 
-                type="button" 
-                onClick={adicionarContato}
-                className="text-xs text-purple-600 hover:text-purple-800 font-bold flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5"/> Adicionar Contato
-              </button>
-            </div>
+                      {/* Gerenciador de Contatos Adicionais (JSONB) */}
+                      <div className="pt-2 border-t border-slate-200">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-bold text-slate-600 uppercase">👥 Contatos Adicionais / Indicações</span>
+                          <button 
+                            type="button" 
+                            onClick={adicionarContato}
+                            className="text-xs text-purple-600 hover:text-purple-800 font-bold flex items-center gap-1"
+                          >
+                            <Plus className="w-3.5 h-3.5"/> Adicionar Contato
+                          </button>
+                        </div>
 
-            <div className="space-y-2 max-h-36 overflow-y-auto">
-              {contatosAdicionais.map((contato) => (
-                <div key={contato.id} className="grid grid-cols-12 gap-1.5 items-center bg-white p-2 rounded-lg border border-slate-200">
-                  <input 
-                    type="text" 
-                    placeholder="Nome" 
-                    value={contato.nome} 
-                    onChange={e => atualizarContato(contato.id, "nome", e.target.value)}
-                    className="col-span-3 p-1 border rounded text-xs outline-none"
-                  />
-                  <input 
-                    type="text" 
-                    placeholder="Cargo/Relação" 
-                    value={contato.cargo_relacao} 
-                    onChange={e => atualizarContato(contato.id, "cargo_relacao", e.target.value)}
-                    className="col-span-3 p-1 border rounded text-xs outline-none"
-                  />
-                  <input 
-                    type="text" 
-                    placeholder="Telefone" 
-                    value={contato.telefone} 
-                    onChange={e => atualizarContato(contato.id, "telefone", e.target.value)}
-                    className="col-span-3 p-1 border rounded text-xs outline-none"
-                  />
-                  <input 
-                    type="email" 
-                    placeholder="E-mail" 
-                    value={contato.email} 
-                    onChange={e => atualizarContato(contato.id, "email", e.target.value)}
-                    className="col-span-2 p-1 border rounded text-xs outline-none"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => removerContato(contato.id)}
-                    className="col-span-1 text-red-500 hover:text-red-700 flex justify-center"
-                  >
-                    <Trash2 className="w-4 h-4"/>
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+                        <div className="space-y-2 max-h-36 overflow-y-auto">
+                          {contatosAdicionais.map((contato) => (
+                            <div key={contato.id} className="grid grid-cols-12 gap-1.5 items-center bg-white p-2 rounded-lg border border-slate-200">
+                              <input 
+                                type="text" 
+                                placeholder="Nome" 
+                                value={contato.nome} 
+                                onChange={e => atualizarContato(contato.id, "nome", e.target.value)}
+                                className="col-span-3 p-1 border rounded text-xs outline-none"
+                              />
+                              <input 
+                                type="text" 
+                                placeholder="Cargo/Relação" 
+                                value={contato.cargo_relacao} 
+                                onChange={e => atualizarContato(contato.id, "cargo_relacao", e.target.value)}
+                                className="col-span-3 p-1 border rounded text-xs outline-none"
+                              />
+                              <input 
+                                type="text" 
+                                placeholder="Telefone" 
+                                value={contato.telefone} 
+                                onChange={e => atualizarContato(contato.id, "telefone", e.target.value)}
+                                className="col-span-3 p-1 border rounded text-xs outline-none"
+                              />
+                              <input 
+                                type="email" 
+                                placeholder="E-mail" 
+                                value={contato.email} 
+                                onChange={e => atualizarContato(contato.id, "email", e.target.value)}
+                                className="col-span-2 p-1 border rounded text-xs outline-none"
+                              />
+                              <button 
+                                type="button" 
+                                onClick={() => removerContato(contato.id)}
+                                className="col-span-1 text-red-500 hover:text-red-700 flex justify-center"
+                              >
+                                <Trash2 className="w-4 h-4"/>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
 
-          {/* Botão Registrar Ação */}
-          <div className="flex justify-end pt-2">
-            <button 
-              onClick={salvarNovaAcaoAcompanhamento} 
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5"/> Registrar Ação
-            </button>
-          </div>
-        </div>
+                      {/* Botão Registrar Ação */}
+                      <div className="flex justify-end pt-2">
+                        <button 
+                          onClick={salvarNovaAcaoAcompanhamento} 
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-sm"
+                        >
+                          <Plus className="w-3.5 h-3.5"/> Registrar Ação
+                        </button>
+                      </div>
+                    </div>
 
-        {/* Lista de Histórico */}
-        <div className="space-y-3 pt-2">
-          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Histórico de Atendimentos</h4>
-          {historicoAcoes.length === 0 ? (
-            <p className="text-xs text-center text-gray-400 py-4">Nenhuma ação registrada anteriormente.</p>
-          ) : (
-            historicoAcoes.map((acao) => (
-              <div key={acao.id} className="relative pl-5 border-l-2 border-purple-300 space-y-1.5 pb-2">
-                <div className="absolute -left-[5.5px] top-1 w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
-                
-                <div className="flex justify-between items-center text-xs text-gray-500">
-                  <span className="font-semibold">📅 {new Date(acao.criado_em).toLocaleString("pt-BR")}</span>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {/* Badges de Tipo de Ação e Desfecho */}
-                    {acao.tipo_acao && (
-                      <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
-                        {acao.tipo_acao.replace("_", " ")}
-                      </span>
-                    )}
-                    {acao.desfecho && (
-                      <span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
-                        {acao.desfecho.replace(/_/g, " ")}
-                      </span>
-                    )}
-                    {acao.fase_atendimento && (
-                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
-                        {acao.fase_atendimento.replace("_", " ")}
-                      </span>
-                    )}
-                    {acao.temperatura && (
-                      <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
-                        {acao.temperatura}
-                      </span>
-                    )}
+                    {/* Lista de Histórico */}
+                    <div className="space-y-3 pt-2">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Histórico de Atendimentos</h4>
+                      {historicoAcoes.length === 0 ? (
+                        <p className="text-xs text-center text-gray-400 py-4">Nenhuma ação registrada anteriormente.</p>
+                      ) : (
+                        historicoAcoes.map((acao) => (
+                          <div key={acao.id} className="relative pl-5 border-l-2 border-purple-300 space-y-1.5 pb-2">
+                            <div className="absolute -left-[5.5px] top-1 w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
+                            
+                            <div className="flex justify-between items-center text-xs text-gray-500">
+                              <span className="font-semibold">📅 {new Date(acao.criado_em).toLocaleString("pt-BR")}</span>
+                              <div className="flex gap-1.5 flex-wrap">
+                                {/* Badges de Tipo de Ação e Desfecho */}
+                                {acao.tipo_acao && (
+                                  <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                                    {acao.tipo_acao.replace("_", " ")}
+                                  </span>
+                                )}
+                                {acao.desfecho && (
+                                  <span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                                    {acao.desfecho.replace(/_/g, " ")}
+                                  </span>
+                                )}
+                                {acao.fase_atendimento && (
+                                  <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                                    {acao.fase_atendimento.replace("_", " ")}
+                                  </span>
+                                )}
+                                {acao.temperatura && (
+                                  <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                                    {acao.temperatura}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {acao.proxima_acao && acao.proxima_acao.length > 0 && (
+                              <div className="flex gap-1 flex-wrap pt-0.5">
+                                {acao.proxima_acao.map((act: string, idx: number) => (
+                                  <span key={idx} className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded text-[10px] font-medium">
+                                    {act.replace("_", " ")}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {acao.observacao && (
+                              <p className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                {acao.observacao}
+                              </p>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                {acao.proxima_acao && acao.proxima_acao.length > 0 && (
-                  <div className="flex gap-1 flex-wrap pt-0.5">
-                    {acao.proxima_acao.map((act: string, idx: number) => (
-                      <span key={idx} className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded text-[10px] font-medium">
-                        {act.replace("_", " ")}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {acao.observacao && (
-                  <p className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    {acao.observacao}
-                  </p>
-                )}
               </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+            )}
 
 
             {/* Modal: Visualizar Ficha */}
