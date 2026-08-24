@@ -4,6 +4,7 @@ import { X, Printer, Loader2, Shield, User, Building2, MapPin, Plus, Trash2, Hea
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatarDataBR } from "../../../utils/dateUtils";
+import logoBradescoSaude from "./img/Logo Bradesco Saúde.png";
 
 interface ModeloCotacaoSaudeProps {
   propostaId: string;
@@ -143,7 +144,10 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
     const urlLogoCorretora = corretora?.tab_configuracoes_site?.logo_url;
     const imgLogoCorretora = urlLogoCorretora ? await carregarImagemCache(urlLogoCorretora) : null;
 
-    // Cabeçalho Principal
+    // NOVO: Carregar a logo do Bradesco Saúde para o PDF
+    const imgBradesco = await carregarImagemCache(logoBradescoSaude);
+
+    // Cabeçalho Principal (Fundo Escuro)
     doc.setFillColor(30, 41, 59);
     doc.rect(0, 0, 210, 38, "F");
     
@@ -195,6 +199,14 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
     doc.text(`CPF/CNPJ: ${isPJ ? cliente?.cnpj : cliente?.cpf || "-"}`, 15, 59);
     doc.text(`WhatsApp: ${cliente?.telefone_whats || "-"} | Email: ${cliente?.email || "-"}`, 15, 64);
     doc.text(`CEP de Risco: ${isPJ ? cliente?.cep : cliente?.cep_pf || "-"} (${isPJ ? `${cliente?.municipio} - ${cliente?.uf}` : `${cliente?.municipio_pf} - ${cliente?.uf_pf}` || "-"})`, 15, 69);
+
+    // ===================================================================
+    // NOVO: ADICIONAR A LOGO DO BRADESCO SAÚDE NA POSIÇÃO EXATA AO LADO
+    // ===================================================================
+    if (imgBradesco) {
+      // Coordenada X = 135 (alinhada à direita), Y = 51, Largura = 48mm, Altura proporcional (~18mm)
+      doc.addImage(imgBradesco, "PNG", 135, 51, 48, 18);
+    }
 
     // RE-CALCULAR TOTAIS
     const totalVidas = Object.values(vidas).reduce((a, b) => a + (Number(b) || 0), 0);
