@@ -1571,7 +1571,7 @@ return (
                             <option value="nao_prospectado">⚪ Não Prospectado</option>
                             <option value="em_prospeccao">🔄 Em Prospecção</option>
                             <option value="ja_cliente">👑 Já Cliente</option>
-                            <option value="convertido_crm">🏆 Convertido no CRM</option>
+                            <option value="convertido">🏆 Convertido no CRM</option>
                           </select>
                         </div>
 
@@ -1762,7 +1762,7 @@ return (
                                     </span>
                                   ) : (
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200 shadow-2xs">
-                                      Não Contatado
+                                      Não Prospectado
                                     </span>
                                   )}
 
@@ -2100,7 +2100,7 @@ return (
                             <option value="nao_prospectado">⚪ Não Prospectado</option>
                             <option value="em_prospeccao">🔄 Em Prospecção</option>
                             <option value="ja_cliente">👑 Já Cliente</option>
-                            <option value="convertido_crm">💼 Convertido no CRM</option>
+                            <option value="convertido">💼 Convertido no CRM</option>
                           </select>
                         </div>
                       </div>
