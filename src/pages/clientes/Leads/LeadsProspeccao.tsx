@@ -1568,11 +1568,10 @@ return (
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Status na Fila</label>
                           <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-full p-2 rounded-md border text-sm outline-none focus:border-blue-500 bg-white text-slate-700 font-medium">
                             <option value="">Todos (Oculta Convertidos)</option>
-                            <option value="nao_contatado">⚪ Não Contatado</option>
+                            <option value="nao_prospectado">⚪ Não Prospectado</option>
                             <option value="em_prospeccao">🔄 Em Prospecção</option>
                             <option value="ja_cliente">👑 Já Cliente</option>
-                            <option value="convertido">🏆 Convertido no CRM</option>
-                            <option value="perdido">❌ Perdido</option>
+                            <option value="convertido_crm">🏆 Convertido no CRM</option>
                           </select>
                         </div>
 
@@ -1610,6 +1609,7 @@ return (
                             <option value="visitar">🏢 Visitar</option>
                             <option value="chamar_whats">💬 Chamar no Whats</option>
                             <option value="ligar">📞 Ligar</option>
+                            <option value="enviar_email">📧 Enviar E-mail</option>
                             <option value="outros">📌 Outros</option>
                           </select>
                         </div>
@@ -1900,8 +1900,6 @@ return (
               </div>
             </div>
         
-    
-
             {/* Modal: Mapeador CSV */}
             {mostrarMapeador && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -2028,7 +2026,7 @@ return (
                       <div className="min-w-0 flex-1">
                         <h3 className="font-bold text-base leading-tight">Linha do Tempo de Interações</h3>
                         <div className="text-white font-bold text-sm mt-1 leading-snug break-words flex flex-col gap-1">
-                          {/* 1. Tratamento do Nome da Empresa */}
+                          {/* Tratamento do Nome da Empresa */}
                           <span className="text-base uppercase block">
                             {
                               (leadTimeline.nome_fantasia && String(leadTimeline.nome_fantasia).trim() !== '******' && String(leadTimeline.nome_fantasia).toUpperCase() !== 'NULL')
@@ -2039,10 +2037,10 @@ return (
                             }
                           </span>
                           
-                          {/* 2. Tratamento do Nome dos Sócios (um por linha) */}
+                          {/* Tratamento do Nome dos Sócios (um por linha) */}
                           {leadTimeline.nomes_socios && String(leadTimeline.nomes_socios).toUpperCase() !== 'NULL' && String(leadTimeline.nomes_socios).trim() !== '******' && (
                             <div className="text-xs font-normal text-purple-100 flex flex-col mt-0.5">
-                              {String(leadTimeline.nomes_socios).split(/,|\n/).map((socio, idx) => {
+                              {String(leadTimeline.nomes_socios).split(/,|\n/).map((socio: string, idx: number) => {
                                 const nomeSocio = socio.trim();
                                 return nomeSocio ? <span key={idx}>{nomeSocio}</span> : null;
                               })}
@@ -2099,9 +2097,10 @@ return (
                             onChange={e => setResultadoAcao(e.target.value)}
                             className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
                           >
+                            <option value="nao_prospectado">⚪ Não Prospectado</option>
                             <option value="em_prospeccao">🔄 Em Prospecção</option>
-                            <option value="perdido">❌ Perdido</option>
                             <option value="ja_cliente">👑 Já Cliente</option>
+                            <option value="convertido_crm">💼 Convertido no CRM</option>
                           </select>
                         </div>
                       </div>
@@ -2131,6 +2130,7 @@ return (
                             className="w-full p-2 border rounded-lg text-xs bg-white font-medium outline-none focus:border-purple-500"
                           >
                             <option value="atendeu">✅ Atendeu / Conversou</option>
+                            <option value="aguardando_resposta">💬 Aguardando Resposta do Cliente</option>
                             <option value="caixa_postal">📭 Caixa Postal / Não Atendeu</option>
                             <option value="ocupado">⏳ Ocupado</option>
                             <option value="recado_secretaria">📝 Deixou Recado</option>
@@ -2145,11 +2145,12 @@ return (
                         <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Próxima Ação Recomendada</label>
                         <div className="flex flex-wrap gap-2">
                           {[
+                            { id: "visitar", label: "🏢 Visitar" },
                             { id: "chamar_whats", label: "💬 Chamar no Whats" },
                             { id: "ligar", label: "📞 Ligar" },
-                            { id: "visitar", label: "🏢 Visitar" },
+                            { id: "enviar_email", label: "📧 Enviar E-mail" },
                             { id: "outros", label: "📌 Outros" }
-                          ].map(item => (
+                          ].map((item: { id: string; label: string }) => (
                             <button
                               key={item.id}
                               type="button"
@@ -2214,7 +2215,7 @@ return (
                         </div>
 
                         <div className="space-y-2 max-h-36 overflow-y-auto">
-                          {contatosAdicionais.map((contato) => (
+                          {contatosAdicionais.map((contato: any) => (
                             <div key={contato.id} className="grid grid-cols-12 gap-1.5 items-center bg-white p-2 rounded-lg border border-slate-200">
                               <input 
                                 type="text" 
@@ -2273,14 +2274,13 @@ return (
                       {historicoAcoes.length === 0 ? (
                         <p className="text-xs text-center text-gray-400 py-4">Nenhuma ação registrada anteriormente.</p>
                       ) : (
-                        historicoAcoes.map((acao) => (
+                        historicoAcoes.map((acao: any) => (
                           <div key={acao.id} className="relative pl-5 border-l-2 border-purple-300 space-y-1.5 pb-2">
                             <div className="absolute -left-[5.5px] top-1 w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
                             
                             <div className="flex justify-between items-center text-xs text-gray-500">
                               <span className="font-semibold">📅 {new Date(acao.criado_em).toLocaleString("pt-BR")}</span>
                               <div className="flex gap-1.5 flex-wrap">
-                                {/* Badges de Tipo de Ação e Desfecho */}
                                 {acao.tipo_acao && (
                                   <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
                                     {acao.tipo_acao.replace("_", " ")}
@@ -2327,7 +2327,6 @@ return (
                 </div>
               </div>
             )}
-
 
             {/* Modal: Visualizar Ficha */}
             {leadVisualizar && (
