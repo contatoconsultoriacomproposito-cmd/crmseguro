@@ -47,6 +47,9 @@ export default function VisaoProdutividade({
   // 👉 ADICIONE ESTE NOVO ESTADO PARA A ABA 2 (IMPORTADOS):
   const [expandedClienteImportadoId, setExpandedClienteImportadoId] = useState<string | null>(null);
 
+  // Estado para controlar o limite do Top Clientes na Aba 2 (Importados)
+  const [topLimitImportados, setTopLimitImportados] = useState<number>(20);
+
   // Filtros Globais
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
@@ -326,7 +329,14 @@ export default function VisaoProdutividade({
     const acoesPorClienteLista = Object.values(acoesPorClienteMap).map((item: any) => {
       item.acoes.sort((a: any, b: any) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime());
       return item;
-    }).sort((a: any, b: any) => new Date(b.ultimaAcaoEm).getTime() - new Date(a.ultimaAcaoEm).getTime());
+    }).sort((a: any, b: any) => {
+      // 1º Critério: Maior número total de ações
+      if (b.totalAcoes !== a.totalAcoes) {
+        return b.totalAcoes - a.totalAcoes;
+      }
+      // 2º Critério: Interação mais recente
+      return new Date(b.ultimaAcaoEm).getTime() - new Date(a.ultimaAcaoEm).getTime();
+    })
 
     // 6. Contagem de Próximas Ações e Temperatura (Vindo da `tab_clientes_frios`)
     const proximasAcoesCounts = { chamar_whats: 0, ligar: 0, visitar: 0, enviar_email: 0, outros: 0 };
@@ -669,15 +679,37 @@ export default function VisaoProdutividade({
             </div>
           </div>
 
-          {/* SEÇÃO 4: HISTÓRICO DE AÇÕES POR CLIENTE (EXPANSÍVEL 1 PARA N) */}
-          <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-4">
-            <h3 className="text-sm font-black uppercase text-slate-500 flex items-center gap-2">
-              <Clock size={18} className="text-indigo-500"/> Histórico de Contatos por Cliente (Visão 1 para N)
-            </h3>
+          {/* SEÇÃO 4: TOP CLIENTES IMPORTADOS POR VOLUME DE AÇÕES (EXPANSÍVEL 1 PARA N) */}
+          <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
+            
+            {/* CABEÇALHO DA SEÇÃO COM SELETOR TOP X */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-slate-100">
+              <h3 className="text-sm font-black uppercase text-slate-600 flex items-center gap-2">
+                <Users size={18} className="text-indigo-500"/> Top Clientes mais Trabalhados (Visão 1 para N)
+              </h3>
 
+              <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
+                <span className="text-[10px] font-black uppercase text-slate-400 pl-2">Exibir:</span>
+                {[5, 10, 20, 50].map((limit) => (
+                  <button
+                    key={limit}
+                    onClick={() => setTopLimitImportados(limit)}
+                    className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
+                      topLimitImportados === limit
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-indigo-600 hover:bg-white'
+                    }`}
+                  >
+                    Top {limit}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* LISTAGEM DOS TOP CLIENTES */}
             {statsImportados.acoesPorClienteLista.length > 0 ? (
               <div className="space-y-3">
-                {statsImportados.acoesPorClienteLista.map((item: any) => {
+                {statsImportados.acoesPorClienteLista.slice(0, topLimitImportados).map((item: any, idx: number) => {
                   const isExpanded = expandedClienteImportadoId === item.clienteId;
                   const ultimaAcao = item.acoes[0];
 
@@ -686,21 +718,23 @@ export default function VisaoProdutividade({
                       key={item.clienteId} 
                       className="border border-slate-100 rounded-3xl p-5 bg-slate-50/50 hover:bg-white hover:border-indigo-100 transition-all space-y-3"
                     >
-                      {/* CABEÇALHO DO CLIENTE */}
+                      {/* REGISTRO PRINCIPAL */}
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 font-black flex items-center justify-center text-sm uppercase">
-                            {item.nomeCliente.charAt(0)}
+                          {/* POSIÇÃO NO RANKING */}
+                          <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 font-black flex items-center justify-center text-xs border border-indigo-100 shadow-sm">
+                            #{idx + 1}
                           </div>
+
                           <div>
                             <div className="flex items-center gap-2">
                               <h4 className="text-xs font-black text-slate-800 uppercase">{item.nomeCliente}</h4>
-                              <span className="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase">
-                                {item.totalAcoes} {item.totalAcoes === 1 ? 'Interação' : 'Interações'}
+                              <span className="bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1">
+                                📊 {item.totalAcoes} {item.totalAcoes === 1 ? 'Ação' : 'Ações'}
                               </span>
                             </div>
                             <p className="text-[10px] font-bold text-slate-400 mt-0.5">
-                              Última ação em: <strong className="text-slate-600">{new Date(item.ultimaAcaoEm).toLocaleDateString('pt-BR')} às {new Date(item.ultimaAcaoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
+                              Último contato: <strong className="text-slate-600">{new Date(item.ultimaAcaoEm).toLocaleDateString('pt-BR')} às {new Date(item.ultimaAcaoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
                             </p>
                           </div>
                         </div>
@@ -710,16 +744,16 @@ export default function VisaoProdutividade({
                             onClick={() => setExpandedClienteImportadoId(isExpanded ? null : item.clienteId)}
                             className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-xl border border-slate-200 text-xs font-black text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
                           >
-                            <span>{isExpanded ? 'Ocultar Ações' : 'Ver Todas Ações'}</span>
+                            <span>{isExpanded ? 'Ocultar Histórico' : 'Ver Histórico'}</span>
                             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                           </button>
                         </div>
                       </div>
 
-                      {/* RESUMO RÁPIDO DA ÚLTIMA AÇÃO (SE NÃO EXPANDIDO) */}
+                      {/* RESUMO RESUMIDO DA ÚLTIMA AÇÃO (QUANDO FECHADO) */}
                       {!isExpanded && ultimaAcao && (
                         <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold text-slate-500 bg-white p-2.5 rounded-2xl border border-slate-100">
-                          <span className="text-slate-400 font-black uppercase">Último registro:</span>
+                          <span className="text-slate-400 font-black uppercase">Última ação:</span>
                           <span className="text-slate-700 font-black">{formatarAcaoLabel(ultimaAcao.tipoAcao)}</span>
                           <span>•</span>
                           <span className="text-indigo-600 font-black">{formatarDesfechoLabel(ultimaAcao.desfecho)}</span>
@@ -732,15 +766,15 @@ export default function VisaoProdutividade({
                         </div>
                       )}
 
-                      {/* HISTÓRICO COMPLETO EXPANDIDO (LINHA DO TEMPO DAS AÇÕES) */}
+                      {/* DETALHAMENTO HISTÓRICO EXPANDIDO */}
                       {isExpanded && (
                         <div className="pt-3 border-t border-slate-100 space-y-2 animate-in fade-in duration-300">
                           <p className="text-[10px] font-black uppercase text-indigo-600 flex items-center gap-1 mb-2">
-                            <FileText size={12}/> Linha do Tempo Completa ({item.acoes.length} registros):
+                            <FileText size={12}/> Linha do Tempo das {item.acoes.length} Ações Registradas:
                           </p>
                           <div className="space-y-2">
-                            {item.acoes.map((act: any) => (
-                              <div key={act.id} className="bg-white p-3.5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-2 hover:border-indigo-100 transition-all">
+                            {item.acoes.map((act: any, actIdx: number) => (
+                              <div key={act.id || actIdx} className="bg-white p-3.5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-2 hover:border-indigo-100 transition-all">
                                 <div className="space-y-1">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-xs font-black text-slate-800">{formatarAcaoLabel(act.tipoAcao)}</span>
