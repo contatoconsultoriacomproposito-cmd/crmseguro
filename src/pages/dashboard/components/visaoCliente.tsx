@@ -1,536 +1,882 @@
-import { useMemo, useState, useEffect } from 'react';
-import { 
-  Globe, Clock,
-  Building2, PieChart as PieIcon, BarChart as BarIcon,
-  Navigation, Hash, Filter, Loader2
-} from 'lucide-react';
-import { 
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend
-} from 'recharts';
-
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 
-interface ClienteData {
-  id: string;
-  corretor_id: string | null;
-  tipo_cliente: string;
-  origem_cliente?: string;
-  status_kanban?: string;
-  motivo_perda?: string;
-  fase_kanban?: string;
-  created_at: string;
-  sexo?: string;
-  data_nascimento?: string;
-  data_retorno?: string;
-  porte?: string;
-  capital_social?: number;
-  opcao_pelo_mei?: boolean;
-  opcao_pelo_simples?: boolean;
-  natureza_juridica?: string;
-  descricao_identificador_matriz_filial?: string;
-  uf?: string;
-  uf_pf?: string;
-  municipio?: string;
-  municipio_pf?: string;
-  bairro?: string;
-  bairro_pf?: string;
-}
-
 interface VisaoClienteProps {
-  corretoresLista: { id: string; nome: string }[];
-  corretoraId: string;
-  userLevel?: string; // Nível do usuário: 'CORRETORA' ou 'CORRETOR'
-  userId?: string;    // ID do usuário logado
+  corretoraId?: string;
+  corretoresLista?: { id: string; nome: string }[];
+  userLevel?: string;
+  userId?: string;
 }
 
-const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
+type TabType = 'carteira' | 'importados' | 'avulsos';
 
-export default function VisaoCliente({ 
-    corretoresLista, 
-    corretoraId, 
-    userLevel, 
-    userId 
-  }: VisaoClienteProps) {
-  const [loading, setLoading] = useState(true);
-  const [clientesLocais, setClientesLocais] = useState<ClienteData[]>([]);
-  
-  // 1. ESTADOS DE FILTRO
-  
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState(new Date().toISOString().split('T')[0]);
-  const [corretorLocal, setCorretorLocal] = useState(userLevel === 'CORRETOR' ? userId : 'todos');
+export const VisaoCliente: React.FC<VisaoClienteProps> = ({
+  corretoraId,
+  corretoresLista = [],
+  userLevel,
+  userId
+}) => {
+  const [activeTab, setActiveTab] = useState<TabType>('carteira');
+  const [loading, setLoading] = useState(false);
 
+  // Estados dos dados em memória
+  const [clientesCarteira, setClientesCarteira] = useState<any[] | null>(null);
+  const [clientesAgenda, setClientesAgenda] = useState<any[] | null>(null);
+  const [metricasFrios, setMetricasFrios] = useState<any>(null);
+
+  // Lazy loading com chamada RPC ultra rápida para 'importados'
   useEffect(() => {
-  if (userLevel === 'CORRETOR' && userId) {
-    setCorretorLocal(userId);
-  }
-}, [userId, userLevel]);
+    if (!corretoraId) return;
 
-  // 2. BUSCAR A DATA DO PRIMEIRO CLIENTE (PARA O INÍCIO DO FILTRO)
-  useEffect(() => {
-    async function buscarPrimeiraData() {
-      if (!corretoraId) return;
-      const { data, error } = await supabase
-        .from('tab_clientes')
-        .select('created_at')
-        .eq('corretora_id', corretoraId)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .single();
+    let isMounted = true;
 
-      if (!error && data) {
-        setDataInicio(data.created_at.split('T')[0]);
-      } else {
-        // Fallback: primeiro dia do mês atual
-        setDataInicio(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-      }
-    }
-    buscarPrimeiraData();
-  }, [corretoraId]);
-
-  // 3. BUSCA DE DADOS
-  useEffect(() => {
-    async function fetchDados() {
-      if (!corretoraId) return;
-      if (userLevel === 'CORRETOR' && !userId) return;
-
+    async function fetchTabData() {
       setLoading(true);
       try {
-        let query = supabase
-          .from('tab_clientes')
-          .select('*')
-          .eq('corretora_id', corretoraId);
+        if (activeTab === 'carteira' && clientesCarteira === null) {
+          const data = await fetchAllRows('tab_clientes', `
+            id, corretor_id, tipo_cliente, opcao_pelo_simples, opcao_pelo_mei,
+            municipio, bairro, municipio_pf, bairro_pf, data_nascimento,
+            nome, razao_social, nome_fantasia, status_kanban, fase_kanban, sexo, data_retorno
+          `);
+          if (isMounted) setClientesCarteira(data);
 
-        if (userLevel === 'CORRETOR') {
-          // Filtro rigoroso para o Corretor logado
-          query = query.eq('corretor_id', userId);
-        } else {
-          // Filtros para nível Administrativo (Corretora)
-          if (corretorLocal === 'casa') {
-            query = query.or(`corretor_id.is.null,corretor_id.eq.${corretoraId}`);
-          } else if (corretorLocal !== 'todos') {
-            query = query.eq('corretor_id', corretorLocal);
-          }
+        } else if (activeTab === 'importados' && metricasFrios === null) {
+          // CHAMADA RPC VIA SUPABASE (executa em ~0.2 segundos direto no banco)
+          const { data, error } = await supabase.rpc('get_metricas_clientes_frios', {
+            p_corretora_id: corretoraId,
+            p_user_level: userLevel,
+            p_user_id: userId
+          });
+
+          if (error) throw error;
+          if (isMounted) setMetricasFrios(data);
+
+        } else if (activeTab === 'avulsos' && clientesAgenda === null) {
+          const data = await fetchAllRows('tab_clientes_agenda', `
+            id, nome_cliente, tel_cliente, email_cliente, data_retorno,
+            horario_retorno, breve_descricao
+          `);
+          if (isMounted) setClientesAgenda(data);
         }
+      } catch (err) {
+        console.error(`Erro ao carregar dados da aba ${activeTab}:`, err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    // Função auxiliar mantida apenas para as abas menores (carteira e avulsos)
+    async function fetchAllRows(tableName: string, selectFields: string) {
+      let allRows: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from(tableName)
+          .select(selectFields)
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (corretoraId) query = query.eq('corretora_id', corretoraId);
+        if (userLevel === 'CORRETOR' && userId) query = query.eq('corretor_id', userId);
 
         const { data, error } = await query;
         if (error) throw error;
-        
-        setClientesLocais(data || []);
-      } catch (err) {
-        console.error("Erro ao carregar Visão Cliente:", err);
-      } finally {
-        setLoading(false);
+
+        if (data && data.length > 0) {
+          allRows = allRows.concat(data);
+          if (data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
       }
+
+      return allRows;
     }
 
-    fetchDados();
-  }, [corretorLocal, corretoraId, userId, userLevel]);
+    if (
+      (activeTab === 'carteira' && clientesCarteira === null) ||
+      (activeTab === 'importados' && metricasFrios === null) ||
+      (activeTab === 'avulsos' && clientesAgenda === null)
+    ) {
+      fetchTabData();
+    }
 
-  // 4. PROCESSAMENTO DE ESTATÍSTICAS
-  const { stats, totalFiltrados } = useMemo(() => {
-    const acc = {
-      tipo: { pf: 0, pj: 0 },
-      origem: {} as Record<string, number>,
-      porte: {} as Record<string, number>,
-      capital: { total: 0, count: 0 },
-      mei: { sim: 0, nao: 0 },
-      simples: { sim: 0, nao: 0 },
-      natureza: {} as Record<string, number>,
-      matriz: {} as Record<string, number>,
-      uf: {} as Record<string, number>,
-      municipio: {} as Record<string, number>,
-      bairro: {} as Record<string, number>,
-      idades: { '0-18': 0, '19-30': 0, '31-45': 0, '46-60': 0, '60+': 0 },
-      status: {} as Record<string, number>,
-      motivosPerda: {} as Record<string, number>,
-      fases: {} as Record<string, number>,
-      sexo: { M: 0, F: 0, Outro: 0 },
-      retorno: { 
-        atrasado: 0, semana: 0, quinzena: 0, mes: 0, trimestre: 0, longoPrazo: 0 
-      }
+    return () => {
+      isMounted = false;
     };
+  }, [activeTab, corretoraId, userLevel, userId, clientesCarteira, metricasFrios, clientesAgenda]);
+
+  const mapaCorretores = useMemo(() => {
+    const map = new Map<string, string>();
+    corretoresLista.forEach((c) => map.set(c.id, c.nome));
+    return map;
+  }, [corretoresLista]);
+
+  // Helper para parsing de datas sem fuso horário
+  const parseDataSemTimezone = (val: any): Date | null => {
+    if (!val) return null;
+    const str = String(val).trim();
+    if (!str) return null;
+
+    const matchIso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (matchIso) {
+      return new Date(parseInt(matchIso[1], 10), parseInt(matchIso[2], 10) - 1, parseInt(matchIso[3], 10), 0, 0, 0, 0);
+    }
+
+    const matchBr = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (matchBr) {
+      return new Date(parseInt(matchBr[3], 10), parseInt(matchBr[2], 10) - 1, parseInt(matchBr[1], 10), 0, 0, 0, 0);
+    }
+
+    return null;
+  };
+
+  const calcularCronograma = (lista: { data_retorno: string }[] | null) => {
+    const contadores = {
+      totalAgendados: 0,
+      atrasado: 0,
+      semana: 0,
+      quinzena: 0,
+      mes: 0,
+      trimestre: 0,
+      longoPrazo: 0
+    };
+
+    if (!lista) return contadores;
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    let countFiltrados = 0;
+    for (let i = 0; i < lista.length; i++) {
+      const dataRetorno = parseDataSemTimezone(lista[i].data_retorno);
+      if (!dataRetorno) continue;
 
-    clientesLocais.forEach((c) => {
-      // --- LÓGICA DE RETORNOS (IGNORA O FILTRO DE DATA DE CADASTRO) ---
-      if (c.data_retorno) {
-        const dataRet = new Date(c.data_retorno);
-        dataRet.setHours(0, 0, 0, 0);
-        const diffDays = Math.ceil((dataRet.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays < 0) acc.retorno.atrasado++;
-        else if (diffDays <= 7) acc.retorno.semana++;
-        else if (diffDays <= 15) acc.retorno.quinzena++;
-        else if (diffDays <= 30) acc.retorno.mes++;
-        else if (diffDays <= 90) acc.retorno.trimestre++;
-        else acc.retorno.longoPrazo++;
+      contadores.totalAgendados++;
+
+      const diffDays = Math.round((dataRetorno.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) contadores.atrasado++;
+      else if (diffDays <= 7) contadores.semana++;
+      else if (diffDays <= 15) contadores.quinzena++;
+      else if (diffDays <= 30) contadores.mes++;
+      else if (diffDays <= 90) contadores.trimestre++;
+      else contadores.longoPrazo++;
+    }
+
+    return contadores;
+  };
+
+  // ==========================================
+  // MÉTRICAS DA ABA 1: CLIENTES DA CARTEIRA
+  // ==========================================
+  const metricasCarteira = useMemo(() => {
+    if (!clientesCarteira) return null;
+
+    const porCorretorMap: Record<string, { nome: string; pf: number; pj: number; total: number }> = {};
+    let simplesSim = 0, simplesNao = 0;
+    let meiSim = 0, meiNao = 0;
+    const localizacaoMap: Record<string, { municipio: string; bairro: string; total: number }> = {};
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const aniversariantes: { id: string; nome: string; dataNasc: string; diasFaltando: number }[] = [];
+
+    const kanbanMap: Record<string, number> = {};
+    const sexoMap: Record<string, number> = { Masculino: 0, Feminino: 0, Outro: 0, 'Não informado': 0 };
+
+    clientesCarteira.forEach((c) => {
+      // 1. Clientes por Corretor
+      const cId = c.corretor_id || 'sem_corretor';
+      const cNome = mapaCorretores.get(cId) || (cId === 'sem_corretor' ? 'Sem Corretor' : 'Corretor Desconhecido');
+      if (!porCorretorMap[cId]) {
+        porCorretorMap[cId] = { nome: cNome, pf: 0, pj: 0, total: 0 };
+      }
+      if (c.tipo_cliente === 'PJ') porCorretorMap[cId].pj++;
+      else porCorretorMap[cId].pf++;
+      porCorretorMap[cId].total++;
+
+      // 2. Simples / MEI
+      if (c.tipo_cliente === 'PJ') {
+        if (c.opcao_pelo_simples === true) simplesSim++;
+        else simplesNao++;
+
+        if (c.opcao_pelo_mei === true) meiSim++;
+        else meiNao++;
       }
 
-      // --- LÓGICA DE FILTRAGEM PARA OS DEMAIS GRÁFICOS (BASEADO EM CREATED_AT) ---
-      const dataCad = c.created_at.split('T')[0];
-      if (dataCad >= dataInicio && dataCad <= dataFim) {
-        countFiltrados++;
-        
-        // Perfil
-        const t = String(c.tipo_cliente || '').toUpperCase();
-        t === 'PJ' ? acc.tipo.pj++ : acc.tipo.pf++;
+      // 3. Município e Bairro
+      const mun = (c.tipo_cliente === 'PJ' ? c.municipio : c.municipio_pf) || 'Não Informado';
+      const bai = (c.tipo_cliente === 'PJ' ? c.bairro : c.bairro_pf) || 'Não Informado';
+      const locKey = `${mun.toUpperCase()} - ${bai.toUpperCase()}`;
 
-        const s = (c.sexo || 'Outro').toUpperCase()[0];
-        if (s === 'M') acc.sexo.M++;
-        else if (s === 'F') acc.sexo.F++;
-        else acc.sexo.Outro++;
+      if (!localizacaoMap[locKey]) {
+        localizacaoMap[locKey] = { municipio: mun, bairro: bai, total: 0 };
+      }
+      localizacaoMap[locKey].total++;
 
-        const origemKey = c.origem_cliente || 'Não Informado';
-        acc.origem[origemKey] = (acc.origem[origemKey] || 0) + 1;
-        
-        const faseKey = c.fase_kanban || 'Sem Fase';
-        acc.fases[faseKey] = (acc.fases[faseKey] || 0) + 1;
-
-        if (t === 'PJ') {
-          if (c.opcao_pelo_mei) acc.mei.sim++;
-          if (c.opcao_pelo_simples) acc.simples.sim++;
-          if (c.capital_social) {
-            acc.capital.total += Number(c.capital_social);
-            acc.capital.count++;
+      // 4. Aniversariantes (próximos 30 dias)
+      if (c.data_nascimento) {
+        const [ano, mes, dia] = String(c.data_nascimento).substring(0, 10).split('-').map(Number);
+        if (ano && mes && dia) {
+          const proxNiver = new Date(hoje.getFullYear(), mes - 1, dia);
+          if (proxNiver < hoje) {
+            proxNiver.setFullYear(hoje.getFullYear() + 1);
           }
-          const mKey = (c.descricao_identificador_matriz_filial || 'Matriz').toUpperCase();
-          acc.matriz[mKey] = (acc.matriz[mKey] || 0) + 1;
-        }
+          const diffMs = proxNiver.getTime() - hoje.getTime();
+          const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-        const muni = t === 'PJ' ? c.municipio : c.municipio_pf;
-        const bair = t === 'PJ' ? c.bairro : c.bairro_pf;
-        if (muni) acc.municipio[muni.toUpperCase().trim()] = (acc.municipio[muni.toUpperCase().trim()] || 0) + 1;
-        if (bair) acc.bairro[bair.toUpperCase().trim()] = (acc.bairro[bair.toUpperCase().trim()] || 0) + 1;
-
-        if (c.data_nascimento) {
-          const birthDate = new Date(c.data_nascimento);
-          let idade = hoje.getFullYear() - birthDate.getFullYear();
-          if (hoje < new Date(hoje.getFullYear(), birthDate.getMonth(), birthDate.getDate())) idade--;
-          
-          if (idade <= 18) acc.idades['0-18']++;
-          else if (idade <= 30) acc.idades['19-30']++;
-          else if (idade <= 45) acc.idades['31-45']++;
-          else if (idade <= 60) acc.idades['46-60']++;
-          else acc.idades['60+']++;
+          if (diffDias <= 30) {
+            aniversariantes.push({
+              id: c.id,
+              nome: c.tipo_cliente === 'PF' ? (c.nome || 'Sem Nome') : (c.razao_social || c.nome_fantasia || 'Sem Razão Social'),
+              dataNasc: `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}`,
+              diasFaltando: diffDias
+            });
+          }
         }
+      }
+
+      // 5. Kanban
+      const status = c.fase_kanban || c.status_kanban || 'Sem Fase';
+      kanbanMap[status] = (kanbanMap[status] || 0) + 1;
+
+      // 6. Sexo
+      if (c.sexo) {
+        const sUpper = String(c.sexo).trim().toUpperCase();
+        if (sUpper.startsWith('M')) sexoMap['Masculino']++;
+        else if (sUpper.startsWith('F')) sexoMap['Feminino']++;
+        else sexoMap['Outro']++;
+      } else {
+        sexoMap['Não informado']++;
       }
     });
 
-    return { stats: acc, totalFiltrados: countFiltrados };
-  }, [clientesLocais, dataInicio, dataFim]);
+    aniversariantes.sort((a, b) => a.diasFaltando - b.diasFaltando);
+    const listaLocalizacao = Object.values(localizacaoMap).sort((a, b) => b.total - a.total);
 
-  // Preparação dos dados para Recharts
-  const chartData = {
-    sexo: Object.entries(stats.sexo).filter(x => x[1] > 0).map(([name, value]) => ({ name, value })),
-    fases: Object.entries(stats.fases).map(([name, value]) => ({ name, value })),
-    municipios: Object.entries(stats.municipio).map(([name, value]) => ({ name, value })).sort((a,b)=>b.value-a.value).slice(0, 5),
-    idades: Object.entries(stats.idades).map(([name, value]) => ({ name, value }))
-  };
+    return {
+      cronograma: calcularCronograma(clientesCarteira),
+      porCorretor: Object.values(porCorretorMap),
+      simplesSim,
+      simplesNao,
+      meiSim,
+      meiNao,
+      listaLocalizacao,
+      aniversariantes,
+      kanbanMap,
+      sexoMap
+    };
+  }, [clientesCarteira, mapaCorretores]);
+
+  // ==========================================
+  // MÉTRICAS DA ABA 2: CLIENTES IMPORTADOS (RPC)
+  // ==========================================
+  const metricasImportados = metricasFrios;
+
+  // ==========================================
+  // MÉTRICAS DA ABA 3: CLIENTES AVULSOS
+  // ==========================================
+  const cronogramaAgenda = useMemo(() => calcularCronograma(clientesAgenda), [clientesAgenda]);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-      
-      {/* BARRA DE FILTROS */}
-      <div className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
-          <Filter size={16} className="text-slate-400" />
-          <span className="text-[10px] font-black uppercase text-slate-500">Analítico de Leads:</span>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <input 
-            type="date" 
-            value={dataInicio} 
-            onChange={(e) => setDataInicio(e.target.value)}
-            className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2"
-          />
-          <span className="text-slate-300 font-bold text-[10px] uppercase">até</span>
-          <input 
-            type="date" 
-            value={dataFim} 
-            onChange={(e) => setDataFim(e.target.value)}
-            className="bg-slate-50 border-none rounded-lg text-xs font-bold text-slate-600 p-2"
-          />
-          
-          <span className="ml-2 text-[9px] font-black text-indigo-400 uppercase bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
-            📊 Gráficos por Cadastro | 📅 Agenda: Base Total
-          </span>
-        </div>
-
-        <select 
-          value={corretorLocal} 
-          onChange={(e) => setCorretorLocal(e.target.value)}
-          disabled={userLevel?.toUpperCase() === 'CORRETOR'} 
-          className={`ml-auto border border-slate-100 rounded-lg text-xs font-bold p-2 min-w-[200px] ${
-            userLevel?.toUpperCase() === 'CORRETOR' ? 'bg-slate-50 text-slate-500 opacity-80' : 'bg-white text-slate-600'
+    <div className="space-y-6">
+      {/* BARRA DE SUB-ABAS */}
+      <div className="flex border-b border-slate-200 gap-2">
+        <button
+          onClick={() => setActiveTab('carteira')}
+          className={`py-3 px-5 font-black text-xs uppercase tracking-wider transition-all border-b-2 -mb-px ${
+            activeTab === 'carteira'
+              ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-lg'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
           }`}
         >
-          {userLevel?.toUpperCase() !== 'CORRETOR' ? (
-            <>
-              <option value="todos">Todos os Corretores</option>
-              <option value="casa">ATENDIMENTO DIRETO (CORRETORA)</option>
-              {(corretoresLista || [])
-                .filter(c => c.nome?.toUpperCase() !== "ATENDIMENTO DIRETO (CORRETORA)")
-                .map(c => (
-                  <option key={c.id} value={c.id}>{c.nome}</option>
-                ))
-              }
-            </>
-          ) : (
-            <option value={userId}>
-              {corretoresLista.find(c => c.id === userId)?.nome || 'Meu Usuário'}
-            </option>
-          )}
-        </select>
+          Clientes da Carteira
+        </button>
 
-        {loading && (
-          <div className="flex items-center gap-2 ml-2 animate-pulse">
-            <Loader2 size={16} className="text-indigo-500 animate-spin" />
-            <span className="text-[10px] font-bold text-indigo-500 uppercase">Sincronizando...</span>
-          </div>
-        )}
+        <button
+          onClick={() => setActiveTab('importados')}
+          className={`py-3 px-5 font-black text-xs uppercase tracking-wider transition-all border-b-2 -mb-px ${
+            activeTab === 'importados'
+              ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-lg'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          Clientes Importados
+        </button>
+
+        <button
+          onClick={() => setActiveTab('avulsos')}
+          className={`py-3 px-5 font-black text-xs uppercase tracking-wider transition-all border-b-2 -mb-px ${
+            activeTab === 'avulsos'
+              ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-lg'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          Clientes Avulsos
+        </button>
       </div>
 
-      {/* 1. RETORNOS (CRONOGRAMA INDEPENDENTE DO FILTRO DE DATA) */}
-      <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[32px] shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Clock className="text-indigo-600" size={24} />
-            <h3 className="text-lg font-black text-indigo-900 uppercase tracking-tight">Cronograma de Retornos (Base Total)</h3>
-          </div>
-          {stats.retorno.atrasado > 0 && (
-            <span className="px-4 py-1 bg-rose-500 text-white text-[11px] font-black rounded-full animate-pulse">
-              {stats.retorno.atrasado} AGENDAMENTOS ATRASADOS
-            </span>
-          )}
+      {loading ? (
+        <div className="p-12 text-center text-slate-400 font-bold uppercase text-xs tracking-wider animate-pulse">
+          Carregando dados da aba selecionada...
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div className="bg-rose-50 p-4 rounded-2xl border border-rose-200 shadow-sm text-center">
-            <p className="text-3xl font-black text-rose-600 leading-none">{stats.retorno.atrasado}</p>
-            <p className="text-[10px] font-black text-rose-400 uppercase mt-2 italic">Atrasados</p>
-          </div>
-          {[
-            { label: '0 a 7 dias', val: stats.retorno.semana },
-            { label: '8 a 15 dias', val: stats.retorno.quinzena },
-            { label: '16 a 30 dias', val: stats.retorno.mes },
-            { label: '31 a 90 dias', val: stats.retorno.trimestre },
-            { label: '+ 90 dias', val: stats.retorno.longoPrazo }
-          ].map((item, idx) => (
-            <div key={idx} className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-sm text-center">
-              <p className="text-3xl font-black text-indigo-600 leading-none">{item.val}</p>
-              <p className="text-[10px] font-black text-slate-400 uppercase mt-2 italic">{item.label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      ) : (
+        <>
+          {/* ==========================================
+              ABA 1: CLIENTES DA CARTEIRA
+             ========================================== */}
+          {activeTab === 'carteira' && metricasCarteira && (
+            <div className="space-y-6">
+              {/* CRONOGRAMA */}
+              <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                  Cronograma de Retornos (Clientes da Carteira)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                  <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-red-600">{metricasCarteira.cronograma.atrasado}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-red-500">Atrasados</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{metricasCarteira.cronograma.semana}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">0 a 7 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{metricasCarteira.cronograma.quinzena}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">8 a 15 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{metricasCarteira.cronograma.mes}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">16 a 30 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{metricasCarteira.cronograma.trimestre}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">31 a 90 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{metricasCarteira.cronograma.longoPrazo}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">+ 90 dias</span>
+                  </div>
+                </div>
+              </div>
 
-      {/* RESTANTE DO DASHBOARD */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-amber-50 border border-amber-100 p-6 rounded-[24px] flex items-center justify-between">
-            <div>
-              <p className="text-[12px] font-black text-amber-600 uppercase mb-2">Perfil Filtrado</p>
-              <p className="text-lg font-black text-slate-700 leading-none">PF: {stats.tipo.pf}</p>
-              <p className="text-lg font-black text-slate-700 mt-1">PJ: {stats.tipo.pj}</p>
-            </div>
-            <div style={{ width: 80, height: 80 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie 
-                    data={[{v: stats.tipo.pf || 0}, {v: stats.tipo.pj || 0}]} 
-                    innerRadius={20} 
-                    outerRadius={35} 
-                    dataKey="v"
-                    isAnimationActive={false}
-                  >
-                    <Cell fill="#6366f1" />
-                    <Cell fill="#f59e0b" />
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-        </div>
+              {/* 1. CLIENTES POR CORRETOR (PF / PJ) */}
+              <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                  1. Clientes por Corretor (PF / PJ)
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 font-black uppercase">
+                        <th className="py-2 px-3">Corretor</th>
+                        <th className="py-2 px-3 text-center">Pessoa Física (PF)</th>
+                        <th className="py-2 px-3 text-center">Pessoa Jurídica (PJ)</th>
+                        <th className="py-2 px-3 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                      {metricasCarteira.porCorretor.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-3 font-bold text-slate-800">{row.nome}</td>
+                          <td className="py-2.5 px-3 text-center text-indigo-600 font-bold">{row.pf}</td>
+                          <td className="py-2.5 px-3 text-center text-emerald-600 font-bold">{row.pj}</td>
+                          <td className="py-2.5 px-3 text-right font-black text-slate-900">{row.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-        <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[24px]">
-          <p className="text-[12px] font-black text-emerald-600 uppercase mb-3">Tributação PJ (Período)</p>
-          <div className="flex gap-6">
-            <div>
-              <p className="text-2xl font-black text-emerald-900">{stats.simples.sim}</p>
-              <p className="text-[10px] font-black uppercase text-emerald-500">Simples</p>
-            </div>
-            <div className="border-l border-emerald-200 pl-6">
-              <p className="text-2xl font-black text-emerald-900">{stats.mei.sim}</p>
-              <p className="text-[10px] font-black uppercase text-emerald-500">MEI</p>
-            </div>
-          </div>
-        </div>
+              {/* 2 & 6: REGIME TRIBUTÁRIO & PERFIL DE SEXO */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    2. Regime Tributário (Empresas PJ)
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-indigo-600">{metricasCarteira.simplesSim}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Optante Simples</span>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-slate-600">{metricasCarteira.simplesNao}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Não Simples</span>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-emerald-600">{metricasCarteira.meiSim}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Optante MEI</span>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-slate-600">{metricasCarteira.meiNao}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Não MEI</span>
+                    </div>
+                  </div>
+                </div>
 
-        <div className="bg-slate-50 border border-slate-200 p-6 rounded-[24px]">
-          <p className="text-[12px] font-black text-slate-400 uppercase mb-2">Cap. Social Médio (Período)</p>
-          <p className="text-xl font-black text-slate-800">
-            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.capital.total / (stats.capital.count || 1))}
-          </p>
-          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase italic">Base: {stats.capital.count} PJs</p>
-        </div>
-      </div>
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    6. Perfil por Sexo
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-blue-600">{metricasCarteira.sexoMap['Masculino']}</span>
+                      <span className="text-[10px] font-black uppercase text-blue-500">Masculino</span>
+                    </div>
+                    <div className="p-4 bg-pink-50 border border-pink-100 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-pink-600">{metricasCarteira.sexoMap['Feminino']}</span>
+                      <span className="text-[10px] font-black uppercase text-pink-500">Feminino</span>
+                    </div>
+                    <div className="p-4 bg-purple-50 border border-purple-100 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-purple-600">{metricasCarteira.sexoMap['Outro']}</span>
+                      <span className="text-[10px] font-black uppercase text-purple-500">Outro</span>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-slate-500">{metricasCarteira.sexoMap['Não informado']}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-400">Não Informado</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
-            <PieIcon size={18} className="text-indigo-500" /> Gênero e Idades
-          </h3>
-          <div className="h-[250px] w-full" style={{ minHeight: '250px' }}>
-            {chartData.sexo.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie 
-                    data={chartData.sexo} 
-                    innerRadius={50} 
-                    outerRadius={80} 
-                    dataKey="value" 
-                    nameKey="name"
-                    isAnimationActive={false}
-                  >
-                    {chartData.sexo.map((_, i) => (
-                      <Cell key={`cell-gender-${i}`} fill={COLORS[i % COLORS.length]} />
+              {/* 5 & 4: KANBAN E ANIVERSARIANTES */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    5. Status / Fase Kanban
+                  </h3>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {Object.entries(metricasCarteira.kanbanMap).map(([fase, qtd], idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg text-xs font-bold text-slate-700">
+                        <span className="uppercase">{fase}</span>
+                        <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full font-black">{qtd}</span>
+                      </div>
                     ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-[10px] font-black text-slate-300 uppercase italic">
-                Sem dados de gênero
-              </div>
-            )}
-          </div>
-          
-          <div className="grid grid-cols-5 gap-1 mt-4">
-            {chartData.idades.map(id => (
-              <div key={id.name} className="text-center bg-slate-50 p-2 rounded-xl">
-                <p className="text-xs font-black text-indigo-600">{id.value}</p>
-                <p className="text-[9px] font-black text-slate-400 uppercase">{id.name}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
-            <BarIcon size={18} className="text-emerald-500" /> Fase no Kanban
-          </h3>
-          <div className="h-[300px] w-full" style={{ minHeight: '300px' }}>
-            {chartData.fases.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData.fases} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{fontSize: 9, fontWeight: 900, fill: '#64748b'}} 
-                    axisLine={false} 
-                    tickLine={false} 
-                  />
-                  <YAxis hide />
-                  <Tooltip cursor={{fill: 'transparent'}} />
-                  <Bar dataKey="value" fill="#10b981" radius={[8, 8, 0, 0]} barSize={35} isAnimationActive={false} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-[10px] font-black text-slate-300 uppercase italic">
-                Sem leads no período
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-6 flex items-center gap-2">
-            <Globe size={18} className="text-amber-500" /> Top Origens
-          </h3>
-          <div className="space-y-4">
-            {Object.entries(stats.origem).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([label, val]) => (
-              <div key={label}>
-                <div className="flex justify-between mb-1">
-                  <span className="text-[10px] font-black text-slate-600 uppercase truncate max-w-[180px]">{label}</span>
-                  <span className="text-xs font-black text-indigo-600">{val}</span>
+                  </div>
                 </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-indigo-500 h-full transition-all duration-1000" 
-                    style={{ width: `${(val / (totalFiltrados || 1)) * 100}%` }} 
-                  />
+
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    4. Aniversariantes (Próximos 30 dias)
+                  </h3>
+                  {metricasCarteira.aniversariantes.length === 0 ? (
+                    <div className="text-center py-8 text-xs font-bold text-slate-400 uppercase">
+                      Nenhum aniversariante nos próximos 30 dias.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {metricasCarteira.aniversariantes.map((item) => (
+                        <div key={item.id} className="flex justify-between items-center p-2.5 bg-amber-50/60 border border-amber-100 rounded-lg text-xs font-bold text-slate-800">
+                          <div>
+                            <span className="block font-black text-slate-900">{item.nome}</span>
+                            <span className="text-[10px] text-amber-700 uppercase">Aniversário: {item.dataNasc}</span>
+                          </div>
+                          <span className="px-2.5 py-1 bg-amber-200 text-amber-900 rounded-full text-[10px] font-black uppercase">
+                            {item.diasFaltando === 0 ? 'Hoje!' : `Em ${item.diasFaltando}d`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-            {totalFiltrados === 0 && !loading && (
-              <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Sem dados no período</p>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* GEOLOCALIZAÇÃO E UNIDADES */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black uppercase text-slate-500 mb-8 flex items-center gap-2">
-            <Navigation size={18} className="text-rose-500" /> Geolocalização (Período)
-          </h3>
-          <div className="grid grid-cols-2 gap-8">
-            <div className="space-y-3">
-              <p className="text-[11px] font-black text-rose-500 uppercase tracking-widest mb-2 border-b border-rose-100 pb-1">Municípios</p>
-              {chartData.municipios.map((m) => (
-                <div key={`muni-${m.name}`} className="flex justify-between p-3 bg-rose-50/30 border border-rose-100 rounded-xl">
-                  <span className="text-xs font-black text-slate-700 uppercase truncate">{m.name}</span>
-                  <span className="text-xs font-black text-rose-600">{m.value}</span>
+              {/* 3. MUNICÍPIOS E BAIRROS */}
+              <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                  3. Distribuição por Município e Bairro
+                </h3>
+                <div className="max-h-72 overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="sticky top-0 bg-white shadow-sm">
+                      <tr className="border-b border-slate-200 text-slate-400 font-black uppercase">
+                        <th className="py-2 px-3">Município</th>
+                        <th className="py-2 px-3">Bairro</th>
+                        <th className="py-2 px-3 text-right">Total de Clientes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                      {metricasCarteira.listaLocalizacao.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="py-2 px-3 font-bold text-slate-800">{row.municipio}</td>
+                          <td className="py-2 px-3 text-slate-600">{row.bairro}</td>
+                          <td className="py-2 px-3 text-right font-black text-indigo-600">{row.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-              {chartData.municipios.length === 0 && <p className="text-[10px] text-slate-400 italic">Nenhum dado</p>}
+              </div>
             </div>
-            <div className="space-y-3">
-              <p className="text-[11px] font-black text-indigo-500 uppercase tracking-widest mb-2 border-b border-indigo-100 pb-1">Bairros</p>
-              {Object.entries(stats.bairro).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([name, val]) => (
-                <div key={`bair-${name}`} className="flex justify-between p-3 bg-indigo-50/30 border border-indigo-100 rounded-xl">
-                  <span className="text-xs font-black text-slate-700 uppercase truncate">{name}</span>
-                  <span className="text-xs font-black text-indigo-600">{val}</span>
-                </div>
-              ))}
-              {Object.entries(stats.bairro).length === 0 && <p className="text-[10px] text-slate-400 italic">Nenhum dado</p>}
-            </div>
-          </div>
-        </div>
+          )}
 
-        <div className="bg-slate-50 border border-slate-200 p-8 rounded-[32px] shadow-inner flex flex-col justify-center">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-200">
-              <Building2 size={20} className="text-slate-600" />
+          {/* ==========================================
+              ABA 2: CLIENTES IMPORTADOS
+            ========================================== */}
+          {activeTab === 'importados' && metricasImportados && (
+            <div className="space-y-6">
+              {/* CRONOGRAMA DE RETORNOS */}
+              <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    Cronograma de Retornos (Clientes Importados)
+                  </h3>
+                  <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-black rounded-full uppercase">
+                    Total Agendados: {metricasImportados?.cronograma?.totalAgendados || 0}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                  <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-red-600">
+                      {metricasImportados?.cronograma?.atrasado || 0}
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-red-500">Atrasados</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">
+                      {metricasImportados?.cronograma?.semana || 0}
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">0 a 7 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">
+                      {metricasImportados?.cronograma?.quinzena || 0}
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">8 a 15 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">
+                      {metricasImportados?.cronograma?.mes || 0}
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">16 a 30 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">
+                      {metricasImportados?.cronograma?.trimestre || 0}
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">31 a 90 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">
+                      {metricasImportados?.cronograma?.longoPrazo || 0}
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">+ 90 dias</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* METRICAS DE DESTAQUE: CAPITAL SOCIAL, IDADE MÉDIA E SÓCIOS MÉDIOS */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-6 bg-gradient-to-br from-indigo-50 to-white rounded-2xl border border-indigo-100 text-center">
+                  <span className="block text-[11px] font-black uppercase text-indigo-500 tracking-wider">3. Capital Social Médio</span>
+                  <span className="block text-3xl font-black text-indigo-700 mt-2">
+                    {(metricasImportados?.capitalSocialMedio || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </span>
+                </div>
+
+                <div className="p-6 bg-gradient-to-br from-emerald-50 to-white rounded-2xl border border-emerald-100 text-center">
+                  <span className="block text-[11px] font-black uppercase text-emerald-500 tracking-wider">10. Idade Média das Empresas</span>
+                  <span className="block text-3xl font-black text-emerald-700 mt-2">
+                    {metricasImportados?.idadeMediaAnos || 0} <span className="text-sm font-bold">anos</span>
+                  </span>
+                </div>
+
+                <div className="p-6 bg-gradient-to-br from-amber-50 to-white rounded-2xl border border-amber-100 text-center">
+                  <span className="block text-[11px] font-black uppercase text-amber-600 tracking-wider">7. Média de Sócios / Empresa</span>
+                  <span className="block text-3xl font-black text-amber-700 mt-2">
+                    {metricasImportados?.sociosMedio || 0} <span className="text-sm font-bold">sócios</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* 1 & 2: STATUS PROSPECÇÃO E PORTE MÉDIO */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    1. Status de Prospecção
+                  </h3>
+                  <div className="space-y-2">
+                    {Object.entries(metricasImportados?.statusProspeccaoMap || {}).map(([st, qtd], idx) => {
+                      const numQtd = Number(qtd) || 0;
+                      const total = metricasImportados?.totalGeral || 0;
+                      const pct = total > 0 ? Math.round((numQtd / total) * 100) : 0;
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between text-xs font-bold text-slate-700 uppercase">
+                            <span>{st.replace(/_/g, ' ')}</span>
+                            <span>{numQtd} ({pct}%)</span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${pct}%` }}></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    2. Porte das Empresas
+                  </h3>
+                  <div className="space-y-2">
+                    {Object.entries(metricasImportados?.porteMap || {}).map(([porte, qtd], idx) => {
+                      const numQtd = Number(qtd) || 0;
+                      const total = metricasImportados?.totalGeral || 0;
+                      const pct = total > 0 ? Math.round((numQtd / total) * 100) : 0;
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between text-xs font-bold text-slate-700 uppercase">
+                            <span>{porte}</span>
+                            <span>{numQtd} ({pct}%)</span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${pct}%` }}></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 & 5: REGIME TRIBUTÁRIO E MATRIZ/FILIAL */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    4. MEI e Simples Nacional
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-indigo-600">{metricasImportados?.simplesSim || 0}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Optante Simples</span>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-slate-600">{metricasImportados?.simplesNao || 0}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Não Simples</span>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-emerald-600">{metricasImportados?.meiSim || 0}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Optante MEI</span>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                      <span className="block text-2xl font-black text-slate-600">{metricasImportados?.meiNao || 0}</span>
+                      <span className="text-[10px] font-black uppercase text-slate-500">Não MEI</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    5. Identificador Matriz / Filial
+                  </h3>
+                  <div className="space-y-2">
+                    {Object.entries(metricasImportados?.matrizFilialMap || {}).map(([mf, qtd], idx) => (
+                      <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700">
+                        <span className="uppercase">{mf}</span>
+                        <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full font-black">{Number(qtd)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 11, 12, 13: FASE, TEMPERATURA E PRÓXIMA AÇÃO */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    11. Fase de Atendimento
+                  </h3>
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {Object.entries(metricasImportados?.faseAtendimentoMap || {}).map(([fase, qtd], idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg text-xs font-bold text-slate-700">
+                        <span className="uppercase">{fase.replace(/_/g, ' ')}</span>
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-black text-[11px]">{Number(qtd)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    12. Temperatura
+                  </h3>
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {Object.entries(metricasImportados?.temperaturaMap || {}).map(([temp, qtd], idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg text-xs font-bold text-slate-700">
+                        <span className="uppercase">{temp}</span>
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-black text-[11px]">{Number(qtd)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    13. Próxima Ação
+                  </h3>
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {Object.entries(metricasImportados?.proximaAcaoMap || {}).map(([act, qtd], idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg text-xs font-bold text-slate-700">
+                        <span className="uppercase">{act}</span>
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-black text-[11px]">{Number(qtd)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 8 & 9: FAIXAS ETÁRIAS DE SÓCIOS E TOP 20 CNAES */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    8. Faixas Etárias dos Sócios
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {Object.entries(metricasImportados?.faixasEtariasMap || {}).map(([fx, qtd], idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg text-xs font-bold text-slate-700">
+                        <span className="uppercase">{fx}</span>
+                        <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full font-black">{Number(qtd)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                    9. Top 20 CNAEs Principais
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {(metricasImportados?.top20Cnaes || []).map((item: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg text-xs font-bold text-slate-700">
+                        <span className="truncate pr-2">{item.cnae}</span>
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-black text-[10px]">{item.qtd}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 6. MUNICÍPIOS E BAIRROS */}
+              <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                  6. Distribuição por Município e Bairro
+                </h3>
+                <div className="max-h-72 overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="sticky top-0 bg-white shadow-sm">
+                      <tr className="border-b border-slate-200 text-slate-400 font-black uppercase">
+                        <th className="py-2 px-3">Município</th>
+                        <th className="py-2 px-3">Bairro</th>
+                        <th className="py-2 px-3 text-right">Total Registros</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                      {(metricasImportados?.listaLocalizacao || []).map((row: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="py-2 px-3 font-bold text-slate-800">{row.municipio}</td>
+                          <td className="py-2 px-3 text-slate-600">{row.bairro}</td>
+                          <td className="py-2 px-3 text-right font-black text-indigo-600">{row.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-            <h3 className="text-sm font-black uppercase text-slate-500 tracking-tight">Estrutura de Unidades (Período)</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {Object.entries(stats.matriz).length > 0 ? Object.entries(stats.matriz).map(([name, val]) => (
-              <div key={`matriz-${name}`} className="bg-white p-5 rounded-[24px] border border-slate-200 shadow-sm flex items-center gap-4">
-                <div className="h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center border border-indigo-100">
-                  <Hash size={16} className="text-indigo-500" />
-                </div>
-                <div>
-                  <p className="text-2xl font-black text-slate-800 leading-none">{val}</p>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{name}</p>
+          )}
+
+          {/* ==========================================
+              ABA 3: CLIENTES AVULSOS
+             ========================================== */}
+          {activeTab === 'avulsos' && (
+            <div className="space-y-6">
+              <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                  Cronograma de Retornos (Clientes Avulsos)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                  <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-red-600">{cronogramaAgenda.atrasado}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-red-500">Atrasados</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{cronogramaAgenda.semana}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">0 a 7 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{cronogramaAgenda.quinzena}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">8 a 15 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{cronogramaAgenda.mes}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">16 a 30 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{cronogramaAgenda.trimestre}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">31 a 90 dias</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                    <span className="block text-3xl font-black text-indigo-600">{cronogramaAgenda.longoPrazo}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">+ 90 dias</span>
+                  </div>
                 </div>
               </div>
-            )) : (
-              <div className="col-span-2 py-10 text-center border-2 border-dashed border-slate-200 rounded-[24px]">
-                <p className="text-slate-400 font-bold text-sm">Nenhum dado de unidade no período</p>
+
+              {/* LISTA DE REGISTROS AVULSOS */}
+              <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
+                  Agendamentos e Atendimentos Avulsos
+                </h3>
+                {(!clientesAgenda || clientesAgenda.length === 0) ? (
+                  <div className="text-center py-8 text-xs font-bold text-slate-400 uppercase">
+                    Nenhum cliente avulso agendado.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-400 font-black uppercase">
+                          <th className="py-2 px-3">Cliente</th>
+                          <th className="py-2 px-3">Telefone</th>
+                          <th className="py-2 px-3">E-mail</th>
+                          <th className="py-2 px-3 text-center">Data Retorno</th>
+                          <th className="py-2 px-3">Descrição</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                        {clientesAgenda.map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-50">
+                            <td className="py-2.5 px-3 font-bold text-slate-800">{item.nome_cliente}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{item.tel_cliente || '-'}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{item.email_cliente || '-'}</td>
+                            <td className="py-2.5 px-3 text-center font-bold text-indigo-600">
+                              {item.data_retorno ? String(item.data_retorno).split('-').reverse().join('/') : '-'}
+                              {item.horario_retorno && ` às ${item.horario_retorno}`}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate">{item.breve_descricao || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div> // FECHAMENTO DA DIV PRINCIPAL (A que faltava)
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
-}
+};
+
+export default VisaoCliente;
