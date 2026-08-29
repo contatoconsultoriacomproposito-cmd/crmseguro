@@ -41,6 +41,10 @@ import { ComissoesLista } from "./pages/comissoes/ComissoesLista"
 import PlanoContas from "./pages/financeiro/PlanoContas"
 import Lancamentos from "./pages/financeiro/Lancamentos"
 
+// 🛡️ Módulo de Seguros de Vida (Propostas Avulsas)
+import PropostasAvulsas from "./pages/propostas/PropostasAvulsas"
+// Importe a página de cadastro se houver, ex:
+// import SegurosVidaCadastro from "./pages/segurosVida/SegurosVidaCadastro"
 
 
 // ===============================
@@ -58,14 +62,12 @@ function PrivateWrapper() {
     )
   }
 
-  // Se não houver user OU se o perfil existir mas não estiver ativo, barra imediatamente!
   if (!user || (userProfile && userProfile.ativo === false)) {
     return <Navigate to="/" state={{ from: location }} replace />
   }
 
   return <Outlet />
 }
-
 
 
 // ===============================
@@ -82,7 +84,6 @@ function PublicOnlyWrapper() {
     )
   }
 
-  // Só joga para o dashboard se o usuário existir E estiver ativamente liberado no banco
   if (user && userProfile?.ativo !== false) {
     return <Navigate to="/dashboard" replace />
   }
@@ -100,12 +101,7 @@ export default function App() {
 
   return (
     <NotificationProvider>
-      {/* IA DESATIVADA PROVISORIAMENTE (Retornando null para evitar tela branca) */}
-      {user &&
-        userProfile &&
-        location.pathname !== "/reset-password" && (
-          null
-        )}
+      {user && userProfile && location.pathname !== "/reset-password" && null}
 
       <Routes>
 
@@ -145,6 +141,13 @@ export default function App() {
             <Route path="/propostas/lista" element={<PropostasLista />} />
             <Route path="/propostas/editar/:id" element={<PropostasCadastro key="editar" />} />
             <Route path="/propostas/produtos" element={<ProdutosLista />} />
+
+            {/* 🛡️ ROTAS DO SEGURO DE VIDA */}
+            <Route path="/seguros-vida" element={<PropostasAvulsas />} />
+            {/* Se houver tela de cadastro/edição separada:
+            <Route path="/seguros-vida/cadastro" element={<SegurosVidaCadastro key="nova" />} />
+            <Route path="/seguros-vida/editar/:id" element={<SegurosVidaCadastro key="editar" />} /> 
+            */}
 
             <Route path="/seguradoras" element={<SeguradorasLista />} />
 

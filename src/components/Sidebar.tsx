@@ -204,6 +204,9 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
                 <SubNavItem to="/propostas/criar" label="Criar Proposta" icon={<FilePlus size={16} />} />
                 <SubNavItem to="/propostas/lista" label="Ver Propostas" icon={<List size={16} />} />
                 <SubNavItem to="/propostas/produtos" label="Ver Produtos" icon={<List size={16} />} />
+                
+                {/* 🟢 ADICIONADO AQUI: */}
+                <SubNavItem to="/seguros-vida" label="Vidas Avulsas" icon={<List size={16} />} />
               </div>
             )}
           </div>
