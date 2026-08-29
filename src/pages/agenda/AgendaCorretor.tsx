@@ -446,6 +446,62 @@ export default function AgendaCorretor() {
     });
   }, [eventos, corretoresSelecionados, termoBusca, tipoUsuario, usuarioLogado]);
 
+  const calendarRef = useRef<FullCalendar>(null);
+
+  // NOVO: Resultados globais para a busca inteligente (ignora o mês atual do calendário)
+  const resultadosBuscaGlobal = useMemo(() => {
+    if (!termoBusca || termoBusca.trim().length < 2) return [];
+    const apenasNumeros = (val?: string) => (val || '').replace(/\D/g, '');
+    const termo = termoBusca.toLowerCase().trim();
+    const termoNumerico = apenasNumeros(termo);
+
+    return eventos.filter((evt) => {
+      const props = evt.extendedProps || {};
+      
+      if (tipoUsuario === 'CORRETORA' || tipoUsuario === 'ADMIN') {
+        const pertenceAosSelecionados = corretoresSelecionados.includes(props.corretorId || '') || 
+                                       (!props.corretorId && corretoresSelecionados.includes(usuarioLogado?.id || ''));
+        if (!pertenceAosSelecionados) return false;
+      } else if (tipoUsuario === 'CORRETOR') {
+        if (props.corretorId !== usuarioLogado?.id) return false;
+      }
+
+      const titulo = (evt.title || '').toLowerCase();
+      const email = (props.email || '').toLowerCase();
+      const razaoSocial = (props.razaoSocial || '').toLowerCase();
+      const nomeFantasia = (props.nomeFantasia || '').toLowerCase();
+      const produto = (props.produtoInteresse || props.produtosGerais || '').toLowerCase();
+      const descricao = (props.breveDescricao || '').toLowerCase();
+
+      const cpfCnpj = apenasNumeros(props.cpf || props.cnpj);
+      const telefone1 = apenasNumeros(props.whats);
+      const telefone2 = apenasNumeros(props.telefoneAdicional || props.contatoFrio?.telefone);
+
+      const bateuTexto = titulo.includes(termo) || email.includes(termo) || razaoSocial.includes(termo) || nomeFantasia.includes(termo) || produto.includes(termo) || descricao.includes(termo);
+      const bateuNumero = termoNumerico.length > 0 && (cpfCnpj.includes(termoNumerico) || telefone1.includes(termoNumerico) || telefone2.includes(termoNumerico));
+
+      return bateuTexto || bateuNumero;
+    });
+  }, [eventos, termoBusca, tipoUsuario, corretoresSelecionados, usuarioLogado]);
+
+  // NOVO: Função para saltar a data e abrir o modal correspondente
+  const handleSelecionarResultadoBusca = async (evt: EventoAgenda) => {
+    const calendarApi = calendarRef.current?.getApi();
+    if (calendarApi) {
+      calendarApi.gotoDate(evt.start);
+    }
+    setTermoBusca('');
+
+    await handleEventClick({
+      event: {
+        title: evt.title,
+        start: evt.start,
+        startStr: evt.start,
+        extendedProps: evt.extendedProps
+      }
+    });
+  };
+
   const verificarConexaoGoogle = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -703,18 +759,62 @@ export default function AgendaCorretor() {
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-4 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm">
         
         <div className="relative w-full md:w-[400px]">
-          <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-          <input
-            type="text"
-            placeholder="Buscar por nome, CPF, CNPJ, telefone, e-mail..."
-            value={termoBusca}
-            onChange={(e) => setTermoBusca(e.target.value)}
-            className="w-full pl-10 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/60 rounded-xl text-sm font-medium text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-          />
-          {termoBusca && (
-            <button onClick={() => setTermoBusca('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
-              <X size={16} />
-            </button>
+          <div className="relative">
+            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Buscar por nome, CPF, CNPJ, telefone, e-mail..."
+              value={termoBusca}
+              onChange={(e) => setTermoBusca(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/60 rounded-xl text-sm font-medium text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+            {termoBusca && (
+              <button onClick={() => setTermoBusca('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {/* POPOVER DE RESULTADOS DINÂMICOS */}
+          {termoBusca.trim().length >= 2 && resultadosBuscaGlobal.length > 0 && (
+            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+              <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
+                Registros Encontrados ({resultadosBuscaGlobal.length})
+              </div>
+              {resultadosBuscaGlobal.map((evt) => {
+                const dataFormatada = new Date(evt.start).toLocaleString('pt-BR', { 
+                  day: '2-digit', 
+                  month: '2-digit', 
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+
+                return (
+                  <div
+                    key={evt.id}
+                    onClick={() => handleSelecionarResultadoBusca(evt)}
+                    className="flex items-center justify-between p-2.5 hover:bg-blue-50/60 dark:hover:bg-zinc-800/80 rounded-xl cursor-pointer transition-colors border-b border-zinc-50 dark:border-zinc-800/40 last:border-none"
+                  >
+                    <div className="truncate mr-2">
+                      <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">{evt.title}</p>
+                      <p className="text-[10px] text-zinc-400">Origem: <span className="font-semibold text-blue-600 dark:text-blue-400">{evt.extendedProps.origem}</span></p>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <span className="text-[10px] font-black bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-lg">
+                        {dataFormatada}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {termoBusca.trim().length >= 2 && resultadosBuscaGlobal.length === 0 && (
+            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 p-4 text-center text-xs text-zinc-500 font-medium">
+              Nenhum registro encontrado para "{termoBusca}"
+            </div>
           )}
         </div>
 
@@ -803,6 +903,7 @@ export default function AgendaCorretor() {
       {/* CALENDÁRIO FULLCALENDAR */}
       <div className="p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl overflow-hidden">
         <FullCalendar
+          ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' }}
