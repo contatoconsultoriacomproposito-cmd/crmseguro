@@ -57,6 +57,26 @@ const formatarDataBR = (dataStr: string | null) => {
   return dataStr;
 };
 
+// Formata o valor digitado para o padrão visual R$ 0,00
+const aplicarMascaraMoeda = (value: string | number | null) => {
+  if (value === null || value === undefined || value === "") return "";
+  const apenasNumeros = String(value).replace(/\D/g, "");
+  if (!apenasNumeros) return "";
+  const valorNumerico = parseFloat(apenasNumeros) / 100;
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(valorNumerico);
+};
+
+// Converte a string "R$ 150,00" para número (150.00) ao enviar para o Supabase
+const parseMoedaParaNumero = (valorMoeda: string) => {
+  if (!valorMoeda) return null;
+  const apenasNumeros = valorMoeda.replace(/\D/g, "");
+  if (!apenasNumeros) return null;
+  return parseFloat(apenasNumeros) / 100;
+};
+
 export default function PropostasAvulsas() {
   // Estados dos Dados e Autenticação
   const [propostas, setPropostas] = useState<any[]>([]);
@@ -100,6 +120,11 @@ export default function PropostasAvulsas() {
     data_venda: "",
     data_inicio_vigencia: "",
     data_fim_vigencia: "",
+    duracao_qtd: "",          // Novo: Número digitado (Ex: 5)
+    duracao_unidade: "Anos",  // Novo: Select ("Anos" ou "Meses")
+    duracao_vitalicio: false, // Novo: Checkbox (boolean)
+    frequencia_pagamento: "Mensal",
+    premio_total: "", 
     situacao: "EM ANDAMENTO",
     pendencia: "",
     tp_mov: "",
@@ -350,6 +375,11 @@ export default function PropostasAvulsas() {
       data_venda: "",
       data_inicio_vigencia: "",
       data_fim_vigencia: "",
+      duracao_qtd: "",
+      duracao_unidade: "Anos",
+      duracao_vitalicio: false,
+      frequencia_pagamento: "Mensal",
+      premio_total: "",
       situacao: "EM ANDAMENTO",
       pendencia: "NAO",
       tp_mov: "NOVA",
@@ -370,100 +400,154 @@ export default function PropostasAvulsas() {
   };
 
   const abrirModalEdicao = (item: any) => {
-    setModoModal("editar");
-    setItemEditando(item);
-    setFormData({
-      proponente: item["Proponente"] || item["proponente"] || "",
-      produto: item["Produto"] || item["produto"] || "",
-      proposta: item["Proposta"] || item["proposta"] || "",
-      cotacao: item["Cotacao"] || item["cotacao"] || "",
-      apolice: item["Apólice"] || item["apolice"] || "",
-      data_venda: item.data_venda || "",
-      data_inicio_vigencia: item.data_inicio_vigencia || "",
-      data_fim_vigencia: item.data_fim_vigencia || "",
-      situacao: item["Situação"] || item["situacao"] || "EM ANDAMENTO",
-      pendencia: item["Pend."] || item["pendencia"] || "",
-      tp_mov: item["Tp. Mov."] || item["tp_mov"] || "",
-      corretor_id: item.corretor_id || userProfile?.id || "",
-      cpf_cnpj: item.cpf_cnpj ? aplicarMascaraCpfCnpj(item.cpf_cnpj) : "",
-      data_nascimento: item.data_nascimento || "",
-      sexo: item.sexo || "",
-      telefone: item.telefone ? aplicarMascaraTelefone(item.telefone) : "",
-      email: item.email || "",
-      banco: item.banco || "",
-      agencia: item.agencia || "",
-      conta: item.conta || "",
-      observacao: item.observacao || "",
-      data_retorno: item.data_retorno || "",
-      horario_retorno: item.horario_retorno ? item.horario_retorno.slice(0, 5) : ""
-    });
-    setModalAberto(true);
-  };
+  // Trata a string da duração vinda do banco
+  const duracaoStr = String(item.duracao_seguro ?? item["Duração do Seguro"] ?? "");
+  let duracao_qtd = "";
+  let duracao_unidade = "Anos";
+  let duracao_vitalicio = false;
+
+  const duracaoLower = duracaoStr.toLowerCase();
+  if (duracaoLower === "vitalício" || duracaoLower === "vitalicio") {
+    duracao_vitalicio = true;
+  } else if (duracaoStr) {
+    const partes = duracaoStr.trim().split(" ");
+    duracao_qtd = partes[0] || "";
+    if (partes[1] && partes[1].toLowerCase().includes("mes")) {
+      duracao_unidade = "Meses";
+    } else {
+      duracao_unidade = "Anos";
+    }
+  }
+
+  // Trata o prêmio total usando coalescência nula (??) para preservar 0
+  const premioValor = item.premio_total ?? item["Prêmio Total"] ?? "";
+  const premioFormatado =
+    premioValor !== "" && premioValor !== null && premioValor !== undefined
+      ? aplicarMascaraMoeda(Math.round(Number(premioValor) * 100))
+      : "";
+
+  setModoModal("editar");
+  setItemEditando(item);
+  setFormData({
+    proponente: item["Proponente"] || item["proponente"] || "",
+    produto: item["Produto"] || item["produto"] || "",
+    proposta: item["Proposta"] || item["proposta"] || "",
+    cotacao: item["Cotacao"] || item["cotacao"] || "",
+    apolice: item["Apólice"] || item["apolice"] || "",
+    data_venda: item.data_venda || "",
+    data_inicio_vigencia: item.data_inicio_vigencia || "",
+    data_fim_vigencia: item.data_fim_vigencia || "",
+    duracao_qtd,
+    duracao_unidade,
+    duracao_vitalicio,
+    frequencia_pagamento: item.frequencia_pagamento || item["Frequência de Pagamento"] || "Mensal",
+    premio_total: premioFormatado,
+    situacao: item["Situação"] || item["situacao"] || "EM ANDAMENTO",
+    pendencia: item["Pend."] || item["pendencia"] || "",
+    tp_mov: item["Tp. Mov."] || item["tp_mov"] || "",
+    corretor_id: item.corretor_id || userProfile?.id || "",
+    cpf_cnpj: item.cpf_cnpj ? aplicarMascaraCpfCnpj(String(item.cpf_cnpj)) : "",
+    data_nascimento: item.data_nascimento || "",
+    sexo: item.sexo || "",
+    telefone: item.telefone ? aplicarMascaraTelefone(String(item.telefone)) : "",
+    email: item.email || "",
+    banco: item.banco || "",
+    agencia: item.agencia || "",
+    conta: item.conta || "",
+    observacao: item.observacao || "",
+    data_retorno: item.data_retorno || "",
+    horario_retorno: item.horario_retorno ? String(item.horario_retorno).slice(0, 5) : ""
+  });
+  setModalAberto(true);
+};
 
   // --- SALVAR NO BANCO (CRIAÇÃO OU EDIÇÃO) ---
   const handleSalvar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!idCorretoraEfetiva) return;
+  e.preventDefault(); // Chamado no topo
 
-    if (!formData.proponente.trim()) {
-      alert("Por favor, preencha o Nome do Proponente.");
-      return;
+  if (!idCorretoraEfetiva) {
+    alert("Erro: Corretora não encontrada.");
+    return;
+  }
+
+  if (!formData.proponente?.trim()) {
+    alert("Por favor, preencha o Nome do Proponente.");
+    return;
+  }
+
+  let duracaoFinal: string | null = null;
+  if (formData.duracao_vitalicio) {
+    duracaoFinal = "Vitalício";
+  } else if (formData.duracao_qtd) {
+    duracaoFinal = `${formData.duracao_qtd} ${formData.duracao_unidade}`;
+  }
+
+  // Evita salvar "14:30:00:00" caso a string já possua segundos
+  let horarioRetornoFormatted: string | null = null;
+  if (formData.horario_retorno) {
+    horarioRetornoFormatted =
+      formData.horario_retorno.length === 5
+        ? `${formData.horario_retorno}:00`
+        : formData.horario_retorno;
+  }
+
+  try {
+    setSalvando(true);
+
+    const payload = {
+      corretora_id: idCorretoraEfetiva,
+      corretor_id: formData.corretor_id || userProfile?.id || null, // Optional chaining seguro
+      Proponente: formData.proponente || null,
+      Produto: formData.produto || null,
+      Proposta: formData.proposta || null,
+      Cotacao: formData.cotacao || null,
+      "Apólice": formData.apolice || null,
+      data_venda: formData.data_venda || null,
+      data_inicio_vigencia: formData.data_inicio_vigencia || null,
+      data_fim_vigencia: formData.data_fim_vigencia || null,
+      duracao_seguro: duracaoFinal,
+      frequencia_pagamento: formData.frequencia_pagamento || null,
+      premio_total: parseMoedaParaNumero(formData.premio_total),
+      "Situação": formData.situacao || "EM ANDAMENTO",
+      "Pend.": formData.pendencia || null,
+      "Tp. Mov.": formData.tp_mov || null,
+      cpf_cnpj: formData.cpf_cnpj || null, // Se o banco aceita a máscara formatada. Se aceitar só números, use: formData.cpf_cnpj ? formData.cpf_cnpj.replace(/\D/g, "") : null
+      data_nascimento: formData.data_nascimento || null,
+      sexo: formData.sexo || null,
+      telefone: formData.telefone || null, // Se o banco aceita a máscara formatada. Se aceitar só números, use: formData.telefone ? formData.telefone.replace(/\D/g, "") : null
+      email: formData.email || null,
+      banco: formData.banco || null,
+      agencia: formData.agencia || null,
+      conta: formData.conta || null,
+      observacao: formData.observacao || null,
+      data_retorno: formData.data_retorno || null,
+      horario_retorno: horarioRetornoFormatted
+    };
+
+    if (modoModal === "novo") {
+      const { error } = await supabase
+        .from("tab_seguros_vida")
+        .insert([payload]);
+
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from("tab_seguros_vida")
+        .update(payload)
+        .eq("id", itemEditando.id);
+
+      if (error) throw error;
     }
 
-    try {
-      setSalvando(true);
-
-      const payload = {
-        corretora_id: idCorretoraEfetiva,
-        corretor_id: formData.corretor_id || userProfile.id,
-        Proponente: formData.proponente || null,
-        Produto: formData.produto || null,
-        Proposta: formData.proposta || null,
-        Cotacao: formData.cotacao || null,
-        "Apólice": formData.apolice || null,
-        data_venda: formData.data_venda || null,
-        data_inicio_vigencia: formData.data_inicio_vigencia || null,
-        data_fim_vigencia: formData.data_fim_vigencia || null,
-        "Situação": formData.situacao || "EM ANDAMENTO",
-        "Pend.": formData.pendencia || null,
-        "Tp. Mov.": formData.tp_mov || null,
-        cpf_cnpj: formData.cpf_cnpj || null,
-        data_nascimento: formData.data_nascimento || null,
-        sexo: formData.sexo || null,
-        telefone: formData.telefone || null,
-        email: formData.email || null,
-        banco: formData.banco || null,
-        agencia: formData.agencia || null,
-        conta: formData.conta || null,
-        observacao: formData.observacao || null,
-        data_retorno: formData.data_retorno || null,
-        horario_retorno: formData.horario_retorno ? `${formData.horario_retorno}:00` : null
-      };
-
-      if (modoModal === "novo") {
-        const { error } = await supabase
-          .from("tab_seguros_vida")
-          .insert([payload]);
-
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("tab_seguros_vida")
-          .update(payload)
-          .eq("id", itemEditando.id);
-
-        if (error) throw error;
-      }
-
-      await carregarPropostas();
-      setModalAberto(false);
-    } catch (err: any) {
-      console.error("Erro ao salvar proposta:", err);
-      alert("Erro ao salvar proposta: " + (err.message || "Tente novamente."));
-    } finally {
-      setSalvando(false);
-    }
-  };
+    await carregarPropostas();
+    setModalAberto(false);
+  } catch (err: any) {
+    console.error("Erro ao salvar proposta:", err);
+    alert("Erro ao salvar proposta: " + (err.message || "Tente novamente."));
+  } finally {
+    setSalvando(false);
+  }
+};
 
   const renderBadgeSituacao = (situacao: string) => {
     const sit = (situacao || "").toUpperCase();
@@ -1047,6 +1131,85 @@ return (
                     onChange={(e) => setFormData({ ...formData, data_fim_vigencia: e.target.value })}
                     className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+
+                {/* DURAÇÃO DO SEGURO */}
+                <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
+                    Duração do Seguro
+                </label>
+                <div className="flex items-center gap-1.5">
+                    <input
+                    type="number"
+                    min="1"
+                    disabled={formData.duracao_vitalicio}
+                    value={formData.duracao_vitalicio ? "" : formData.duracao_qtd}
+                    onChange={(e) => setFormData({ ...formData, duracao_qtd: e.target.value })}
+                    placeholder="Qtd"
+                    className="w-16 p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:opacity-50 dark:disabled:bg-zinc-800"
+                    />
+                    <select
+                    disabled={formData.duracao_vitalicio}
+                    value={formData.duracao_unidade}
+                    onChange={(e) => setFormData({ ...formData, duracao_unidade: e.target.value })}
+                    className="p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:opacity-50 dark:disabled:bg-zinc-800"
+                    >
+                    <option value="Anos">Anos</option>
+                    <option value="Meses">Meses</option>
+                    </select>
+                    <label className="flex items-center gap-1 cursor-pointer text-xs text-slate-600 dark:text-zinc-400 select-none ml-1 whitespace-nowrap">
+                    <input
+                        type="checkbox"
+                        checked={formData.duracao_vitalicio}
+                        onChange={(e) =>
+                        setFormData({
+                            ...formData,
+                            duracao_vitalicio: e.target.checked,
+                            duracao_qtd: e.target.checked ? "" : formData.duracao_qtd,
+                        })
+                        }
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                    />
+                    Vitalício
+                    </label>
+                </div>
+                </div>
+
+                {/* FREQUÊNCIA DE PAGAMENTO */}
+                <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
+                    Frequência de Pagamento
+                </label>
+                <select
+                    value={formData.frequencia_pagamento || "Mensal"}
+                    onChange={(e) => setFormData({ ...formData, frequencia_pagamento: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                    <option value="Mensal">Mensal</option>
+                    <option value="Anual">Anual</option>
+                    <option value="Trimestral">Trimestral</option>
+                    <option value="Semestral">Semestral</option>
+                    <option value="Único">Único</option>
+                </select>
+                </div>
+
+                {/* PRÊMIO TOTAL */}
+                <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
+                    Prêmio Total
+                </label>
+                <input
+                    type="text"
+                    value={formData.premio_total}
+                    onChange={(e) =>
+                    setFormData({
+                        ...formData,
+                        premio_total: aplicarMascaraMoeda(e.target.value),
+                    })
+                    }
+                    placeholder="R$ 0,00"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 </div>
 
                 <div>
