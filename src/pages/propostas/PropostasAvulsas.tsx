@@ -110,6 +110,8 @@ export default function PropostasAvulsas() {
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [selecionados, setSelecionados] = useState<number[]>([]);
 
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
+
   // Estado do Formulário (Com os novos campos de data incluídos)
   const [formData, setFormData] = useState({
     proponente: "",
@@ -546,6 +548,61 @@ export default function PropostasAvulsas() {
     alert("Erro ao salvar proposta: " + (err.message || "Tente novamente."));
   } finally {
     setSalvando(false);
+  }
+};
+
+// --- BUSCAR CPF NO BD
+const buscarDadosClientePorCpf = async (cpfInput?: string) => {
+  const cpf = cpfInput || formData.cpf_cnpj;
+  const cpfLimpo = cpf.replace(/\D/g, "");
+
+  if (!cpfLimpo || (cpfLimpo.length !== 11 && cpfLimpo.length !== 14)) {
+    if (!cpfInput) alert("Por favor, informe um CPF ou CNPJ completo para buscar.");
+    return;
+  }
+
+  try {
+    setBuscandoCliente(true);
+
+    // Busca no Supabase por registros que tenham o mesmo CPF/CNPJ
+    // Ordena do mais recente para o mais antigo e pega o primeiro registro com dados
+    const { data, error } = await supabase
+      .from("tab_seguros_vida")
+      .select("*")
+      .eq("corretora_id", idCorretoraEfetiva)
+      .or(`cpf_cnpj.eq.${cpf},cpf_cnpj.eq.${cpfLimpo}`)
+      .order("created_at", { ascending: false })
+      .limit(5); // Traz até 5 para achar um que tenha dados preenchidos
+
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      // Encontra a melhor proposta cadastrada que tenha os dados do cliente preenchidos
+      const clienteComDados = data.find(
+        (item) => item.email || item.telefone || item.data_nascimento || item.banco
+      ) || data[0];
+
+      // Atualiza o estado do formulário apenas nos campos do cliente
+      setFormData((prev) => ({
+        ...prev,
+        proponente: prev.proponente || clienteComDados.Proponente || clienteComDados.proponente || "",
+        cpf_cnpj: clienteComDados.cpf_cnpj ? aplicarMascaraCpfCnpj(String(clienteComDados.cpf_cnpj)) : prev.cpf_cnpj,
+        data_nascimento: clienteComDados.data_nascimento || prev.data_nascimento,
+        sexo: clienteComDados.sexo || prev.sexo,
+        telefone: clienteComDados.telefone ? aplicarMascaraTelefone(String(clienteComDados.telefone)) : prev.telefone,
+        email: clienteComDados.email || prev.email,
+        banco: clienteComDados.banco || prev.banco,
+        agencia: clienteComDados.agencia || prev.agencia,
+        conta: clienteComDados.conta || prev.conta,
+      }));
+
+    } else if (!cpfInput) {
+      alert("Nenhum cadastro anterior encontrado com este CPF/CNPJ.");
+    }
+  } catch (err) {
+    console.error("Erro ao buscar cliente por CPF:", err);
+  } finally {
+    setBuscandoCliente(false);
   }
 };
 
@@ -1284,22 +1341,57 @@ return (
                 <User size={14} /> Dados do Cliente & Contato
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* CAMPO CPF / CNPJ COM LUPA DE BUSCA */}
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
                     CPF / CNPJ
-                  </label>
-                  <input
+                </label>
+                <div className="relative flex items-center">
+                    <input
                     type="text"
-                    value={formData.cpf_cnpj || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        cpf_cnpj: aplicarMascaraCpfCnpj(e.target.value)
-                      })
-                    }
+                    value={formData.cpf_cnpj}
+                    onChange={(e) => {
+                        const valorComMascara = aplicarMascaraCpfCnpj(e.target.value);
+                        setFormData({ ...formData, cpf_cnpj: valorComMascara });
+                    }}
+                    onBlur={() => {
+                        // Auto-busca ao sair do campo se o CPF/CNPJ estiver completo
+                        const apNum = (formData.cpf_cnpj || "").replace(/\D/g, "");
+                        if (apNum.length === 11 || apNum.length === 14) {
+                        buscarDadosClientePorCpf(formData.cpf_cnpj);
+                        }
+                    }}
                     placeholder="000.000.000-00"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                    className="w-full p-2.5 pr-9 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+
+                    {/* Botão de Lupa dentro do Input */}
+                    <button
+                    type="button"
+                    onClick={() => buscarDadosClientePorCpf()}
+                    disabled={buscandoCliente}
+                    title="Puxar dados já cadastrados deste cliente"
+                    className="absolute right-2 p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50"
+                    >
+                    {buscandoCliente ? (
+                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                        <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                        >
+                        <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                        </svg>
+                    )}
+                    </button>
+                </div>
                 </div>
 
                 <div>
