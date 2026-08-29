@@ -127,7 +127,7 @@ export default function PropostasAvulsas() {
     duracao_vitalicio: false, // Novo: Checkbox (boolean)
     frequencia_pagamento: "Mensal",
     premio_total: "", 
-    situacao: "EM ANDAMENTO",
+    situacao: "EMITIDA",
     pendencia: "",
     tp_mov: "",
     corretor_id: "",
@@ -382,7 +382,7 @@ export default function PropostasAvulsas() {
       duracao_vitalicio: false,
       frequencia_pagamento: "Mensal",
       premio_total: "",
-      situacao: "EM ANDAMENTO",
+      situacao: "EMITIDA",
       pendencia: "NAO",
       tp_mov: "NOVA",
       corretor_id: userProfile?.id || "",
@@ -444,7 +444,7 @@ export default function PropostasAvulsas() {
     duracao_vitalicio,
     frequencia_pagamento: item.frequencia_pagamento || item["Frequência de Pagamento"] || "Mensal",
     premio_total: premioFormatado,
-    situacao: item["Situação"] || item["situacao"] || "EM ANDAMENTO",
+    situacao: item["Situação"] || item["situacao"] || "EMITIDA",
     pendencia: item["Pend."] || item["pendencia"] || "",
     tp_mov: item["Tp. Mov."] || item["tp_mov"] || "",
     corretor_id: item.corretor_id || userProfile?.id || "",
@@ -510,7 +510,7 @@ export default function PropostasAvulsas() {
       duracao_seguro: duracaoFinal,
       frequencia_pagamento: formData.frequencia_pagamento || null,
       premio_total: parseMoedaParaNumero(formData.premio_total),
-      "Situação": formData.situacao || "EM ANDAMENTO",
+      "Situação": formData.situacao || "EMITIDA",
       "Pend.": formData.pendencia || null,
       "Tp. Mov.": formData.tp_mov || null,
       cpf_cnpj: formData.cpf_cnpj || null, // Se o banco aceita a máscara formatada. Se aceitar só números, use: formData.cpf_cnpj ? formData.cpf_cnpj.replace(/\D/g, "") : null
@@ -565,24 +565,34 @@ const buscarDadosClientePorCpf = async (cpfInput?: string) => {
     setBuscandoCliente(true);
 
     // Busca no Supabase por registros que tenham o mesmo CPF/CNPJ
-    // Ordena do mais recente para o mais antigo e pega o primeiro registro com dados
     const { data, error } = await supabase
       .from("tab_seguros_vida")
       .select("*")
       .eq("corretora_id", idCorretoraEfetiva)
       .or(`cpf_cnpj.eq.${cpf},cpf_cnpj.eq.${cpfLimpo}`)
       .order("created_at", { ascending: false })
-      .limit(5); // Traz até 5 para achar um que tenha dados preenchidos
+      .limit(5);
 
     if (error) throw error;
 
     if (data && data.length > 0) {
       // Encontra a melhor proposta cadastrada que tenha os dados do cliente preenchidos
-      const clienteComDados = data.find(
-        (item) => item.email || item.telefone || item.data_nascimento || item.banco
-      ) || data[0];
+      const clienteComDados =
+        data.find(
+          (item) =>
+            item.email ||
+            item.telefone ||
+            item.data_nascimento ||
+            item.banco ||
+            item.data_retorno
+        ) || data[0];
 
-      // Atualiza o estado do formulário apenas nos campos do cliente
+      // Formata o horário do retorno para HH:mm caso venha do banco como HH:mm:ss
+      const horarioFormatado = clienteComDados.horario_retorno
+        ? String(clienteComDados.horario_retorno).slice(0, 5)
+        : "";
+
+      // Atualiza o estado do formulário preservando dados não preenchidos
       setFormData((prev) => ({
         ...prev,
         proponente: prev.proponente || clienteComDados.Proponente || clienteComDados.proponente || "",
@@ -594,8 +604,9 @@ const buscarDadosClientePorCpf = async (cpfInput?: string) => {
         banco: clienteComDados.banco || prev.banco,
         agencia: clienteComDados.agencia || prev.agencia,
         conta: clienteComDados.conta || prev.conta,
+        data_retorno: clienteComDados.data_retorno || prev.data_retorno,
+        horario_retorno: horarioFormatado || prev.horario_retorno,
       }));
-
     } else if (!cpfInput) {
       alert("Nenhum cadastro anterior encontrado com este CPF/CNPJ.");
     }
@@ -620,7 +631,7 @@ const buscarDadosClientePorCpf = async (cpfInput?: string) => {
 
     return (
       <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${bg}`}>
-        {situacao || "EM ANDAMENTO"}
+        {situacao || "EMITIDA"}
       </span>
     );
   };
@@ -1274,12 +1285,12 @@ return (
                     Situação
                   </label>
                   <select
-                    value={formData.situacao || "EM ANDAMENTO"}
+                    value={formData.situacao || "EMITIDA"}
                     onChange={(e) => setFormData({ ...formData, situacao: e.target.value })}
                     className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="EM ANDAMENTO">EM ANDAMENTO</option>
                     <option value="EMITIDA">EMITIDA</option>
+                    <option value="EM ANDAMENTO">EM ANDAMENTO</option>
                     <option value="PENDENTE">PENDENTE</option>
                     <option value="CANCELADA">CANCELADA</option>
                     <option value="RECUSADA">RECUSADA</option>
