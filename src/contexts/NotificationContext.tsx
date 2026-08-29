@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 
 // Importação dos modais
 import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
-import ModalContato from '../pages/agenda/modalcontatos';
+import ModalContato from '../pages/agenda/AgendaCorretorCarteira';
 
 export interface Notificacao {
   id: string;

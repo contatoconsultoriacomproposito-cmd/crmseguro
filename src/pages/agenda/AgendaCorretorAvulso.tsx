@@ -31,6 +31,7 @@ interface AgendaCorretorAvulsoProps {
   evento?: any;
   onSuccess: () => void;
   isNovo?: boolean;
+  onClose?: () => void;
 }
 
 export const AgendaCorretorAvulso: React.FC<AgendaCorretorAvulsoProps> = ({ evento, onSuccess, isNovo = false }) => {
