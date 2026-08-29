@@ -9,27 +9,76 @@ import { toast } from 'sonner';
 
 import { supabase } from '../../lib/supabaseClient';
 
-import { CalendarCheck, Link2Off, UserPlus, X, Info } from 'lucide-react';
+import { CalendarCheck, Link2Off } from 'lucide-react';
 import ModalContato from './modalcontatos';
+import { AgendaCorretorAvulso } from './AgendaCorretorAvulso';
 
-interface EventoAgenda {
+// ==========================================
+// INTERFACES & CONSTANTES (FORA DO COMPONENTE)
+// ==========================================
+
+export interface EventoAgenda {
   id: string;
   title: string;
   start: string;
   extendedProps: {
     clienteId: string;
-    tipo: 'PF' | 'PJ' | 'FRIO';
+    tipo: 'PF' | 'PJ' | 'FRIO' | string;
     fase: string;
     origem: 'COMERCIAL' | 'SINISTRO' | 'RENOVACAO' | 'AGENDA_FRIA';
     itemId?: string;
+    status?: string;
+    temperatura?: string;
+    whats?: string;
+    horario?: string;
     contatoFrio?: {
       telefone: string;
       email: string;
       breve_descricao?: string;
-      
+      tipo?: 'PF' | 'PJ';
+      produto_interesse?: string;
+      produtos_gerais?: string[];
     };
   };
 }
+
+export interface ItemVencimentoAgendamento {
+  data_retorno: string;
+  horario_retorno: string;
+  produto_interesse: string;
+  breve_descricao: string;
+}
+
+export interface ContatoFrioDetalhe {
+  id: string;
+  nome: string;
+  telefone: string;
+  email: string;
+  tipo?: 'PF' | 'PJ';
+  produto_interesse?: string;
+  breve_descricao?: string;
+  data_retorno?: string;
+  horario_retorno?: string;
+  produtos_gerais?: string[];
+}
+
+export const PRODUTOS_SEGURO = [
+  'Auto', 'Frota', 'Saúde', 'Odonto', 'Vida Individual', 
+  'Vida Empregados', 'Residencial', 'Empresarial', 
+  'Responsabilidade Civil', 'Fiança Locatícia', 'Consórcio', 'Outros'
+];
+
+export const aplicarMascaraTelefone = (valor: string) => {
+  const apenasNumeros = valor.replace(/\D/g, '').slice(0, 11);
+  if (apenasNumeros.length <= 10) {
+    return apenasNumeros.replace(/^(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3').trim();
+  }
+  return apenasNumeros.replace(/^(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3').trim();
+};
+
+// ==========================================
+// COMPONENTE PRINCIPAL
+// ==========================================
 
 export default function AgendaCorretor() {
   const [eventos, setEventos] = useState<EventoAgenda[]>([]);
@@ -42,27 +91,7 @@ export default function AgendaCorretor() {
   const processingCode = useRef(false);
   const [modalRenovAberto, setModalRenovAberto] = useState(false);
   const [itemRenovacaoSelecionado, setItemRenovacaoSelecionado] = useState<any>(null);
-
-  // --- ESTADOS PARA A NOVA AGENDA FRIA ---
-  const [modalAgendaFriaAberto, setModalAgendaFriaAberto] = useState(false);
-  const [loadingSalvarAgenda, setLoadingSalvarAgenda] = useState(false);
-  const [novoAgendamento, setNovoAgendamento] = useState({
-    nome_cliente: '',
-    tel_cliente: '',
-    email_cliente: '',
-    breve_descricao: '',
-    data_retorno: new Date().toISOString().split('T')[0],
-    horario_retorno: '09:00'
-  });
-  const [contatoFrioDetalhe, setContatoFrioDetalhe] = useState<{
-    id: string;
-    nome: string;
-    telefone: string;
-    email: string;
-    breve_descricao?: string;
-    data_retorno?: string;
-    horario_retorno?: string;
-  } | null>(null);
+  const [eventoAvulsoSelecionado, setEventoAvulsoSelecionado] = useState<any>(null);
 
   const fetchCompromissos = useCallback(async () => {
     try {
@@ -82,7 +111,7 @@ export default function AgendaCorretor() {
       // --- BUSCA A: CLIENTES (tab_clientes) ---
       let queryCli = supabase
         .from('tab_clientes')
-        .select('id, nome, razao_social, nome_fantasia, tipo_cliente, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban, corretora_id, corretor_id')
+        .select('id, nome, razao_social, nome_fantasia, tipo_cliente, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban, status_kanban, temperatura, telefone_whats, corretora_id, corretor_id')
         .eq('corretora_id', perfil.corretora_id)
         .or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
 
@@ -140,7 +169,16 @@ export default function AgendaCorretor() {
             id: `${cli.id}_comercial`,
             title: nomeTitulo,
             start: `${cli.data_retorno}T${cli.horario_retorno || '09:00:00'}`,
-            extendedProps: { clienteId: cli.id, tipo: cli.tipo_cliente, fase: cli.fase_kanban || 'Lead', origem: 'COMERCIAL' }
+            extendedProps: { 
+              clienteId: cli.id, 
+              tipo: cli.tipo_cliente, 
+              fase: cli.fase_kanban || '-', 
+              status: cli.status_kanban || '-',
+              temperatura: cli.temperatura || '-',
+              whats: cli.telefone_whats || '-',
+              horario: cli.horario_retorno || '09:00',
+              origem: 'COMERCIAL' 
+            }
           });
         }
         if (cli.data_retorno_sinistro) {
@@ -176,8 +214,19 @@ export default function AgendaCorretor() {
         });
       });
 
-      // 3. Formatação da Agenda Fria
+      // 3. Formatação da Agenda Fria (Produto Específico + Produtos Gerais)
       resAgendaFria.data?.forEach(frio => {
+        let prodsGerais = [];
+        if (frio.produtos_gerais) {
+          try {
+            prodsGerais = typeof frio.produtos_gerais === 'string' && frio.produtos_gerais.startsWith('[')
+              ? JSON.parse(frio.produtos_gerais)
+              : [frio.produtos_gerais];
+          } catch {
+            prodsGerais = [frio.produtos_gerais];
+          }
+        }
+
         eventosFormatados.push({
           id: `${frio.id}_frio`,
           title: frio.nome_cliente,
@@ -187,7 +236,14 @@ export default function AgendaCorretor() {
             tipo: 'FRIO', 
             fase: 'Contato Inicial', 
             origem: 'AGENDA_FRIA',
-            contatoFrio: { telefone: frio.tel_cliente, email: frio.email_cliente, breve_descricao: frio.breve_descricao }
+            contatoFrio: { 
+              telefone: frio.tel_cliente, 
+              email: frio.email_cliente, 
+              breve_descricao: frio.breve_descricao,
+              tipo: frio.tipo_cliente || 'PF',
+              produto_interesse: frio.produto_interesse || 'Auto',
+              produtos_gerais: prodsGerais 
+            }
           }
         });
       });
@@ -311,116 +367,6 @@ export default function AgendaCorretor() {
     return () => { isMounted = false; };
   }, [fetchCompromissos, verificarConexaoGoogle, processarRetornoGoogle]);
 
-  // --- NOVA FUNÇÃO: SALVAR AGENDA FRIA AUTÔNOMA ---
-  async function handleSalvarAgendaFria(e: React.FormEvent) {
-    e.preventDefault();
-    if (!novoAgendamento.nome_cliente.trim()) {
-      toast.error("Digite o nome do cliente");
-      return;
-    }
-
-    try {
-      setLoadingSalvarAgenda(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuário não autenticado");
-
-      const { data: perfil } = await supabase
-        .from("usuarios_perfis")
-        .select("corretora_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!perfil) throw new Error("Perfil não encontrado");
-
-      const { error } = await supabase
-        .from('tab_clientes_agenda')
-        .insert({
-          corretora_id: perfil.corretora_id,
-          corretor_id: user.id,
-          nome_cliente: novoAgendamento.nome_cliente,
-          tel_cliente: novoAgendamento.tel_cliente,
-          email_cliente: novoAgendamento.email_cliente,
-          breve_descricao: novoAgendamento.breve_descricao || null,
-          data_retorno: novoAgendamento.data_retorno,
-          horario_retorno: novoAgendamento.horario_retorno
-        });
-
-      if (error) throw error;
-
-      toast.success("Contato adicionado na agenda!");
-      setModalAgendaFriaAberto(false);
-      setNovoAgendamento({
-        nome_cliente: '',
-        tel_cliente: '',
-        email_cliente: '',
-        breve_descricao: '',
-        data_retorno: new Date().toISOString().split('T')[0],
-        horario_retorno: '09:00'
-      });
-      fetchCompromissos();
-    } catch (err: any) {
-      console.error("Erro ao cadastrar agenda fria:", err);
-      toast.error("Erro ao salvar o contato");
-    } finally {
-      setLoadingSalvarAgenda(false);
-    }
-  }
-
-  async function handleAtualizarContatoFrio(e: React.FormEvent) {
-    e.preventDefault();
-    if (!contatoFrioDetalhe) return;
-
-    try {
-      setLoadingSalvarAgenda(true);
-      const { error } = await supabase
-        .from('tab_clientes_agenda')
-        .update({
-          nome_cliente: contatoFrioDetalhe.nome,
-          tel_cliente: contatoFrioDetalhe.telefone,
-          email_cliente: contatoFrioDetalhe.email,
-          breve_descricao: contatoFrioDetalhe.breve_descricao || null,
-          data_retorno: contatoFrioDetalhe.data_retorno,
-          horario_retorno: contatoFrioDetalhe.horario_retorno
-        })
-        .eq('id', contatoFrioDetalhe.id);
-
-      if (error) throw error;
-
-      toast.success("Contato atualizado com sucesso!");
-      setContatoFrioDetalhe(null);
-      fetchCompromissos();
-    } catch (err: any) {
-      console.error("Erro ao atualizar contato frio:", err);
-      toast.error("Erro ao atualizar o contato");
-    } finally {
-      setLoadingSalvarAgenda(false);
-    }
-  }
-
-  async function handleExcluirContatoFrio() {
-    if (!contatoFrioDetalhe) return;
-    if (!confirm("Deseja realmente excluir este contato da agenda?")) return;
-
-    try {
-      setLoadingSalvarAgenda(true);
-      const { error } = await supabase
-        .from('tab_clientes_agenda')
-        .delete()
-        .eq('id', contatoFrioDetalhe.id);
-
-      if (error) throw error;
-
-      toast.success("Contato excluído com sucesso!");
-      setContatoFrioDetalhe(null);
-      fetchCompromissos();
-    } catch (err: any) {
-      console.error("Erro ao excluir contato frio:", err);
-      toast.error("Erro ao excluir o contato");
-    } finally {
-      setLoadingSalvarAgenda(false);
-    }
-  }
-
   async function handleGoogleAuth() {
     if (googleConectado) {
       if (!confirm("Deseja realmente desvincular sua conta Google?")) return;
@@ -508,15 +454,18 @@ export default function AgendaCorretor() {
   const handleEventClick = useCallback(async (info: any) => {
     const { origem, clienteId, itemId, contatoFrio } = info.event.extendedProps;
 
-    if (origem === 'AGENDA_FRIA') {
-      setContatoFrioDetalhe({ 
-        id: clienteId, // o clienteId guardado no extendedProps do agenda fria é o id da tabela tab_clientes_agenda
-        nome: info.event.title, 
-        data_retorno: info.event.start.toLocaleDateString('en-CA'),
-        horario_retorno: info.event.start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        ...contatoFrio 
+    // SE FOR AGENDA FRIA, ABRE O MODAL COM OS DADOS CORRETOS PARA EDIÇÃO
+    if (origem === 'AGENDA_FRIA' || info.event.id?.includes('_frio')) {
+      setEventoAvulsoSelecionado({
+        id: clienteId,
+        nome: info.event.title,
+        start: info.event.startStr,
+        ...contatoFrio
       });
-    } else if (origem === 'RENOVACAO') {
+      return;
+    }
+
+    if (origem === 'RENOVACAO') {
       const { data } = await supabase
         .from('tab_proposta_itens')
         .select(`*, base_produtos(nome), tab_proposta_opcoes(tab_propostas(tab_clientes(*)))`)
@@ -546,7 +495,6 @@ export default function AgendaCorretor() {
 
   return (
     <div className="flex flex-col gap-6 mt-4">
-      {/* BARRA SUPERIOR DE AÇÕES */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-sm">
         <div className="flex items-center gap-5">
           <div className={`p-4 rounded-2xl transition-all duration-500 ${
@@ -567,16 +515,8 @@ export default function AgendaCorretor() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* BOTÃO AUTÔNOMO: AGENDA FRIA */}
-          <button
-            onClick={() => setModalAgendaFriaAberto(true)}
-            className="flex items-center gap-2 px-5 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-md active:scale-95"
-          >
-            <UserPlus size={18} />
-            <span>Novo Contato (Frio)</span>
-          </button>
+          <AgendaCorretorAvulso isNovo={true} onSuccess={fetchCompromissos} />
 
-          {/* CONEXÃO GOOGLE (Visível para Admin/Corretora) */}
           {(tipoUsuario === 'ADMIN' || tipoUsuario === 'CORRETORA') && (
             <button 
               onClick={handleGoogleAuth} 
@@ -610,7 +550,6 @@ export default function AgendaCorretor() {
         </div>
       </div>
 
-      {/* CALENDÁRIO */}
       <div className="p-6 bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl overflow-hidden">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -623,261 +562,60 @@ export default function AgendaCorretor() {
           eventDrop={handleEventChange}
           eventClick={handleEventClick}
           eventContent={(info) => {
-            const { origem, fase } = info.event.extendedProps;
+            const { origem, fase, tipo, status, temperatura, whats, horario } = info.event.extendedProps;
             
+            if (origem === 'AGENDA_FRIA') {
+              return (
+                <div className="flex flex-col p-1.5 rounded-lg border-l-4 shadow-sm bg-purple-50 border-purple-500 text-purple-800 cursor-pointer">
+                  <span className="text-[10px] font-black uppercase tracking-wider">Contato Inicial</span>
+                  <span className="text-[11px] font-bold leading-tight mb-1">{info.event.title}</span>
+                  <span className="text-[9px] opacity-75">Tel: {info.event.extendedProps.contatoFrio?.telefone || 'N/D'}</span>
+                </div>
+              );
+            }
+
             let colorClasses = "bg-blue-50 border-blue-500 text-blue-700"; 
+            
+            if (origem === 'COMERCIAL') colorClasses = "bg-emerald-50 border-emerald-500 text-emerald-800";
             if (origem === 'SINISTRO') colorClasses = "bg-red-50 border-red-500 text-red-700";
             if (origem === 'RENOVACAO') colorClasses = "bg-amber-50 border-amber-500 text-amber-700";
-            // Nova cor para os agendamentos "Frios" isolados
-            if (origem === 'AGENDA_FRIA') colorClasses = "bg-indigo-50 border-indigo-500 text-indigo-700";
 
             return (
-              <div className={`flex flex-col p-2 rounded-xl border-l-4 shadow-sm hover:scale-[1.02] transition-transform ${colorClasses}`}>
-                <span className="text-[9px] font-black uppercase tracking-wider opacity-70">{fase}</span>
-                <span className="text-[11px] font-bold truncate">{info.event.title}</span>
+              <div className={`flex flex-col p-1.5 rounded-lg border-l-4 shadow-sm hover:scale-[1.02] transition-transform ${colorClasses}`}>
+                <div className="flex items-center justify-between mb-1 border-b border-black/10 pb-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider">
+                    {origem === 'COMERCIAL' ? 'CARTEIRA' : fase}
+                  </span>
+                </div>
+                
+                <span className="text-[11px] font-bold leading-tight mb-1">{info.event.title}</span>
+
+                {origem === 'COMERCIAL' && (
+                  <div className="mt-1 flex flex-col gap-0.5 text-[9px] leading-tight">
+                    <div className="flex justify-between"><span className="font-bold opacity-75">Tipo:</span> <span>{tipo}</span></div>
+                    <div className="flex justify-between"><span className="font-bold opacity-75">Horário Retorno:</span> <span>{horario}</span></div>
+                    <div className="flex justify-between"><span className="font-bold opacity-75">WhatsApp:</span> <span className="truncate ml-1">{whats}</span></div>
+                    <div className="flex justify-between"><span className="font-bold opacity-75">Status:</span> <span className="truncate ml-1">{status}</span></div>
+                    <div className="flex justify-between"><span className="font-bold opacity-75">Fase:</span> <span className="truncate ml-1">{fase}</span></div>
+                    <div className="flex justify-between"><span className="font-bold opacity-75">Temperatura:</span> <span>{temperatura}</span></div>
+                  </div>
+                )}
               </div>
             );
           }}
         />
       </div>
 
-      {/* MODAL ISOLADO: AGENDA FRIA */}
-      {modalAgendaFriaAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-zinc-800">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-                <UserPlus className="text-indigo-600" size={20} />
-                Agendar Contato
-              </h3>
-              <button 
-                onClick={() => setModalAgendaFriaAberto(false)}
-                className="p-1 rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSalvarAgendaFria} className="flex flex-col gap-4 mt-4">
-              <div>
-                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">
-                  Nome do Cliente *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: João Souza"
-                  value={novoAgendamento.nome_cliente}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, nome_cliente: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">
-                  Telefone / WhatsApp
-                </label>
-                <input
-                  type="tel"
-                  placeholder="(00) 00000-0000"
-                  value={novoAgendamento.tel_cliente}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, tel_cliente: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">
-                  E-mail
-                </label>
-                <input
-                  type="email"
-                  placeholder="email@exemplo.com"
-                  value={novoAgendamento.email_cliente}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, email_cliente: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                />
-              </div>
-
-              {/* 🔥 NOVO CAMPO: BREVE DESCRIÇÃO */}
-              <div>
-                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">
-                  Breve Descrição / Observações
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Ex: Cliente busca seguro auto para SUV 2024..."
-                  value={novoAgendamento.breve_descricao}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, breve_descricao: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">
-                    Data do Retorno
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={novoAgendamento.data_retorno}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, data_retorno: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">
-                    Horário
-                  </label>
-                  <input
-                    type="time"
-                    required
-                    value={novoAgendamento.horario_retorno}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, horario_retorno: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setModalAgendaFriaAberto(false)}
-                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loadingSalvarAgenda}
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center gap-2"
-                >
-                  {loadingSalvarAgenda && <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white" />}
-                  Salvar Contato
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {eventoAvulsoSelecionado && (
+        <AgendaCorretorAvulso 
+          evento={eventoAvulsoSelecionado} 
+          onSuccess={() => {
+            setEventoAvulsoSelecionado(null);
+            fetchCompromissos();
+          }} 
+        />
       )}
 
-      {/* POP-UP / MODAL DE EDIÇÃO E DETALHES DO CONTATO FRIO */}
-      {contatoFrioDetalhe && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-zinc-800">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-                <Info className="text-indigo-600" size={20} />
-                Gerenciar Contato Inicial
-              </h3>
-              <button 
-                onClick={() => setContatoFrioDetalhe(null)}
-                className="p-1 rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleAtualizarContatoFrio} className="mt-4 flex flex-col gap-3 text-sm">
-              <div>
-                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Nome do Cliente</label>
-                <input
-                  type="text"
-                  required
-                  value={contatoFrioDetalhe.nome}
-                  onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, nome: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Telefone / WhatsApp</label>
-                <input
-                  type="text"
-                  value={contatoFrioDetalhe.telefone}
-                  onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, telefone: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">E-mail</label>
-                <input
-                  type="email"
-                  value={contatoFrioDetalhe.email}
-                  onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, email: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Nova Data</label>
-                  <input
-                    type="date"
-                    required
-                    value={contatoFrioDetalhe.data_retorno || ''}
-                    onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, data_retorno: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Novo Horário</label>
-                  <input
-                    type="time"
-                    required
-                    value={contatoFrioDetalhe.horario_retorno || ''}
-                    onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, horario_retorno: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1 block">Descrição / Observações</label>
-                <textarea
-                  rows={3}
-                  value={contatoFrioDetalhe.breve_descricao || ''}
-                  onChange={(e) => setContatoFrioDetalhe({ ...contatoFrioDetalhe, breve_descricao: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-zinc-100 dark:border-zinc-800 mt-2">
-                <button
-                  type="button"
-                  onClick={handleExcluirContatoFrio}
-                  disabled={loadingSalvarAgenda}
-                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/30 dark:hover:bg-red-900/50 rounded-xl text-sm font-semibold transition-colors"
-                >
-                  Excluir Contato
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setContatoFrioDetalhe(null)}
-                    className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-xl text-sm font-semibold text-zinc-700 dark:text-zinc-300 transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loadingSalvarAgenda}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-sm flex items-center gap-2"
-                  >
-                    {loadingSalvarAgenda && <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white" />}
-                    Salvar Alterações
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAIS JÁ EXISTENTES */}
       <ModalContato 
         isOpen={modalAberto} 
         onClose={() => setModalAberto(false)} 
