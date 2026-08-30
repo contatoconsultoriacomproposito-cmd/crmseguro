@@ -6,9 +6,6 @@ import { NotificationProvider } from "./contexts/NotificationContext"
 // Layout
 import DashboardLayout from "./layouts/DashboardLayout"
 
-// IA
-//import { ConsultorIA } from "./ConsultorIA"
-
 // Páginas Públicas
 import HomePage from "./pages/homepage/HomePage"
 import PortalParceiro from "./pages/portal/PortalParceiro"
@@ -41,10 +38,8 @@ import { ComissoesLista } from "./pages/comissoes/ComissoesLista"
 import PlanoContas from "./pages/financeiro/PlanoContas"
 import Lancamentos from "./pages/financeiro/Lancamentos"
 
-// 🛡️ Módulo de Seguros de Vida (Propostas Avulsas)
+// 🛡️ Módulo de Seguros de Vida
 import PropostasAvulsas from "./pages/propostas/PropostasAvulsas"
-// Importe a página de cadastro se houver, ex:
-// import SegurosVidaCadastro from "./pages/segurosVida/SegurosVidaCadastro"
 
 
 // ===============================
@@ -54,7 +49,8 @@ function PrivateWrapper() {
   const { user, userProfile, loading } = useAuth()
   const location = useLocation()
 
-  if (loading) {
+  // 1. Loading state enquanto o contexto recupera token e perfil
+  if (loading || (user && userProfile === null)) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -62,8 +58,21 @@ function PrivateWrapper() {
     )
   }
 
-  if (!user || (userProfile && userProfile.ativo === false)) {
+  // 2. Não autenticado
+  if (!user) {
     return <Navigate to="/" state={{ from: location }} replace />
+  }
+
+  // 3. Usuário inativo no sistema (Evita loop de redirecionamento)
+  if (userProfile?.ativo === false) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-4 p-4 text-center">
+        <h1 className="text-2xl font-bold text-slate-800">Acesso Inativo</h1>
+        <p className="text-slate-600 max-w-md">
+          Sua conta está inativa ou pendente de aprovação pelo administrador da corretora.
+        </p>
+      </div>
+    )
   }
 
   return <Outlet />
@@ -84,7 +93,8 @@ function PublicOnlyWrapper() {
     )
   }
 
-  if (user && userProfile?.ativo !== false) {
+  // Só envia para o Dashboard se estiver autenticado E com perfil ativo
+  if (user && userProfile && userProfile.ativo !== false) {
     return <Navigate to="/dashboard" replace />
   }
 
@@ -93,19 +103,16 @@ function PublicOnlyWrapper() {
 
 
 // ===============================
-// 🚀 APP PRINCIPAL (ESTÁVEL)
+// 🚀 APP PRINCIPAL
 // ===============================
 export default function App() {
   const { user, userProfile } = useAuth()
-  const location = useLocation()
 
   return (
     <NotificationProvider>
-      {user && userProfile && location.pathname !== "/reset-password" && null}
-
       <Routes>
 
-        {/* ================= PUBLICAS ================= */}
+        {/* ================= PÚBLICAS ================= */}
         <Route element={<PublicOnlyWrapper />}>
           <Route path="/" element={<HomePage />} />
         </Route>
@@ -142,12 +149,7 @@ export default function App() {
             <Route path="/propostas/editar/:id" element={<PropostasCadastro key="editar" />} />
             <Route path="/propostas/produtos" element={<ProdutosLista />} />
 
-            {/* 🛡️ ROTAS DO SEGURO DE VIDA */}
             <Route path="/seguros-vida" element={<PropostasAvulsas />} />
-            {/* Se houver tela de cadastro/edição separada:
-            <Route path="/seguros-vida/cadastro" element={<SegurosVidaCadastro key="nova" />} />
-            <Route path="/seguros-vida/editar/:id" element={<SegurosVidaCadastro key="editar" />} /> 
-            */}
 
             <Route path="/seguradoras" element={<SeguradorasLista />} />
 
@@ -180,8 +182,11 @@ export default function App() {
           </Route>
         </Route>
 
-        {/* ================= FALLBACK ================= */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* ================= FALLBACK INTELIGENTE ================= */}
+        <Route 
+          path="*" 
+          element={<Navigate to={user && userProfile?.ativo ? "/dashboard" : "/"} replace />} 
+        />
 
       </Routes>
     </NotificationProvider>

@@ -16,22 +16,23 @@ export const Linha4Midias: React.FC = () => {
   const [carregando, setCarregando] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
+  // Identificador único da Corretora para isolamento multi-tenant
   const idCorretoraReal = userProfile?.corretora_id || (user as any)?.corretora_id || user?.id;
   
-  // CORREÇÃO 1: Nome exato do bucket conforme visto no seu painel do Supabase
   const BUCKET_NAME = 'artes-campanhas';
 
   // ------------------------------------------------------------------
-  // LISTAR ARQUIVOS DO STORAGE
+  // LISTAR ARQUIVOS DO STORAGE (ISOLADO POR CORRETORA)
   // ------------------------------------------------------------------
   const listarMidias = async () => {
+    if (!idCorretoraReal) return;
+
     setCarregando(true);
     try {
-      // CORREÇÃO 2: Removido o filtro de pasta antiga. 
-      // Busca direto na raiz do bucket, onde suas imagens realmente estão.
+      // 1. Busca os arquivos APENAS dentro da pasta da corretora logada
       const { data, error } = await supabase.storage
         .from(BUCKET_NAME)
-        .list('', {
+        .list(idCorretoraReal, {
           limit: 100,
           sortBy: { column: 'name', order: 'desc' },
         });
@@ -42,10 +43,11 @@ export const Linha4Midias: React.FC = () => {
         const itensFormatados: ItemMidia[] = data
           .filter((arquivo) => arquivo.name !== '.emptyFolderPlaceholder')
           .map((arquivo) => {
-            // CORREÇÃO 3: URL pública gerada a partir da raiz do bucket correto
+            // 2. Aponta a URL pública com o caminho da subpasta: ID_CORRETORA/NOME_ARQUIVO
+            const caminhoCompleto = `${idCorretoraReal}/${arquivo.name}`;
             const { data: urlData } = supabase.storage
               .from(BUCKET_NAME)
-              .getPublicUrl(arquivo.name);
+              .getPublicUrl(caminhoCompleto);
 
             return {
               id: arquivo.id || `${arquivo.name}-${arquivo.created_at}`,
@@ -69,11 +71,11 @@ export const Linha4Midias: React.FC = () => {
   }, [idCorretoraReal]);
 
   // ------------------------------------------------------------------
-  // UPLOAD DE NOVA ARTE
+  // UPLOAD DE NOVA ARTE (SALVO NA PASTA DA CORRETORA)
   // ------------------------------------------------------------------
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const arquivo = e.target.files?.[0];
-    if (!arquivo) return;
+    if (!arquivo || !idCorretoraReal) return;
 
     if (!arquivo.type.startsWith('image/')) {
       toast.warning('Por favor, selecione apenas arquivos de imagem (PNG, JPG, WEBP).');
@@ -82,12 +84,13 @@ export const Linha4Midias: React.FC = () => {
 
     setEnviando(true);
     try {
-      // Sanitiza o nome do arquivo e salva direto na raiz para manter o padrão atual
       const nomeLimpo = `${Date.now()}-${arquivo.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      
+      // Salva no caminho: ID_CORRETORA/NOME_ARQUIVO
+      const caminhoDestino = `${idCorretoraReal}/${nomeLimpo}`;
+
       const { error } = await supabase.storage
         .from(BUCKET_NAME)
-        .upload(nomeLimpo, arquivo, {
+        .upload(caminhoDestino, arquivo, {
           cacheControl: '3600',
           upsert: false,
         });
@@ -104,17 +107,18 @@ export const Linha4Midias: React.FC = () => {
   };
 
   // ------------------------------------------------------------------
-  // EXCLUSÃO EM CASCATA
+  // EXCLUSÃO DA MÍDIA DA CORRETORA
   // ------------------------------------------------------------------
   const handleDeletarMidia = async (item: ItemMidia) => {
-    const confirmar = window.confirm('Deseja realmente excluir esta arte? Esta ação removerá o vínculo de todas as campanhas mães associadas.');
-    if (!confirmar) return;
+    const confirmar = window.confirm('Deseja realmente excluir esta arte? Esta ação removerá o vínculo de todas as campanhas associadas.');
+    if (!confirmar || !idCorretoraReal) return;
 
     try {
-      // Deleta direto do caminho correto (raiz do bucket)
+      // Remove do caminho com subpasta
+      const caminhoArquivo = `${idCorretoraReal}/${item.name}`;
       const { error: storageError } = await supabase.storage
         .from(BUCKET_NAME)
-        .remove([item.name]);
+        .remove([caminhoArquivo]);
 
       if (storageError) throw storageError;
 

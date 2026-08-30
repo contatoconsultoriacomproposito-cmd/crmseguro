@@ -36,50 +36,33 @@ export default function LoginModal({ onClose, onSwitch }: any) {
   }
 
   async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
 
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
-      });
+      })
 
-      if (authError) throw authError;
+      if (authError) throw authError
 
       if (authData?.user) {
-        const { data: perfil, error: perfilError } = await supabase
-          .from("usuarios_perfis")
-          .select("ativo")
-          .eq("id", authData.user.id)
-          .maybeSingle();
-
-        if (perfilError) {
-          supabase.auth.signOut().catch(() => {});
-          throw new Error("Erro ao validar permissões. Tente novamente.");
-        }
-
-        // 🚨 O SEGREDO ESTÁ AQUI: Sem 'await' antes do signOut!
-        if (!perfil || perfil.ativo === false) {
-          supabase.auth.signOut().catch(() => {}); // Dispara e esquece
-          setError("Sua conta está inativa. Para regularizar seu acesso, entre em contato com nossa equipe de suporte.");
-          setLoading(false);
-          return; 
-        }
-
-        setLoading(false);
-        navigate("/dashboard");
+        // Sucesso: fecha o modal e navega para o dashboard.
+        // O AuthProvider cuidará da validação de perfil (inativo) e do preenchimento dos estados em background.
+        onClose?.()
+        navigate("/dashboard")
       }
     } catch (err: any) {
-      // 🚨 Aqui também sem 'await'
-      supabase.auth.signOut().catch(() => {});
-      setLoading(false);
+      setLoading(false)
       
+      // Quando a senha estiver errada, não executamos nenhum signOut.
+      // Apenas exibimos a mensagem de erro e a interface permanece limpa para a próxima tentativa.
       if (err.message?.includes("Invalid login credentials")) {
-        setError("E-mail ou senha incorretos.");
+        setError("E-mail ou senha incorretos.")
       } else {
-        setError(err.message || "Houve um erro ao acessar a conta.");
+        setError(err.message || "Houve um erro ao acessar a conta.")
       }
     }
   }

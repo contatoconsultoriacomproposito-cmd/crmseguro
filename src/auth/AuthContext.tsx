@@ -16,7 +16,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
-  
+
   const isLoggingOut = useRef(false)
   const hasInitialized = useRef(false)
   const activeUserIdRef = useRef<string | null>(null)
@@ -26,24 +26,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoggingOut.current = true
 
     console.log("🚨 [AUTH] Iniciando limpeza de sessão...")
-    
+
     try {
       await supabase.auth.signOut().catch(() => {})
     } finally {
       localStorage.removeItem("sb-corretor-auth")
       localStorage.clear()
-      
+
       setUser(null)
       setUserProfile(null)
       activeUserIdRef.current = null
-      
+
       if (window.location.pathname !== "/" && !window.location.pathname.startsWith("/portal")) {
         console.log("✅ [AUTH] Redirecionando para Home...")
         window.location.href = "/"
       } else {
         setLoading(false)
-        isLoggingOut.current = false
       }
+      
+      // Garante a liberação da trava de logout para os próximos logins
+      isLoggingOut.current = false
     }
   }, [])
 
@@ -69,6 +71,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data?.ativo === false) {
         await handleSignOut()
       } else {
+        activeUserIdRef.current = currentUser.id
+        setUser(currentUser)
         setUserProfile(data)
       }
     }
@@ -79,14 +83,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     hasInitialized.current = true
 
     let mounted = true
-    let isInitializing = true 
+    let isInitializing = true
 
     console.log("🚀 [AUTH] Boot iniciado...")
 
     async function initialize() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        
+
         if (!session?.user) {
           console.log("⚠️ [AUTH] Sem sessão inicial no cache.")
           if (mounted) setLoading(false)
@@ -144,19 +148,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           console.log(`🔔 [AUTH] Evento: ${event} - Validando perfil antes de liberar acesso...`)
           
-          // 🚨 TIRE O setLoading(true) QUE ESTAVA AQUI! 
-          // Era ele que ativava o spinner global e destruía o modal de login na HomePage.
+          // Mantém o loading ativo enquanto busca o perfil para evitar a colisão com o ProtectedRoute
+          setLoading(true)
 
           const profile = await fetchProfile(session.user.id)
 
           if (profile?.ativo === false) {
             console.warn("🚫 [AUTH] Tentativa de login com conta inativa detectada!")
             activeUserIdRef.current = null
-            await handleSignOut() // Fica silencioso, desloga por baixo dos panos
+            await handleSignOut()
             return
           }
 
-          // Só altera os estados e libera a aplicação se o usuário for ativo
           activeUserIdRef.current = session.user.id
           setUser(session.user)
           setUserProfile(profile)
@@ -169,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [fetchProfile, handleSignOut]) 
+  }, [fetchProfile, handleSignOut])
 
   return (
     <AuthContext.Provider value={{ user, userProfile, loading, signOut: handleSignOut, refreshProfile }}>

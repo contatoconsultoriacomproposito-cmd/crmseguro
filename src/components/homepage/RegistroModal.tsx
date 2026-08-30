@@ -7,6 +7,35 @@ import {
 import { supabasePublic } from "../../lib/supabaseClient";
 import { buscarCNPJ, buscarCEP } from "../../services/brasilApi";
 import { maskCNPJ, maskPhone, maskCPF, maskCEP } from "../../utils/masks";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
+
+// VALIDADOR MATEMÁTICO DE CPF
+function validarCPF(cpf: string): boolean {
+  const clean = cpf.replace(/\D/g, "");
+  if (clean.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(clean)) return false;
+
+  let soma = 0;
+  let resto: number;
+
+  for (let i = 1; i <= 9; i++) {
+    soma += parseInt(clean.substring(i - 1, i)) * (11 - i);
+  }
+  resto = (soma * 10) % 11;
+  if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(clean.substring(9, 10))) return false;
+
+  soma = 0;
+  for (let i = 1; i <= 10; i++) {
+    soma += parseInt(clean.substring(i - 1, i)) * (12 - i);
+  }
+  resto = (soma * 10) % 11;
+  if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(clean.substring(10, 11))) return false;
+
+  return true;
+}
 
 export default function RegistroModal({ onClose }: any) {
   const [loading, setLoading] = useState(false);
@@ -15,6 +44,8 @@ export default function RegistroModal({ onClose }: any) {
   const [sucesso, setSucesso] = useState(false);
   const [tipoPessoa, setTipoPessoa] = useState<"PJ" | "PF">("PJ");
   const [aceiteTermos, setAceiteTermos] = useState(false);
+  const navigate = useNavigate();
+  const { refreshProfile } = useAuth();
 
   const [form, setForm] = useState({
     senha: "",
@@ -35,7 +66,7 @@ export default function RegistroModal({ onClose }: any) {
     uf: "",
     complemento: "",
     ddd_telefone_1: "",
-    email_corporativo: "", // Login PJ
+    email_corporativo: "",
     website: "",
     instagram: "",
     facebook: "",
@@ -43,7 +74,7 @@ export default function RegistroModal({ onClose }: any) {
     nome_responsavel: "",
     cpf_responsavel: "",
     telefone_responsavel: "",
-    email_responsavel: "", // Login PF
+    email_responsavel: "",
     registro_susep: "",
     plano: "FREE",
     status_pagamento: "PENDENTE"
@@ -61,7 +92,7 @@ export default function RegistroModal({ onClose }: any) {
 
   async function handleBuscarCNPJ() {
     const clean = form.cnpj.replace(/\D/g, "");
-    if (clean.length !== 14) return alert("CNPJ inválido");
+    if (clean.length !== 14) return alert("CNPJ inválido.");
     setLoadingCNPJ(true);
     try {
       const data = await buscarCNPJ(clean);
@@ -85,13 +116,16 @@ export default function RegistroModal({ onClose }: any) {
         ddd_telefone_1: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : "",
         email_corporativo: (data as any).email?.toLowerCase() || prev.email_corporativo
       }));
-    } catch { alert("Erro ao buscar CNPJ."); }
-    finally { setLoadingCNPJ(false); }
+    } catch { 
+      alert("Erro ao buscar CNPJ."); 
+    } finally { 
+      setLoadingCNPJ(false); 
+    }
   }
 
   async function handleBuscarCEP() {
     const clean = form.cep.replace(/\D/g, "");
-    if (clean.length !== 8) return alert("CEP inválido");
+    if (clean.length !== 8) return alert("CEP inválido.");
     setLoadingCEP(true);
     try {
       const data = await buscarCEP(clean);
@@ -102,99 +136,119 @@ export default function RegistroModal({ onClose }: any) {
         municipio: (data.city || "").toUpperCase(),
         uf: (data.state || "").toUpperCase(),
       }));
-    } catch { alert("Erro ao buscar CEP."); }
-    finally { setLoadingCEP(false); }
+    } catch { 
+      alert("Erro ao buscar CEP."); 
+    } finally { 
+      setLoadingCEP(false); 
+    }
   }
 
   async function handleRegistro(e: React.FormEvent) {
-    e.preventDefault();
-    if (loading) return;
+  e.preventDefault();
+  if (loading) return;
 
-    const emailLogin = tipoPessoa === "PJ" ? form.email_corporativo : form.email_responsavel;
-    if (!emailLogin?.includes('@')) return alert("E-mail de acesso inválido.");
-    if (form.senha.length < 6) return alert("A senha deve ter pelo menos 6 caracteres.");
-    if (!form.registro_susep || form.registro_susep.trim() === "") {
-      return alert("O campo Registro SUSEP é obrigatório.");
-    }
+  // 1. Validação do CPF
+  if (!form.cpf_responsavel || !validarCPF(form.cpf_responsavel)) {
+    return alert("O CPF informado é inválido. Por favor, verifique os números.");
+  }
 
-    setLoading(true);
-    try {
-      const { data: authData, error: authError } = await supabasePublic.auth.signUp({
-        email: emailLogin.trim().toLowerCase(),
+  const emailLogin = (tipoPessoa === "PJ" ? form.email_corporativo : form.email_responsavel).trim().toLowerCase();
+  if (!emailLogin?.includes('@')) return alert("E-mail de acesso inválido.");
+  if (form.senha.length < 6) return alert("A senha deve ter pelo menos 6 caracteres.");
+  if (!form.registro_susep || form.registro_susep.trim() === "") {
+    return alert("O campo Registro SUSEP é obrigatório.");
+  }
+
+  setLoading(true);
+  try {
+    // 1. Cria a conta no Supabase Auth
+    const { data: authData, error: authError } = await supabasePublic.auth.signUp({
+      email: emailLogin,
+      password: form.senha,
+    });
+
+    if (authError) throw authError;
+    const userId = authData.user?.id;
+    if (!userId) throw new Error("Falha ao gerar ID de usuário.");
+
+    // 2. Grava perfil do usuário
+    const { error: perfilError } = await supabasePublic.from("usuarios_perfis").upsert({
+      id: userId,
+      tipo_usuario: "CORRETORA",
+      nome: form.nome_responsavel.toUpperCase(),
+      email: form.email_responsavel.toLowerCase(),
+      ativo: true,
+      corretora_id: userId,
+      registro_susep: form.registro_susep.toUpperCase(),
+      telefone_corretor: form.telefone_responsavel,
+      cpf_corretor: form.cpf_responsavel,
+      cnpj_corretora: tipoPessoa === "PJ" ? form.cnpj : null,
+      superior_id: null
+    });
+    if (perfilError) throw perfilError;
+
+    // 3. Grava configurações da corretora
+    const dataExpira = new Date();
+    dataExpira.setDate(dataExpira.getDate() + 7);
+
+    const { error: configError } = await supabasePublic.from("tab_corretora_config").upsert({
+      id: userId,
+      razao_social: tipoPessoa === "PJ" ? form.razao_social : null,
+      cnpj: tipoPessoa === "PJ" ? form.cnpj : null,
+      nome_fantasia: tipoPessoa === "PJ" ? form.nome_fantasia : null,
+      descricao_identificador_matriz_filial: tipoPessoa === "PJ" ? form.descricao_identificador_matriz_filial : null,
+      natureza_juridica: tipoPessoa === "PJ" ? form.natureza_juridica : null,
+      porte: tipoPessoa === "PJ" ? form.porte : null,
+      capital_social: (tipoPessoa === "PJ" && form.capital_social) ? parseFloat(form.capital_social.replace(",", ".")) : null,
+      opcao_pelo_mei: tipoPessoa === "PJ" ? form.opcao_pelo_mei : null,
+      opcao_pelo_simples: tipoPessoa === "PJ" ? form.opcao_pelo_simples : null,
+      cep: form.cep,
+      logradouro: form.logradouro,
+      numero: form.numero,
+      bairro: form.bairro,
+      municipio: form.municipio,
+      uf: form.uf,
+      complemento: form.complemento,
+      email_corporativo: emailLogin,
+      ddd_telefone_1: form.ddd_telefone_1,
+      nome_responsavel: form.nome_responsavel.toUpperCase(),
+      telefone_responsavel: form.telefone_responsavel,
+      registro_susep: form.registro_susep.toUpperCase(),
+      email_responsavel: form.email_responsavel.toLowerCase(),
+      cpf_responsavel: form.cpf_responsavel,
+      whatsapp_comercial: form.whatsapp_comercial,
+      website: form.website.toLowerCase(),
+      instagram: form.instagram.toLowerCase(),
+      facebook: form.facebook.toLowerCase(),
+      plano: "FREE",
+      status_pagamento: "PENDENTE",
+      data_expiracao: dataExpira.toISOString()
+    });
+
+    if (configError) throw configError;
+
+    // 4. Se o Supabase não iniciou a sessão automaticamente no signUp, força o login
+    if (!authData.session) {
+      const { error: loginError } = await supabasePublic.auth.signInWithPassword({
+        email: emailLogin,
         password: form.senha,
       });
-
-      if (authError) throw authError;
-      const userId = authData.user?.id;
-      if (!userId) throw new Error("Falha ao gerar ID de usuário.");
-
-      // 1. usuarios_perfis
-      const { error: perfilError } = await supabasePublic.from("usuarios_perfis").upsert({
-        id: userId,
-        tipo_usuario: "CORRETORA",
-        nome: form.nome_responsavel.toUpperCase(),
-        email: form.email_responsavel.toLowerCase(),
-        ativo: true,
-        corretora_id: userId,
-        registro_susep: form.registro_susep.toUpperCase(),
-        telefone_corretor: form.telefone_responsavel,
-        cpf_corretor: form.cpf_responsavel,
-        cnpj_corretora: tipoPessoa === "PJ" ? form.cnpj : null,
-        superior_id: null
-      });
-      if (perfilError) throw perfilError;
-
-      // 2. tab_corretora_config
-      const dataExpira = new Date();
-      dataExpira.setDate(dataExpira.getDate() + 7);
-
-      const { error: configError } = await supabasePublic.from("tab_corretora_config").upsert({
-        id: userId,
-        // Campos exclusivos de Pessoa Jurídica (nulos se for PF)
-        razao_social: tipoPessoa === "PJ" ? form.razao_social : null,
-        cnpj: tipoPessoa === "PJ" ? form.cnpj : null,
-        nome_fantasia: tipoPessoa === "PJ" ? form.nome_fantasia : null,
-        descricao_identificador_matriz_filial: tipoPessoa === "PJ" ? form.descricao_identificador_matriz_filial : null,
-        natureza_juridica: tipoPessoa === "PJ" ? form.natureza_juridica : null,
-        porte: tipoPessoa === "PJ" ? form.porte : null,
-        capital_social: (tipoPessoa === "PJ" && form.capital_social) ? parseFloat(form.capital_social.replace(",", ".")) : null,
-        opcao_pelo_mei: tipoPessoa === "PJ" ? form.opcao_pelo_mei : null,
-        opcao_pelo_simples: tipoPessoa === "PJ" ? form.opcao_pelo_simples : null,
-
-        // Campos comuns ou preenchidos manualmente para ambos
-        cep: form.cep,
-        logradouro: form.logradouro,
-        numero: form.numero,
-        bairro: form.bairro,
-        municipio: form.municipio,
-        uf: form.uf,
-        complemento: form.complemento,
-        email_corporativo: emailLogin.toLowerCase(),
-        ddd_telefone_1: form.ddd_telefone_1,
-        nome_responsavel: form.nome_responsavel.toUpperCase(),
-        telefone_responsavel: form.telefone_responsavel,
-        registro_susep: form.registro_susep.toUpperCase(),
-        email_responsavel: form.email_responsavel.toLowerCase(),
-        cpf_responsavel: form.cpf_responsavel,
-        whatsapp_comercial: form.whatsapp_comercial,
-        website: form.website.toLowerCase(),
-        instagram: form.instagram.toLowerCase(),
-        facebook: form.facebook.toLowerCase(),
-        plano: "FREE",
-        status_pagamento: "PENDENTE",
-        data_expiracao: dataExpira.toISOString()
-      });
-
-      if (configError) throw configError;
-
-      setSucesso(true);
-      setTimeout(() => window.location.href = "/dashboard", 2000);
-    } catch (error: any) {
-      alert(`Erro no cadastro: ${error.message}`);
-    } finally {
-      setLoading(false);
+      if (loginError) throw loginError;
     }
+
+    // 5. Atualiza o estado global de autenticação e redireciona de forma síncrona
+    setSucesso(true);
+    await refreshProfile();
+    
+    onClose?.();
+    navigate("/dashboard", { replace: true });
+
+  } catch (error: any) {
+    alert(`Erro no cadastro: ${error.message}`);
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm">
@@ -205,11 +259,10 @@ export default function RegistroModal({ onClose }: any) {
           <div className="p-20 text-center flex flex-col items-center justify-center min-h-[400px]">
             <CheckCircle2 size={80} className="text-emerald-500 mb-6" />
             <h2 className="text-3xl font-black dark:text-white uppercase tracking-tighter">Cadastro Realizado!</h2>
-            <p className="text-zinc-500 mt-2 font-medium">Sincronizando dados das tabelas...</p>
+            <p className="text-zinc-500 mt-2 font-medium">Redirecionando para o seu dashboard...</p>
           </div>
         ) : (
           <form onSubmit={handleRegistro} className="flex flex-col h-[90vh]">
-            {/* CABEÇALHO COM TOGGLE DE TIPO DE PESSOA */}
             <div className="px-8 py-5 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50">
               <div className="flex items-center gap-6">
                 <div className="flex bg-zinc-200 dark:bg-zinc-800 p-1 rounded-2xl gap-1">
@@ -227,17 +280,14 @@ export default function RegistroModal({ onClose }: any) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-              {/* ÁREA DE IDENTIFICAÇÃO PRINCIPAL */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {tipoPessoa === "PJ" ? (
                   <ActionInput label="CNPJ DA CORRETORA" name="cnpj" value={form.cnpj} onChange={handleChange} onAction={handleBuscarCNPJ} loading={loadingCNPJ} placeholder="00.000.000/0000-00" icon={<Search size={14}/>} />
                 ) : (
                   <Input label="NOME COMPLETO DO CORRETOR" name="nome_responsavel" required value={form.nome_responsavel} onChange={handleChange} placeholder="Nome do titular" icon={<User size={14}/>} />
                 )}
-                
               </div>
 
-              {/* CONTEÚDO DINÂMICO BASEADO NO TIPO */}
               {tipoPessoa === "PJ" ? (
                 <>
                   <Section title="Dados Cadastrais (Receita Federal)" icon={<FileText size={16}/>}>
@@ -248,7 +298,6 @@ export default function RegistroModal({ onClose }: any) {
                       <Input label="Natureza Jurídica" name="natureza_juridica" value={form.natureza_juridica} readOnly className="bg-zinc-50" />
                       <Input label="Porte" name="porte" value={form.porte} readOnly className="bg-zinc-50" />
                       <Input label="Capital Social" name="capital_social" value={form.capital_social} readOnly className="bg-zinc-50" icon={<Hash size={14}/>} />
-                      
                       <Input label="Telefone (Receita)" name="ddd_telefone_1" value={form.ddd_telefone_1} onChange={handleChange} icon={<Phone size={14}/>} />
                     </div>
 
@@ -283,7 +332,6 @@ export default function RegistroModal({ onClose }: any) {
                 </Section>
               )}
 
-              {/* SEÇÃO DE CONTATOS E RESPONSÁVEL - COMUM A AMBOS */}
               <Section title="Canais de Contato e Registro Profissional" icon={<User size={16} className="text-blue-600"/>}>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <Input label="WhatsApp Comercial" name="whatsapp_comercial" required value={form.whatsapp_comercial} onChange={handleChange} icon={<Phone size={14} className="text-emerald-500"/>} />
@@ -302,7 +350,6 @@ export default function RegistroModal({ onClose }: any) {
                 </div>
               </Section>
 
-              {/* 4. NOVA SEÇÃO: CREDENCIAIS DE ACESSO (Onde estavam os erros) */}
               <Section title="Configuração de Acesso ao Sistema" icon={<Lock size={16} className="text-amber-500"/>}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-zinc-50 p-4 rounded-2xl border border-dashed border-zinc-200">
                   <Input 
@@ -332,30 +379,28 @@ export default function RegistroModal({ onClose }: any) {
             </div>
 
             <div className="p-8 bg-zinc-50 border-t border-zinc-100 space-y-6">
-            {/* Checkbox de Consentimento */}
-            <div className="flex items-start gap-3 px-2">
-              <input 
-                type="checkbox" 
-                id="termos"
-                checked={aceiteTermos}
-                onChange={(e) => setAceiteTermos(e.target.checked)}
-                className="mt-1 w-4 h-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-              />
-              <label htmlFor="termos" className="text-xs text-zinc-600 leading-relaxed cursor-pointer select-none">
-                Li e concordo com os <a href="/termos" target="_blank" className="text-blue-600 font-bold hover:underline">Termos de Uso</a> e a <a href="/privacidade" target="_blank" className="text-blue-600 font-bold hover:underline">Política de Privacidade</a> da plataforma.
-              </label>
-            </div>
+              <div className="flex items-start gap-3 px-2">
+                <input 
+                  type="checkbox" 
+                  id="termos"
+                  checked={aceiteTermos}
+                  onChange={(e) => setAceiteTermos(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <label htmlFor="termos" className="text-xs text-zinc-600 leading-relaxed cursor-pointer select-none">
+                  Li e concordo com os <a href="/termos" target="_blank" className="text-blue-600 font-bold hover:underline">Termos de Uso</a> e a <a href="/privacidade" target="_blank" className="text-blue-600 font-bold hover:underline">Política de Privacidade</a> da plataforma.
+                </label>
+              </div>
 
-            {/* Botão de Submit Atualizado */}
-            <button 
-              type="submit" 
-              disabled={loading || (tipoPessoa === "PJ" && !form.razao_social) || !aceiteTermos} 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale uppercase text-sm tracking-widest"
-            >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-              Finalizar Cadastro {tipoPessoa}
-            </button>
-          </div>
+              <button 
+                type="submit" 
+                disabled={loading || (tipoPessoa === "PJ" && !form.razao_social) || !aceiteTermos} 
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale uppercase text-sm tracking-widest"
+              >
+                {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+                Finalizar Cadastro {tipoPessoa}
+              </button>
+            </div>
           </form>
         )}
       </motion.div>
@@ -363,7 +408,6 @@ export default function RegistroModal({ onClose }: any) {
   );
 }
 
-// SUBCOMPONENTES AUXILIARES
 function Section({ title, icon, children }: any) {
   return (
     <div className="space-y-4">
