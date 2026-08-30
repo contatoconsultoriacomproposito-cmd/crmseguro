@@ -1513,10 +1513,10 @@ return (
               </div>
             </div>
 
-            {/* Seção 4: Agendamento de Retorno */}
+            {/* Seção 4: Agendamento de Retorno & Observações */}
             <div>
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Calendar size={14} /> Agendamento de Retorno
+                <Calendar size={14} /> Agendamento de Retorno & Observações
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1540,6 +1540,20 @@ return (
                     value={formData.horario_retorno || ""}
                     onChange={(e) => setFormData({ ...formData, horario_retorno: e.target.value })}
                     className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* CAMPO OBSERVAÇÃO */}
+                <div className="md:col-span-2">
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1 flex items-center gap-1">
+                    <FileText size={12} /> Observações
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={formData.observacao || ""}
+                    onChange={(e) => setFormData({ ...formData, observacao: e.target.value })}
+                    placeholder="Aotações importantes sobre o retorno ou negociação..."
+                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   />
                 </div>
               </div>
