@@ -25,7 +25,7 @@ export default function LoginModal({
 
   async function handleForgotPassword() {
     if (!email.trim()) {
-      setError("Por favor, digite seu e-mail para recuperar a senha.")
+      setError("Por favor, digite seu e-mail para recuperar a sua senha.")
       return
     }
 
