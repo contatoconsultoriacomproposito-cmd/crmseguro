@@ -2,13 +2,10 @@ import { useState, useEffect, useMemo } from "react";
 import { 
   Save, Search, Trash2, User, 
   X, Hash, CheckCircle2, PlusCircle
-  
 } from "lucide-react";
-import { useParams, useNavigate, useLocation } from "react-router-dom"; // Importante para detectar modo edição
+import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { supabase } from "../../lib/supabaseClient";
 import { ModalGerenciarPortfolio } from './ModalGerenciarPortfolio';
-
-
 
 // --- INTERFACES ---
 interface CotacaoProduto {
@@ -19,11 +16,11 @@ interface CotacaoProduto {
   parcelamento: string;
   meio: string;
   cobertura: string;
-  numero_cotacao: string; // <--- NOVO CAMPO ADICIONADO
+  numero_cotacao: string;
 }
 
 interface OpcaoSeguradora {
-  id?: string; // ID do banco se for edição
+  id?: string; 
   seguradora_id: string;
   nome_seguradora: string;
   cotacoes: CotacaoProduto[];
@@ -38,8 +35,8 @@ const gerarIDProposta = () => {
 
 export default function PropostasCadastro() {
   const { id: propostaId } = useParams();
-  const navigate = useNavigate(); // Adicionado aqui
-  const location = useLocation(); // <--- Adicione isto
+  const navigate = useNavigate(); 
+  const location = useLocation(); 
   const clienteIdViaState = location.state?.clienteId;
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,20 +58,16 @@ export default function PropostasCadastro() {
   const [portfolioRaw, setPortfolioRaw] = useState<any[]>([]);
   const [isModalPortfolioOpen, setIsModalPortfolioOpen] = useState(false);
 
-  // Estado inicial com as 3 OPÇÕES AUTOMÁTICAS
   const [opcoes, setOpcoes] = useState<OpcaoSeguradora[]>([
     { seguradora_id: "", nome_seguradora: "", cotacoes: [] },
-    //{ seguradora_id: "", nome_seguradora: "", cotacoes: [] },
-    //{ seguradora_id: "", nome_seguradora: "", cotacoes: [] },
   ]);
 
-  // NOVO: Herdar o corretor do cliente assim que o cliente for selecionado
+  // Travar rigorosamente o corretor baseado no cliente selecionado
   useEffect(() => {
-    if (!propostaId && selectedClient && selectedClient.corretor_id) {
+    if (selectedClient?.corretor_id) {
       setSelectedCorretor(selectedClient.corretor_id);
     }
-  }, [selectedClient, propostaId]);
-  
+  }, [selectedClient]);
   
   useEffect(() => {
     const carregarTudo = async () => {
@@ -82,106 +75,98 @@ export default function PropostasCadastro() {
       if (propostaId) {
         await carregarDadosEdicao(propostaId);
       } else {
-        // SE FOR NOVA: Gera o número robusto aqui
         setNumeroProposta(gerarIDProposta());
       }
     };
     carregarTudo();
   }, [propostaId]);
 
-  // Efeito para auto-selecionar o cliente vindo do card
-useEffect(() => {
-  if (clienteIdViaState && clientes.length > 0 && !selectedClient) {
-    const clienteEncontrado = clientes.find(c => c.id === clienteIdViaState);
-    if (clienteEncontrado) {
-      setSelectedClient(clienteEncontrado);
+  useEffect(() => {
+    if (clienteIdViaState && clientes.length > 0 && !selectedClient) {
+      const clienteEncontrado = clientes.find(c => c.id === clienteIdViaState);
+      if (clienteEncontrado) {
+        setSelectedClient(clienteEncontrado);
+      }
     }
-  }
-}, [clienteIdViaState, clientes, selectedClient]);
+  }, [clienteIdViaState, clientes, selectedClient]);
 
   async function fetchDados() {
-  try {
-    setLoading(true);
-    
-    // 1. Pega o usuário logado e seu perfil
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      setLoading(true);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const { data: perfil } = await supabase
-      .from("usuarios_perfis")
-      .select("id, nome, tipo_usuario, corretora_id")
-      .eq("id", user.id)
-      .single();
+      const { data: perfil } = await supabase
+        .from("usuarios_perfis")
+        .select("id, nome, tipo_usuario, corretora_id")
+        .eq("id", user.id)
+        .single();
 
-    if (!perfil?.corretora_id) return;
+      if (!perfil?.corretora_id) return;
 
-    // 2. Busca Clientes com isolamento por corretor
-    let queryClientes = supabase.from("tab_clientes").select("*");
-    
-    if (perfil.tipo_usuario === 'CORRETOR') {
-      queryClientes = queryClientes.eq("corretor_id", perfil.id);
-    } else {
-      queryClientes = queryClientes.eq("corretora_id", perfil.corretora_id);
-    }
+      let queryClientes = supabase.from("tab_clientes").select("*");
+      
+      if (perfil.tipo_usuario === 'CORRETOR') {
+        queryClientes = queryClientes.eq("corretor_id", perfil.id);
+      } else {
+        queryClientes = queryClientes.eq("corretora_id", perfil.corretora_id);
+      }
 
-    const { data: clis, error: clisError } = await queryClientes;
-    if (clisError) throw clisError;
-    setClientes(clis || []);
+      const { data: clis, error: clisError } = await queryClientes;
+      if (clisError) throw clisError;
+      setClientes(clis || []);
 
-    // 3. BUSCA O PORTFÓLIO DA CORRETORA
-    const { data: portfolio, error: portError } = await supabase
-      .from("tab_corretora_portfolio")
-      .select(`
-        base_seguradora_id,
-        base_produto_id,
-        base_seguradoras (id, nome),
-        base_produtos (id, nome)
-      `)
-      .eq("corretora_id", perfil.corretora_id);
+      const { data: portfolio, error: portError } = await supabase
+        .from("tab_corretora_portfolio")
+        .select(`
+          base_seguradora_id,
+          base_produto_id,
+          base_seguradoras (id, nome),
+          base_produtos (id, nome)
+        `)
+        .eq("corretora_id", perfil.corretora_id);
 
-    if (portError) throw portError;
-    setPortfolioRaw(portfolio || []);
+      if (portError) throw portError;
+      setPortfolioRaw(portfolio || []);
 
-    // 4. Extrair Seguradoras Únicas
-    const seguradorasDistintas = Array.from(new Map(
-      (portfolio || [])
-        .filter(item => item?.base_seguradoras && (item.base_seguradoras as any).id)
-        .map(item => {
-          const s = item.base_seguradoras as any;
-          return [s.id, { id: s.id, nome: s.nome }];
-        })
-    ).values());
-    
-    setSeguradoras(seguradorasDistintas);
-    
-    const { data: pars } = await supabase
-      .from("tab_parceiros")
-      .select("id, nome_parceiro")
-      .eq("corretora_id", perfil.corretora_id)
-      .order('nome_parceiro', { ascending: true });
-    setParceiros(pars || []);
+      const seguradorasDistintas = Array.from(new Map(
+        (portfolio || [])
+          .filter(item => item?.base_seguradoras && (item.base_seguradoras as any).id)
+          .map(item => {
+            const s = item.base_seguradoras as any;
+            return [s.id, { id: s.id, nome: s.nome }];
+          })
+      ).values());
+      
+      setSeguradoras(seguradorasDistintas);
+      
+      const { data: pars } = await supabase
+        .from("tab_parceiros")
+        .select("id, nome_parceiro")
+        .eq("corretora_id", perfil.corretora_id)
+        .order('nome_parceiro', { ascending: true });
+      setParceiros(pars || []);
 
-    // 5. Lógica de Corretores
-    if (perfil.tipo_usuario === 'CORRETOR') {
-      setCorretores([{ id: perfil.id, nome: perfil.nome }]);
-      setSelectedCorretor(perfil.id);
-    } else {
+      // Busca de todos os corretores da corretora
       const { data: corrs } = await supabase
         .from("usuarios_perfis")
         .select("id, nome")
-        .eq("tipo_usuario", "CORRETOR")
         .eq("corretora_id", perfil.corretora_id)
         .order('nome', { ascending: true });
-      setCorretores(corrs || []);
+        
+      if (perfil.tipo_usuario === 'CORRETOR') {
+        setCorretores([{ id: perfil.id, nome: perfil.nome }, ...(corrs || [])]);
+      } else {
+        setCorretores(corrs || []);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Erro ao carregar dados:", error);
-  } finally {
-    setLoading(false);
   }
-}
 
-  // NOVA FUNÇÃO: Carrega dados para EDIÇÃO
   async function carregarDadosEdicao(id: string) {
     try {
       setLoading(true);
@@ -205,12 +190,11 @@ useEffect(() => {
       if (errP) throw errP;
 
       setSelectedClient(prop.tab_clientes);
-      setSelectedCorretor(prop.corretor_id);
-      setSelectedParceiro(prop.parceiro_id || ""); // <--- ADICIONE ESTA LINHA
+      setSelectedCorretor(prop.tab_clientes?.corretor_id || prop.corretor_id);
+      setSelectedParceiro(prop.parceiro_id || "");
       setValidadeProposta(prop.data_validade);
       setNumeroProposta(prop.numero_proposta);
 
-      // Mapeia as opções do banco para o estado da tela usando as tabelas BASE
       const opcoesMapeadas = prop.tab_proposta_opcoes.map((op: any) => ({
         id: op.id,
         seguradora_id: op.seguradora_id,
@@ -226,15 +210,11 @@ useEffect(() => {
             parcelamento: it.parcelamento,
             meio: it.meio_pagamento,
             cobertura: it.coberturas_franquias || "",
-            numero_cotacao: it.numero_cotacao || "" // <--- MAPEADO DA EDIÇÃO
+            numero_cotacao: it.numero_cotacao || "" 
           };
         })
       }));
 
-      // Garante que sempre existam pelo menos 3 colunas visualmente
-      //while (opcoesMapeadas.length < 3) {
-        //opcoesMapeadas.push({ seguradora_id: "", nome_seguradora: "", cotacoes: [] });
-      //}
       setOpcoes(opcoesMapeadas);
 
     } catch (error) {
@@ -283,28 +263,25 @@ useEffect(() => {
         parcelamento: "1x", 
         meio: "Boleto", 
         cobertura: "",
-        numero_cotacao: "" // <--- INICIALIZADO VAZIO
+        numero_cotacao: "" 
       });
       setOpcoes(novasOpcoes);
     }
   };
 
   const adicionarNovaOpcao = () => {
-        setOpcoes([...opcoes, { seguradora_id: "", nome_seguradora: "", cotacoes: [] }]);
-      };
+    setOpcoes([...opcoes, { seguradora_id: "", nome_seguradora: "", cotacoes: [] }]);
+  };
 
-  // --- COLE ESTA FUNÇÃO AQUI ---
   const removerOpcao = async (index: number) => {
     const opcaoParaRemover = opcoes[index];
 
-    // Se a opção já existe no banco (tem ID), deletamos no Supabase
     if (opcaoParaRemover.id) {
       const confirmar = confirm("Deseja realmente excluir esta seguradora e todos os seus produtos?");
       if (!confirmar) return;
 
       try {
         setLoading(true);
-        // O banco fará o delete em cascata nos itens (tab_proposta_itens)
         const { error } = await supabase
           .from('tab_proposta_opcoes')
           .delete()
@@ -320,7 +297,6 @@ useEffect(() => {
       }
     }
 
-    // Remove do estado (da tela)
     const novasOpcoes = opcoes.filter((_, i) => i !== index);
     setOpcoes(novasOpcoes);
   };
@@ -334,19 +310,27 @@ useEffect(() => {
     );
   }, [searchTerm, clientes]);
 
-  
+  // --- FUNÇÃO PARA OBTER O RÓTULO DO RESPONSÁVEL ---
+  const getNomeResponsavel = () => {
+    if (!selectedClient) return "Nenhum cliente selecionado";
+
+    if (selectedClient.corretor_id === selectedClient.corretora_id) {
+      return "Atendimento Direto / Corretora";
+    }
+
+    const corretorEncontrado = corretores.find(c => c.id === selectedClient.corretor_id);
+    return corretorEncontrado?.nome || selectedClient.nome_corretor || "Corretor Responsável";
+  };
 
   const handleSalvarBanco = async () => {
-    // Definimos o corretor final: Prioriza o selecionado ou o herdado do cliente
-    const corretorFinal = selectedCorretor || selectedClient?.corretor_id;
+    const corretorFinal = selectedClient?.corretor_id || selectedCorretor;
 
     if (!selectedClient || !corretorFinal || !validadeProposta) {
-        return alert("Preencha todos os campos obrigatórios (Cliente, Corretor e Validade).");
+        return alert("Preencha todos os campos obrigatórios e verifique se o cliente possui um responsável.");
     }
     setLoading(true);
 
     try {
-      // 1. Identificação do Usuário e Corretora
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado.");
 
@@ -362,11 +346,10 @@ useEffect(() => {
 
       let currentPropostaId = propostaId;  
 
-      // 2. Preparação dos dados da Proposta
       const dadosProposta = {
         numero_proposta: numeroProposta,
         cliente_id: selectedClient.id,
-        corretor_id: corretorFinal, 
+        corretor_id: corretorFinal,
         parceiro_id: selectedParceiro || null,
         corretora_id: perfil.corretora_id, 
         data_validade: validadeProposta,
@@ -374,7 +357,6 @@ useEffect(() => {
         valor_total_proposta: opcoes.reduce((acc, opt) => acc + calcularTotal(opt.cotacoes), 0)
       };
 
-      // 3. Upsert na tab_propostas
       if (propostaId) {
         const { error: errorU } = await supabase
           .from("tab_propostas")
@@ -382,14 +364,12 @@ useEffect(() => {
           .eq("id", propostaId);
         
         if (errorU) throw errorU;
-        // Limpa opções antigas para reinserir as novas (lógica de edição que você já usa)
         await supabase.from("tab_proposta_opcoes").delete().eq("proposta_id", propostaId);
       } else {
         const { data, error } = await supabase.from("tab_propostas").insert(dadosProposta).select().single();
         if (error) throw error;
         currentPropostaId = data.id;
 
-        // --- REGISTRO DE INTERAÇÃO (Apenas na criação da proposta) ---
         await supabase.from('tab_interacoes').insert({
           cliente_id: selectedClient.id,
           corretor_id: corretorFinal,
@@ -401,7 +381,6 @@ useEffect(() => {
         });
       }
 
-      // 4. Inserir Opções e Itens
       for (const [idx, opcao] of opcoes.entries()) {
         if (!opcao.seguradora_id) continue;
 
@@ -426,13 +405,11 @@ useEffect(() => {
             parcelamento: cot.parcelamento,
             meio_pagamento: cot.meio,
             coberturas_franquias: cot.cobertura,
-            numero_cotacao: cot.numero_cotacao, // <-- Não esqueça da vírgula aqui
+            numero_cotacao: cot.numero_cotacao, 
+            corretor_id: corretorFinal,
             
-            // 🔥 A MUDANÇA AQUI: Injeta o corretor em cada item salvo
-            corretor_id: corretorFinal 
           }));
 
-          // Uma boa prática: capturar se houver erro ao inserir os itens
           const { error: errorItens } = await supabase
             .from("tab_proposta_itens")
             .insert(itensParaInserir);
@@ -441,8 +418,7 @@ useEffect(() => {
         }
       }
 
-      // --- SINCRONIZAÇÃO INTELIGENTE DA FASE DO KANBAN ---
-      let faseAlvo = 'negociacao'; // Padrão para novos leads (status 'novo')
+      let faseAlvo = 'negociacao'; 
 
       if (selectedClient.status_kanban === 'vendido') {
         faseAlvo = 'negociacao_vendas';
@@ -458,8 +434,6 @@ useEffect(() => {
       setShowFinalizeModal(false);
       setShowSuccess(true);
 
-      // O redirecionamento agora é controlado pelo botão na modal de sucesso, 
-      // mas mantivemos o timer por segurança caso o usuário não clique.
       setTimeout(() => {
         setShowSuccess(false);
         navigate('/propostas/lista');
@@ -473,7 +447,7 @@ useEffect(() => {
     }
   };
 
-  return (
+return (
     <div className="p-6 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen pb-40">
       <div className="max-w-[1600px] mx-auto mb-8">
         <div className="bg-white dark:bg-zinc-900 rounded-[24px] border border-slate-200 dark:border-zinc-800 p-6 shadow-sm">
@@ -525,6 +499,10 @@ useEffect(() => {
                   <span className="text-[10px] font-bold text-blue-400 uppercase block">WhatsApp</span>
                   <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{selectedClient.telefone_whats || "---"}</span>
                 </div>
+                <div>
+                  <span className="text-[10px] font-bold text-blue-400 uppercase block">Responsável</span>
+                  <span className="text-sm font-bold text-slate-700 dark:text-zinc-200 block truncate">{getNomeResponsavel()}</span>
+                </div>
               </div>
             ) : (
               <div className="col-span-3 flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl text-slate-400 text-sm italic">Aguardando seleção...</div>
@@ -556,7 +534,7 @@ useEffect(() => {
           <div 
             key={opIdx} 
             className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-xl flex flex-col min-h-[600px] 
-                      w-full md:w-[420px] transition-all duration-500 animate-in fade-in zoom-in slide-in-from-bottom-2"
+                     w-full md:w-[420px] transition-all duration-500 animate-in fade-in zoom-in slide-in-from-bottom-2"
           >
             <div className="p-5 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50 rounded-t-[32px]">
               <div className="flex items-center gap-2">
@@ -725,8 +703,6 @@ useEffect(() => {
       {/* Rodapé fixo ajustado */}
       <div className="fixed bottom-0 left-72 right-0 p-4 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-t border-slate-200 dark:border-zinc-800 z-40 pr-8">
         <div className="max-w-[1600px] mx-auto flex justify-end gap-4">
-          
-          
           <button 
             type="button"
             onClick={() => setShowFinalizeModal(true)} 
@@ -737,7 +713,7 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* MODAL DE PORTFÓLIO: Posicionada corretamente fora do loop */}
+      {/* MODAL DE PORTFÓLIO */}
       <ModalGerenciarPortfolio 
         isOpen={isModalPortfolioOpen}
         onClose={() => setIsModalPortfolioOpen(false)}
@@ -774,7 +750,6 @@ useEffect(() => {
                   onChange={(e) => setSelectedCorretor(e.target.value)}
                   disabled={!!selectedClient?.corretor_id}
                 >
-                  {/* CORREÇÃO: Mostra "Selecione" sempre que não vier travado pelo cliente */}
                   {!selectedClient?.corretor_id && <option value="">Selecione...</option>}
                   {corretores.map(c => <option key={c.id} value={c.id} className="dark:bg-zinc-900">{c.nome}</option>)}
                 </select>
@@ -844,8 +819,6 @@ useEffect(() => {
             </p>
 
             <div className="grid grid-cols-1 gap-3">
-              
-
               <button 
                 type="button"
                 onClick={() => {
