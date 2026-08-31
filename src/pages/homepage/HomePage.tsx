@@ -5,13 +5,14 @@ import {
   Star, ChevronLeft, ChevronRight, 
   LayoutDashboard, Users, Zap, 
   FileSpreadsheet, BarChart3, Wallet, Database,
-  ArrowRight, Instagram, Facebook, MapPin, CalendarCheck2, BotMessageSquare, ArrowUpRight, Clock,
+  ArrowRight, Instagram, Facebook, MapPin, CalendarCheck2, BotMessageSquare, Clock, Globe, Bot, Building2, Share2
 } from "lucide-react";
 
 import LoginModal from "../../components/homepage/LoginModal";
 import RegistroModal from "../../components/homepage/RegistroModal";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import imgCapa from './img/img-capa.png';
 
 export default function HomePage() {
   const { loading } = useAuth();
@@ -49,16 +50,62 @@ export default function HomePage() {
   }
 
   const beneficios = [
-    { id: 'google', icon: <CalendarCheck2 />, title: "Integração", desc: "Sincronização com o Google Agenda. Fez no CRM, aparece na sua agenda Google!", size: "col-span-1 md:col-span-4", theme: "google", tag: "INTEGRAÇÃO" },
-    { id: 'bot', icon: <BotMessageSquare />, title: "Integração com Manychat", desc: "Leads do Instagram e WhatsApp integrados ao CRM.", size: "col-span-1 md:col-span-2", theme: "blue" },
-    { id: 'dash', icon: <LayoutDashboard />, title: "DashBoard - Visão 360º", desc: "Análises em tempo real de vendas, produtividade, gestão de perdas e muito mais", size: "col-span-1 md:col-span-3", theme: "light" },
-    { id: 'zap', icon: <Zap />, title: "Dados preenchidos automaticamente", desc: "Puxamos dados via CNPJ e CEP. Zero digitação manual.", size: "col-span-1 md:col-span-3", theme: "light" },
-    { id: 'kanban', icon: <BarChart3 />, title: "Kanban & Cards", desc: "Funil visual com histórico de mensagens, sinistros e comissões.", size: "col-span-1 md:col-span-2", theme: "light" },
-    { id: 'sinistro', icon: <ShieldCheck />, title: "Gestão de Eventos", desc: "Acompanhamento rigoroso para fidelização máxima no sinistro.", size: "col-span-1 md:col-span-2", theme: "light" },
-    { id: 'fin', icon: <Wallet />, title: "Gestão de Comissões", desc: "Controle de comissões recebidas e repasses a parceiros.", size: "col-span-1 md:col-span-2", theme: "light" },
-    { id: 'parceiros', icon: <Users />, title: "Portal do parceiro", desc: "Portal exclusivo para parceiros alimentarem seu funil.", size: "col-span-1 md:col-span-3", theme: "light" },
-    { id: 'docs', icon: <FileSpreadsheet />, title: "Cotações comparativas", desc: "Comparativos de seguradoras prontos para envio em segundos.", size: "col-span-1 md:col-span-3", theme: "light" }
-  ];
+  // HIGHLIGHTS (BENTO DE DESTAQUE)
+  {
+    id: 'dash',
+    icon: <LayoutDashboard />,
+    title: "Dashboard Gerencial 360º",
+    desc: "Análises em tempo real de clientes, propostas, produtos, seguradoras, produtividade, parceiros, comissões e sinistros.",
+    size: "col-span-1 md:col-span-4",
+    theme: "blue",
+    tag: "VISÃO COMPLETA",
+    highlight: "Análise Gerencial"
+  },
+  {
+    id: 'kanban',
+    icon: <BarChart3 />,
+    title: "Kanban Autossuficiente",
+    desc: "Cards dinâmicos com fluxos inteligentes, automações pós-atendimento e histórico unificado.",
+    size: "col-span-1 md:col-span-2",
+    theme: "dark",
+    tag: "FLUXO AUTOMÁTICO"
+  },
+  {
+    id: 'site-ia',
+    icon: <Globe />,
+    title: "Site + IA Atendendo 24x7",
+    desc: "Site com seu domínio próprio integrado ao CRM e IA nativa captando leads mesmo enquanto você dorme.",
+    size: "col-span-1 md:col-span-3",
+    theme: "dark",
+    tag: "CAPTAÇÃO PASSIVA"
+  },
+  {
+    id: 'cnpj-soct',
+    icon: <Zap />,
+    title: "Busca Inteligente por CNPJ",
+    desc: "Digite o CNPJ e preencha automaticamente a ficha cadastral da empresa e os nomes de todos os sócios.",
+    size: "col-span-1 md:col-span-3",
+    theme: "google",
+    tag: "ZERO DIGITAÇÃO"
+  },
+
+  // GRID REGULAR (OUTROS 16 BENEFÍCIOS)
+  { id: 'multiproprostas', icon: <FileSpreadsheet />, title: "Propostas Múltiplas", desc: "Apresente até 10 propostas simultâneas ao cliente no mesmo comparativo." },
+  { id: 'comissao', icon: <Wallet />, title: "Gestão Avançada de Comissões", desc: "Regras comerciais personalizadas, múltiplos lançamentos e repasses automáticos." },
+  { id: 'parceiros', icon: <Users />, title: "Portal de Parceiros", desc: "Inclusão ilimitada de parceiros internos e externos com repasses e comissões individualizadas." },
+  { id: 'equipe', icon: <ShieldCheck />, title: "Corretores Ilimitados", desc: "Cadastre toda a sua equipe comercial sem custo extra por usuário." },
+  { id: 'sinistro', icon: <Clock />, title: "Gestão de Sinistros", desc: "Organização ponta a ponta e controle de etapas para retenção máxima no sinistro." },
+  { id: 'crosssell', icon: <Zap />, title: "Cross-Sell Estratégico", desc: "Controle de apólices por cliente e alertas de oportunidades para venda cruzada." },
+  { id: 'emailmkt', icon: <MessageCircle />, title: "Email Marketing & Auditoria", desc: "Campanhas com rastreio de aberturas, cliques e ações (sob consulta)." },
+  { id: 'agenda', icon: <CalendarCheck2 />, title: "Agenda Integrada", desc: "Sistema moderno de compromissos com centro de notificações em tempo real." },
+  { id: 'financeiro', icon: <BarChart3 />, title: "Financeiro da Corretora", desc: "Controle absoluto de receitas e despesas com demonstrativo operacional." },
+  { id: 'seguradoras', icon: <Building2 />, title: "Seguradoras Pré-configuradas", desc: "Catálogo pronto para uso instantâneo com as principais companhias do mercado." },
+  { id: 'auditoria', icon: <ShieldCheck />, title: "Relatório de Ações e Auditoria", desc: "Monitoramento de movimentações no CRM para segurança total dos seus dados." },
+  { id: 'b2b-prospect', icon: <Database />, title: "Busca de Empresas B2B", desc: "Mapeamento e prospeção de empresas do seu segmento (consultoria VIP sob demanda)." },
+  { id: 'flexib', icon: <CalendarCheck2 />, title: "Flexibilidade de Assinatura", desc: "Planos mensais, trimestrais, semestrais e anuais para total previsibilidade." },
+  { id: 'suporte', icon: <MessageCircle />, title: "Suporte 100% Humanizado", desc: "Atendimento próximo feito por especialistas do mercado de seguros." },
+  { id: 'customizacao', icon: <Bot />, title: "Evolução Sob Demanda", desc: "Desenvolvimento próprio com constantes atualizações e melhorias solicitadas por corretores." }
+];
 
   const depoimentos = [
     { nome: "Alana P.", cargo: "Mendes Seguros", texto: "O Kanban mudou o jogo. A transição das planilhas para o CRMSEGURO foi o melhor investimento do ano.", img: "https://i.pravatar.cc/100?u=1" },
@@ -83,7 +130,7 @@ export default function HomePage() {
       </a>
 
       {/* --- NAVBAR --- */}
-      <nav className={`fixed w-full z-50 transition-all duration-500 ${scrolled ? "bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl py-3 shadow-2xl border-b border-zinc-200/50 dark:border-zinc-800/50" : "bg-transparent py-6"}`}>
+      <nav className={`fixed w-full z-50 transition-all duration-500 ${scrolled ? "bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl py-3 shadow-2xl border-b border-zinc-200/50 dark:border-zinc-800/50 text-zinc-900 dark:text-zinc-100" : "bg-transparent py-6 text-white"}`}>
         <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
           <div className="flex items-center gap-2 group cursor-pointer">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:rotate-6 transition-transform">
@@ -93,16 +140,15 @@ export default function HomePage() {
           </div>
 
           <div className="hidden md:flex items-center gap-8 text-[11px] font-black uppercase tracking-widest">
-            <a href="#beneficios" className="hover:text-blue-600 transition-colors">BENEFÍCIOS</a>
-            <a href="#site-integrado" className="hover:text-blue-600 transition-colors">SITE INTEGRADO</a>
-            <a href="#precos" className="hover:text-blue-600 transition-colors">PLANOS</a>
+            <a href="#beneficios" className="hover:text-blue-500 transition-colors">BENEFÍCIOS</a>
+            <a href="#site-integrado" className="hover:text-blue-500 transition-colors">SITE INTEGRADO</a>
+            <a href="#precos" className="hover:text-blue-500 transition-colors">PLANOS</a>
             
-            {/* Botão de Login continua igual */}
-            <button onClick={() => setIsLoginOpen(true)} className="text-zinc-600 hover:text-blue-600 transition-all">
+            {/* Ajustado a cor do texto para dinâmico (scrolled) */}
+            <button onClick={() => setIsLoginOpen(true)} className={`${scrolled ? "text-zinc-600 dark:text-zinc-300" : "text-zinc-200"} hover:text-blue-500 transition-all`}>
               LOGIN
             </button>
 
-            {/* ALTERAÇÃO AQUI: Troquei setIsRegisterOpen por setIsFreeTrialModalOpen */}
             <button 
               onClick={() => setIsFreeTrialModalOpen(true)} 
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-xl shadow-blue-500/20 transition-all hover:-translate-y-1 active:scale-95"
@@ -111,124 +157,198 @@ export default function HomePage() {
             </button>
           </div>
 
-          <button className="md:hidden p-2" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+          {/* Cor ajustada para o botão mobile */}
+          <button className={`md:hidden p-2 ${scrolled ? "text-zinc-900 dark:text-white" : "text-white"}`} onClick={() => setIsMenuOpen(!isMenuOpen)}>
             {isMenuOpen ? <X /> : <Menu />}
           </button>
         </div>
       </nav>
 
-      {/* --- MENU MOBILE (ESTILO 2026) --- */}
+      {/* --- MENU MOBILE (REFATORADO) --- */}
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div 
-            initial={{ x: "100%" }} 
-            animate={{ x: 0 }} 
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }} // Movimento mais orgânico
-            className="fixed inset-0 z-[60] bg-white dark:bg-zinc-950 flex flex-col p-8"
+            initial={{ opacity: 0, y: -20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[60] bg-zinc-950/95 backdrop-blur-2xl flex flex-col justify-between p-6 text-white"
           >
             {/* Header do Menu */}
-            <div className="flex justify-between items-center mb-12">
+            <div className="flex justify-between items-center pb-6 border-b border-white/10">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="text-blue-600" size={24} />
-                <span className="text-xl font-black tracking-tighter uppercase">Seguro<span className="text-blue-600">CRM</span></span>
+                <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+                  <ShieldCheck className="text-white" size={22} />
+                </div>
+                <span className="text-lg font-black tracking-tighter uppercase">Seguro<span className="text-blue-500">CRM</span></span>
               </div>
-              <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-zinc-100 dark:bg-zinc-900 rounded-full">
-                <X size={24} />
+              <button 
+                onClick={() => setIsMenuOpen(false)} 
+                className="p-2.5 bg-zinc-900 border border-white/10 rounded-full text-zinc-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
               </button>
             </div>
 
-            <div className="flex flex-col gap-6 text-3xl font-black uppercase tracking-tighter">
-              <a href="#beneficios" onClick={() => setIsMenuOpen(false)} className="hover:text-blue-600 transition-colors">Benefícios</a>
-              <a href="#site-integrado" onClick={() => setIsMenuOpen(false)} className="hover:text-blue-600 transition-colors">Site Premium</a>
-              <a href="#precos" onClick={() => setIsMenuOpen(false)} className="hover:text-blue-600 transition-colors">Planos</a>
+            {/* Links de Navegação */}
+            <div className="flex flex-col gap-3 my-auto py-6">
+              <a 
+                href="#beneficios" 
+                onClick={() => setIsMenuOpen(false)} 
+                className="flex items-center justify-between p-4 rounded-xl bg-zinc-900/50 border border-white/5 hover:border-blue-500/30 text-zinc-300 font-bold text-sm tracking-wider uppercase transition-all"
+              >
+                <span>Benefícios</span>
+                <ArrowRight size={16} className="text-blue-500" />
+              </a>
               
-              <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-4" />
-              
+              <a 
+                href="#site-integrado" 
+                onClick={() => setIsMenuOpen(false)} 
+                className="flex items-center justify-between p-4 rounded-xl bg-zinc-900/50 border border-white/5 hover:border-blue-500/30 text-zinc-300 font-bold text-sm tracking-wider uppercase transition-all"
+              >
+                <span>Site Integrado</span>
+                <ArrowRight size={16} className="text-blue-500" />
+              </a>
+
+              <a 
+                href="#precos" 
+                onClick={() => setIsMenuOpen(false)} 
+                className="flex items-center justify-between p-4 rounded-xl bg-zinc-900/50 border border-white/5 hover:border-blue-500/30 text-zinc-300 font-bold text-sm tracking-wider uppercase transition-all"
+              >
+                <span>Planos</span>
+                <ArrowRight size={16} className="text-blue-500" />
+              </a>
+            </div>
+
+            {/* Ações / Botões */}
+            <div className="flex flex-col gap-3 pt-6 border-t border-white/10">
               <button 
                 onClick={() => { setIsLoginOpen(true); setIsMenuOpen(false); }} 
-                className="text-left text-zinc-500 hover:text-blue-600 transition-colors text-xl"
+                className="w-full py-3.5 rounded-xl border border-white/10 bg-zinc-900 text-zinc-300 font-bold text-xs uppercase tracking-widest hover:bg-zinc-800 transition-colors"
               >
                 Entrar no Sistema
               </button>
               
               <button 
                 onClick={() => { setIsFreeTrialModalOpen(true); setIsMenuOpen(false); }} 
-                className="bg-blue-600 text-white p-6 rounded-[24px] text-center text-xl shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
+                className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-widest shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
               >
-                CRIAR CONTA GRÁTIS
+                Criar Conta Grátis
               </button>
-            </div>
-            
-            {/* Rodapé do Menu Mobile */}
-            <div className="mt-auto pb-8 text-center">
-              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">© Seguro CRM 2026</p>
+
+              <p className="text-[10px] font-bold text-center text-zinc-600 uppercase tracking-[0.2em] pt-4">
+                © Seguro CRM 2026
+              </p>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* --- SESSÃO HERO REFATORADA: ELEGÂNCIA & IMPACTO --- */}
-      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-white pt-24 lg:pt-32">
+      {/* --- SESSÃO HERO REFATORADA: ELEGÂNCIA COM IMAGEM DE CAPA ESCURA --- */}
+      <section className="relative min-h-[95vh] flex items-center justify-center overflow-hidden bg-zinc-950 pt-24 lg:pt-32 text-white">
         
-        {/* BACKGROUND: VÍDEO SUTIL COM OVERLAY LIGHT */}
+        {/* BACKGROUND: IMAGEM DE CAPA COM OVERLAY ESCURO PARA CONTRASTE */}
         <div className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-white via-white/40 to-white z-10" />
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            key="hero-video"
-            className="w-full h-full object-cover opacity-20"
-          >
-            <source src="https://www.apple.com/105/media/us/mac/family/2024/60787e91-496e-443b-a25e-3840742d99d1/anim/welcome/xlarge.mp4" type="video/mp4" />
-          </video>
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/80 via-zinc-950/60 to-zinc-950 z-10" />
+          <img 
+            src="/img/img-capa.png" 
+            alt="Capa SeguroCRM" 
+            className="w-full h-full object-cover opacity-40 scale-105" 
+          />
         </div>
 
         <div className="max-w-7xl mx-auto px-6 relative z-20 w-full">
           <div className="flex flex-col items-center text-center mb-16">
             
-            {/* Badge Minimalista Estilo RD Station */}
+            {/* Badge Minimalista Estilo Tech */}
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-8 px-4 py-1.5 rounded-full bg-blue-50 border border-blue-100 shadow-sm"
+              className="mb-8 px-5 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 backdrop-blur-md shadow-sm flex items-center gap-2"
             >
-              <span className="text-blue-600 text-[12px] font-bold uppercase tracking-wider">
-                O melhor CRM do Brasil para Corretores de Seguros!
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="text-blue-400 text-[12px] font-bold uppercase tracking-wider">
+                O melhor CRM do Brasil para Corretores de Seguros
               </span>
             </motion.div>
 
-            {/* Título com Hierarquia Equilibrada */}
+            {/* Título com Hierarquia Equilibrada & Frase de Impacto */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
               className="max-w-5xl"
             >
-              <h1 className="text-5xl md:text-7xl lg:text-8xl font-black leading-[1.1] tracking-tight text-zinc-900 mb-8">
-                Organização gera <br />
-                <span className="text-blue-600 relative inline-block">
-                  vendas!
-                  <svg className="absolute -bottom-2 left-0 w-full h-3 text-blue-200 -z-10" viewBox="0 0 300 12" fill="none">
+              <h1 className="text-5xl md:text-7xl lg:text-8xl font-black leading-[1.05] tracking-tight text-white mb-6">
+                Um CRM feito por <br />
+                <span className="text-blue-500 relative inline-block">
+                  Corretores!
+                  <svg className="absolute -bottom-2 left-0 w-full h-3 text-blue-500/30 -z-10" viewBox="0 0 300 12" fill="none">
                     <path d="M1 9.5C50 3.5 150 1.5 299 9.5" stroke="currentColor" strokeWidth="6" strokeLinecap="round"/>
                   </svg>
                 </span>
               </h1>
             </motion.div>
 
-            {/* Subtítulo com Respiro */}
+            {/* Subtítulo com Respiro & Propósito */}
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.3 }}
-              className="text-lg md:text-xl text-zinc-500 max-w-2xl mb-12 leading-relaxed"
+              className="text-lg md:text-xl text-zinc-400 max-w-3xl mb-12 leading-relaxed"
             >
-              Abandone as planilhas. Centralize seus leads, apólices e renovações com <span className="text-zinc-900 font-semibold">Inteligência Artificial SDR inclusa.</span>
+              Um ecossistema robusto <span className="text-white font-semibold">que facilita a vida dos corretores de seguros</span>. Abandone as planilhas e escale sua corretora com inteligência, automação e dados estratégicos integrados.
             </motion.p>
 
-            {/* CTAs Limpos - AQUI LÊ A VARIÁVEL */}
+            {/* GRID DE VANTAGENS DO CORE (Estilo Bento Reforçado) */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 max-w-6xl w-full mb-12"
+            >
+              <div className="p-5 rounded-2xl bg-zinc-900/80 backdrop-blur-md border border-white/10 flex flex-col items-center text-center group hover:-translate-y-1 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300">
+                  <Users className="w-6 h-6 text-blue-400 group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-sm md:text-base font-bold text-white tracking-tight mb-1">Usuários Ilimitados</h3>
+                <p className="text-xs md:text-sm text-zinc-400 font-normal leading-snug">Não cobramos por usuários</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-zinc-900/80 backdrop-blur-md border border-white/10 flex flex-col items-center text-center group hover:-translate-y-1 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300">
+                  <Globe className="w-6 h-6 text-blue-400 group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-sm md:text-base font-bold text-white tracking-tight mb-1">Site Integrado</h3>
+                <p className="text-xs md:text-sm text-zinc-400 font-normal leading-snug">Pronto para conversão</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-zinc-900/80 backdrop-blur-md border border-white/10 flex flex-col items-center text-center group hover:-translate-y-1 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300">
+                  <Bot className="w-6 h-6 text-blue-400 group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-sm md:text-base font-bold text-white tracking-tight mb-1">IA 24x7 no Site</h3>
+                <p className="text-xs md:text-sm text-zinc-400 font-normal leading-snug">Atendimento automatizado</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-zinc-900/80 backdrop-blur-md border border-white/10 flex flex-col items-center text-center group hover:-translate-y-1 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300">
+                  <Building2 className="w-6 h-6 text-blue-400 group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-sm md:text-base font-bold text-white tracking-tight mb-1">+28 Mi Empresas</h3>
+                <p className="text-xs md:text-sm text-zinc-400 font-normal leading-snug">Dados de sócios <span className="text-[10px] text-zinc-500 block">*sob consulta</span></p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-zinc-900/80 backdrop-blur-md border border-white/10 flex flex-col items-center text-center group hover:-translate-y-1 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 sm:col-span-2 md:col-span-1">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300">
+                  <Share2 className="w-6 h-6 text-blue-400 group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-sm md:text-base font-bold text-white tracking-tight mb-1">Parceiros On-line</h3>
+                <p className="text-xs md:text-sm text-zinc-400 font-normal leading-snug">Gestão de parcerias</p>
+              </div>
+            </motion.div>
+
+            {/* CTAs Limpos */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -237,14 +357,14 @@ export default function HomePage() {
             >
               <button 
                 onClick={() => setIsFreeTrialModalOpen(true)}
-                className="px-10 py-5 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 group"
+                className="px-10 py-5 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-600/30 hover:bg-blue-500 transition-all flex items-center justify-center gap-2 group"
               >
                 Teste grátis agora 
                 <ArrowRight className="group-hover:translate-x-1 transition-transform" size={20} />
               </button>
               <button 
                 onClick={() => setIsFreeTrialModalOpen(true)}
-                className="px-10 py-5 bg-white text-zinc-700 border border-zinc-200 rounded-xl font-bold text-lg hover:bg-zinc-50 transition-all active:scale-95"
+                className="px-10 py-5 bg-zinc-900/80 text-white border border-white/10 rounded-xl font-bold text-lg hover:bg-zinc-800 transition-all active:scale-95"
               >
                 Ver demonstração
               </button>
@@ -258,11 +378,11 @@ export default function HomePage() {
             transition={{ delay: 0.7, duration: 1 }}
             className="relative max-w-6xl mx-auto group"
           >
-            <div className="absolute -inset-4 bg-gradient-to-b from-blue-100/50 to-transparent blur-3xl rounded-[50px] opacity-50" />
+            <div className="absolute -inset-4 bg-gradient-to-b from-blue-600/20 to-transparent blur-3xl rounded-[50px] opacity-40" />
             
-            <div className="relative overflow-hidden rounded-2xl border border-zinc-200 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] bg-white p-2">
+            <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] bg-zinc-900 p-2">
               <img 
-                src="/img/kanban.png" 
+                src={imgCapa}
                 alt="Interface do Sistema SeguroCRM" 
                 className="w-full h-auto rounded-xl" 
               />
@@ -272,15 +392,15 @@ export default function HomePage() {
             <motion.div 
               animate={{ y: [0, -10, 0] }}
               transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute -right-6 top-1/4 hidden lg:block bg-white p-4 rounded-2xl shadow-xl border border-zinc-100 z-30"
+              className="absolute -right-6 top-1/4 hidden lg:block bg-zinc-900/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-white/10 z-30"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
+                <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400">
                   <Check size={20} strokeWidth={3} />
                 </div>
                 <div className="text-left">
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">Status IA</p>
-                  <p className="text-sm text-zinc-900 font-black italic">Lead Qualificado!</p>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">Status IA 24x7</p>
+                  <p className="text-sm text-white font-black italic">Lead Qualificado no Site!</p>
                 </div>
               </div>
             </motion.div>
@@ -288,100 +408,132 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* --- SESSÃO BENEFÍCIOS (ESTRUTURA BENTO GRID 2026) --- */}
-      <section id="beneficios" className="py-32 bg-white relative overflow-hidden">
+      {/* --- SESSÃO BENEFÍCIOS (BENTO GRID HIGH-TECH) --- */}
+      <section id="beneficios" className="py-24 md:py-32 bg-zinc-950 relative overflow-hidden text-white border-t border-white/10">
         
-        {/* Linha decorativa suave no topo */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-zinc-200 to-transparent" />
+        {/* Luzes de Fundo Decorativas */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full pointer-events-none" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+          
           {/* Header da Sessão */}
-          <div className="flex flex-col md:flex-row justify-between items-end mb-20 gap-8">
-            <div className="max-w-2xl">
-              <motion.span 
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                className="text-blue-600 font-bold tracking-[0.2em] uppercase text-xs mb-4 block"
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-8">
+            <div className="max-w-3xl">
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="mb-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest"
               >
-                Tecnologia de Ponta
-              </motion.span>
-              <h2 className="text-4xl lg:text-7xl font-black tracking-tighter text-zinc-900 leading-[0.9]">
+                <Zap size={14} className="text-blue-400 animate-pulse" />
+                <span>Ecossistema Completo para Corretoras</span>
+              </motion.div>
+              
+              <h2 className="text-4xl sm:text-5xl lg:text-7xl font-black tracking-tight text-white leading-[1.05]">
                 Feito para quem entende que <br />
-                <span className="text-zinc-400 font-light">tempo é o seu maior ativo.</span>
+                <span className="text-blue-500">tempo é o seu maior ativo.</span>
               </h2>
             </div>
-            <p className="text-zinc-500 font-medium max-w-xs text-lg leading-relaxed border-l-2 border-blue-600 pl-6">
-              Desenvolvemos cada detalhe para resolver a dor de quem vende seguros todos os dias.
+
+            <p className="text-zinc-400 font-medium max-w-sm text-base md:text-lg leading-relaxed border-l-2 border-blue-600 pl-5">
+              20 soluções integradas em uma única plataforma desenvolvida por quem vive o dia a dia do mercado segurador.
             </p>
           </div>
 
-          {/* GRID BENTO ASSIMÉTRICA - O CORAÇÃO DO NOVO DESIGN */}
-          <div className="grid grid-cols-1 md:grid-cols-6 auto-rows-[300px] gap-4">
-            {beneficios.map((b, i) => (
+          {/* GRID BENTO PRINCIPAL (TOP 4 DESTAQUES) */}
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-5 mb-6">
+            {beneficios.slice(0, 4).map((b, i) => {
+              const itemSize = b.size || "col-span-1 md:col-span-3";
+              const isLarge = itemSize.includes('md:col-span-4');
+
+              return (
+                <motion.div
+                  key={b.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: i * 0.1 }}
+                  viewport={{ once: true }}
+                  className={`
+                    relative group overflow-hidden rounded-3xl p-8 flex flex-col justify-between transition-all duration-300 border
+                    ${itemSize}
+                    ${b.theme === 'google' ? 'bg-gradient-to-br from-blue-900/40 via-zinc-900 to-zinc-950 border-blue-500/30 hover:border-blue-500' : 
+                      b.theme === 'blue' ? 'bg-gradient-to-br from-blue-600 to-indigo-700 border-blue-400/40 hover:shadow-2xl hover:shadow-blue-500/20' : 
+                      'bg-zinc-900/80 backdrop-blur-xl border-white/10 hover:border-blue-500/50 hover:bg-zinc-900'}
+                  `}
+                >
+                  {/* Tag Superior */}
+                  <div className="flex justify-between items-start mb-8 relative z-10">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 ${
+                      b.theme === 'blue' ? 'bg-white/20 text-white' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                    }`}>
+                      {cloneElement(b.icon as React.ReactElement<any>, { size: 24 })}
+                    </div>
+                    
+                    {b.tag && (
+                      <span className={`text-[10px] font-black px-3 py-1 rounded-full tracking-wider uppercase ${
+                        b.theme === 'blue' ? 'bg-white/20 text-white' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                      }`}>
+                        {b.tag}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Conteúdo do Card */}
+                  <div className="relative z-10">
+                    <h3 className={`font-black tracking-tight mb-3 ${isLarge ? 'text-2xl sm:text-4xl' : 'text-xl sm:text-2xl'}`}>
+                      {b.title}
+                    </h3>
+                    <p className={`font-normal leading-relaxed ${b.theme === 'blue' ? 'text-white/90' : 'text-zinc-400'} ${isLarge ? 'text-base sm:text-lg max-w-2xl' : 'text-sm'}`}>
+                      {b.desc}
+                    </p>
+                  </div>
+
+                  {/* Brilho no Hover */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* GRID DE CARDS COMPACTOS (OUTROS 16 BENEFÍCIOS) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {beneficios.slice(4).map((b, i) => (
               <motion.div
                 key={b.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.05 }}
+                initial={{ opacity: 0, y: 15 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: i * 0.03 }}
                 viewport={{ once: true }}
-                whileHover={{ y: -5 }}
-                className={`
-                  relative group overflow-hidden rounded-[48px] p-10 flex flex-col justify-between transition-all duration-500
-                  col-span-1 ${b.size}
-                  ${b.theme === 'google' ? 'bg-[#4285F4] text-white' : 
-                    b.theme === 'dark' ? 'bg-zinc-900 text-white' : 
-                    b.theme === 'blue' ? 'bg-blue-600 text-white' : 
-                    'bg-zinc-50 border border-zinc-100 text-zinc-900 hover:bg-white hover:shadow-2xl hover:shadow-zinc-200/50'}
-                `}
+                className="p-6 rounded-2xl bg-zinc-900/50 border border-white/5 hover:border-blue-500/40 hover:bg-zinc-900/90 hover:-translate-y-1 transition-all duration-300 flex items-start gap-4 group"
               >
-                {/* Ícone gigante decorativo apenas nos cards grandes */}
-                {b.size.includes('md:col-span-4') && (
-                  <div className="absolute right-[-5%] bottom-[-10%] opacity-10 text-white group-hover:scale-110 transition-transform duration-700 pointer-events-none">
-                    {cloneElement(b.icon as React.ReactElement<any>, { size: 380 })}
-                  </div>
-                )}
-
-                <div className="relative z-10 flex justify-between items-start">
-                  <div className={`
-                    w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500
-                    ${b.theme === 'google' ? 'bg-white shadow-lg' : 
-                      b.theme === 'dark' ? 'bg-zinc-800' : 
-                      b.theme === 'blue' ? 'bg-white/20' : 
-                      'bg-white shadow-sm'}
-                  `}>
-                    {cloneElement(b.icon as React.ReactElement<any>, { 
-                      size: 28, 
-                      className: b.theme === 'light' ? 'text-blue-600' : 
-                                b.theme === 'google' ? 'text-[#4285F4]' : 'text-white' 
-                    })}
-                  </div>
-                  {b.tag && (
-                    <span className={`text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest uppercase ${
-                      b.theme === 'google' ? 'bg-blue-700/30 text-white border border-white/20' : 'bg-blue-500 text-white'
-                    }`}>
-                      {b.tag}
-                    </span>
-                  )}
+                <div className="w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0 text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                  {cloneElement(b.icon as React.ReactElement<any>, { size: 20 })}
                 </div>
 
-                <div className="relative z-10">
-                  <h3 className={`font-black tracking-tighter leading-tight mb-4 ${b.size.includes('md:col-span-4') ? 'text-4xl' : 'text-2xl'}`}>
+                <div>
+                  <h4 className="text-base font-bold text-white tracking-tight mb-1 group-hover:text-blue-400 transition-colors">
                     {b.title}
-                  </h3>
-                  <p className={`font-medium leading-relaxed ${
-                    b.theme === 'light' ? 'text-zinc-500' : 'text-white/80'
-                  } ${b.size.includes('md:col-span-4') ? 'max-w-md text-lg' : 'text-sm'}`}>
+                  </h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-normal">
                     {b.desc}
                   </p>
-                </div>
-
-                {/* Arrow link no topo direito */}
-                <div className="absolute top-10 right-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <ArrowUpRight size={24} className={b.theme === 'light' ? 'text-blue-600' : 'text-white'} />
                 </div>
               </motion.div>
             ))}
           </div>
+
+          {/* Chamada Final de Impacto */}
+          <div className="mt-16 text-center">
+            <button 
+              onClick={() => setIsFreeTrialModalOpen(true)}
+              className="inline-flex items-center gap-3 px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase tracking-wider shadow-lg shadow-blue-600/30 transition-all hover:scale-105"
+            >
+              <span>Quero transformar minha corretora</span>
+              <ArrowRight size={18} />
+            </button>
+          </div>
+
         </div>
       </section>
 
@@ -553,7 +705,7 @@ export default function HomePage() {
               >
                 {/* Em vez de logos de clientes, usamos selos de tecnologia e categorias de seguros */}
                 {[
-                  "Criptografia SSL 256-bits", "LGPD Compliant", "Integração Google API", 
+                  "Criptografia SSL 256-bits", "LGPD Compliant",
                   "Multiplas Cotações", "Integração com WhatsApp - Extensão", "Backups Diários"
                 ].map((text, i) => (
                   <div key={i} className="px-8 py-4 rounded-2xl bg-zinc-50 border border-zinc-100 flex items-center gap-3 whitespace-nowrap">
