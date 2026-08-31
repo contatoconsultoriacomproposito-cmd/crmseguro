@@ -3,6 +3,7 @@ import { motion } from "framer-motion"
 import { X, Mail, Lock, Loader2, LogIn, ShieldCheck } from "lucide-react"
 import { supabase } from "../../lib/supabaseClient"
 import { useNavigate } from "react-router-dom"
+import { useAuth } from "../../auth/AuthContext"
 
 export default function LoginModal({ onClose, onSwitch }: any) {
   const navigate = useNavigate()
@@ -11,20 +12,20 @@ export default function LoginModal({ onClose, onSwitch }: any) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resetSent, setResetSent] = useState(false)
+  
+  // Pegamos a nova função de login blindada do Contexto
+  const { signIn } = useAuth()
 
   async function handleForgotPassword() {
     if (!email) {
       setError("Por favor, digite seu e-mail para recuperar a senha.")
       return
     }
-
     setLoading(true)
     setResetSent(false)
-    
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     })
-
     if (error) {
       setError(error.message)
       setResetSent(false)
@@ -41,29 +42,24 @@ export default function LoginModal({ onClose, onSwitch }: any) {
     setError(null)
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (authError) throw authError
-
-      if (authData?.user) {
-        // Sucesso: fecha o modal e navega para o dashboard.
-        // O AuthProvider cuidará da validação de perfil (inativo) e do preenchimento dos estados em background.
-        onClose?.()
-        navigate("/dashboard")
-      }
-    } catch (err: any) {
-      setLoading(false)
+      // Delega todo o processo sujo para o Contexto
+      await signIn(email, password)
       
-      // Quando a senha estiver errada, não executamos nenhum signOut.
-      // Apenas exibimos a mensagem de erro e a interface permanece limpa para a próxima tentativa.
-      if (err.message?.includes("Invalid login credentials")) {
+      // Se a promisse resolver sem erros, o login foi 100% aprovado!
+      onClose?.()
+      navigate("/dashboard")
+      
+    } catch (err: any) {
+      // Capturamos o erro exato e não deixamos a tela piscar
+      if (err.message === "INACTIVE_ACCOUNT") {
+        setError("Sua conta está inativa ou o período de testes expirou. Entre em contato com o suporte.")
+      } else if (err.message?.includes("Invalid login credentials")) {
         setError("E-mail ou senha incorretos.")
       } else {
         setError(err.message || "Houve um erro ao acessar a conta.")
       }
+    } finally {
+      setLoading(false)
     }
   }
 
