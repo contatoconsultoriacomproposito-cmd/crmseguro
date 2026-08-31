@@ -6,11 +6,8 @@ interface AuthContextData {
   user: User | null
   userProfile: any | null
   loading: boolean
-  authError: string | null
-  setAuthError: (error: string | null) => void
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
-  signIn: (email: string, pass: string) => Promise<void> // <- NOVA FUNÇÃO
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData)
@@ -19,63 +16,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
-  const [authError, setAuthError] = useState<string | null>(null)
 
-  const isAuthProcessing = useRef(false) // TRAVA MESTRA: Impede recarregamentos fantasmas
+  const isLoggingOut = useRef(false)
   const hasInitialized = useRef(false)
   const activeUserIdRef = useRef<string | null>(null)
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase.from("usuarios_perfis").select("*").eq("id", userId).maybeSingle()
-    return data
-  }, [])
-
   const handleSignOut = useCallback(async () => {
-    if (isAuthProcessing.current) return 
-    isAuthProcessing.current = true
+    if (isLoggingOut.current) return
+    isLoggingOut.current = true
+
+    console.log("🚨 [AUTH] Iniciando limpeza de sessão...")
 
     try {
       await supabase.auth.signOut().catch(() => {})
     } finally {
       localStorage.removeItem("sb-corretor-auth")
+      localStorage.clear()
+
       setUser(null)
       setUserProfile(null)
       activeUserIdRef.current = null
 
       if (window.location.pathname !== "/" && !window.location.pathname.startsWith("/portal")) {
+        console.log("✅ [AUTH] Redirecionando para Home...")
         window.location.href = "/"
       } else {
         setLoading(false)
       }
-      isAuthProcessing.current = false
+      
+      // Garante a liberação da trava de logout para os próximos logins
+      isLoggingOut.current = false
     }
   }, [])
 
-  // A MÁGICA ACONTECE AQUI: Uma função blindada de login
-  const signIn = async (email: string, pass: string) => {
-    isAuthProcessing.current = true; // Fecha os olhos do listener global
-    
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass })
-      if (error) throw error
+  const fetchProfile = useCallback(async (userId: string) => {
+    console.log(`🔍 [AUTH] Buscando perfil: ${userId}`)
+    const { data, error } = await supabase
+      .from("usuarios_perfis")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle()
 
-      if (data?.user) {
-        const profile = await fetchProfile(data.user.id)
-        
-        if (profile?.ativo === false) {
-          await supabase.auth.signOut().catch(() => {}) // Desloga silenciosamente
-          throw new Error("INACTIVE_ACCOUNT") // Envia o erro pro modal
-        }
-
-        // Se estiver tudo certo, carrega o usuário no estado global
-        activeUserIdRef.current = data.user.id
-        setUser(data.user)
-        setUserProfile(profile)
-      }
-    } finally {
-      isAuthProcessing.current = false; // Abre os olhos do listener novamente
+    if (error) {
+      console.error("❌ [AUTH] Erro ao buscar perfil:", error)
+      return null
     }
-  }
+    return data
+  }, [])
 
   const refreshProfile = useCallback(async () => {
     const { data: { user: currentUser } } = await supabase.auth.getUser()
@@ -94,62 +81,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (hasInitialized.current) return
     hasInitialized.current = true
+
     let mounted = true
+    let isInitializing = true
+
+    console.log("🚀 [AUTH] Boot iniciado...")
 
     async function initialize() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
+
         if (!session?.user) {
+          console.log("⚠️ [AUTH] Sem sessão inicial no cache.")
           if (mounted) setLoading(false)
+          isInitializing = false
           return
         }
 
-        const profile = await fetchProfile(session.user.id)
+        console.log("2️⃣ [AUTH] Validando token no servidor...")
+        const { data: { user: verifiedUser }, error: userError } = await supabase.auth.getUser()
+
+        if (userError || !verifiedUser) {
+          console.error("❌ [AUTH] Sessão inválida no boot.")
+          if (mounted) await handleSignOut()
+          return
+        }
+
+        const profile = await fetchProfile(verifiedUser.id)
+
         if (mounted) {
           if (profile?.ativo === false) {
-            await supabase.auth.signOut().catch(() => {})
-            setUser(null)
-            setUserProfile(null)
-            setLoading(false)
+            await handleSignOut()
           } else {
-            activeUserIdRef.current = session.user.id
-            setUser(session.user)
+            activeUserIdRef.current = verifiedUser.id
+            setUser(verifiedUser)
             setUserProfile(profile)
+            console.log("✅ [AUTH] Boot concluído com sucesso.")
             setLoading(false)
           }
         }
       } catch (error) {
+        console.error("💥 [AUTH] Erro crítico no boot:", error)
         if (mounted) await handleSignOut()
+      } finally {
+        isInitializing = false
       }
     }
+
     initialize()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // IGNORA OS EVENTOS SE O USUÁRIO ESTIVER APERTANDO O BOTÃO DE LOGIN
-      if (isAuthProcessing.current) return;
-
+      if (isInitializing) return
       if (!mounted) return
 
       if (event === 'SIGNED_OUT') {
         activeUserIdRef.current = null
-        setUser(null)
-        setUserProfile(null)
-        setLoading(false)
+        await handleSignOut()
       } 
       else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session?.user && activeUserIdRef.current !== session.user.id) {
-          setLoading(true)
-          const profile = await fetchProfile(session.user.id)
-          
-          if (profile?.ativo === false) {
-            await supabase.auth.signOut().catch(() => {})
-            activeUserIdRef.current = null
-            setUser(null)
-            setUserProfile(null)
+        if (session?.user) {
+          if (activeUserIdRef.current === session.user.id) {
+            console.log("⏭️ [AUTH] Trava Ref: Usuário já ativo. Ignorando re-fetch silencioso.")
             setLoading(false)
             return
           }
+
+          console.log(`🔔 [AUTH] Evento: ${event} - Validando perfil antes de liberar acesso...`)
           
+          // Mantém o loading ativo enquanto busca o perfil para evitar a colisão com o ProtectedRoute
+          setLoading(true)
+
+          const profile = await fetchProfile(session.user.id)
+
+          if (profile?.ativo === false) {
+            console.warn("🚫 [AUTH] Tentativa de login com conta inativa detectada!")
+            activeUserIdRef.current = null
+            await handleSignOut()
+            return
+          }
+
           activeUserIdRef.current = session.user.id
           setUser(session.user)
           setUserProfile(profile)
@@ -165,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile, handleSignOut])
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, authError, setAuthError, signOut: handleSignOut, refreshProfile, signIn }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, signOut: handleSignOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )
