@@ -1,184 +1,632 @@
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react"
+
+import type { ReactNode } from "react"
 import type { User } from "@supabase/supabase-js"
+
 import { supabase } from "../lib/supabaseClient"
+
+interface SignInResult {
+  success: boolean
+  message: string
+}
 
 interface AuthContextData {
   user: User | null
   userProfile: any | null
   loading: boolean
+
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<SignInResult>
+
   signOut: () => Promise<void>
+
   refreshProfile: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextData>({} as AuthContextData)
+const AuthContext = createContext<AuthContextData>(
+  {} as AuthContextData
+)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+
+export function AuthProvider({
+  children,
+}: {
+  children: ReactNode
+}) {
+
+
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
-
-  const isLoggingOut = useRef(false)
-  const hasInitialized = useRef(false)
+  const mountedRef = useRef(true)
+  const initializingRef = useRef(true)
+  const signingInRef = useRef(false)
+  const signingOutRef = useRef(false)
+  const initializedRef = useRef(false)
   const activeUserIdRef = useRef<string | null>(null)
+  const clearAuthState = useCallback(() => {
+    if (!mountedRef.current) return
 
-  const handleSignOut = useCallback(async () => {
-    if (isLoggingOut.current) return
-    isLoggingOut.current = true
+    activeUserIdRef.current = null
 
-    console.log("🚨 [AUTH] Iniciando limpeza de sessão...")
+    setUser(null)
+    setUserProfile(null)
+  }, [])
+
+  const fetchProfile = useCallback(
+    async (userId: string) => {
+      console.log("Buscando perfil:", userId)
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("usuarios_perfis")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle()
+
+      if (error) {
+        console.error(
+          "Erro ao buscar perfil:",
+          error
+        )
+
+        return {
+          profile: null,
+          error,
+        }
+      }
+
+      return {
+        profile: data,
+        error: null,
+      }
+    },
+    []
+  )
+
+  const signIn = useCallback(
+    async (
+      email: string,
+      password: string
+    ): Promise<SignInResult> => {
+      /*
+       * Evita duas tentativas simultâneas.
+       */
+      if (signingInRef.current) {
+        return {
+          success: false,
+          message:
+            "Já existe uma tentativa de acesso em andamento.",
+        }
+      }
+
+      signingInRef.current = true
+
+      console.log("Iniciando login...")
+
+      try {
+        const {
+          data,
+          error,
+        } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        })
+
+        if (error) {
+          console.warn(
+            "Falha de autenticação:",
+            error.message
+          )
+
+          return {
+            success: false,
+            message:
+              "E-mail ou senha incorretos.",
+          }
+        }
+
+        const authenticatedUser =
+          data?.user
+
+        if (!authenticatedUser) {
+          return {
+            success: false,
+            message:
+              "Não foi possível validar sua conta. Tente novamente.",
+          }
+        }
+
+        console.log(
+          "Usuário autenticado:",
+          authenticatedUser.id
+        )
+
+        const {
+          profile,
+          error: profileError,
+        } = await fetchProfile(
+          authenticatedUser.id
+        )
+
+        if (profileError) {
+          console.error(
+            "Erro ao consultar perfil."
+          )
+
+          await supabase.auth.signOut({
+            scope: "local",
+          }).catch(() => {})
+
+          clearAuthState()
+
+          return {
+            success: false,
+            message:
+              "Não foi possível verificar os dados da sua conta. Tente novamente.",
+          }
+        }
+
+        if (!profile) {
+          console.warn(
+            "Usuário autenticado sem perfil."
+          )
+
+          await supabase.auth.signOut({
+            scope: "local",
+          }).catch(() => {})
+
+          clearAuthState()
+
+          return {
+            success: false,
+            message:
+              "Seu perfil de acesso não foi encontrado. Entre em contato com o suporte.",
+          }
+        }
+
+        if (profile.ativo === false) {
+          console.warn(
+            "Conta inativa ou expirada."
+          )
+
+          await supabase.auth.signOut({
+            scope: "local",
+          }).catch(() => {})
+
+          clearAuthState()
+
+          return {
+            success: false,
+            message:
+              "Sua conta está inativa ou expirada. Entre em contato com o suporte para regularizar seu acesso.",
+          }
+        }
+
+        activeUserIdRef.current =
+          authenticatedUser.id
+
+        if (mountedRef.current) {
+          setUser(authenticatedUser)
+          setUserProfile(profile)
+        }
+
+        console.log(
+          "Login concluído com sucesso."
+        )
+
+        return {
+          success: true,
+          message: "",
+        }
+      } catch (error: any) {
+        console.error(
+          "Erro inesperado no login:",
+          error
+        )
+
+        clearAuthState()
+
+        return {
+          success: false,
+          message:
+            error?.message ||
+            "Houve um erro inesperado ao acessar sua conta.",
+        }
+      } finally {
+        signingInRef.current = false
+      }
+    },
+    [clearAuthState, fetchProfile]
+  )
+
+  const signOut = useCallback(async () => {
+    if (signingOutRef.current) return
+
+    signingOutRef.current = true
+
+    console.log("Iniciando logout...")
 
     try {
-      await supabase.auth.signOut().catch(() => {})
+      await supabase.auth.signOut({
+        scope: "local",
+      })
+    } catch (error) {
+      console.warn(
+        "Erro durante logout:",
+        error
+      )
     } finally {
-      localStorage.removeItem("sb-corretor-auth")
-      localStorage.clear()
+      clearAuthState()
 
-      setUser(null)
-      setUserProfile(null)
-      activeUserIdRef.current = null
+      signingOutRef.current = false
 
-      if (window.location.pathname !== "/" && !window.location.pathname.startsWith("/portal")) {
-        console.log("✅ [AUTH] Redirecionando para Home...")
-        window.location.href = "/"
-      } else {
-        setLoading(false)
-      }
-      
-      // Garante a liberação da trava de logout para os próximos logins
-      isLoggingOut.current = false
+      console.log(
+        "Logout concluído."
+      )
     }
-  }, [])
+  }, [clearAuthState])
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    console.log(`🔍 [AUTH] Buscando perfil: ${userId}`)
-    const { data, error } = await supabase
-      .from("usuarios_perfis")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle()
 
-    if (error) {
-      console.error("❌ [AUTH] Erro ao buscar perfil:", error)
-      return null
-    }
-    return data
-  }, [])
+  const refreshProfile = useCallback(
+    async () => {
+      try {
+        const {
+          data: {
+            user: currentUser,
+          },
+        } =
+          await supabase.auth.getUser()
 
-  const refreshProfile = useCallback(async () => {
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
-    if (currentUser) {
-      const data = await fetchProfile(currentUser.id)
-      if (data?.ativo === false) {
-        await handleSignOut()
-      } else {
-        activeUserIdRef.current = currentUser.id
+        if (!currentUser) {
+          clearAuthState()
+          return
+        }
+
+        const {
+          profile,
+          error,
+        } = await fetchProfile(
+          currentUser.id
+        )
+
+        if (error || !profile) {
+          clearAuthState()
+          return
+        }
+
+        if (profile.ativo === false) {
+          console.warn(
+            "Conta ficou inativa durante a sessão."
+          )
+
+          await supabase.auth.signOut({
+            scope: "local",
+          }).catch(() => {})
+
+          clearAuthState()
+
+          return
+        }
+
+        if (!mountedRef.current) return
+
+        activeUserIdRef.current =
+          currentUser.id
+
         setUser(currentUser)
-        setUserProfile(data)
+        setUserProfile(profile)
+      } catch (error) {
+        console.error(
+          "Erro ao atualizar perfil:",
+          error
+        )
       }
-    }
-  }, [fetchProfile, handleSignOut])
+    },
+    [clearAuthState, fetchProfile]
+  )
 
   useEffect(() => {
-    if (hasInitialized.current) return
-    hasInitialized.current = true
+    mountedRef.current = true
 
-    let mounted = true
-    let isInitializing = true
+    if (initializedRef.current) {
+      return
+    }
 
-    console.log("🚀 [AUTH] Boot iniciado...")
+    initializedRef.current = true
 
-    async function initialize() {
+    let cancelled = false
+
+    async function initializeAuth() {
+      console.log(
+        "Boot da autenticação iniciado."
+      )
+
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+
+        const {
+          data: {
+            session,
+          },
+        } =
+          await supabase.auth.getSession()
+
+        if (
+          cancelled ||
+          !mountedRef.current
+        ) {
+          return
+        }
+
 
         if (!session?.user) {
-          console.log("⚠️ [AUTH] Sem sessão inicial no cache.")
-          if (mounted) setLoading(false)
-          isInitializing = false
+          console.log(
+            "Nenhuma sessão encontrada."
+          )
+
           return
         }
 
-        console.log("2️⃣ [AUTH] Validando token no servidor...")
-        const { data: { user: verifiedUser }, error: userError } = await supabase.auth.getUser()
+        const {
+          data: {
+            user: verifiedUser,
+          },
+          error: userError,
+        } =
+          await supabase.auth.getUser()
 
-        if (userError || !verifiedUser) {
-          console.error("❌ [AUTH] Sessão inválida no boot.")
-          if (mounted) await handleSignOut()
+        if (
+          cancelled ||
+          !mountedRef.current
+        ) {
           return
         }
 
-        const profile = await fetchProfile(verifiedUser.id)
+        if (
+          userError ||
+          !verifiedUser
+        ) {
+          console.warn(
+            "Sessão inválida."
+          )
 
-        if (mounted) {
-          if (profile?.ativo === false) {
-            await handleSignOut()
-          } else {
-            activeUserIdRef.current = verifiedUser.id
-            setUser(verifiedUser)
-            setUserProfile(profile)
-            console.log("✅ [AUTH] Boot concluído com sucesso.")
-            setLoading(false)
-          }
+          await supabase.auth.signOut({
+            scope: "local",
+          }).catch(() => {})
+
+          clearAuthState()
+
+          return
         }
+
+
+        const {
+          profile,
+          error: profileError,
+        } = await fetchProfile(
+          verifiedUser.id
+        )
+
+        if (
+          cancelled ||
+          !mountedRef.current
+        ) {
+          return
+        }
+
+        if (
+          profileError ||
+          !profile
+        ) {
+          console.warn(
+            "Perfil não encontrado."
+          )
+
+          await supabase.auth.signOut({
+            scope: "local",
+          }).catch(() => {})
+
+          clearAuthState()
+
+          return
+        }
+
+
+        if (profile.ativo === false) {
+          console.warn(
+            "Conta inativa detectada durante o boot."
+          )
+
+          await supabase.auth.signOut({
+            scope: "local",
+          }).catch(() => {})
+
+          clearAuthState()
+
+          return
+        }
+
+        activeUserIdRef.current =
+          verifiedUser.id
+
+        setUser(verifiedUser)
+        setUserProfile(profile)
+
+        console.log(
+          "Boot da autenticação concluído."
+        )
       } catch (error) {
-        console.error("💥 [AUTH] Erro crítico no boot:", error)
-        if (mounted) await handleSignOut()
+        console.error(
+          "Erro crítico no boot:",
+          error
+        )
+
+        if (
+          !cancelled &&
+          mountedRef.current
+        ) {
+          clearAuthState()
+        }
       } finally {
-        isInitializing = false
-      }
-    }
 
-    initialize()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (isInitializing) return
-      if (!mounted) return
-
-      if (event === 'SIGNED_OUT') {
-        activeUserIdRef.current = null
-        await handleSignOut()
-      } 
-      else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session?.user) {
-          if (activeUserIdRef.current === session.user.id) {
-            console.log("⏭️ [AUTH] Trava Ref: Usuário já ativo. Ignorando re-fetch silencioso.")
-            setLoading(false)
-            return
-          }
-
-          console.log(`🔔 [AUTH] Evento: ${event} - Validando perfil antes de liberar acesso...`)
-          
-          // Mantém o loading ativo enquanto busca o perfil para evitar a colisão com o ProtectedRoute
-          setLoading(true)
-
-          const profile = await fetchProfile(session.user.id)
-
-          if (profile?.ativo === false) {
-            console.warn("🚫 [AUTH] Tentativa de login com conta inativa detectada!")
-            activeUserIdRef.current = null
-            await handleSignOut()
-            return
-          }
-
-          activeUserIdRef.current = session.user.id
-          setUser(session.user)
-          setUserProfile(profile)
+        if (
+          !cancelled &&
+          mountedRef.current
+        ) {
           setLoading(false)
         }
+
+        initializingRef.current = false
       }
-    })
+    }
+
+    initializeAuth()
+
+
+    const {
+      data: {
+        subscription,
+      },
+    } =
+      supabase.auth.onAuthStateChange(
+        async (
+          event,
+          session
+        ) => {
+         
+          if (initializingRef.current) {
+            return
+          }
+
+          if (!mountedRef.current) {
+            return
+          }
+
+          console.log(
+            "Evento Supabase:",
+            event
+          )
+
+          
+
+          if (event === "SIGNED_IN") {
+            if (
+              signingInRef.current
+            ) {
+              console.log(
+                "SIGNED_IN ignorado durante login controlado."
+              )
+
+              return
+            }
+
+            
+
+            if (
+              session?.user &&
+              activeUserIdRef.current ===
+                session.user.id
+            ) {
+              setUser(
+                session.user
+              )
+            }
+
+            return
+          }
+
+          
+
+          if (event === "SIGNED_OUT") {
+            
+
+            clearAuthState()
+
+            return
+          }
+
+          
+
+          if (
+            event === "TOKEN_REFRESHED" &&
+            session?.user
+          ) {
+            
+
+            if (
+              activeUserIdRef.current ===
+              session.user.id
+            ) {
+              setUser(
+                session.user
+              )
+            }
+
+            return
+          }
+
+          
+
+          if (
+            event === "USER_UPDATED" &&
+            session?.user
+          ) {
+            if (
+              activeUserIdRef.current ===
+              session.user.id
+            ) {
+              setUser(
+                session.user
+              )
+            }
+
+            return
+          }
+        }
+      )
+
 
     return () => {
-      mounted = false
+      cancelled = true
+      mountedRef.current = false
+
       subscription.unsubscribe()
     }
-  }, [fetchProfile, handleSignOut])
+  }, [
+    clearAuthState,
+    fetchProfile,
+  ])
+
+  
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signOut: handleSignOut, refreshProfile }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        userProfile,
+        loading,
+        signIn,
+        signOut,
+        refreshProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
 }
 
-export function useAuth() { return useContext(AuthContext) }
+export function useAuth() {
+  return useContext(AuthContext)
+}

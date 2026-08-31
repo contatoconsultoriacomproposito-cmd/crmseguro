@@ -10,25 +10,18 @@ import {
 
 import LoginModal from "../../components/homepage/LoginModal";
 import RegistroModal from "../../components/homepage/RegistroModal";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
 export default function HomePage() {
-  const { user, loading } = useAuth();
-  const navigate = useNavigate();
-
+  const { loading } = useAuth();
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isFreeTrialModalOpen, setIsFreeTrialModalOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Redirecionamento unificado: se já houver sessão ativa, encaminha sem flicker
-  useEffect(() => {
-    if (user && !loading) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [user, loading, navigate]);
+  
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
