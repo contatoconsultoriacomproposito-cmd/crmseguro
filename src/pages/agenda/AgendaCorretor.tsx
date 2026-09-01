@@ -127,252 +127,252 @@ export default function AgendaCorretor() {
   }, []);
 
   const fetchCompromissos = useCallback(async () => {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const { data: perfil } = await supabase
-      .from("usuarios_perfis")
-      .select("id, tipo_usuario, corretora_id, nome")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (!perfil) return;
-    
-    setTipoUsuario(perfil.tipo_usuario);
-    setUsuarioLogado({ id: perfil.id, nome: perfil.nome || 'Você' });
-
-    const isCorretor = perfil.tipo_usuario === 'CORRETOR';
-
-    // Se for Corretora/Admin, buscar lista da equipe para o filtro
-    if (perfil.tipo_usuario === 'CORRETORA' || perfil.tipo_usuario === 'ADMIN') {
-      const { data: equipe } = await supabase
+      const { data: perfil } = await supabase
         .from("usuarios_perfis")
-        .select("id, nome")
-        .eq("corretora_id", perfil.corretora_id)
-        .eq("tipo_usuario", "CORRETOR");
+        .select("id, tipo_usuario, corretora_id, nome")
+        .eq("id", user.id)
+        .maybeSingle();
 
-      if (equipe) {
-        setListaCorretores(equipe.map(c => ({ id: c.id, nome: c.nome || 'Corretor' })));
-      }
-    }
-
-    // 1. QUERY A: Carteira de Clientes (Comercial e Sinistro)
-    let queryCli = supabase
-      .from('tab_clientes')
-      .select('id, nome, razao_social, nome_fantasia, tipo_cliente, cpf, cnpj, email, telefone_whats, telefone_adicional, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban, status_kanban, temperatura, corretora_id, corretor_id')
-      .eq('corretora_id', perfil.corretora_id)
-      .or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
-
-    if (isCorretor) queryCli = queryCli.eq('corretor_id', perfil.id);
-
-    // 2. QUERY B: Renovações de Apólices
-    let queryRenov = supabase
-      .from('tab_proposta_itens')
-      .select(`
-        id, 
-        data_renovacao, 
-        grid_produtos:base_produtos (nome),
-        horario_renovacao, 
-        status_renovacao,
-        tab_proposta_opcoes!inner (
-          tab_propostas!inner (
-            corretora_id,
-            corretor_id,
-            tab_clientes!inner (id, nome, razao_social, nome_fantasia, tipo_cliente, cpf, cnpj, email, telefone_whats)
-          )
-        )
-      `)
-      .eq('tab_proposta_opcoes.tab_propostas.corretora_id', perfil.corretora_id)
-      .eq('status_renovacao', 'A RENOVAR')
-      .not('data_renovacao', 'is', null);
-
-    // 3. QUERY C: Agenda Fria Avulsa
-    let queryAgendaFria = supabase
-      .from('tab_clientes_agenda')
-      .select('*')
-      .eq('corretora_id', perfil.corretora_id)
-      .not('data_retorno', 'is', null);
-
-    if (isCorretor) queryAgendaFria = queryAgendaFria.eq('corretor_id', perfil.id);
-
-    // 4. QUERY D: Prospecção Fria CNPJ
-    let queryProspeccaoFria = supabase
-      .from('tab_clientes_frios')
-      .select('*')
-      .eq('corretora_id', perfil.corretora_id)
-      .not('data_retorno', 'is', null);
-
-    if (isCorretor) queryProspeccaoFria = queryProspeccaoFria.eq('corretor_id', perfil.id);
-
-    // Execução paralela
-    const [resClientes, resRenovacoes, resAgendaFria, resProspeccaoFria] = await Promise.all([
-      queryCli, queryRenov, queryAgendaFria, queryProspeccaoFria
-    ]);
-
-    const eventosFormatados: EventoAgenda[] = [];
-
-    // --- PROCESSAMENTO 1: CARTEIRA DE CLIENTES ---
-    resClientes.data?.forEach(cli => {
-      const nomeTitulo = cli.tipo_cliente === 'PJ' ? (cli.nome_fantasia || cli.razao_social || 'PJ') : (cli.nome || 'PF');
-      const dadosEstendidos = {
-        clienteId: cli.id, 
-        corretorId: cli.corretor_id || null, // Importante para o filtro
-        tipo: cli.tipo_cliente, 
-        cpf: cli.cpf,
-        cnpj: cli.cnpj,
-        email: cli.email,
-        whats: cli.telefone_whats,
-        telefoneAdicional: cli.telefone_adicional,
-        razaoSocial: cli.razao_social,
-        nomeFantasia: cli.nome_fantasia,
-        clienteData: cli
-      };
+      if (!perfil) return;
       
-      if (cli.data_retorno) {
+      setTipoUsuario(perfil.tipo_usuario);
+      setUsuarioLogado({ id: perfil.id, nome: perfil.nome || 'Você' });
+
+      const isCorretor = perfil.tipo_usuario === 'CORRETOR';
+
+      // Se for Corretora/Admin, buscar lista da equipe para o filtro
+      if (perfil.tipo_usuario === 'CORRETORA' || perfil.tipo_usuario === 'ADMIN') {
+        const { data: equipe } = await supabase
+          .from("usuarios_perfis")
+          .select("id, nome")
+          .eq("corretora_id", perfil.corretora_id)
+          .eq("tipo_usuario", "CORRETOR");
+
+        if (equipe) {
+          setListaCorretores(equipe.map(c => ({ id: c.id, nome: c.nome || 'Corretor' })));
+        }
+      }
+
+      // 1. QUERY A: Carteira de Clientes (Comercial e Sinistro)
+      let queryCli = supabase
+        .from('tab_clientes')
+        .select('id, nome, razao_social, nome_fantasia, tipo_cliente, cpf, cnpj, email, telefone_whats, telefone_adicional, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_kanban, status_kanban, temperatura, corretora_id, corretor_id')
+        .eq('corretora_id', perfil.corretora_id)
+        .or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
+
+      if (isCorretor) queryCli = queryCli.eq('corretor_id', perfil.id);
+
+      // 2. QUERY B: Renovações de Apólices
+      let queryRenov = supabase
+        .from('tab_proposta_itens')
+        .select(`
+          id, 
+          data_renovacao, 
+          grid_produtos:base_produtos (nome),
+          horario_renovacao, 
+          status_renovacao,
+          tab_proposta_opcoes!inner (
+            tab_propostas!inner (
+              corretora_id,
+              corretor_id,
+              tab_clientes!inner (id, nome, razao_social, nome_fantasia, tipo_cliente, cpf, cnpj, email, telefone_whats)
+            )
+          )
+        `)
+        .eq('tab_proposta_opcoes.tab_propostas.corretora_id', perfil.corretora_id)
+        .eq('status_renovacao', 'A RENOVAR')
+        .not('data_renovacao', 'is', null);
+
+      // 3. QUERY C: Agenda Fria Avulsa
+      let queryAgendaFria = supabase
+        .from('tab_clientes_agenda')
+        .select('*')
+        .eq('corretora_id', perfil.corretora_id)
+        .not('data_retorno', 'is', null);
+
+      if (isCorretor) queryAgendaFria = queryAgendaFria.eq('corretor_id', perfil.id);
+
+      // 4. QUERY D: Prospecção Fria CNPJ
+      let queryProspeccaoFria = supabase
+        .from('tab_clientes_frios')
+        .select('*')
+        .eq('corretora_id', perfil.corretora_id)
+        .not('data_retorno', 'is', null);
+
+      if (isCorretor) queryProspeccaoFria = queryProspeccaoFria.eq('corretor_id', perfil.id);
+
+      // Execução paralela
+      const [resClientes, resRenovacoes, resAgendaFria, resProspeccaoFria] = await Promise.all([
+        queryCli, queryRenov, queryAgendaFria, queryProspeccaoFria
+      ]);
+
+      const eventosFormatados: EventoAgenda[] = [];
+
+      // --- PROCESSAMENTO 1: CARTEIRA DE CLIENTES ---
+      resClientes.data?.forEach(cli => {
+        const nomeTitulo = cli.tipo_cliente === 'PJ' ? (cli.nome_fantasia || cli.razao_social || 'PJ') : (cli.nome || 'PF');
+        const dadosEstendidos = {
+          clienteId: cli.id, 
+          corretorId: cli.corretor_id || null, // Importante para o filtro
+          tipo: cli.tipo_cliente, 
+          cpf: cli.cpf,
+          cnpj: cli.cnpj,
+          email: cli.email,
+          whats: cli.telefone_whats,
+          telefoneAdicional: cli.telefone_adicional,
+          razaoSocial: cli.razao_social,
+          nomeFantasia: cli.nome_fantasia,
+          clienteData: cli
+        };
+        
+        if (cli.data_retorno) {
+          eventosFormatados.push({
+            id: `${cli.id}_comercial`,
+            title: nomeTitulo,
+            start: `${cli.data_retorno}T${cli.horario_retorno || '09:00:00'}`,
+            extendedProps: { 
+              ...dadosEstendidos,
+              fase: cli.fase_kanban || '-', 
+              status: cli.status_kanban || '-',
+              temperatura: cli.temperatura || '-',
+              horario: cli.horario_retorno || '09:00',
+              origem: 'COMERCIAL',
+              tipoEvento: 'CARTEIRA',
+            }
+          });
+        }
+
+        if (cli.data_retorno_sinistro) {
+          eventosFormatados.push({
+            id: `${cli.id}_sinistro`,
+            title: `[SINISTRO] ${nomeTitulo}`,
+            start: `${cli.data_retorno_sinistro}T${cli.horario_retorno_sinistro || '09:00:00'}`,
+            extendedProps: { 
+              ...dadosEstendidos,
+              fase: 'Sinistro', 
+              origem: 'SINISTRO',
+              tipoEvento: 'SINISTRO',
+            }
+          });
+        }
+      });
+
+      // --- PROCESSAMENTO 2: RENOVAÇÕES ---
+      resRenovacoes.data?.forEach(renov => {
+        const propRelacionamento = renov.tab_proposta_opcoes as any;
+        const infoOpcao = Array.isArray(propRelacionamento) ? propRelacionamento[0] : propRelacionamento;
+        const infoProposta = Array.isArray(infoOpcao?.tab_propostas) ? infoOpcao?.tab_propostas[0] : infoOpcao?.tab_propostas;
+        const infoCli = Array.isArray(infoProposta?.tab_clientes) ? infoProposta?.tab_clientes[0] : infoProposta?.tab_clientes;
+        const corretorIdItem = infoProposta?.corretor_id;
+
+        if (isCorretor && corretorIdItem !== perfil.id) return;
+
+        const nomeTitulo = infoCli?.tipo_cliente === 'PJ' ? (infoCli?.nome_fantasia || infoCli?.razao_social || 'PJ') : (infoCli?.nome || 'PF');
+        const produto = (renov.grid_produtos as any)?.nome || 'Seguro';
+
         eventosFormatados.push({
-          id: `${cli.id}_comercial`,
-          title: nomeTitulo,
-          start: `${cli.data_retorno}T${cli.horario_retorno || '09:00:00'}`,
+          id: `${renov.id}_renov`,
+          title: `[RENOV] ${nomeTitulo} - ${produto}`,
+          start: `${renov.data_renovacao}T${renov.horario_renovacao || '09:00:00'}`,
           extendedProps: { 
-            ...dadosEstendidos,
-            fase: cli.fase_kanban || '-', 
-            status: cli.status_kanban || '-',
-            temperatura: cli.temperatura || '-',
-            horario: cli.horario_retorno || '09:00',
-            origem: 'COMERCIAL',
-            tipoEvento: 'CARTEIRA',
+            clienteId: infoCli?.id, 
+            corretorId: corretorIdItem || null,
+            tipo: infoCli?.tipo_cliente,
+            cpf: infoCli?.cpf,
+            cnpj: infoCli?.cnpj,
+            email: infoCli?.email,
+            whats: infoCli?.telefone_whats,
+            razaoSocial: infoCli?.razao_social,
+            nomeFantasia: infoCli?.nome_fantasia,
+            produtoInteresse: produto,
+            fase: 'Renovação', 
+            origem: 'RENOVACAO',
+            tipoEvento: 'RENOVACAO',
+            itemId: renov.id,
+            clienteData: infoCli
           }
         });
-      }
+      });
 
-      if (cli.data_retorno_sinistro) {
+      // --- PROCESSAMENTO 3: AGENDA FRIA AVULSA ---
+      resAgendaFria.data?.forEach(frio => {
+        let prodsGerais = [];
+        if (frio.produtos_gerais) {
+          try {
+            prodsGerais = typeof frio.produtos_gerais === 'string' && frio.produtos_gerais.startsWith('[') ? JSON.parse(frio.produtos_gerais) : [frio.produtos_gerais];
+          } catch {
+            prodsGerais = [frio.produtos_gerais];
+          }
+        }
+
         eventosFormatados.push({
-          id: `${cli.id}_sinistro`,
-          title: `[SINISTRO] ${nomeTitulo}`,
-          start: `${cli.data_retorno_sinistro}T${cli.horario_retorno_sinistro || '09:00:00'}`,
+          id: `${frio.id}_frio_avulso`,
+          title: `[AVULSO] ${frio.nome_cliente}`,
+          start: `${frio.data_retorno}T${frio.horario_retorno || '09:00:00'}`,
           extendedProps: { 
-            ...dadosEstendidos,
-            fase: 'Sinistro', 
-            origem: 'SINISTRO',
-            tipoEvento: 'SINISTRO',
+            clienteId: frio.id, 
+            corretorId: frio.corretor_id || null,
+            tipo: 'FRIO_AVULSO', 
+            email: frio.email_cliente,
+            whats: frio.tel_cliente,
+            breveDescricao: frio.breve_descricao,
+            produtoInteresse: frio.produto_interesse,
+            produtosGerais: typeof prodsGerais === 'string' ? prodsGerais : prodsGerais.join(', '),
+            fase: 'Contato Inicial', 
+            origem: 'AGENDA_FRIA',
+            tipoEvento: 'AVULSO',
+            contatoFrio: { 
+              telefone: frio.tel_cliente, 
+              email: frio.email_cliente, 
+              breve_descricao: frio.breve_descricao,
+              tipo: frio.tipo_cliente || 'PF',
+              produto_interesse: frio.produto_interesse || 'Auto',
+              produtos_gerais: prodsGerais 
+            }
           }
         });
-      }
-    });
-
-    // --- PROCESSAMENTO 2: RENOVAÇÕES ---
-    resRenovacoes.data?.forEach(renov => {
-      const propRelacionamento = renov.tab_proposta_opcoes as any;
-      const infoOpcao = Array.isArray(propRelacionamento) ? propRelacionamento[0] : propRelacionamento;
-      const infoProposta = Array.isArray(infoOpcao?.tab_propostas) ? infoOpcao?.tab_propostas[0] : infoOpcao?.tab_propostas;
-      const infoCli = Array.isArray(infoProposta?.tab_clientes) ? infoProposta?.tab_clientes[0] : infoProposta?.tab_clientes;
-      const corretorIdItem = infoProposta?.corretor_id;
-
-      if (isCorretor && corretorIdItem !== perfil.id) return;
-
-      const nomeTitulo = infoCli?.tipo_cliente === 'PJ' ? (infoCli?.nome_fantasia || infoCli?.razao_social || 'PJ') : (infoCli?.nome || 'PF');
-      const produto = (renov.grid_produtos as any)?.nome || 'Seguro';
-
-      eventosFormatados.push({
-        id: `${renov.id}_renov`,
-        title: `[RENOV] ${nomeTitulo} - ${produto}`,
-        start: `${renov.data_renovacao}T${renov.horario_renovacao || '09:00:00'}`,
-        extendedProps: { 
-          clienteId: infoCli?.id, 
-          corretorId: corretorIdItem || null,
-          tipo: infoCli?.tipo_cliente,
-          cpf: infoCli?.cpf,
-          cnpj: infoCli?.cnpj,
-          email: infoCli?.email,
-          whats: infoCli?.telefone_whats,
-          razaoSocial: infoCli?.razao_social,
-          nomeFantasia: infoCli?.nome_fantasia,
-          produtoInteresse: produto,
-          fase: 'Renovação', 
-          origem: 'RENOVACAO',
-          tipoEvento: 'RENOVACAO',
-          itemId: renov.id,
-          clienteData: infoCli
-        }
       });
-    });
 
-    // --- PROCESSAMENTO 3: AGENDA FRIA AVULSA ---
-    resAgendaFria.data?.forEach(frio => {
-      let prodsGerais = [];
-      if (frio.produtos_gerais) {
-        try {
-          prodsGerais = typeof frio.produtos_gerais === 'string' && frio.produtos_gerais.startsWith('[') ? JSON.parse(frio.produtos_gerais) : [frio.produtos_gerais];
-        } catch {
-          prodsGerais = [frio.produtos_gerais];
-        }
-      }
+      // --- PROCESSAMENTO 4: PROSPECÇÃO FRIA CNPJ ---
+      resProspeccaoFria.data?.forEach(frio => {
+        const nomeEmpresa = frio.nome_fantasia || frio.razao_social || 'Empresa Sem Nome';
 
-      eventosFormatados.push({
-        id: `${frio.id}_frio_avulso`,
-        title: `[AVULSO] ${frio.nome_cliente}`,
-        start: `${frio.data_retorno}T${frio.horario_retorno || '09:00:00'}`,
-        extendedProps: { 
-          clienteId: frio.id, 
-          corretorId: frio.corretor_id || null,
-          tipo: 'FRIO_AVULSO', 
-          email: frio.email_cliente,
-          whats: frio.tel_cliente,
-          breveDescricao: frio.breve_descricao,
-          produtoInteresse: frio.produto_interesse,
-          produtosGerais: typeof prodsGerais === 'string' ? prodsGerais : prodsGerais.join(', '),
-          fase: 'Contato Inicial', 
-          origem: 'AGENDA_FRIA',
-          tipoEvento: 'AVULSO',
-          contatoFrio: { 
-            telefone: frio.tel_cliente, 
-            email: frio.email_cliente, 
-            breve_descricao: frio.breve_descricao,
-            tipo: frio.tipo_cliente || 'PF',
-            produto_interesse: frio.produto_interesse || 'Auto',
-            produtos_gerais: prodsGerais 
+        eventosFormatados.push({
+          id: `${frio.id}_frio_cnpj`,
+          title: `[PROSPECÇÃO] ${nomeEmpresa}`,
+          start: `${frio.data_retorno}T${frio.horario_retorno || '09:00:00'}`,
+          extendedProps: { 
+            clienteId: frio.id, 
+            corretorId: frio.corretor_id || null,
+            tipo: 'PJ',
+            cnpj: frio.cnpj,
+            email: frio.email,
+            whats: frio.telefone,
+            razaoSocial: frio.razao_social,
+            nomeFantasia: frio.nome_fantasia,
+            fase: frio.fase_atendimento || 'Não Contatado', 
+            status: frio.status_prospeccao || 'Não Prospectado',
+            temperatura: frio.temperatura || 'frio',
+            origem: 'PROSPECCAO_FRIA',
+            tipoEvento: 'FRIO',
+            clienteData: frio
           }
-        }
+        });
       });
-    });
 
-    // --- PROCESSAMENTO 4: PROSPECÇÃO FRIA CNPJ ---
-    resProspeccaoFria.data?.forEach(frio => {
-      const nomeEmpresa = frio.nome_fantasia || frio.razao_social || 'Empresa Sem Nome';
-
-      eventosFormatados.push({
-        id: `${frio.id}_frio_cnpj`,
-        title: `[PROSPECÇÃO] ${nomeEmpresa}`,
-        start: `${frio.data_retorno}T${frio.horario_retorno || '09:00:00'}`,
-        extendedProps: { 
-          clienteId: frio.id, 
-          corretorId: frio.corretor_id || null,
-          tipo: 'PJ',
-          cnpj: frio.cnpj,
-          email: frio.email,
-          whats: frio.telefone,
-          razaoSocial: frio.razao_social,
-          nomeFantasia: frio.nome_fantasia,
-          fase: frio.fase_atendimento || 'Não Contatado', 
-          status: frio.status_prospeccao || 'Não Prospectado',
-          temperatura: frio.temperatura || 'frio',
-          origem: 'PROSPECCAO_FRIA',
-          tipoEvento: 'FRIO',
-          clienteData: frio
-        }
-      });
-    });
-
-    setEventos(eventosFormatados);
-  } catch (err) {
-    console.error("Erro ao carregar compromissos da agenda:", err);
-  } finally {
-    setLoading(false);
-  }
-}, []);
+      setEventos(eventosFormatados);
+    } catch (err) {
+      console.error("Erro ao carregar compromissos da agenda:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // LÓGICA DE DEFINIÇÃO INICIAL DO FILTRO DE CORRETORES
   useEffect(() => {
@@ -412,7 +412,6 @@ export default function AgendaCorretor() {
 
       // 1. FILTRO DE CORRETORES MULTI-SELECT
       if (tipoUsuario === 'CORRETORA' || tipoUsuario === 'ADMIN') {
-        // Se a agenda pertencer à casa/corretora (null), validamos se a própria Corretora está marcada
         const pertenceAosSelecionados = corretoresSelecionados.includes(props.corretorId || '') || 
                                        (!props.corretorId && corretoresSelecionados.includes(usuarioLogado?.id || ''));
         if (!pertenceAosSelecionados) return false;
@@ -448,7 +447,7 @@ export default function AgendaCorretor() {
 
   const calendarRef = useRef<FullCalendar>(null);
 
-  // NOVO: Resultados globais para a busca inteligente (ignora o mês atual do calendário)
+  // Resultados globais para a busca inteligente (ignora o mês atual do calendário)
   const resultadosBuscaGlobal = useMemo(() => {
     if (!termoBusca || termoBusca.trim().length < 2) return [];
     const apenasNumeros = (val?: string) => (val || '').replace(/\D/g, '');
@@ -484,7 +483,7 @@ export default function AgendaCorretor() {
     });
   }, [eventos, termoBusca, tipoUsuario, corretoresSelecionados, usuarioLogado]);
 
-  // NOVO: Função para saltar a data e abrir o modal correspondente
+  // Função para saltar a data e abrir o modal correspondente
   const handleSelecionarResultadoBusca = async (evt: EventoAgenda) => {
     const calendarApi = calendarRef.current?.getApi();
     if (calendarApi) {
@@ -532,7 +531,8 @@ export default function AgendaCorretor() {
 
       toast.info(`Iniciando sincronização de ${clientes.length} agendamentos...`);
       for (const cliente of clientes) {
-        await supabase.functions.invoke('sync-to-google-calendar', { body: { record: cliente } });
+        // Passa a origem 'tab_clientes' explicitamente para a Edge Function
+        await supabase.functions.invoke('sync-to-google-calendar', { body: { record: cliente, origem: 'tab_clientes' } });
       }
       toast.success("Google Agenda populada com sucesso!");
     } catch (err) {
@@ -700,7 +700,7 @@ export default function AgendaCorretor() {
     );
   }
 
-  return (
+return (
     <div className="flex flex-col gap-6 mt-4">
       
       {/* CABEÇALHO */}
