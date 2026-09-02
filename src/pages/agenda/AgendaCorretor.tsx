@@ -1,3 +1,11 @@
+// Declaração global para evitar erros de compilação do TypeScript com a biblioteca do Google
+declare global {
+  interface Window {
+    gapi: any;
+    google: any;
+  }
+}
+
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -101,7 +109,7 @@ export default function AgendaCorretor() {
   const [itemRenovacaoSelecionado, setItemRenovacaoSelecionado] = useState<any>(null);
   const [eventoAvulsoSelecionado, setEventoAvulsoSelecionado] = useState<any>(null);
 
-  // Integração Google
+  // Integração Google Client API
   const [googleConectado, setGoogleConectado] = useState(false);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const processingCode = useRef(false);
@@ -723,7 +731,7 @@ return (
         <div className="flex flex-wrap items-center gap-3">
           <AgendaCorretorAvulso isNovo={true} onSuccess={fetchCompromissos} />
 
-          {(tipoUsuario === 'ADMIN' || tipoUsuario === 'CORRETORA') && (
+          {(tipoUsuario === 'ADMIN' || tipoUsuario === 'CORRETORA' || tipoUsuario === 'CORRETOR') && (
             <button 
               onClick={handleGoogleAuth} 
               disabled={loadingGoogle}
@@ -747,7 +755,7 @@ return (
                     <path d="M3.96 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.95a8.99 8.99 0 0 0 0 8.08l3.01-2.33z" fill="#FBBC05"/>
                     <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A8.96 8.96 0 0 0 9 0A8.99 8.99 0 0 0 .95 4.96L3.96 7.29c.7-2.12 2.7-3.71 5.04-3.71z" fill="#EA4335"/>
                   </svg>
-                  <span>Google Master</span>
+                  <span>{tipoUsuario === 'CORRETOR' ? 'Google Calendar' : 'Google Master'}</span>
                 </>
               )}
             </button>
@@ -908,7 +916,7 @@ return (
           initialView="dayGridMonth"
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' }}
           locale={ptBrLocale}
-          events={eventosFiltrados} // DADOS JÁ FILTRADOS PELO USE-MEMO
+          events={eventosFiltrados}
           height="75vh"
           editable={true}
           eventDrop={handleEventChange}
@@ -937,7 +945,6 @@ return (
             if (origem === 'SINISTRO') colorClasses = "bg-red-50 border-red-500 text-red-700";
             if (origem === 'RENOVACAO') colorClasses = "bg-amber-50 border-amber-500 text-amber-700";
 
-            // Cores específicas para os crachás de corretor dentro do evento
             const tagBg = origem === 'COMERCIAL' ? 'bg-emerald-200 text-emerald-900' :
                           origem === 'SINISTRO' ? 'bg-red-200 text-red-900' :
                           origem === 'RENOVACAO' ? 'bg-amber-200 text-amber-900' : 'bg-blue-200 text-blue-900';
