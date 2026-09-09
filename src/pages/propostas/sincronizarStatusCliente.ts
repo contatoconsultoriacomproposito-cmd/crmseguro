@@ -48,12 +48,12 @@ export async function sincronizarStatusCliente(clienteId: string) {
     }
 
     const { error: errorUpdate } = await supabase
-      .from('tab_clientes')
+      .from('tab_clientes_v2')
       .update({ 
         status_kanban: novoStatus, 
         fase_kanban: novaFase,
         posicao_kanban: 0,
-        updated_at: new Date().toISOString()
+        atualizado_em: new Date().toISOString()
       })
       .eq('id', clienteId);
 

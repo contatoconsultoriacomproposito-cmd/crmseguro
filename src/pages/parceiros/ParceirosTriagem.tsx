@@ -178,10 +178,10 @@ export default function ParceirosTriagem() {
     if (!termo || termo.length < 3 || !userProfile?.corretora_id) return;
     setBuscandoCRM(true);
     const { data } = await supabase
-      .from('tab_clientes')
+      .from('tab_clientes_v2')
       .select('*')
       .eq('corretora_id', userProfile.corretora_id)
-      .or(`nome.ilike.*${termo}*,cnpj.ilike.*${termo}*,cpf.ilike.*${termo}*`)
+      .or(`nome_razao_social.ilike.*${termo}*,cnpj.ilike.*${termo}*,cpf.ilike.*${termo}*`)
       .limit(10);
     setClientesEncontrados(data || []);
     setBuscandoCRM(false);

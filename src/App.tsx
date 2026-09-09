@@ -20,10 +20,10 @@ import CorretoresLista from "./pages/corretores/CorretoresLista"
 import ParceirosCadastro from "./pages/parceiros/ParceirosCadastro"
 import ParceirosTriagem from "./pages/parceiros/ParceirosTriagem"
 import AgendaCorretor from "./pages/agenda/AgendaCorretor"
-import ClientesCadastro from "./pages/clientes/ClientesCadastro"
-import ClientesLista from "./pages/clientes/ClientesLista"
+
+
 import ClientesAcoes from "./pages/clientes/ClientesAcoes"
-import LeadsProspeccao from "./pages/clientes/Leads/LeadsProspeccao"
+
 import CampanhasClientes from "./pages/clientes/components/painel-marketing/CampanhasClientes"
 import SeguradorasLista from "./pages/seguradoras/SeguradorasLista"
 import ProdutosLista from "./pages/propostas/ProdutosLista"
@@ -37,6 +37,10 @@ import { RelatorioSinistros } from "./pages/sinistros/SinistrosLista"
 import { ComissoesLista } from "./pages/comissoes/ComissoesLista"
 import PlanoContas from "./pages/financeiro/PlanoContas"
 import Lancamentos from "./pages/financeiro/Lancamentos"
+
+
+import ClientesCadastroV2 from "./pages/clientes/ClientesCadastroV2"
+import ClientesListaV2 from "./pages/clientes/ClientesListaV2"
 
 // 🛡️ Módulo de Seguros de Vida
 import PropostasAvulsas from "./pages/propostas/PropostasAvulsas"
@@ -137,13 +141,19 @@ export default function App() {
             <Route path="/parceiros/editar/:id" element={<ParceirosCadastro />} />
             <Route path="/parceiros/triagem" element={<ParceirosTriagem />} />
 
-            <Route path="/clientes/cadastro" element={<ClientesCadastro />} />
-            <Route path="/clientes/lista" element={<ClientesLista />} />
-            <Route path="/clientes/editar/:id" element={<ClientesCadastro />} />
+            {/* <Route path="/clientes/cadastro" element={<ClientesCadastro />} /> */}
+            {/* <Route path="/clientes/editar/:id" element={<ClientesCadastro />} /> */}
+
+            {/* ✨ SUA NOVA ROTA V2 AQUI */}
+            <Route path="/clientes/cadastro-v2" element={<ClientesCadastroV2 />} />
+            <Route path="/clientes/lista-v2" element={<ClientesListaV2 />} />
+
+
             <Route path="/clientes/acoes" element={<ClientesAcoes />} /> 
             <Route path="/clientes/campanhas" element={<CampanhasClientes />} />
-            <Route path="/clientes/leads" element={<LeadsProspeccao />} />
-
+            
+           
+            {/* ROTAS ANTIGAS */}
             <Route path="/propostas/criar" element={<PropostasCadastro key="nova" />} />
             <Route path="/propostas/lista" element={<PropostasLista />} />
             <Route path="/propostas/editar/:id" element={<PropostasCadastro key="editar" />} />

@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 
 // Importação dos modais
 import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
-import ModalContato from '../pages/agenda/AgendaCorretorCarteira';
+import ModalContato from '../pages/agenda/AgendaCorretorCarteira_old';
 
 export interface Notificacao {
   id: string;
@@ -34,7 +34,6 @@ const NotificationContext = createContext<NotificationContextData>({} as Notific
 const obterNomeExibicao = (item: any, fallbackDefault = 'Cliente sem nome'): string => {
   if (!item) return fallbackDefault;
 
-  // Busca em ordem de prioridade os campos comuns
   const possiveisNomes = [
     item.nome_fantasia,
     item.razao_social,
@@ -71,6 +70,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       dataFutura.setDate(dataFutura.getDate() + 30);
       const [diaFut, mesFut, anoFut] = dataFutura.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).split('/');
       const dataLimiteRenovacaoStr = `${anoFut}-${mesFut}-${diaFut}`;
+      
 
       const listaGeral: Notificacao[] = [];
 
@@ -84,22 +84,20 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const isAdmin = perfil?.tipo_usuario === 'CORRETORA';
       const corretoraDonaId = perfil?.corretora_id || user.id;
 
-      // 2. PREPARAÇÃO DAS QUERIES COM CAMPOS SEGUROS
+      // 2. PREPARAÇÃO DAS QUERIES OTIMIZADAS
       let queryInd = supabase
         .from('tab_indicacoes')
-        .select(`id, nome_cliente, created_at, status_indicacao, tab_parceiros(nome_parceiro)`)
+        .select(`id, nome_cliente, created_at, status_indicacao, corretor_id, tab_parceiros(nome_parceiro)`)
         .eq('status_indicacao', 'NOVO')
         .eq('corretora_id', corretoraDonaId);
 
-      if (!isAdmin) queryInd = queryInd.or(`corretor_id.eq.${user.id},corretor_id.is.null`);
-
+      // CORREÇÃO 1: Substituído 'data_nascimento' por 'contatos' e 'dados_complementares'
       let queryClientes = supabase
-        .from('tab_clientes')
-        .select('id, nome, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, data_nascimento')
+        .from('tab_clientes_v2')
+        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, contatos, dados_complementares_pf, dados_complementares_pj, corretor_id')
         .eq('corretora_id', corretoraDonaId);
 
-      if (!isAdmin) queryClientes = queryClientes.eq('corretor_id', user.id);
-
+      // CORREÇÃO 2: Simplificada a query de renovações sem JOINs profundos via PostgREST
       let queryRenovacoes = supabase
         .from('tab_proposta_itens')
         .select(`
@@ -109,41 +107,25 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           notificacao_ativa,
           status_renovacao,
           corretor_id,
-          tab_proposta_opcoes!inner (
-            tab_propostas!inner (
-              corretora_id,
-              tab_clientes (
-                nome
-              )
-            )
-          )
+          opcao_id
         `)
         .eq('notificacao_ativa', true)
         .eq('status_renovacao', 'A RENOVAR')
         .lte('data_renovacao', dataLimiteRenovacaoStr);
 
-      if (isAdmin) {
-        queryRenovacoes = queryRenovacoes.eq('tab_proposta_opcoes.tab_propostas.corretora_id', corretoraDonaId);
-      } else {
-        queryRenovacoes = queryRenovacoes.eq('corretor_id', user.id);
-      }
-
       let queryFrios = supabase
-        .from('tab_clientes_frios')
-        .select('id, razao_social, nome_fantasia, data_retorno, horario_retorno')
+        .from('tab_clientes_v2')
+        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, corretor_id')
         .lte('data_retorno', hojeLocalStr)
-        .neq('status_prospeccao', 'convertido')
+        .neq('fase_atendimento', 'vendido')
         .eq('corretora_id', corretoraDonaId);
-
-      if (!isAdmin) queryFrios = queryFrios.eq('corretor_id', user.id);
 
       let queryAgenda = supabase
-        .from('tab_clientes_agenda')
-        .select('id, nome_cliente, data_retorno, horario_retorno, tel_cliente, email_cliente, breve_descricao')
+        .from('tab_clientes_v2')
+        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, contatos, dados_complementares_pf, dados_complementares_pj, fase_atendimento, temperatura, corretor_id')
+        .not('data_retorno', 'is', null)
         .lte('data_retorno', hojeLocalStr)
         .eq('corretora_id', corretoraDonaId);
-
-      if (!isAdmin) queryAgenda = queryAgenda.eq('corretor_id', user.id);
 
       // 3. EXECUÇÃO RESISTENTE A ERROS (Promise.allSettled)
       const resultados = await Promise.allSettled([
@@ -154,16 +136,33 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         queryAgenda
       ]);
 
-      const resIndicacoes = resultados[0].status === 'fulfilled' ? resultados[0].value.data : [];
-      const resClientes   = resultados[1].status === 'fulfilled' ? resultados[1].value.data : [];
-      const resRenovacoes  = resultados[2].status === 'fulfilled' ? resultados[2].value.data : [];
-      const resFrios      = resultados[3].status === 'fulfilled' ? resultados[3].value.data : [];
-      const resAgenda     = resultados[4].status === 'fulfilled' ? resultados[4].value.data : [];
+      const rawIndicacoes = resultados[0].status === 'fulfilled' ? (resultados[0].value.data ?? []) : [];
+      const rawClientes   = resultados[1].status === 'fulfilled' ? (resultados[1].value.data ?? []) : [];
+      const rawRenovacoes = resultados[2].status === 'fulfilled' ? (resultados[2].value.data ?? []) : [];
+      const rawFrios      = resultados[3].status === 'fulfilled' ? (resultados[3].value.data ?? []) : [];
+      const rawAgenda     = resultados[4].status === 'fulfilled' ? (resultados[4].value.data ?? []) : [];
+
+      // Filtragem por corretor em memória de forma totalmente segura
+      let finalIndicacoes = rawIndicacoes;
+      let finalClientes = rawClientes;
+      let finalRenovacoes = rawRenovacoes;
+      let finalFrios = rawFrios;
+      let finalAgenda = rawAgenda;
+
+      if (!isAdmin) {
+        finalIndicacoes = rawIndicacoes.filter((i: any) => !i.corretor_id || i.corretor_id === user.id);
+        finalClientes = rawClientes.filter((c: any) => !c.corretor_id || c.corretor_id === user.id);
+        finalRenovacoes = rawRenovacoes.filter((r: any) => {
+          const prop = r.tab_proposta_opcoes?.tab_propostas;
+          return (!r.corretor_id || r.corretor_id === user.id) && (!prop?.corretor_id || prop.corretor_id === user.id);
+        });
+        finalFrios = rawFrios.filter((f: any) => !f.corretor_id || f.corretor_id === user.id);
+        finalAgenda = rawAgenda.filter((a: any) => !a.corretor_id || a.corretor_id === user.id);
+      }
 
       // 4. PROCESSAMENTO DOS RESULTADOS
 
-      // Processar Indicações
-      resIndicacoes?.forEach((ind: any) => {
+      finalIndicacoes.forEach((ind: any) => {
         const parceiro = Array.isArray(ind.tab_parceiros) ? ind.tab_parceiros[0] : ind.tab_parceiros;
         const nomeCliente = obterNomeExibicao(ind, 'Indicação sem nome');
 
@@ -179,8 +178,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Clientes
-      resClientes?.forEach(c => {
+      finalClientes.forEach((c: any) => {
         const nomeExibicao = obterNomeExibicao(c, 'Cliente sem nome');
 
         if (c.data_retorno && c.data_retorno <= hojeLocalStr) {
@@ -226,11 +224,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       });
 
-      // Processar Renovações
-      resRenovacoes?.forEach((ren: any) => {
+      finalRenovacoes.forEach((ren: any) => {
         const opcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
-        const proposta = opcao?.tab_propostas;
-        const cliente = Array.isArray(proposta?.tab_clientes) ? proposta.tab_clientes[0] : proposta?.tab_clientes;
+        const proposta = optionDeepSafe(opcao?.tab_propostas);
+        const clienteObj = proposta?.tab_clientes_v2;
+        const cliente = Array.isArray(clienteObj) ? clienteObj[0] : clienteObj;
 
         const nomeCli = obterNomeExibicao(cliente, 'Cliente sem nome');
 
@@ -256,8 +254,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Prospecção Fria
-      resFrios?.forEach((lead: any) => {
+      finalFrios.forEach((lead: any) => {
         const nomeExibicao = obterNomeExibicao(lead, 'Prospect Frio');
 
         listaGeral.push({
@@ -273,8 +270,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Processar Agenda
-      resAgenda?.forEach((item: any) => {
+      finalAgenda.forEach((item: any) => {
         const nomeExibicao = obterNomeExibicao(item, 'Cliente Agenda');
         const subtituloNotificacao = item.breve_descricao || item.tel_cliente || item.email_cliente || 'Retorno de agenda';
 
@@ -291,7 +287,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       });
 
-      // Ordenar por data cronológica
       setNotificacoes(listaGeral.sort((a, b) => (a.data || '').localeCompare(b.data || '')));
     } catch (error) {
       console.error('Erro ao carregar notificações:', error);
@@ -311,7 +306,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     if (n.tipo === 'COMERCIAL' || n.tipo === 'SINISTRO' || n.tipo === 'ANIVERSARIO') {
       const { data: cliente } = await supabase
-        .from('tab_clientes')
+        .from('tab_clientes_v2')
         .select('*')
         .eq('id', n.ref_id)
         .single();
@@ -345,11 +340,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const channel = supabase
       .channel('notificacoes-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_v2' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_proposta_itens' }, () => carregarNotificacoes())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_frios' }, () => carregarNotificacoes())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_agenda' }, () => carregarNotificacoes())
       .subscribe();
 
     carregarNotificacoes();
@@ -400,5 +393,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     </NotificationContext.Provider>
   );
 };
+
+const optionDeepSafe = (val: any) => (Array.isArray(val) ? val[0] : val);
 
 export const useNotifications = () => useContext(NotificationContext);

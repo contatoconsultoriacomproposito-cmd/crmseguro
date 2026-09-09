@@ -29,7 +29,7 @@ export const RelatorioSinistros = () => {
 
       if (!perfil) return;
 
-      // 2. Montamos a Query base
+      // 2. Query base sem junção direta com tab_clientes_v2 para evitar falhas de FK no PostgREST
       let query = supabase
         .from('tab_sinistros')
         .select(`
@@ -40,7 +40,6 @@ export const RelatorioSinistros = () => {
           data_conclusao,
           cliente_id,
           corretor_id,
-          tab_clientes ( nome ),
           tab_proposta_itens (
             numero_apolice,
             base_produtos ( nome )
@@ -64,7 +63,26 @@ export const RelatorioSinistros = () => {
 
       if (sinistroError) throw sinistroError;
 
-      // 4. Buscamos nomes dos corretores para o mapa
+      const rawSinistros = sinistrosData || [];
+
+      // 4. Busca os dados dos clientes manualmente em lote por cliente_id
+      const clienteIds = Array.from(new Set(rawSinistros.map(s => s.cliente_id).filter(Boolean)));
+      let clientesMap: Record<string, { nome_razao_social: string }> = {};
+
+      if (clienteIds.length > 0) {
+        const { data: clientesData } = await supabase
+          .from('tab_clientes_v2')
+          .select('id, nome_razao_social')
+          .in('id', clienteIds);
+
+        if (clientesData) {
+          clientesData.forEach(c => {
+            clientesMap[c.id] = { nome_razao_social: c.nome_razao_social };
+          });
+        }
+      }
+
+      // 5. Buscamos nomes dos corretores para o mapa
       const { data: perfisData } = await supabase
         .from('usuarios_perfis')
         .select('id, nome')
@@ -72,13 +90,15 @@ export const RelatorioSinistros = () => {
 
       const corretorMap = Object.fromEntries(perfisData?.map(p => [p.id, p.nome]) || []);
 
-      const dadosCompletos = sinistrosData?.map(s => ({
+      // 6. Consolidação dos dados completos
+      const dadosCompletos = rawSinistros.map(s => ({
         ...s,
+        tab_clientes_v2: clientesMap[s.cliente_id] || { nome_razao_social: 'Cliente não identificado' },
         corretor_nome: corretorMap[s.corretor_id] || 'Não identificado',
         ultima_ocorrencia: s.tab_sinistros_ocorrencias?.[0]?.data_ocorrencia
       }));
 
-      setSinistros(dadosCompletos || []);
+      setSinistros(dadosCompletos);
     } catch (err: any) {
       console.error("Erro ao carregar relatório:", err.message);
     } finally {
@@ -117,7 +137,7 @@ export const RelatorioSinistros = () => {
   const sinistrosFiltrados = sinistros.filter(s => {
     const termo = busca.toLowerCase();
     return (
-      s.tab_clientes?.nome?.toLowerCase().includes(termo) ||
+      s.tab_clientes_v2?.nome_razao_social?.toLowerCase().includes(termo) ||
       s.corretor_nome?.toLowerCase().includes(termo) ||
       s.tab_proposta_itens?.base_produtos?.nome?.toLowerCase().includes(termo) ||
       s.tab_proposta_itens?.numero_apolice?.toLowerCase().includes(termo) ||
@@ -170,7 +190,7 @@ export const RelatorioSinistros = () => {
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-2 text-zinc-800 dark:text-zinc-200 font-bold text-sm">
                         <User size={14} className="text-blue-500" />
-                        {s.tab_clientes?.nome}
+                        {s.tab_clientes_v2?.nome_razao_social}
                       </div>
                       <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-semibold uppercase">
                         <Briefcase size={12} />
@@ -221,7 +241,7 @@ export const RelatorioSinistros = () => {
                     <div className="flex items-center justify-end gap-2">
                       {/* BOTÃO DE EXCLUIR QUE ABRE O MODAL */}
                       <button 
-                        onClick={() => setConfirmacaoExclusao({ id: s.id, nome: s.tab_clientes?.nome })}
+                        onClick={() => setConfirmacaoExclusao({ id: s.id, nome: s.tab_clientes_v2?.nome_razao_social })}
                         className="p-2.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
                         title="Excluir Sinistro"
                       >

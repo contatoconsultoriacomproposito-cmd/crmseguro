@@ -51,104 +51,128 @@ export default function RelatorioProdutividadeModal({
   }, [isOpen, periodoFiltro, corretorId]);
 
   const carregarDadosRelatorio = async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from("tab_clientes_frios_acoes")
-        .select(`
-          id, tipo_acao, desfecho, criado_em, observacao, cliente_frio_id,
-          tab_clientes_frios (
-            id, razao_social, nome_fantasia, cnpj, temperatura, fase_atendimento,
-            municipio, uf, proxima_acao, data_retorno, horario_retorno
-          )
-        `)
-        .eq("tab_clientes_frios.corretora_id", corretoraId);
+  setLoading(true);
+  try {
+    let query = supabase
+      .from("tab_interacoes_v2")
+      .select(`
+        id, tipo_acao, desfecho, criado_em, observacao, cliente_id,
+        tab_clientes_v2 (
+          id, nome_razao_social, nome_fantasia, cpf_cnpj, temperatura, fase_atendimento,
+          municipio, uf, data_retorno, horario_retorno, dados_complementares_pf, dados_complementares_pj
+        )
+      `)
+      .eq("tab_clientes_v2.corretora_id", corretoraId);
 
-      if (corretorId) {
-        query = query.eq("corretor_id", corretorId);
-      }
-
-      const agora = new Date();
-      if (periodoFiltro === "hoje") {
-        query = query.gte("criado_em", new Date(agora.setHours(0, 0, 0, 0)).toISOString());
-      } else if (periodoFiltro === "7d") {
-        query = query.gte("criado_em", new Date(agora.setDate(agora.getDate() - 7)).toISOString());
-      } else if (periodoFiltro === "30d") {
-        query = query.gte("criado_em", new Date(agora.setDate(agora.getDate() - 30)).toISOString());
-      }
-
-      const { data, error } = await query.order("criado_em", { ascending: false });
-      if (error) throw error;
-
-      const listaAcoes = data || [];
-      let pWhats = 0, pLigacao = 0, pVisita = 0, pEmail = 0, pOutros = 0;
-      const dStats: { [key: string]: number } = {};
-      const mapaClientes: { [key: string]: any } = {};
-
-      listaAcoes.forEach((acao: any) => {
-        const tipo = (acao.tipo_acao || "").toLowerCase();
-        if (tipo.includes("whats") || tipo.includes("chamar_whats")) pWhats++;
-        else if (tipo.includes("ligar") || tipo.includes("ligacao")) pLigacao++;
-        else if (tipo.includes("visita") || tipo.includes("visitar")) pVisita++;
-        else if (tipo.includes("email")) pEmail++;
-        else pOutros++;
-
-        const desfecho = acao.desfecho || "nao_informado";
-        dStats[desfecho] = (dStats[desfecho] || 0) + 1;
-
-        const clienteId = acao.cliente_frio_id;
-        if (clienteId) {
-          if (!mapaClientes[clienteId]) {
-            mapaClientes[clienteId] = { cliente: acao.tab_clientes_frios, totalAcoes: 0, ultimaInteracao: acao.criado_em, acoes: [] };
-          }
-          mapaClientes[clienteId].totalAcoes += 1;
-          mapaClientes[clienteId].acoes.push(acao);
-          if (new Date(acao.criado_em) > new Date(mapaClientes[clienteId].ultimaInteracao)) {
-            mapaClientes[clienteId].ultimaInteracao = acao.criado_em;
-          }
-        }
-      });
-
-      setPassadoWhats(pWhats); setPassadoLigacao(pLigacao); setPassadoVisita(pVisita); setPassadoEmail(pEmail); setPassadoOutros(pOutros);
-      setDesfechoStats(dStats);
-
-      const arrayClientesUnicos = Object.values(mapaClientes);
-      setClientesUnicosFalados(arrayClientesUnicos.length);
-
-      let avancadosPositivos = 0;
-      arrayClientesUnicos.forEach((item: any) => {
-        const fase = (item.cliente?.fase_atendimento || "").toLowerCase().trim();
-        if (fase.includes("cotacao_enviada") || fase.includes("cotação enviada") || fase.includes("em_negociacao") || fase.includes("em negociação") || fase.includes("vendido")) {
-          avancadosPositivos++;
-        }
-      });
-
-      setTaxaConversaoSucesso(Math.round(arrayClientesUnicos.length > 0 ? (avancadosPositivos / arrayClientesUnicos.length) * 100 : 0));
-
-      let fWhats = 0, fLigar = 0, fVisitar = 0, fOutros = 0;
-      arrayClientesUnicos.forEach((item: any) => {
-        const prox = item.cliente?.proxima_acao;
-        if (Array.isArray(prox)) {
-          prox.forEach((p: string) => {
-            const pLower = p.toLowerCase();
-            if (pLower.includes("whats")) fWhats++;
-            else if (pLower.includes("ligar")) fLigar++;
-            else if (pLower.includes("visita")) fVisitar++;
-            else fOutros++;
-          });
-        }
-      });
-
-      setFuturoWhats(fWhats); setFuturoLigar(fLigar); setFuturoVisitar(fVisitar); setFuturoOutros(fOutros);
-
-      setClientesAgrupados(arrayClientesUnicos.sort((a: any, b: any) => new Date(b.ultimaInteracao).getTime() - new Date(a.ultimaInteracao).getTime()));
-
-    } catch (err) {
-      console.error("Erro ao carregar relatório:", err);
-    } finally {
-      setLoading(false);
+    if (corretorId) {
+      query = query.eq("corretor_id", corretorId);
     }
-  };
+
+    const agora = new Date();
+    if (periodoFiltro === "hoje") {
+      query = query.gte("criado_em", new Date(agora.setHours(0, 0, 0, 0)).toISOString());
+    } else if (periodoFiltro === "7d") {
+      query = query.gte("criado_em", new Date(agora.setDate(agora.getDate() - 7)).toISOString());
+    } else if (periodoFiltro === "30d") {
+      query = query.gte("criado_em", new Date(agora.setDate(agora.getDate() - 30)).toISOString());
+    }
+
+    const { data, error } = await query.order("criado_em", { ascending: false });
+    if (error) throw error;
+
+    const listaAcoes = data || [];
+    let pWhats = 0, pLigacao = 0, pVisita = 0, pEmail = 0, pOutros = 0;
+    const dStats: { [key: string]: number } = {};
+    const mapaClientes: { [key: string]: any } = {};
+
+    listaAcoes.forEach((acao: any) => {
+      const tipo = (acao.tipo_acao || "").toLowerCase();
+      if (tipo.includes("whats") || tipo.includes("chamar_whats")) pWhats++;
+      else if (tipo.includes("ligar") || tipo.includes("ligacao")) pLigacao++;
+      else if (tipo.includes("visita") || tipo.includes("visitar")) pVisita++;
+      else if (tipo.includes("email")) pEmail++;
+      else pOutros++;
+
+      const desfecho = acao.desfecho || "nao_informado";
+      dStats[desfecho] = (dStats[desfecho] || 0) + 1;
+
+      const clienteId = acao.cliente_id;
+      if (clienteId) {
+        if (!mapaClientes[clienteId]) {
+          mapaClientes[clienteId] = { 
+            cliente: acao.tab_clientes_v2, 
+            totalAcoes: 0, 
+            ultimaInteracao: acao.criado_em, 
+            acoes: [] 
+          };
+        }
+        mapaClientes[clienteId].totalAcoes += 1;
+        mapaClientes[clienteId].acoes.push(acao);
+        if (new Date(acao.criado_em) > new Date(mapaClientes[clienteId].ultimaInteracao)) {
+          mapaClientes[clienteId].ultimaInteracao = acao.criado_em;
+        }
+      }
+    });
+
+    setPassadoWhats(pWhats); 
+    setPassadoLigacao(pLigacao); 
+    setPassadoVisita(pVisita); 
+    setPassadoEmail(pEmail); 
+    setPassadoOutros(pOutros);
+    setDesfechoStats(dStats);
+
+    const arrayClientesUnicos = Object.values(mapaClientes);
+    setClientesUnicosFalados(arrayClientesUnicos.length);
+
+    let avancadosPositivos = 0;
+    arrayClientesUnicos.forEach((item: any) => {
+      const fase = (item.cliente?.fase_atendimento || "").toLowerCase().trim();
+      if (fase.includes("cotacao_enviada") || fase.includes("cotação enviada") || fase.includes("em_negociacao") || fase.includes("em negociação") || fase.includes("vendido") || fase.includes("qualificado")) {
+        avancadosPositivos++;
+      }
+    });
+
+    setTaxaConversaoSucesso(Math.round(arrayClientesUnicos.length > 0 ? (avancadosPositivos / arrayClientesUnicos.length) * 100 : 0));
+
+    let fWhats = 0, fLigar = 0, fVisitar = 0, fOutros = 0;
+    arrayClientesUnicos.forEach((item: any) => {
+      // Unifica os objetos de dados complementares de PF e PJ
+      const dadosPf = typeof item.cliente?.dados_complementares_pf === 'string'
+        ? JSON.parse(item.cliente.dados_complementares_pf || '{}')
+        : (item.cliente?.dados_complementares_pf || {});
+
+      const dadosPj = typeof item.cliente?.dados_complementares_pj === 'string'
+        ? JSON.parse(item.cliente.dados_complementares_pj || '{}')
+        : (item.cliente?.dados_complementares_pj || {});
+
+      const complementares = { ...dadosPf, ...dadosPj };
+
+      const prox = complementares.proxima_acao_sugerida || item.cliente?.proxima_acao;
+      
+      if (Array.isArray(prox)) {
+        prox.forEach((p: string) => {
+          const pLower = p.toLowerCase();
+          if (pLower.includes("whats")) fWhats++;
+          else if (pLower.includes("ligar")) fLigar++;
+          else if (pLower.includes("visita")) fVisitar++;
+          else fOutros++;
+        });
+      }
+    });
+
+    setFuturoWhats(fWhats); 
+    setFuturoLigar(fLigar); 
+    setFuturoVisitar(fVisitar); 
+    setFuturoOutros(fOutros);
+
+    setClientesAgrupados(arrayClientesUnicos.sort((a: any, b: any) => new Date(b.ultimaInteracao).getTime() - new Date(a.ultimaInteracao).getTime()));
+
+  } catch (err) {
+    console.error("Erro ao carregar relatório:", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const toggleExpandir = (clienteId: string) => {
     setExpandidos(prev => ({ ...prev, [clienteId]: !prev[clienteId] }));

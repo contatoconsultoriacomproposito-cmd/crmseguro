@@ -28,7 +28,9 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
       
       try {
         setLoading(true);
-        const { data, error } = await supabase
+        
+        // 1. Busca os dados do item
+        const { data: itemData, error: itemError } = await supabase
           .from('tab_proposta_itens')
           .select(`
             id, 
@@ -36,22 +38,60 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
             horario_renovacao, 
             data_inicio_vigencia, 
             data_fim_vigencia,
-            base_produtos (nome),
-            tab_proposta_opcoes!inner ( 
-              tab_propostas!inner ( 
-                cliente_id, 
-                tab_clientes!inner (nome) 
-              ) 
-            )
+            opcao_id,
+            base_produtos (nome)
           `)
           .eq('id', itemId)
           .single();
 
-        if (error) throw error;
+        if (itemError || !itemData) throw itemError || new Error("Item não encontrado");
 
-        setDados(data);
-        setNovaData(data.data_renovacao || '');
-        setNovoHorario(data.horario_renovacao?.slice(0, 5) || '09:00');
+        let clienteData: any = null;
+        let clienteId: string | null = null;
+
+        // 2. Busca a opção e proposta sem dependência de FK direta do PostgREST
+        if (itemData.opcao_id) {
+          const { data: opcao } = await supabase
+            .from('tab_proposta_opcoes')
+            .select('proposta_id')
+            .eq('id', itemData.opcao_id)
+            .maybeSingle();
+
+          if (opcao?.proposta_id) {
+            const { data: proposta } = await supabase
+              .from('tab_propostas')
+              .select('cliente_id')
+              .eq('id', opcao.proposta_id)
+              .maybeSingle();
+
+            clienteId = proposta?.cliente_id || null;
+
+            if (clienteId) {
+              const { data: cliente } = await supabase
+                .from('tab_clientes_v2')
+                .select('nome_fantasia, nome_razao_social')
+                .eq('id', clienteId)
+                .maybeSingle();
+
+              clienteData = cliente;
+            }
+          }
+        }
+
+        // 3. Monta o objeto idêntico ao formato esperado pelas telas
+        const dadosFormatados = {
+          ...itemData,
+          tab_proposta_opcoes: {
+            tab_propostas: {
+              cliente_id: clienteId,
+              tab_clientes_v2: clienteData
+            }
+          }
+        };
+
+        setDados(dadosFormatados);
+        setNovaData(itemData.data_renovacao || '');
+        setNovoHorario(itemData.horario_renovacao?.slice(0, 5) || '09:00');
       } catch (err) {
         console.error("Erro ao carregar dados do modal:", err);
         toast.error("Erro ao carregar dados: verifique o vínculo deste item.");
@@ -64,7 +104,7 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
     if (isOpen && itemId) {
       buscarDetalhes();
     }
-  }, [itemId, isOpen]);
+  }, [itemId, isOpen, onClose]);
 
   const handleReagendar = async () => {
     if (!itemId) {
@@ -94,8 +134,8 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
       if (error) throw error;
       
       toast.success("Reagendado com sucesso!");
-      onSuccess(); // Primeiro comunica o sucesso (atualiza a lista)
-      onClose();   // Depois fecha o modal
+      onSuccess(); 
+      onClose(); 
     } catch (err) {
       console.error("Erro no update:", err);
       toast.error("Erro ao reagendar: Verifique o formato dos dados.");
@@ -104,10 +144,8 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
     }
   };
 
-  // Se o modal não estiver aberto, não renderiza nada
   if (!isOpen) return null;
 
-  // Enquanto carrega, mostra apenas o fundo para evitar saltos visuais
   if (loading) {
     return (
       <div className="fixed inset-0 z-[998] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -124,8 +162,8 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
     : vinculoRaw?.tab_propostas;
 
   const itemOriginalParaVinculo = {
-    id_item: itemId ?? '', // Se for undefined, envia string vazia
-    cliente: String(infoProposta?.tab_clientes?.nome || 'Cliente não identificado'),
+    id_item: itemId ?? '', 
+    cliente: String(infoProposta?.tab_clientes_v2?.nome_fantasia || infoProposta?.tab_clientes_v2?.nome_razao_social || 'Cliente não identificado'),
     cliente_id: String(infoProposta?.cliente_id || '')
   };
 
@@ -245,13 +283,14 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
       </div>
 
       {showVinculoModal && (
-      <ModalRenovacao 
-        isOpen={showVinculoModal}
-        onClose={() => setShowVinculoModal(false)}
-        itemOriginal={itemOriginalParaVinculo} // Agora o TS aceita, pois as propriedades são strings
-        onSuccess={() => {
-          onSuccess();
-          onClose();
+        <ModalRenovacao 
+          isOpen={showVinculoModal}
+          onClose={() => setShowVinculoModal(false)}
+          itemOriginal={itemOriginalParaVinculo}
+          onSuccess={() => {
+            onSuccess();
+            setShowVinculoModal(false);
+            onClose(); // <-- Fecha também o modal pai de gerenciamento ao concluir o vínculo
           }}
         />
       )}

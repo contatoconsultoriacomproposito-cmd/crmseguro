@@ -91,102 +91,117 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
   }, [propostaId]);
 
   async function carregarDadosProposta() {
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const { data: proposta, error: errorProp } = await supabase
-        .from("tab_propostas")
-        .select(`
-          *,
-          tab_clientes (*),
-          usuarios_perfis!tab_propostas_corretor_id_fkey (*) 
-        `)
-        .eq("id", propostaId)
-        .single();
+    // 1. Busca a proposta SEM o JOIN direto com tab_clientes_v2
+    const { data: proposta, error: errorProp } = await supabase
+      .from("tab_propostas")
+      .select(`
+        *,
+        usuarios_perfis!tab_propostas_corretor_id_fkey (*) 
+      `)
+      .eq("id", propostaId)
+      .single();
 
-      if (errorProp || !proposta) throw new Error("Erro ao buscar dados básicos da proposta.");
+    if (errorProp || !proposta) throw new Error("Erro ao buscar dados básicos da proposta.");
 
-      const corretor = proposta.usuarios_perfis;
+    const corretor = proposta.usuarios_perfis;
 
-      const { data: corretora } = await supabase
-        .from("usuarios_perfis")
-        .select(`
-          id,
-          cnpj_corretora,
-          registro_susep,
-          tab_configuracoes_site (
-            nome_exibicao,
-            dominio,
-            logo_url
-          )
-        `)
-        .eq("corretora_id", proposta.corretora_id)
-        .or("tipo_usuario.eq.CORRETORA,tipo_usuario.eq.ADMIN") 
-        .limit(1)
+    // 2. Busca o cliente de forma independente se houver cliente_id
+    let clienteDb = null;
+    if (proposta.cliente_id) {
+      const { data: cliente, error: errorCliente } = await supabase
+        .from("tab_clientes_v2")
+        .select("*")
+        .eq("id", proposta.cliente_id)
         .maybeSingle();
 
-      const { data: opcoesDb, error: errorOpcoes } = await supabase
-        .from("tab_proposta_opcoes")
-        .select(`
-          *,
-          base_seguradoras (*),
-          tab_proposta_itens (
-            *,
-            base_produtos (*)
-          )
-        `)
-        .eq("proposta_id", propostaId)
-        .order("ordem_opcao", { ascending: true });
-
-      if (errorOpcoes) throw errorOpcoes;
-
-      const opcoes = opcoesDb || [];
-      const matrizInicial: Record<string, Record<string, any>> = {};
-
-      opcoes.forEach((opt: any) => {
-        matrizInicial[opt.id] = {
-          formaPagamento: opt.tab_proposta_itens?.[0]?.meio_pagamento || "Boleto",
-          parcelamento: opt.tab_proposta_itens?.[0]?.parcelamento || "1x",
-          valorTotal: opt.valor_total_opcao || 0
-        };
-
-        // Correção Importante: Inicializa rigorosamente com "R$ 0,00"
-        listaCoberturas.forEach(cob => {
-          matrizInicial[opt.id][cob.id] = "R$ 0,00";
-        });
-
-        opt.tab_proposta_itens?.forEach((item: any) => {
-          const nomeProd = (item.base_produtos?.nome || "").toLowerCase();
-          const textoSalvo = item.coberturas_franquias;
-
-          if (!textoSalvo) return;
-
-          listaCoberturas.forEach(cob => {
-            if (nomeProd.includes(cob.id.toLowerCase()) || nomeProd.includes(cob.nome.toLowerCase().split(' ')[0])) {
-              matrizInicial[opt.id][cob.id] = textoSalvo;
-            }
-          });
-        });
-      });
-
-      const clienteDb = proposta.tab_clientes;
-
-      setValoresMatriz(matrizInicial);
-      setDadosBase({
-        proposta,
-        corretora,
-        corretor,
-        cliente: clienteDb,
-        opcoes
-      });
-
-    } catch (error) {
-      console.error("Erro ao estruturar cotação empresarial:", error);
-      alert("Houve um erro ao carregar o espelho da proposta.");
-    } finally {
-      setLoading(false);
+      if (!errorCliente) {
+        clienteDb = cliente;
+      }
     }
+
+    // 3. Busca a corretora
+    const { data: corretora } = await supabase
+      .from("usuarios_perfis")
+      .select(`
+        id,
+        cnpj_corretora,
+        registro_susep,
+        tab_configuracoes_site (
+          nome_exibicao,
+          dominio,
+          logo_url
+        )
+      `)
+      .eq("corretora_id", proposta.corretora_id)
+      .or("tipo_usuario.eq.CORRETORA,tipo_usuario.eq.ADMIN") 
+      .limit(1)
+      .maybeSingle();
+
+    // 4. Busca opções e itens (mantém a lógica específica do modal se houver)
+    const { data: opcoesDb, error: errorOpcoes } = await supabase
+      .from("tab_proposta_opcoes")
+      .select(`
+        *,
+        base_seguradoras (*),
+        tab_proposta_itens (
+          *,
+          base_produtos (*)
+        )
+      `)
+      .eq("proposta_id", propostaId)
+      .order("ordem_opcao", { ascending: true });
+
+    if (errorOpcoes) throw errorOpcoes;
+
+    const opcoes = opcoesDb || [];
+    const matrizInicial: Record<string, Record<string, any>> = {};
+
+    opcoes.forEach((opt: any) => {
+      matrizInicial[opt.id] = {
+        formaPagamento: opt.tab_proposta_itens?.[0]?.meio_pagamento || "Boleto",
+        parcelamento: opt.tab_proposta_itens?.[0]?.parcelamento || "1x",
+        valorTotal: opt.valor_total_opcao || 0
+      };
+
+      listaCoberturas.forEach(cob => {
+        matrizInicial[opt.id][cob.id] = "R$ 0,00";
+      });
+
+      opt.tab_proposta_itens?.forEach((item: any) => {
+        const nomeProd = (item.base_produtos?.nome || "").toLowerCase();
+        const textoSalvo = item.coberturas_franquias;
+
+        if (!textoSalvo) return;
+
+        listaCoberturas.forEach(cob => {
+          if (nomeProd.includes(cob.id.toLowerCase()) || nomeProd.includes(cob.nome.toLowerCase().split(' ')[0])) {
+            matrizInicial[opt.id][cob.id] = textoSalvo;
+          }
+        });
+      });
+    });
+
+    setValoresMatriz(matrizInicial);
+
+    // 5. Atualiza o estado
+    setDadosBase({
+      proposta,
+      corretora,
+      corretor,
+      cliente: clienteDb,
+      opcoes
+    });
+
+  } catch (error) {
+    console.error("Erro ao carregar dados da proposta:", error);
+    alert("Houve um erro ao carregar o espelho da proposta.");
+  } finally {
+    setLoading(false);
   }
+}
 
   const atualizarCelula = (opcaoId: string, campo: string, valor: any) => {
     setValoresMatriz(prev => ({
@@ -432,6 +447,23 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
         <div className="bg-white p-6 rounded-lg shadow-xl flex items-center gap-3">
           <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
           <span className="font-medium text-gray-700">Construindo espelho comparativo...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Trava para impedir a quebra caso a busca falhe ou dadosBase continue nulo
+  if (!dadosBase) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+        <div className="bg-white p-6 rounded-lg shadow-xl text-center space-y-4">
+          <p className="text-red-600 font-medium">Erro ao carregar os dados da proposta.</p>
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+          >
+            Fechar
+          </button>
         </div>
       </div>
     );

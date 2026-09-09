@@ -29,57 +29,59 @@ export default function ClientesLista() {
   const [transferindo, setTransferindo] = useState(false);
 
   // Estados do Modal de Agendamento
-const [clienteAgendamento, setClienteAgendamento] = useState<any | null>(null);
-const [dataRetornoInput, setDataRetornoInput] = useState<string>('');
-const [horarioRetornoInput, setHorarioRetornoInput] = useState<string>('');
-const [salvandoAgendamento, setSalvandoAgendamento] = useState<boolean>(false);
+  const [clienteAgendamento, setClienteAgendamento] = useState<any | null>(null);
+  const [dataRetornoInput, setDataRetornoInput] = useState<string>('');
+  const [horarioRetornoInput, setHorarioRetornoInput] = useState<string>('');
+  const [salvandoAgendamento, setSalvandoAgendamento] = useState<boolean>(false);
 
-// Abrir Modal
-const abrirModalAgendamento = (cliente: any) => {
-  setClienteAgendamento(cliente);
-  setDataRetornoInput(cliente.data_retorno || '');
-  setHorarioRetornoInput(cliente.horario_retorno ? cliente.horario_retorno.slice(0, 5) : '09:00');
-};
+  // Abrir Modal
+  const abrirModalAgendamento = (cliente: any) => {
+    setClienteAgendamento(cliente);
+    setDataRetornoInput(cliente.data_retorno || '');
+    setHorarioRetornoInput(cliente.horario_retorno ? cliente.horario_retorno.slice(0, 5) : '09:00');
+  };
 
-// Salvar Agendamento
-const handleSalvarAgendamento = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!clienteAgendamento) return;
+  // Salvar Agendamento
+  const handleSalvarAgendamento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clienteAgendamento) return;
 
-  try {
-    setSalvandoAgendamento(true);
+    try {
+      setSalvandoAgendamento(true);
 
-    const { error } = await supabase
-      .from('tab_clientes')
-      .update({
-        data_retorno: dataRetornoInput || null,
-        horario_retorno: horarioRetornoInput ? `${horarioRetornoInput}:00` : null,
-      })
-      .eq('id', clienteAgendamento.id);
+      const { error } = await supabase
+        .from('tab_clientes_v2')
+        .update({
+          data_retorno: dataRetornoInput || null,
+          horario_retorno: horarioRetornoInput ? `${horarioRetornoInput}:00` : null,
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq('id', clienteAgendamento.id);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    // Atualiza a lista local sem re-fetch
-    setClientes((prev) =>
-      prev.map((c) =>
-        c.id === clienteAgendamento.id
-          ? {
-              ...c,
-              data_retorno: dataRetornoInput || null,
-              horario_retorno: horarioRetornoInput ? `${horarioRetornoInput}:00` : null,
-            }
-          : c
-      )
-    );
+      // Atualiza a lista local sem re-fetch
+      setClientes((prev) =>
+        prev.map((c) =>
+          c.id === clienteAgendamento.id
+            ? {
+                ...c,
+                data_retorno: dataRetornoInput || null,
+                horario_retorno: horarioRetornoInput ? `${horarioRetornoInput}:00` : null,
+              }
+            : c
+        )
+      );
 
-    setClienteAgendamento(null);
-  } catch (err) {
-    console.error('Erro ao agendar retorno:', err);
-    alert('Ocorreu um erro ao agendar o retorno.');
-  } finally {
-    setSalvandoAgendamento(false);
-  }
-};
+      setClienteAgendamento(null);
+      toast.success("Retorno agendado com sucesso!");
+    } catch (err) {
+      console.error('Erro ao agendar retorno:', err);
+      toast.error('Ocorreu um erro ao agendar o retorno.');
+    } finally {
+      setSalvandoAgendamento(false);
+    }
+  };
 
   useEffect(() => {
     async function getInitialData() {
@@ -105,6 +107,7 @@ const handleSalvarAgendamento = async (e: React.FormEvent) => {
   }, [userProfile]);
 
   async function carregarCorretores() {
+    if (!userProfile?.corretora_id) return;
     const { data } = await supabase
       .from('usuarios_perfis')
       .select('id, nome')
@@ -113,44 +116,136 @@ const handleSalvarAgendamento = async (e: React.FormEvent) => {
     setCorretores(data || []);
   }
 
-  async function carregarClientes() {
+  // BUSCA CORRIGIDA: Resolve o erro PGRST200 com relacionamento desacoplado
+  // BUSCA TOTALMENTE DESACOPLADA: Resolve o PGRST200 sem mexer no banco
+async function carregarClientes() {
   if (!userProfile?.corretora_id) return;
   try {
     setLoading(true);
+
+    // 1. Busca os clientes da corretora
     let query = supabase
-      .from("tab_clientes")
-      .select(`
-        *,
-        usuarios_perfis!tab_clientes_corretor_id_fkey(nome),
-        tab_propostas!tab_propostas_cliente_id_fkey (
-          id,
-          status,
-          tab_proposta_opcoes (
-            id,
-            base_seguradoras!tab_proposta_opcoes_seguradora_id_fkey ( id, nome ),
-            tab_proposta_itens (
-              id,
-              data_fim_vigencia,
-              numero_apolice,
-              status_renovacao,
-              base_produtos!tab_proposta_itens_produto_id_fkey ( id, nome )
-            )
-          )
-        )
-      `)
-      .eq("tab_propostas.status", "Vendido")
+      .from("tab_clientes_v2")
+      .select("*")
       .eq("corretora_id", userProfile.corretora_id)
-      .order("created_at", { ascending: false });
+      .order("criado_em", { ascending: false });
 
     if (userProfile.tipo_usuario === 'CORRETOR') {
       query = query.eq('corretor_id', userProfile.id);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    setClientes(data || []);
+    const { data: dadosClientes, error: errClientes } = await query;
+    if (errClientes) throw errClientes;
+
+    if (!dadosClientes || dadosClientes.length === 0) {
+      setClientes([]);
+      return;
+    }
+
+    const clienteIds = dadosClientes.map((c: any) => c.id);
+    const corretorIds = [...new Set(dadosClientes.map((c: any) => c.corretor_id).filter(Boolean))];
+
+    // 2. Busca corretores e propostas em paralelo sem joins relacionais do PostgREST
+    const [resCorretores, resPropostas] = await Promise.all([
+      corretorIds.length > 0
+        ? supabase.from('usuarios_perfis').select('id, nome').in('id', corretorIds)
+        : { data: [] },
+      clienteIds.length > 0
+        ? supabase
+            .from('tab_propostas')
+            .select('id, cliente_id, status')
+            .in('cliente_id', clienteIds)
+            .eq('status', 'Vendido')
+        : { data: [] }
+    ]);
+
+    const propostasBase = resPropostas.data || [];
+    const propostaIds = propostasBase.map((p: any) => p.id);
+
+    // 3. Busca as opções das propostas encontradas
+    let opcoesBase: any[] = [];
+    if (propostaIds.length > 0) {
+      const { data: resOpcoes } = await supabase
+        .from('tab_proposta_opcoes')
+        .select('id, proposta_id, seguradora_id')
+        .in('proposta_id', propostaIds);
+      opcoesBase = resOpcoes || [];
+    }
+
+    const opcaoIds = opcoesBase.map((o: any) => o.id);
+    const seguradoraIds = [...new Set(opcoesBase.map((o: any) => o.seguradora_id).filter(Boolean))];
+
+    // 4. Busca os itens das opções e as seguradoras
+    const [resItens, resSeguradoras] = await Promise.all([
+      opcaoIds.length > 0
+        ? supabase
+            .from('tab_proposta_itens')
+            .select('id, proposta_opcao_id, data_fim_vigencia, numero_apolice, status_renovacao, produto_id')
+            .in('proposta_opcao_id', opcaoIds)
+        : { data: [] },
+      seguradoraIds.length > 0
+        ? supabase.from('base_seguradoras').select('id, nome').in('id', seguradoraIds)
+        : { data: [] }
+    ]);
+
+    const itensBase = resItens.data || [];
+    const produtoIds = [...new Set(itensBase.map((i: any) => i.produto_id).filter(Boolean))];
+
+    // 5. Busca os produtos relacionados
+    const { data: resProdutos } = produtoIds.length > 0
+      ? await supabase.from('base_produtos').select('id, nome').in('id', produtoIds)
+      : { data: [] };
+
+    // 6. Mapeamentos para associação rápida em memória
+    const corretoresMap = new Map((resCorretores.data || []).map((c: any) => [c.id, c]));
+    const seguradorasMap = new Map((resSeguradoras.data || []).map((s: any) => [s.id, s]));
+    const produtosMap = new Map((resProdutos || []).map((p: any) => [p.id, p]));
+
+    // Agrupa itens por opção
+    const itensPorOpcaoMap = new Map<string, any[]>();
+    itensBase.forEach((item: any) => {
+      const lista = itensPorOpcaoMap.get(item.proposta_opcao_id) || [];
+      lista.push({
+        ...item,
+        base_produtos: produtosMap.get(item.produto_id) || null
+      });
+      itensPorOpcaoMap.set(item.proposta_opcao_id, lista);
+    });
+
+    // Agrupa opções por proposta
+    const opcoesPorPropostaMap = new Map<string, any[]>();
+    opcoesBase.forEach((opcao: any) => {
+      const lista = opcoesPorPropostaMap.get(opcao.proposta_id) || [];
+      lista.push({
+        ...opcao,
+        base_seguradoras: seguradorasMap.get(opcao.seguradora_id) || null,
+        tab_proposta_itens: itensPorOpcaoMap.get(opcao.id) || []
+      });
+      opcoesPorPropostaMap.set(opcao.proposta_id, lista);
+    });
+
+    // Agrupa propostas completas por cliente
+    const propostasPorClienteMap = new Map<string, any[]>();
+    propostasBase.forEach((proposta: any) => {
+      const lista = propostasPorClienteMap.get(proposta.cliente_id) || [];
+      lista.push({
+        ...proposta,
+        tab_proposta_opcoes: opcoesPorPropostaMap.get(proposta.id) || []
+      });
+      propostasPorClienteMap.set(proposta.cliente_id, lista);
+    });
+
+    // 7. Monta a estrutura final idêntica à que o componente espera
+    const clientesCompletos = dadosClientes.map((cli: any) => ({
+      ...cli,
+      usuarios_perfis: corretoresMap.get(cli.corretor_id) || null,
+      tab_propostas: propostasPorClienteMap.get(cli.id) || []
+    }));
+
+    setClientes(clientesCompletos);
   } catch (error) {
     console.error("Erro ao carregar clientes:", error);
+    toast.error("Falha ao carregar a lista de clientes.");
   } finally {
     setLoading(false);
   }
@@ -158,69 +253,68 @@ const handleSalvarAgendamento = async (e: React.FormEvent) => {
 
   // Helper para extrair produtos ativos/vendidos do cliente
   const extrairProdutosDoCliente = (cliente: any) => {
-  if (!cliente.tab_propostas || cliente.tab_propostas.length === 0) return [];
+    if (!cliente.tab_propostas || cliente.tab_propostas.length === 0) return [];
 
-  const produtosMap = new Map();
+    const produtosMap = new Map();
 
-  cliente.tab_propostas.forEach((proposta: any) => {
-    if (proposta.status === 'Cancelada' || proposta.status === 'Perdida') return;
+    cliente.tab_propostas.forEach((proposta: any) => {
+      if (proposta.status === 'Cancelada' || proposta.status === 'Perdida') return;
 
-    proposta.tab_proposta_opcoes?.forEach((opcao: any) => {
-      // Nome da seguradora vem da opção
-      const nomeSeguradora = opcao.base_seguradoras?.nome;
+      proposta.tab_proposta_opcoes?.forEach((opcao: any) => {
+        const nomeSeguradora = opcao.base_seguradoras?.nome;
 
-      opcao.tab_proposta_itens?.forEach((item: any) => {
-        if (item.status_renovacao === 'CANCELADA') return;
+        opcao.tab_proposta_itens?.forEach((item: any) => {
+          if (item.status_renovacao === 'CANCELADA') return;
 
-        const nomeProduto = item.base_produtos?.nome;
+          const nomeProduto = item.base_produtos?.nome;
 
-        if (nomeProduto) {
-          const key = `${nomeProduto}-${nomeSeguradora || ''}`;
-          if (!produtosMap.has(key)) {
-            produtosMap.set(key, {
-              produto: nomeProduto,
-              seguradora: nomeSeguradora
-            });
+          if (nomeProduto) {
+            const key = `${nomeProduto}-${nomeSeguradora || ''}`;
+            if (!produtosMap.has(key)) {
+              produtosMap.set(key, {
+                produto: nomeProduto,
+                seguradora: nomeSeguradora
+              });
+            }
           }
-        }
-      });
-    });
-  });
-
-  return Array.from(produtosMap.values());
-};
-
-const extrairVigenciasDoCliente = (cliente: any) => {
-  if (!cliente?.tab_propostas) return [];
-
-  const listaVigencias: Array<{
-    produto: string;
-    seguradora?: string;
-    fimVigencia?: string;
-    numeroApolice?: string;
-  }> = [];
-
-  cliente.tab_propostas.forEach((proposta: any) => {
-    if (proposta.status !== 'Vendido') return;
-
-    proposta.tab_proposta_opcoes?.forEach((opcao: any) => {
-      const nomeSeguradora = opcao.base_seguradoras?.nome;
-
-      opcao.tab_proposta_itens?.forEach((item: any) => {
-        if (item.status_renovacao === 'CANCELADA') return;
-
-        listaVigencias.push({
-          produto: item.base_produtos?.nome || 'Produto Sem Nome',
-          seguradora: nomeSeguradora,
-          fimVigencia: item.data_fim_vigencia,
-          numeroApolice: item.numero_apolice,
         });
       });
     });
-  });
 
-  return listaVigencias;
-};
+    return Array.from(produtosMap.values());
+  };
+
+  const extrairVigenciasDoCliente = (cliente: any) => {
+    if (!cliente?.tab_propostas) return [];
+
+    const listaVigencias: Array<{
+      produto: string;
+      seguradora?: string;
+      fimVigencia?: string;
+      numeroApolice?: string;
+    }> = [];
+
+    cliente.tab_propostas.forEach((proposta: any) => {
+      if (proposta.status !== 'Vendido') return;
+
+      proposta.tab_proposta_opcoes?.forEach((opcao: any) => {
+        const nomeSeguradora = opcao.base_seguradoras?.nome;
+
+        opcao.tab_proposta_itens?.forEach((item: any) => {
+          if (item.status_renovacao === 'CANCELADA') return;
+
+          listaVigencias.push({
+            produto: item.base_produtos?.nome || 'Produto Sem Nome',
+            seguradora: nomeSeguradora,
+            fimVigencia: item.data_fim_vigencia,
+            numeroApolice: item.numero_apolice,
+          });
+        });
+      });
+    });
+
+    return listaVigencias;
+  };
 
   async function handleTransferenciaCarteira() {
     if (!transferDe || !transferPara || transferDe === transferPara) return;
@@ -228,10 +322,10 @@ const extrairVigenciasDoCliente = (cliente: any) => {
     setTransferindo(true);
     try {
       const { error } = await supabase
-        .from("tab_clientes")
+        .from("tab_clientes_v2")
         .update({ 
             corretor_id: transferPara,
-            updated_at: new Date().toISOString()
+            atualizado_em: new Date().toISOString()
         })
         .eq("corretora_id", userProfile.corretora_id)
         .eq("corretor_id", transferDe);
@@ -264,7 +358,7 @@ const extrairVigenciasDoCliente = (cliente: any) => {
   const exportarExcel = () => {
     setExporting(true);
     try {
-      const camposOmitidos = ['google_event_id_sinistro', 'google_event_id_comercial', 'corretor_id', 'corretora_id', 'id', 'usuarios_perfis'];
+      const camposOmitidos = ['google_event_id_sinistro', 'google_event_id_comercial', 'corretor_id', 'corretora_id', 'id', 'usuarios_perfis', 'tab_propostas'];
       const dadosParaExportar = clientesFiltrados.map(cliente => {
         const filtrado: any = {};
         Object.keys(cliente).forEach(key => {
@@ -272,6 +366,8 @@ const extrairVigenciasDoCliente = (cliente: any) => {
             const valor = cliente[key];
             if (typeof valor === 'boolean') {
               filtrado[key.toUpperCase()] = valor ? 'SIM' : 'NÃO';
+            } else if (typeof valor === 'object' && valor !== null) {
+              filtrado[key.toUpperCase()] = JSON.stringify(valor);
             } else {
               filtrado[key.toUpperCase()] = valor !== null && valor !== undefined ? String(valor) : '';
             }
@@ -286,6 +382,7 @@ const extrairVigenciasDoCliente = (cliente: any) => {
       XLSX.writeFile(wb, `Relatorio_Clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (error) {
       console.error("Erro ao exportar:", error);
+      toast.error("Erro ao exportar para Excel.");
     } finally {
       setExporting(false);
     }
@@ -296,7 +393,7 @@ const extrairVigenciasDoCliente = (cliente: any) => {
     try {
       setExcluindoId(confirmarExclusao.id);
       let deleteQuery = supabase
-        .from("tab_clientes")
+        .from("tab_clientes_v2")
         .delete()
         .eq("id", confirmarExclusao.id)
         .eq("corretora_id", userProfile.corretora_id);
@@ -319,6 +416,7 @@ const extrairVigenciasDoCliente = (cliente: any) => {
     }
   }
 
+  // BUSCA ATUALIZADA: Mapeia contatos em JSON e campos da tab_clientes_v2
   const clientesFiltrados = clientes.filter((c) => {
     const atendeFiltroCorretor = filtroCorretor === "todos" || c.corretor_id === filtroCorretor;
     if (!atendeFiltroCorretor) return false;
@@ -326,19 +424,30 @@ const extrairVigenciasDoCliente = (cliente: any) => {
     if (!busca) return true;
     const termo = busca.toLowerCase().trim();
     const termoApenasNumeros = termo.replace(/\D/g, "");
-    const nome = (c.nome || "").toLowerCase();
-    const razaoSocial = (c.razao_social || "").toLowerCase();
-    const nomeFantasia = (c.nome_fantasia || "").toLowerCase();
-    const cpf = (c.cpf || "").replace(/\D/g, "");
-    const cnpj = (c.cnpj || "").replace(/\D/g, "");
-    const whatsOriginal = (c.telefone_whats || "").toLowerCase();
-    const whatsLimpo = whatsOriginal.replace(/\D/g, "");
 
-    if (termo.includes("(") || termo.includes(")")) return whatsOriginal.includes(termo);
-    if (termoApenasNumeros && termo === termoApenasNumeros) {
-      return cpf.includes(termoApenasNumeros) || cnpj.includes(termoApenasNumeros) || whatsLimpo.includes(termoApenasNumeros);
+    const nomeRazao = (c.nome_razao_social || "").toLowerCase();
+    const nomeFantasia = (c.nome_fantasia || "").toLowerCase();
+    const doc = (c.cpf_cnpj || "").replace(/\D/g, "");
+
+    // Extração segura dos telefones no JSON contatos
+    let contatosArray: any[] = [];
+    if (Array.isArray(c.contatos)) {
+      contatosArray = c.contatos;
+    } else if (typeof c.contatos === 'string') {
+      try { contatosArray = JSON.parse(c.contatos); } catch { contatosArray = []; }
     }
-    return nome.includes(termo) || razaoSocial.includes(termo) || nomeFantasia.includes(termo);
+    const telefones = contatosArray.map((ct: any) => (ct.telefone || "").toLowerCase());
+    const telefonesLimpos = contatosArray.map((ct: any) => (ct.telefone || "").replace(/\D/g, ""));
+
+    if (termo.includes("(") || termo.includes(")")) {
+      return telefones.some((tel: string) => tel.includes(termo));
+    }
+
+    if (termoApenasNumeros && termo === termoApenasNumeros) {
+      return doc.includes(termoApenasNumeros) || telefonesLimpos.some((tel: string) => tel.includes(termoApenasNumeros));
+    }
+
+    return nomeRazao.includes(termo) || nomeFantasia.includes(termo);
   });
 
   // 📊 INDICADORES EM TEMPO REAL COM BASE NA BASE FILTRADA/ATUAL

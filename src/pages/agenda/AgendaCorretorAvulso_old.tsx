@@ -133,35 +133,44 @@ export const AgendaCorretorAvulso: React.FC<AgendaCorretorAvulsoProps> = ({ even
   };
 
   const removerVencimento = async (index: number) => {
-    const venc = vencimentos[index];
-    if (venc.id) {
-      if (!confirm('Deseja excluir este agendamento permanentemente?')) return;
-      setLoading(true);
-      try {
-        const { error } = await supabase.from('tab_clientes_agenda').delete().eq('id', venc.id);
-        if (error) throw error;
-        toast.success('Agendamento excluído!');
-        const novos = vencimentos.filter((_, i) => i !== index);
-        if (novos.length === 0) {
-          setIsModalOpen(false);
-          onSuccess();
-        } else {
-          setVencimentos(novos);
-        }
-      } catch (error) {
-        console.error("Erro ao excluir", error);
-        toast.error('Erro ao excluir do banco.');
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      if (vencimentos.length > 1) {
-        setVencimentos(prev => prev.filter((_, i) => i !== index));
+  const venc = vencimentos[index];
+  if (venc.id) {
+    if (!confirm('Deseja excluir este agendamento permanentemente?')) return;
+    setLoading(true);
+    try {
+      // Limpa os campos de retorno no cadastro do cliente na tab_clientes_v2
+      const { error } = await supabase
+        .from('tab_clientes_v2')
+        .update({ 
+          data_retorno: null, 
+          horario_retorno: null,
+          atualizado_em: new Date().toISOString()
+        })
+        .eq('id', venc.id);
+
+      if (error) throw error;
+      toast.success('Agendamento excluído!');
+      const novos = vencimentos.filter((_, i) => i !== index);
+      if (novos.length === 0) {
+        setIsModalOpen(false);
+        onSuccess();
       } else {
-        toast.error('É necessário ter ao menos um agendamento.');
+        setVencimentos(novos);
       }
+    } catch (error) {
+      console.error("Erro ao excluir", error);
+      toast.error('Erro ao excluir do banco.');
+    } finally {
+      setLoading(false);
     }
-  };
+  } else {
+    if (vencimentos.length > 1) {
+      setVencimentos(prev => prev.filter((_, i) => i !== index));
+    } else {
+      toast.error('É necessário ter ao menos um agendamento.');
+    }
+  }
+};
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,20 +204,45 @@ export const AgendaCorretorAvulso: React.FC<AgendaCorretorAvulsoProps> = ({ even
       };
 
       const promessas = vencimentos.map(v => {
-        const payloadFinal = {
-          ...basePayload,
+        const isPJ = basePayload.tipo_cliente === 'PJ';
+
+        const dadosComplementaresObj = {
           produto_interesse: v.produto_interesse,
-          data_retorno: v.data_retorno,
-          horario_retorno: v.horario_retorno,
+          produtos_gerais: basePayload.produtos_gerais,
           breve_descricao: v.breve_descricao
         };
 
+        const payloadFinal = {
+          corretora_id: basePayload.corretora_id,
+          corretor_id: basePayload.corretor_id,
+          nome_razao_social: isPJ && basePayload.razao_social 
+            ? basePayload.razao_social 
+            : basePayload.nome_cliente,
+          nome_fantasia: basePayload.nome_fantasia || null,
+          tipo_cliente: basePayload.tipo_cliente || 'PF',
+          data_retorno: v.data_retorno,
+          horario_retorno: v.horario_retorno,
+          contatos: [
+            {
+              id: crypto.randomUUID(),
+              nome: basePayload.nome_cliente,
+              telefone: basePayload.tel_cliente || '',
+              email: basePayload.email_cliente || '',
+              principal: true
+            }
+          ],
+          // Direciona para a coluna correta de acordo com o tipo do cliente
+          dados_complementares_pf: isPJ ? {} : dadosComplementaresObj,
+          dados_complementares_pj: isPJ ? dadosComplementaresObj : {},
+          atualizado_em: new Date().toISOString()
+        };
+
         if (v.id) {
-          return supabase.from('tab_clientes_agenda').update(payloadFinal).eq('id', v.id);
+          return supabase.from('tab_clientes_v2').update(payloadFinal).eq('id', v.id);
         } else {
-          return supabase.from('tab_clientes_agenda').insert([payloadFinal]);
+          return supabase.from('tab_clientes_v2').insert([payloadFinal]);
         }
-      });
+      });   
 
       await Promise.all(promessas);
       toast.success(isNovo ? 'Contatos registrados com sucesso!' : 'Alterações salvas com sucesso!');

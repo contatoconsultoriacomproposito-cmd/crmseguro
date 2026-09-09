@@ -11,7 +11,6 @@ export function useKanbanConfig(grupo: 'atendimento' | 'vendas' | 'perdas') {
   const [colunas, setColunas] = useState<{ id: string, title: string, colorHex: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Transformamos o loadConfigs em uma função estável com useCallback
   const loadConfigs = useCallback(async () => {
     try {
       setLoading(true);
@@ -37,10 +36,12 @@ export function useKanbanConfig(grupo: 'atendimento' | 'vendas' | 'perdas') {
       if (error) throw error;
 
       if (configs && configs.length > 0) {
+        // Atualizado com as novas chaves exatas das suas regras
         const ordemDesejada: Record<string, string[]> = {
-          atendimento: ['lead', 'contato', 'negociacao'],
-          vendas: ['pos', 'renovacao', 'negociacao_vendas'],
-          perdas: ['recuperacao', 'contato_perda', 'negociacao_perdas']
+          atendimento: ['nao_contatado', 'contato_realizado', 'negociacao_lead'],
+          vendas: ['pos_vendas', 'renovacao', 'negociacao_cliente'],
+          perdas: ['recuperacao', 'contato_realizado_perdido', 'negociacao_perdido'],
+          novo: ['novo']
         };
 
         const ordemAtual = ordemDesejada[grupo] || [];
@@ -61,21 +62,25 @@ export function useKanbanConfig(grupo: 'atendimento' | 'vendas' | 'perdas') {
     } catch (err) {
       console.error('Erro ao carregar config do Kanban:', err);
 
+      // Fallback atualizado com as novas chaves
       const padrao: Record<string, any[]> = {
         atendimento: [
-          { id: 'lead', title: 'Novo Lead', colorHex: '#64748b' },
-          { id: 'contato', title: 'Lead Contatado', colorHex: '#2563eb' },
-          { id: 'negociacao', title: 'Lead em Negociação', colorHex: '#d97706' }
+          { id: 'nao_contatado', title: 'Não Contatado', colorHex: '#64748b' },
+          { id: 'contato_realizado', title: 'Contato Realizado', colorHex: '#2563eb' },
+          { id: 'negociacao_lead', title: 'Em Negociação', colorHex: '#d97706' }
         ],
         vendas: [
-          { id: 'pos', title: 'Cliente em Pós-Vendas', colorHex: '#64748b' },
-          { id: 'renovacao', title: 'Renovação do Seguro', colorHex: '#2563eb' },
-          { id: 'negociacao_vendas', title: 'Cliente em negociação', colorHex: '#d97706' }
+          { id: 'pos_vendas', title: 'Pós-Vendas', colorHex: '#16a34a' },
+          { id: 'renovacao', title: 'Renovação', colorHex: '#2563eb' },
+          { id: 'negociacao_cliente', title: 'Em Negociação', colorHex: '#ca8a04' }
         ],
         perdas: [
-          { id: 'recuperacao', title: 'Em recuperação', colorHex: '#64748b' },
-          { id: 'contato_perda', title: 'Contato em recuperação', colorHex: '#2563eb' },
-          { id: 'negociacao_perdas', title: 'Renegociação', colorHex: '#d97706' }
+          { id: 'recuperacao', title: 'Em Recuperação', colorHex: '#64748b' },
+          { id: 'contato_realizado_perdido', title: 'Contato Realizado', colorHex: '#2563eb' },
+          { id: 'negociacao_perdido', title: 'Renegociação', colorHex: '#d97706' }
+        ],
+        novo: [
+          { id: 'novo', title: 'Novo', colorHex: '#64748b' }
         ]
       };
 
@@ -85,11 +90,9 @@ export function useKanbanConfig(grupo: 'atendimento' | 'vendas' | 'perdas') {
     }
   }, [grupo]);
 
-  // Carrega automaticamente quando o grupo mudar
   useEffect(() => {
     loadConfigs();
   }, [loadConfigs]);
 
-  // Retornamos colunas, loading e agora o refresh
   return { colunas, loading, refresh: loadConfigs };
 }

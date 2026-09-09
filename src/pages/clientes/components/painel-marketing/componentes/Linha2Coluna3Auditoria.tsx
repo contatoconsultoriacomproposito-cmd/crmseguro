@@ -1,13 +1,13 @@
 import React from 'react';
 import { usePainelMarketing } from '../context/PainelMarketingContext';
 
-// 1. Interface expandida com TODOS os campos reais da tab_clientes_frios e tab_clientes
+// 1. Interface expandida com TODOS os campos reais da tab_cliente_v2
 interface DadosCadastraisExtra {
   tabela_origem?: string;
   tipo_cliente?: 'PF' | 'PJ' | string;
   temperatura?: string;
   
-  // Campos de Pessoa Jurídica (tab_clientes_frios / PJ)
+  // Campos de Pessoa Jurídica ()
   cnpj?: string;
   razao_social?: string;
   nome_fantasia?: string;
@@ -245,11 +245,11 @@ export const Linha2Coluna3Auditoria: React.FC = () => {
                 <div className="flex justify-between items-center pb-1 border-b border-slate-800">
                   <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wide">📋 Dados Cadastrais Adicionais</p>
                   <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
-                    {dadosCadastrais.cnpj ? 'Leads Frios' : 'CRM Principal'}
+                    {dadosCadastrais.tipo_cliente === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física'}
                   </span>
                 </div>
 
-                {/* EXIBIÇÃO PESSOA JURÍDICA (PJ - TAB_CLIENTES_FRIOS) */}
+                {/* EXIBIÇÃO PESSOA JURÍDICA () */}
                 {dadosCadastrais.tipo_cliente === 'PJ' && (
                   <>
                     {dadosCadastrais.razao_social && (

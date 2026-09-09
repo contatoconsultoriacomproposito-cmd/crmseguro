@@ -35,7 +35,7 @@ export interface DadosCadastraisExtra {
   ddd_telefone_1?: string | null;
   telefone_adicional?: string | null;
   nomes_socios?: string | null;
-  tabela_origem?: 'tab_clientes' | 'tab_clientes_frios' | null;
+  tabela_origem?: 'tab_clientes_v2' | null;
 }
 
 // Interface restaurada com a propriedade opcional para sanar os erros do compilador
@@ -168,46 +168,125 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
   };
 
   // ------------------------------------------------------------------
-  // FUNÇÃO EXCLUSIVA: ENRIQUECER DADOS (CORRIGIDA CONTRA DUPLICADOS)
+  // FUNÇÃO EXCLUSIVA: ENRIQUECER DADOS (CORRIGIDA COM CAST DE TEXTO)
   // ------------------------------------------------------------------
   const selecionarEInspecionarCliente = async (log: any) => {
     setRawClienteAuditoria(log);
     setLoadingDadosExtras(true);
-    setDadosExtrasInspecionados(null); // Limpa busca anterior
+    setDadosExtrasInspecionados(null);
 
     try {
       let dados = null;
-      const emailBusca = log.email_cliente ? log.email_cliente.trim() : '';
+      const emailOriginal = log.email_cliente ? log.email_cliente.trim() : '';
+      const emailBusca = emailOriginal.toLowerCase();
       const corretoraIdFiltro = log.corretora_id || idCorretoraReal;
 
-      if (log.cadastrado_no_sistema) {
-        // Busca na tabela de clientes ativos
-        const { data, error } = await supabase
-          .from('tab_clientes')
-          .select('*')
-          .ilike('email', emailBusca)
-          .eq('corretora_id', corretoraIdFiltro)
-          .limit(1); // Retorna um array de no máximo 1 elemento em vez de quebrar
+      if (emailBusca) {
+        let clienteRaw = null;
 
-        if (error) throw error;
-        // Como o .limit(1) retorna uma lista, pegamos a posição [0]
-        if (data && data.length > 0) {
-          dados = { ...data[0], tabela_origem: 'tab_clientes' };
+        // 1ª TENTATIVA: Filtro exato via JSONB operador 'contains' (cs)
+        const { data: dataExact, error: errorExact } = await supabase
+          .from('tab_clientes_v2')
+          .select('*')
+          .eq('corretora_id', corretoraIdFiltro)
+          .filter('contatos', 'cs', JSON.stringify([{ email: emailOriginal }]))
+          .order('criado_em', { ascending: false })
+          .limit(1);
+
+        if (errorExact) {
+          console.warn('Busca exata JSONB não retornou resultado ou falhou:', errorExact);
         }
-      } else {
-        // Busca na tabela de clientes frios
-        const { data, error } = await supabase
-          .from('tab_clientes_frios')
-          .select('*')
-          .ilike('email', emailBusca)
-          .eq('corretora_id', corretoraIdFiltro)
-          .order('importado_em', { ascending: false }) // Se houver duplicado, traz o mais recente primeiro
-          .limit(1); // Impede o erro PGRST116
 
-        if (error) throw error;
-        // Como o .limit(1) retorna uma lista, pegamos a posição [0]
-        if (data && data.length > 0) {
-          dados = { ...data[0], tabela_origem: 'tab_clientes_frios' };
+        if (dataExact && dataExact.length > 0) {
+          clienteRaw = dataExact[0];
+        } else {
+          // 2ª TENTATIVA (FALLBACK): Busca usando textSearch/or no campo casted ou ilike na busca textual
+          const { data: dataFallback, error: errorFallback } = await supabase
+            .from('tab_clientes_v2')
+            .select('*')
+            .eq('corretora_id', corretoraIdFiltro)
+            .textSearch('contatos', emailBusca, { type: 'websearch', config: 'english' })
+            .order('criado_em', { ascending: false })
+            .limit(1);
+
+          // Se o textSearch não for suportado na coluna, faz o fallback simples sem ILIKE em JSONB:
+          if (errorFallback || !dataFallback || dataFallback.length === 0) {
+            const { data: dataAll } = await supabase
+              .from('tab_clientes_v2')
+              .select('*')
+              .eq('corretora_id', corretoraIdFiltro)
+              .order('criado_em', { ascending: false })
+              .limit(50);
+
+            // Filtra no Javascript para evitar erro SQL de tipos no Postgres
+            if (dataAll) {
+              clienteRaw = dataAll.find((cli: any) => {
+                const contatosStr = JSON.stringify(cli.contatos || '').toLowerCase();
+                return contatosStr.includes(emailBusca);
+              });
+            }
+          } else {
+            clienteRaw = dataFallback[0];
+          }
+        }
+
+        // SE ENCONTROU O CLIENTE
+        if (clienteRaw) {
+          let contatosArray: any[] = [];
+          try {
+            contatosArray = typeof clienteRaw.contatos === 'string'
+              ? JSON.parse(clienteRaw.contatos)
+              : (clienteRaw.contatos || []);
+          } catch (e) {
+            contatosArray = [];
+          }
+
+          const contatoEncontrado = (Array.isArray(contatosArray) ? contatosArray : []).find(
+            (c: any) => c && c.email && String(c.email).trim().toLowerCase() === emailBusca
+          ) || contatosArray[0] || {};
+
+          let complementares: Record<string, any> = {};
+
+            try {
+              // Identifica a fonte bruta de dados de acordo com o tipo do cliente
+              const rawData = clienteRaw.tipo_cliente === 'PJ'
+                ? clienteRaw.dados_complementares_pj
+                : clienteRaw.dados_complementares_pf;
+
+              // Trata o parse de forma resiliente (suporta string ou objeto JSONB direto)
+              if (typeof rawData === 'string') {
+                complementares = JSON.parse(rawData);
+              } else if (rawData && typeof rawData === 'object') {
+                complementares = rawData;
+              } else {
+                // Fallback: se nenhum estiver preenchido no tipo específico, combina ambos
+                const pf = typeof clienteRaw.dados_complementares_pf === 'string'
+                  ? JSON.parse(clienteRaw.dados_complementares_pf || '{}')
+                  : (clienteRaw.dados_complementares_pf || {});
+
+                const pj = typeof clienteRaw.dados_complementares_pj === 'string'
+                  ? JSON.parse(clienteRaw.dados_complementares_pj || '{}')
+                  : (clienteRaw.dados_complementares_pj || {});
+
+                complementares = { ...pf, ...pj };
+              }
+            } catch (e) {
+              complementares = {};
+            }
+
+          dados = {
+            ...clienteRaw,
+            ...complementares,
+            razao_social: clienteRaw.tipo_cliente === 'PJ' ? clienteRaw.nome_razao_social : complementares.razao_social,
+            nome: clienteRaw.nome_razao_social,
+            cnpj: clienteRaw.tipo_cliente === 'PJ' ? clienteRaw.cpf_cnpj : null,
+            cpf: clienteRaw.tipo_cliente === 'PF' ? clienteRaw.cpf_cnpj : null,
+            email: contatoEncontrado.email || emailOriginal,
+            ddd_telefone_1: contatoEncontrado.telefone || contatoEncontrado.whatsapp || null,
+            nomes_socios: complementares.nomes_socios_texto || complementares.nomes_socios,
+            cpfs_socios: complementares.cpfs_socios_texto || complementares.cpfs_socios,
+            tabela_origem: 'tab_clientes_v2'
+          };
         }
       }
 
@@ -347,11 +426,9 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
 
       try {
         let queryLeads = supabase
-          .from('tab_clientes')
-          .select('id, nome, razao_social, nome_fantasia, email, telefone_whats, tipo_cliente, corretor_id')
-          .eq('corretora_id', idCorretoraReal)
-          .not('email', 'is', null)
-          .neq('email', '');
+          .from('tab_clientes_v2')
+          .select('id, nome_razao_social, nome_fantasia, tipo_cliente, contatos, corretor_id')
+          .eq('corretora_id', idCorretoraReal);
 
         if (isIndividual && userProfile) {
           queryLeads = queryLeads.eq('corretor_id', userProfile.id);
@@ -360,18 +437,30 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
         const { data: clientesDoBanco, error: errLeads } = await queryLeads;
         if (errLeads) throw errLeads;
 
-        const formatadosCRM: ClientePublico[] = (clientesDoBanco || []).map(c => {
-          const nomeExibicao = c.nome?.trim() || c.nome_fantasia?.trim() || c.razao_social?.trim() || 'Cliente Sem Nome';
+        // Processa os dados mapeando a estrutura JSONB de contatos da V2
+        const formatadosCRM: ClientePublico[] = (clientesDoBanco || []).map((c: any) => {
+          let contatosArray = Array.isArray(c.contatos) ? c.contatos : [];
+          if (typeof c.contatos === 'string') {
+            try { contatosArray = JSON.parse(c.contatos); } catch { contatosArray = []; }
+          }
+          const contatoPrincipal = contatosArray.find((ct: any) => ct.principal) || contatosArray[0] || {};
+          
+          const emailCliente = (contatoPrincipal.email || '').trim().toLowerCase();
+          const telefoneCliente = contatoPrincipal.telefone || '';
+          
+          const nomeExibicao = c.nome_fantasia?.trim() || c.nome_razao_social?.trim() || 'Cliente Sem Nome';
+
           return {
             id: c.id,
             nome: nomeExibicao,
-            email: c.email.trim().toLowerCase(),
-            telefone_whats: c.telefone_whats,
-            origem: 'crm',
+            email: emailCliente,
+            telefone_whats: telefoneCliente,
+            origem: 'crm' as const,
             tipo_cliente: c.tipo_cliente,
             nome_fantasia: c.nome_fantasia
           };
-        });
+        }).filter(c => c.email !== ''); // Filtra apenas clientes que possuem e-mail válido no JSONB
+
         setClientesCRM(formatadosCRM);
 
         let queryLogs = supabase

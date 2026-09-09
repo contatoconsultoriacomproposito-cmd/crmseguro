@@ -72,7 +72,7 @@ export default function PropostasLista() {
 
       return {
         "Proposta": p.numero_proposta,
-        "Cliente": p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
+        "Cliente": p.tab_clientes_v2?.nome_razao_social,
         "Corretor": p.usuarios_perfis?.nome,
         "Nº Cotação": numerosCotacao || "NÃO INFORMADO",
         "Cotações": qtdeCotacoes,
@@ -114,7 +114,7 @@ export default function PropostasLista() {
 
       return [
         p.numero_proposta,
-        p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome,
+        p.tab_clientes_v2?.nome_razao_social,
         numCotacao || "-",
         p.tab_proposta_opcoes?.length || 0,
         produtosNomes || "-",
@@ -200,38 +200,90 @@ export default function PropostasLista() {
 
   
   async function fetchPropostas() {
-    if (!userProfile?.corretora_id) return;
-    setLoading(true);
+  if (!userProfile?.corretora_id) return;
+  setLoading(true);
 
+  try {
     let query = supabase
       .from("tab_propostas")
       .select(`
         *,
-        tab_clientes (id, nome, razao_social, tipo_cliente, cpf, cnpj, telefone_whats),
-        usuarios_perfis!tab_propostas_corretor_id_fkey(nome),
+        usuarios_perfis!tab_propostas_corretor_id_fkey (
+          nome
+        ),
         tab_proposta_opcoes (
-          id, ordem_opcao,
-          tab_proposta_itens (id, numero_cotacao, periodicidade, corretor_id, base_produtos (nome))
+          id, 
+          ordem_opcao,
+          tab_proposta_itens (
+            id, 
+            numero_cotacao, 
+            periodicidade, 
+            corretor_id, 
+            base_produtos (
+              nome
+            )
+          )
         )
       `)
       .eq("corretora_id", userProfile.corretora_id)
       .order("created_at", { ascending: false });
 
-    // FILTROS DE DATA (Apenas se preenchidos)
+    // Restante dos filtros...
     if (vencimentoInicio) query = query.gte("data_validade", vencimentoInicio);
     if (vencimentoFim) query = query.lte("data_validade", vencimentoFim);
     if (vendaInicio) query = query.gte("data_venda", vendaInicio);
     if (vendaFim) query = query.lte("data_venda", vendaFim);
 
-    // FILTRO DE CORRETOR (Se aplicável)
     if (userProfile.tipo_usuario === "CORRETOR") {
       query = query.eq("corretor_id", userProfile.id);
     }
 
-    const { data } = await query;
-    setPropostas(data || []);
+    const { data: propostasData, error: propostasError } = await query;
+
+    if (propostasError) throw propostasError;
+
+    if (!propostasData || propostasData.length === 0) {
+      setPropostas([]);
+      setLoading(false);
+      return;
+    }
+
+    // Busca separada de clientes para evitar erro de FK em tab_clientes_v2
+    const clienteIds = Array.from(
+      new Set(propostasData.map((p: any) => p.cliente_id).filter(Boolean))
+    );
+
+    let clientesMap: Record<string, any> = {};
+    if (clienteIds.length > 0) {
+      const { data: clientesData, error: clientesError } = await supabase
+        .from("tab_clientes_v2")
+        .select("id, nome_razao_social, tipo_cliente, cpf_cnpj")
+        .in("id", clienteIds);
+
+      if (!clientesError && clientesData) {
+        clientesMap = clientesData.reduce((acc: any, cli: any) => {
+          acc[cli.id] = cli;
+          return acc;
+        }, {});
+      }
+    }
+
+    // Normalização do retorno para o componente
+    const propostasEnriquecidas = propostasData.map((p: any) => ({
+      ...p,
+      // O PostgREST retorna o objeto com a chave "usuarios_perfis"
+      usuarios_perfis: p.usuarios_perfis, 
+      tab_clientes_v2: clientesMap[p.cliente_id] || null,
+    }));
+
+    setPropostas(propostasEnriquecidas);
+  } catch (error) {
+    console.error("Erro na busca de propostas:", error);
+  } finally {
     setLoading(false);
   }
+}
+  
   const propostasFiltradas = useMemo(() => {
     if (!propostas) return [];
     const term = filter.toLowerCase().trim();
@@ -239,8 +291,7 @@ export default function PropostasLista() {
     return propostas.filter(p => {
       const matchTerm = !term || 
         (p.numero_proposta || "").toLowerCase().includes(term) ||
-        (p.tab_clientes?.nome || "").toLowerCase().includes(term) ||
-        (p.tab_clientes?.razao_social || "").toLowerCase().includes(term);
+        (p.tab_clientes_v2?.nome_razao_social || "").toLowerCase().includes(term);
 
       const matchCorretor = selectedCorretores.length === 0 || 
         selectedCorretores.includes(p.corretor_id) || 
@@ -275,18 +326,31 @@ export default function PropostasLista() {
     const isVendido = proposta.status?.toLowerCase() === 'vendido';
     try {
       if (isVendido) {
-        const { data: itens } = await supabase
-          .from('tab_proposta_itens')
-          .select(`id, tab_proposta_opcoes!inner(proposta_id)`)
-          .eq('tab_proposta_opcoes.proposta_id', proposta.id);
-        const idsDosItens = itens?.map(i => i.id) || [];
-        if (idsDosItens.length > 0) {
-          const [resSinistros, resComissoes] = await Promise.all([
-            supabase.from('tab_sinistros').select('id', { count: 'exact' }).in('item_id', idsDosItens),
-            supabase.from('tab_comissoes_regras').select('id', { count: 'exact' }).in('item_id', idsDosItens)
-          ]);
-          totalSinistros = resSinistros.count || 0;
-          totalComissoes = resComissoes.count || 0;
+        // 1. Busca primeiro os IDs das opções pertencentes à proposta
+        const { data: opcoes } = await supabase
+          .from('tab_proposta_opcoes')
+          .select('id')
+          .eq('proposta_id', proposta.id);
+
+        const idsDasOpcoes = opcoes?.map(o => o.id) || [];
+
+        if (idsDasOpcoes.length > 0) {
+          // 2. Busca os itens atrelados às opções encontradas
+          const { data: itens } = await supabase
+            .from('tab_proposta_itens')
+            .select('id')
+            .in('opcao_id', idsDasOpcoes);
+
+          const idsDosItens = itens?.map(i => i.id) || [];
+
+          if (idsDosItens.length > 0) {
+            const [resSinistros, resComissoes] = await Promise.all([
+              supabase.from('tab_sinistros').select('id', { count: 'exact' }).in('item_id', idsDosItens),
+              supabase.from('tab_comissoes_regras').select('id', { count: 'exact' }).in('item_id', idsDosItens)
+            ]);
+            totalSinistros = resSinistros.count || 0;
+            totalComissoes = resComissoes.count || 0;
+          }
         }
       }
 
@@ -296,6 +360,7 @@ export default function PropostasLista() {
         dadosCriticos: { sinistros: totalSinistros, comissoes: totalComissoes, isVendido }
       });
     } catch (error) {
+      console.error("Erro ao verificar vínculos para exclusão:", error);
     }
   };
 
@@ -531,7 +596,7 @@ export default function PropostasLista() {
                     <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Vence: {formatarDataBR(p.data_validade)}</div>
                   </td>
                   <td className="px-4 py-4">
-                    <div className="text-sm font-bold text-slate-700 uppercase">{p.tab_clientes?.tipo_cliente === 'PJ' ? p.tab_clientes?.razao_social : p.tab_clientes?.nome}</div>
+                    <div className="text-sm font-bold text-slate-700 uppercase">{p.tab_clientes_v2?.nome_razao_social}</div>
                     <div className="text-[10px] text-slate-400 font-medium italic">Corretor: {p.usuarios_perfis?.nome}</div>
                   </td>
                   {/* --- VISUALIZAÇÃO DA GRADE DE PROPOSTAS--- */}

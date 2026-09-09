@@ -6,18 +6,41 @@ interface VisaoBuscaRapidaProps {
   corretoraId: string;
 }
 
+// Estrutura do item dentro do JSONB de contatos
+interface ContatoV2 {
+  id?: string;
+  nome?: string;
+  email?: string;
+  telefone?: string;
+  principal?: boolean;
+  cargo_parentesco?: string;
+}
+
+// Estrutura do JSONB dados_complementares na V2
+interface DadosComplementaresV2 {
+  porte?: string;
+  capital_social?: number;
+  data_abertura?: string;
+  natureza_juridica?: string;
+  nomes_socios_texto?: string;
+  cpfs_socios_texto?: string;
+  opcao_pelo_mei?: boolean;
+  opcao_pelo_simples?: boolean;
+}
+
+// Interface ajustada para a tab_clientes_v2
 interface LeadCliente {
   id: string;
-  razao_social: string;
+  nome_razao_social: string;
   nome_fantasia: string;
-  cnpj: string;
-  ddd_telefone_1: string;
-  telefone_adicional: string;
+  cpf_cnpj: string;
   bairro: string;
   municipio: string;
   uf: string;
-  nomes_socios: string;
-  status_prospeccao: string;
+  fase_atendimento: string;
+  contatos: ContatoV2[] | string;
+  dados_complementares_pf?: DadosComplementaresV2 | string;
+  dados_complementares_pj?: DadosComplementaresV2 | string;
 }
 
 export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps) {
@@ -33,17 +56,32 @@ export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps)
     setLoading(true);
     setBuscou(true);
 
-    const query = `%${termo}%`;
+    const termoLimpo = termo.replace(/\D/g, '');
+    const queryTexto = `%${termo}%`;
+    const queryCnpj = termoLimpo.length >= 3 ? `%${termoLimpo}%` : queryTexto;
 
+    // Consulta apontando para tab_clientes_v2
     const { data, error } = await supabase
-      .from('tab_clientes_frios')
-      .select('id, razao_social, nome_fantasia, cnpj, ddd_telefone_1, telefone_adicional, bairro, municipio, uf, nomes_socios, status_prospeccao')
+      .from('tab_clientes_v2')
+      .select(`
+        id, 
+        nome_razao_social, 
+        nome_fantasia, 
+        cpf_cnpj, 
+        bairro, 
+        municipio, 
+        uf, 
+        fase_atendimento,
+        contatos,
+        dados_complementares_pf,
+        dados_complementares_pj
+      `)
       .eq('corretora_id', corretoraId)
-      .or(`razao_social.ilike.${query},nome_fantasia.ilike.${query},cnpj.ilike.${query}`)
+      .or(`nome_razao_social.ilike.${queryTexto},nome_fantasia.ilike.${queryTexto},cpf_cnpj.ilike.${queryCnpj}`)
       .limit(20);
 
     if (error) {
-      console.error('Erro ao buscar clientes frios:', error);
+      console.error('Erro ao buscar empresas na tab_clientes_v2:', error);
       setResultados([]);
     } else {
       setResultados((data as LeadCliente[]) || []);
@@ -106,8 +144,29 @@ export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps)
           </p>
 
           {resultados.map((lead) => {
-            const tel1 = limparTelefone(lead.ddd_telefone_1);
-            const tel2 = limparTelefone(lead.telefone_adicional);
+            // Extração do JSONB de contatos
+            const contatosArray: ContatoV2[] = typeof lead.contatos === 'string' 
+              ? JSON.parse(lead.contatos || '[]') 
+              : (lead.contatos || []);
+
+            const contatoPrincipal = contatosArray.find(c => c.principal) || contatosArray[0];
+            const contatoSecundario = contatosArray.find(c => !c.principal) || contatosArray[1];
+
+            const tel1Limpo = limparTelefone(contatoPrincipal?.telefone);
+            const tel2Limpo = limparTelefone(contatoSecundario?.telefone);
+
+            // Extração do JSONB de dados complementares
+            const pfObj = typeof lead.dados_complementares_pf === 'string'
+              ? JSON.parse(lead.dados_complementares_pf || '{}')
+              : (lead.dados_complementares_pf || {});
+
+            const pjObj = typeof lead.dados_complementares_pj === 'string'
+              ? JSON.parse(lead.dados_complementares_pj || '{}')
+              : (lead.dados_complementares_pj || {});
+
+            const dadosComp: DadosComplementaresV2 = { ...pfObj, ...pjObj };
+
+            const nomesSocios = dadosComp.nomes_socios_texto || '';
 
             return (
               <div 
@@ -117,20 +176,20 @@ export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps)
                 {/* Nome & CNPJ */}
                 <div>
                   <h3 className="font-bold text-slate-900 text-base leading-snug">
-                    {lead.nome_fantasia || lead.razao_social}
+                    {lead.nome_fantasia || lead.nome_razao_social}
                   </h3>
                   {lead.nome_fantasia && (
                     <p className="text-xs text-slate-400 font-medium uppercase mt-0.5">
-                      {lead.razao_social}
+                      {lead.nome_razao_social}
                     </p>
                   )}
                   <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-slate-100 rounded text-[11px] font-mono font-semibold text-slate-600">
-                    <FileText size={12} className="text-slate-400" /> {lead.cnpj}
+                    <FileText size={12} className="text-slate-400" /> {lead.cpf_cnpj}
                   </div>
                 </div>
 
                 {/* Sócios */}
-                {lead.nomes_socios ? (
+                {nomesSocios ? (
                   <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 flex items-start gap-2.5">
                     <Users size={16} className="text-indigo-600 shrink-0 mt-0.5" />
                     <div>
@@ -138,7 +197,7 @@ export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps)
                         Quadro de Sócios / Administradores
                       </span>
                       <p className="text-xs font-bold text-indigo-950 mt-0.5 leading-relaxed">
-                        {lead.nomes_socios}
+                        {nomesSocios}
                       </p>
                     </div>
                   </div>
@@ -157,24 +216,24 @@ export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps)
                 </div>
 
                 {/* Ações Rápidas */}
-                {(tel1 || tel2) && (
+                {(tel1Limpo || tel2Limpo) && (
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
-                    {tel1 && (
+                    {tel1Limpo && (
                       <a
-                        href={`https://wa.me/55${tel1}`}
+                        href={`https://wa.me/55${tel1Limpo}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex-1 py-2 px-3 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                       >
-                        <MessageSquare size={14} /> Whats ({lead.ddd_telefone_1})
+                        <MessageSquare size={14} /> Whats ({contatoPrincipal?.telefone})
                       </a>
                     )}
-                    {tel2 && (
+                    {tel2Limpo && (
                       <a
-                        href={`tel:${tel2}`}
+                        href={`tel:${tel2Limpo}`}
                         className="py-2 px-3 bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                       >
-                        <Phone size={14} /> Ligar ({lead.telefone_adicional})
+                        <Phone size={14} /> Ligar ({contatoSecundario?.telefone})
                       </a>
                     )}
                   </div>

@@ -82,27 +82,47 @@ export const ModalComissoes = ({ itemId, onClose, onSuccess }: ModalComissoesPro
   const fetchDadosIniciais = useCallback(async () => {
     setCarregando(true);
     try {
+      // 1. Busca primeiro o item de proposta e produto
       const { data: item, error: errorItem } = await supabase
         .from('tab_proposta_itens')
         .select(`
           *,
-          base_produtos (nome),
-          tab_proposta_opcoes (
-            id, proposta_id, seguradora_id,
-            base_seguradoras (nome),
-            tab_propostas (
-              data_emissao, cliente_id, corretor_id, parceiro_id, corretora_id,
-              tab_parceiros (nome_parceiro)
-            )
-          )
+          base_produtos (nome)
         `)
         .eq('id', itemId)
         .single();
 
       if (errorItem || !item) throw new Error("Item não localizado.");
 
-      const opcao = item.tab_proposta_opcoes;
-      const proposta = opcao?.tab_propostas;
+      // 2. Busca dados complementares da opção e proposta manualmente no front
+      let opcao: any = null;
+      let proposta: any = null;
+
+      if (item.opcao_id) {
+        const { data: opcaoData } = await supabase
+          .from('tab_proposta_opcoes')
+          .select(`
+            id, proposta_id, seguradora_id,
+            base_seguradoras (nome)
+          `)
+          .eq('id', item.opcao_id)
+          .maybeSingle();
+
+        opcao = opcaoData;
+
+        if (opcao?.proposta_id) {
+          const { data: propostaData } = await supabase
+            .from('tab_propostas')
+            .select(`
+              data_emissao, cliente_id, corretor_id, parceiro_id, corretora_id,
+              tab_parceiros (nome_parceiro)
+            `)
+            .eq('id', opcao.proposta_id)
+            .maybeSingle();
+
+          proposta = propostaData;
+        }
+      }
 
       setDadosBase({
         ...item,

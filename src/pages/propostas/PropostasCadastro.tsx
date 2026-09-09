@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { 
   Save, Search, Trash2, User, 
   X, Hash, CheckCircle2, PlusCircle
 } from "lucide-react";
-import { useParams, useNavigate, useLocation } from "react-router-dom"; 
+import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom"; 
 import { supabase } from "../../lib/supabaseClient";
 import { ModalGerenciarPortfolio } from './ModalGerenciarPortfolio';
 
@@ -37,17 +37,20 @@ export default function PropostasCadastro() {
   const { id: propostaId } = useParams();
   const navigate = useNavigate(); 
   const location = useLocation(); 
+  const [searchParams] = useSearchParams();
+  const clienteIdUrl = searchParams.get('clienteId');
   const clienteIdViaState = location.state?.clienteId;
+  const clienteIdAlvo = clienteIdUrl || clienteIdViaState;
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  const [clientes, setClientes] = useState<any[]>([]);
   const [seguradoras, setSeguradoras] = useState<any[]>([]);
   const [corretores, setCorretores] = useState<any[]>([]); 
   const [parceiros, setParceiros] = useState<any[]>([]);
   const [selectedParceiro, setSelectedParceiro] = useState("");
   
   const [searchTerm, setSearchTerm] = useState("");
+  const [filteredClientes, setFilteredClientes] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [showSearch, setShowSearch] = useState(false);
   
@@ -61,6 +64,9 @@ export default function PropostasCadastro() {
   const [opcoes, setOpcoes] = useState<OpcaoSeguradora[]>([
     { seguradora_id: "", nome_seguradora: "", cotacoes: [] },
   ]);
+
+  // Perfil do usuário logado para controle de escopo nas buscas
+  const [perfilUsuario, setPerfilUsuario] = useState<any>(null);
 
   // Travar rigorosamente o corretor baseado no cliente selecionado
   useEffect(() => {
@@ -81,14 +87,63 @@ export default function PropostasCadastro() {
     carregarTudo();
   }, [propostaId]);
 
+  // Se veio clienteId via URL ou via state, busca ele diretamente
   useEffect(() => {
-    if (clienteIdViaState && clientes.length > 0 && !selectedClient) {
-      const clienteEncontrado = clientes.find(c => c.id === clienteIdViaState);
-      if (clienteEncontrado) {
-        setSelectedClient(clienteEncontrado);
+    const buscarClienteInicial = async () => {
+      if (clienteIdAlvo && !selectedClient) {
+        const { data: cli } = await supabase
+          .from("tab_clientes_v2")
+          .select("*")
+          .eq("id", clienteIdAlvo)
+          .maybeSingle();
+        
+        if (cli) {
+          setSelectedClient(cli);
+        }
       }
-    }
-  }, [clienteIdViaState, clientes, selectedClient]);
+    };
+    buscarClienteInicial();
+  }, [clienteIdAlvo, selectedClient]);
+
+  // Busca de clientes otimizada no servidor conforme digita (igual ao seu outro código)
+  useEffect(() => {
+    const executarBuscaServidor = async () => {
+      if (!searchTerm || searchTerm.length < 2 || !perfilUsuario) {
+        setFilteredClientes([]);
+        return;
+      }
+
+      const termoLimpo = searchTerm.replace(/\D/g, '');
+      const queryTexto = `%${searchTerm}%`;
+      const queryCnpjCpf = termoLimpo.length >= 3 ? `%${termoLimpo}%` : queryTexto;
+
+      let query = supabase
+        .from('tab_clientes_v2')
+        .select('*')
+        .or(`nome_razao_social.ilike.${queryTexto},nome_fantasia.ilike.${queryTexto},cpf_cnpj.ilike.${queryCnpjCpf}`);
+
+      if (perfilUsuario.tipo_usuario === 'CORRETOR') {
+        query = query.eq('corretor_id', perfilUsuario.id);
+      } else {
+        query = query.eq('corretora_id', perfilUsuario.corretora_id);
+      }
+
+      const { data, error } = await query.limit(20);
+
+      if (error) {
+        console.error("Erro na busca de clientes:", error);
+        setFilteredClientes([]);
+      } else {
+        setFilteredClientes(data || []);
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      executarBuscaServidor();
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, perfilUsuario]);
 
   async function fetchDados() {
     try {
@@ -104,19 +159,9 @@ export default function PropostasCadastro() {
         .single();
 
       if (!perfil?.corretora_id) return;
+      setPerfilUsuario(perfil);
 
-      let queryClientes = supabase.from("tab_clientes").select("*");
-      
-      if (perfil.tipo_usuario === 'CORRETOR') {
-        queryClientes = queryClientes.eq("corretor_id", perfil.id);
-      } else {
-        queryClientes = queryClientes.eq("corretora_id", perfil.corretora_id);
-      }
-
-      const { data: clis, error: clisError } = await queryClientes;
-      if (clisError) throw clisError;
-      setClientes(clis || []);
-
+      // Busca portfólio da corretora
       const { data: portfolio, error: portError } = await supabase
         .from("tab_corretora_portfolio")
         .select(`
@@ -148,18 +193,19 @@ export default function PropostasCadastro() {
         .order('nome_parceiro', { ascending: true });
       setParceiros(pars || []);
 
-      // Busca de todos os corretores da corretora
       const { data: corrs } = await supabase
         .from("usuarios_perfis")
         .select("id, nome")
         .eq("corretora_id", perfil.corretora_id)
         .order('nome', { ascending: true });
         
-      if (perfil.tipo_usuario === 'CORRETOR') {
-        setCorretores([{ id: perfil.id, nome: perfil.nome }, ...(corrs || [])]);
-      } else {
-        setCorretores(corrs || []);
+      const listaCorretores = corrs || [];
+
+      if (perfil.tipo_usuario === 'CORRETOR' && !listaCorretores.some(c => c.id === perfil.id)) {
+        listaCorretores.unshift({ id: perfil.id, nome: perfil.nome });
       }
+
+      setCorretores(listaCorretores);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     } finally {
@@ -170,11 +216,11 @@ export default function PropostasCadastro() {
   async function carregarDadosEdicao(id: string) {
     try {
       setLoading(true);
+
       const { data: prop, error: errP } = await supabase
         .from("tab_propostas")
         .select(`
           *, 
-          tab_clientes(*), 
           tab_proposta_opcoes(
             *, 
             base_seguradoras(nome),
@@ -189,8 +235,23 @@ export default function PropostasCadastro() {
 
       if (errP) throw errP;
 
-      setSelectedClient(prop.tab_clientes);
-      setSelectedCorretor(prop.tab_clientes?.corretor_id || prop.corretor_id);
+      const idDoCliente = prop.cliente_id || prop.id_cliente;
+
+      let clienteData = null;
+      if (idDoCliente) {
+        const { data: cli, error: errCli } = await supabase
+          .from("tab_clientes_v2")
+          .select("*")
+          .eq("id", idDoCliente)
+          .maybeSingle();
+
+        if (!errCli && cli) {
+          clienteData = cli;
+        }
+      }
+
+      setSelectedClient(clienteData);
+      setSelectedCorretor(clienteData?.corretor_id || prop.corretor_id);
       setSelectedParceiro(prop.parceiro_id || "");
       setValidadeProposta(prop.data_validade);
       setNumeroProposta(prop.numero_proposta);
@@ -301,16 +362,6 @@ export default function PropostasCadastro() {
     setOpcoes(novasOpcoes);
   };
 
-  const filteredClientes = useMemo(() => {
-    if (!searchTerm || searchTerm.length < 2) return [];
-    const term = searchTerm.toLowerCase();
-    return clientes.filter(c => 
-      (c.nome?.toLowerCase().includes(term)) || (c.razao_social?.toLowerCase().includes(term)) ||
-      (c.cpf?.includes(searchTerm)) || (c.cnpj?.includes(searchTerm))
-    );
-  }, [searchTerm, clientes]);
-
-  // --- FUNÇÃO PARA OBTER O RÓTULO DO RESPONSÁVEL ---
   const getNomeResponsavel = () => {
     if (!selectedClient) return "Nenhum cliente selecionado";
 
@@ -370,7 +421,7 @@ export default function PropostasCadastro() {
         if (error) throw error;
         currentPropostaId = data.id;
 
-        await supabase.from('tab_interacoes').insert({
+       await supabase.from('tab_interacoes_v2').insert({
           cliente_id: selectedClient.id,
           corretor_id: corretorFinal,
           corretora_id: perfil.corretora_id,
@@ -407,7 +458,6 @@ export default function PropostasCadastro() {
             coberturas_franquias: cot.cobertura,
             numero_cotacao: cot.numero_cotacao, 
             corretor_id: corretorFinal,
-            
           }));
 
           const { error: errorItens } = await supabase
@@ -427,7 +477,7 @@ export default function PropostasCadastro() {
       }
 
       await supabase
-        .from('tab_clientes')
+        .from('tab_clientes_v2')
         .update({ fase_kanban: faseAlvo })
         .eq('id', selectedClient.id);
       
@@ -479,8 +529,8 @@ return (
                     <button key={c.id} onClick={() => {setSelectedClient(c); setShowSearch(false); setSearchTerm("");}}
                       className="w-full p-3 text-left hover:bg-blue-50 border-b last:border-0 dark:hover:bg-zinc-700"
                     >
-                      <p className="text-sm font-bold uppercase text-slate-800 dark:text-zinc-100">{c.tipo_cliente === 'PJ' ? c.razao_social : c.nome}</p>
-                      <p className="text-[10px] text-slate-400 font-bold">{c.tipo_cliente === 'PJ' ? c.cnpj : c.cpf}</p>
+                      <p className="text-sm font-bold uppercase text-slate-800 dark:text-zinc-100">{c.nome_razao_social}</p>
+                      <p className="text-[10px] text-slate-400 font-bold">{c.cpf_cnpj || "Sem documento"}</p>
                     </button>
                   ))}
                 </div>
@@ -488,24 +538,35 @@ return (
             </div>
 
             {selectedClient ? (
-              <div className="col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4 bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 relative">
-                <button onClick={() => setSelectedClient(null)} className="absolute top-2 right-2 text-blue-300 hover:text-red-500"><X size={14} /></button>
+              <div className="col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 relative">
+                <button 
+                  onClick={() => setSelectedClient(null)} 
+                  className="absolute top-2 right-2 text-blue-300 hover:text-red-500 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+                
                 <div>
                   <span className="text-[10px] font-bold text-blue-400 uppercase block">Nome / Razão Social</span>
-                  <span className="text-sm font-bold block truncate uppercase text-slate-800 dark:text-zinc-100">{selectedClient.tipo_cliente === 'PJ' ? selectedClient.razao_social : selectedClient.nome}</span>
-                  <span className="text-[11px] opacity-60 text-slate-500 dark:text-zinc-400">{selectedClient.tipo_cliente === 'PJ' ? selectedClient.cnpj : selectedClient.cpf}</span>
+                  <span className="text-sm font-bold block truncate uppercase text-slate-800 dark:text-zinc-100">
+                    {selectedClient.nome_razao_social || selectedClient.razao_social || selectedClient.nome || "---"}
+                  </span>
+                  <span className="text-[11px] opacity-60 text-slate-500 dark:text-zinc-400">
+                    {selectedClient.cpf_cnpj || selectedClient.cnpj || selectedClient.cpf || "---"}
+                  </span>
                 </div>
-                <div>
-                  <span className="text-[10px] font-bold text-blue-400 uppercase block">WhatsApp</span>
-                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{selectedClient.telefone_whats || "---"}</span>
-                </div>
+
                 <div>
                   <span className="text-[10px] font-bold text-blue-400 uppercase block">Responsável</span>
-                  <span className="text-sm font-bold text-slate-700 dark:text-zinc-200 block truncate">{getNomeResponsavel()}</span>
+                  <span className="text-sm font-bold text-slate-700 dark:text-zinc-200 block truncate">
+                    {getNomeResponsavel()}
+                  </span>
                 </div>
               </div>
             ) : (
-              <div className="col-span-3 flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl text-slate-400 text-sm italic">Aguardando seleção...</div>
+              <div className="col-span-3 flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl text-slate-400 text-sm italic py-4">
+                Aguardando seleção...
+              </div>
             )}
           </div>
         </div>

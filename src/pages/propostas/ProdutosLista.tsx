@@ -91,19 +91,25 @@ export default function ProdutosLista() {
     setClienteDrawer({ isOpen: true, loading: true, dados: null });
     try {
       const { data, error } = await supabase
-        .from("tab_clientes")
-        .select('id, nome, razao_social, cpf, cnpj, email, telefone_whats, tipo_cliente, cep, logradouro, numero, bairro, municipio, uf')
+        .from("tab_clientes_v2")
+        .select('id, dados')
         .eq("id", clienteId)
         .single();
 
       if (error) throw error;
-      setClienteDrawer({ isOpen: true, loading: false, dados: data });
+      
+      // Padroniza o objeto para o drawer consumir propriedades diretas ou do JSON
+      const dadosConsolidados = {
+        id: data.id,
+        ...data.dados
+      };
+
+      setClienteDrawer({ isOpen: true, loading: false, dados: dadosConsolidados });
     } catch (err) {
       console.error("Erro ao carregar dados do cliente:", err);
       setClienteDrawer(prev => ({ ...prev, loading: false }));
     }
   };
-
   useEffect(() => {
     async function getInitialData() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -146,8 +152,7 @@ export default function ProdutosLista() {
       const perfilAtivo = perfilAtual || userProfile;
       if (!perfilAtivo?.corretora_id) return;
 
-      // 🔥 ALTERAÇÃO AQUI: Mudamos o relacionamento do 'usuarios_perfis' para a raiz da query 
-      // e trouxemos o 'corretor_id' direto de 'tab_proposta_itens'.
+      // 1. Busca os itens da proposta SEM a relação automática com tab_clientes_v2
       let query = supabase
         .from("tab_proposta_itens")
         .select(`
@@ -175,15 +180,13 @@ export default function ProdutosLista() {
               parceiro_id,
               data_venda,
               cliente_id,
-              tipo_negocio,
-              tab_clientes (id, nome, razao_social, tipo_cliente)
+              tipo_negocio
             )
           )
         `);
 
       query = query.eq("tab_proposta_opcoes.tab_propostas.corretora_id", perfilAtivo.corretora_id);
       
-      // 🔥 ALTERAÇÃO AQUI: Filtro de segurança por corretor agora é direto na raiz (muito mais rápido)
       if (perfilAtivo.tipo_usuario === 'CORRETOR') {
         query = query.eq("corretor_id", perfilAtivo.id);
       }
@@ -191,7 +194,6 @@ export default function ProdutosLista() {
       const { data, error } = await query.order("data_fim_vigencia", { ascending: true });
       if (error) throw error;
 
-      // Cruzamento imediato para identificar comissões lançadas
       const itemIds = data?.map((i: any) => i.id) || [];
       if (itemIds.length > 0) {
         const { data: lancadas } = await supabase
@@ -203,15 +205,52 @@ export default function ProdutosLista() {
         setItensComComissao(setLancadas);
       }
 
+      // 2. Extrai os IDs de clientes únicos para consulta dedicada
+      const clienteIds = Array.from(
+        new Set(
+          data
+            ?.map((item: any) => {
+              const itemOpcao = Array.isArray(item.tab_proposta_opcoes) ? item.tab_proposta_opcoes[0] : item.tab_proposta_opcoes;
+              const itemProposta = Array.isArray(itemOpcao?.tab_propostas) ? itemOpcao.tab_propostas[0] : itemOpcao?.tab_propostas;
+              return itemProposta?.cliente_id;
+            })
+            .filter(Boolean)
+        )
+      );
+
+      // 3. Busca os nomes na tab_clientes_v2 de forma isolada
+      // 3. Busca os nomes na tab_clientes_v2 de forma isolada
+      let clientesMap: Record<string, any> = {};
+      if (clienteIds.length > 0) {
+        const { data: clientesData, error: cliError } = await supabase
+          .from("tab_clientes_v2")
+          .select("id, nome_razao_social, cpf_cnpj") // Removido 'dados'
+          .in("id", clienteIds);
+
+        if (cliError) {
+          console.error("Erro ao buscar clientes:", cliError);
+        }
+
+        if (clientesData) {
+          clientesMap = clientesData.reduce((acc: any, cli: any) => {
+            acc[cli.id] = cli;
+            return acc;
+          }, {});
+        }
+      }
+
+      // 4. Mapeia e formata os dados com segurança
       const formatado = data?.map((item: any) => { 
         const itemOpcao = Array.isArray(item.tab_proposta_opcoes) ? item.tab_proposta_opcoes[0] : item.tab_proposta_opcoes;
         const itemProposta = Array.isArray(itemOpcao?.tab_propostas) ? itemOpcao.tab_propostas[0] : itemOpcao?.tab_propostas;
-        const itemCliente = Array.isArray(itemProposta?.tab_clientes) ? itemProposta.tab_clientes[0] : itemProposta?.tab_clientes;
         const itemSeguradora = Array.isArray(itemOpcao?.base_seguradoras) ? itemOpcao.base_seguradoras[0] : itemOpcao?.base_seguradoras;
         const itemProduto = Array.isArray(item.base_produtos) ? item.base_produtos[0] : item.base_produtos;
-        
-        // 🔥 ALTERAÇÃO AQUI: O corretor agora é resolvido a partir da raiz da query
         const itemCorretor = Array.isArray(item.usuarios_perfis) ? item.usuarios_perfis[0] : item.usuarios_perfis;
+
+        const clienteObj = clientesMap[itemProposta?.cliente_id];
+        
+        // Pega diretamente a coluna nome_razao_social
+        const nomeCliente = clienteObj?.nome_razao_social || "Cliente não identificado";
 
         return {
           id_item: item.id,
@@ -226,15 +265,14 @@ export default function ProdutosLista() {
           seguradora: itemSeguradora?.nome || "Não informada",
           seguradora_id: itemOpcao?.seguradora_id || "",
           proposta_id: itemProposta?.id,
-          cliente_id: itemCliente?.id || itemProposta?.cliente_id || "", 
+          cliente_id: itemProposta?.cliente_id || "", 
           numero_proposta: itemProposta?.numero_proposta,
           status: itemProposta?.status,
           status_renovacao: item.status_renovacao, 
           motivo_cancelamento: item.motivo_cancelamento,
           tipo_negocio: itemProposta?.tipo_negocio || "Novo",
           periodicidade: item.periodicidade || "ANUAL",
-          cliente: itemCliente?.tipo_cliente === 'PJ' ? itemCliente?.razao_social : itemCliente?.nome,
-          // 🔥 Usando os dados vindos direto do item raiz
+          cliente: nomeCliente,
           corretor: itemCorretor?.nome || "Não informado", 
           corretor_id: item.corretor_id,
           parceiro_id: itemProposta?.parceiro_id

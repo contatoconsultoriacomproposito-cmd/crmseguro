@@ -85,6 +85,7 @@ export default function CorretoresLista() {
     }
   }
 
+  
   // Função para checar clientes antes de abrir o modal
   async function handleAbrirModalExclusao(corretor: Corretor) {
     setCorretorParaExcluir(corretor)
@@ -93,8 +94,9 @@ export default function CorretoresLista() {
     setContagemClientes(0)
 
     try {
+      // Atualizado para consultar a tab_clientes_v2
       const { count, error } = await supabase
-        .from("tab_clientes")
+        .from("tab_clientes_v2")
         .select("*", { count: 'exact', head: true })
         .eq("corretor_id", corretor.id)
 
@@ -114,10 +116,10 @@ export default function CorretoresLista() {
   setDeleting(true)
 
   try {
-    // 1. Transfere clientes se houver (via cliente comum, pois o RLS deve permitir à corretora mãe)
+    // 1. Transfere clientes se houver (utilizando a tab_clientes_v2)
     if (contagemClientes > 0) {
       const { error: transferError } = await supabase
-        .from("tab_clientes")
+        .from("tab_clientes_v2")
         .update({ corretor_id: transferirParaId })
         .eq("corretor_id", corretorParaExcluir.id)
 

@@ -50,19 +50,30 @@ const handleEnviar = async () => {
         const queryInfo = JSON.parse(respostaFinal);
         let resultadoDados: any = null;
 
-        // --- LÓGICA PARA CLIENTES ---
+        // --- LÓGICA PARA CLIENTES (tab_clientes_v2) ---
         if (queryInfo.acao === 'consultar_clientes') {
-          let query = supabase.from('tab_clientes').select('*', { count: 'exact' }).eq('corretora_id', perfil?.corretora_id);
+          let query = supabase
+            .from('tab_clientes_v2')
+            .select('*', { count: 'exact' })
+            .eq('corretora_id', perfil?.corretora_id);
+
           if (queryInfo.filtros?.tipo_cliente && queryInfo.filtros.tipo_cliente !== 'ambos') {
             query = query.eq('tipo_cliente', queryInfo.filtros.tipo_cliente);
           }
+          if (queryInfo.filtros?.fase_atendimento) {
+            query = query.eq('fase_atendimento', queryInfo.filtros.fase_atendimento);
+          }
+          if (queryInfo.filtros?.temperatura) {
+            query = query.eq('temperatura', queryInfo.filtros.temperatura);
+          }
+
           const { count, data: rows } = await query;
           resultadoDados = queryInfo.metricas.includes('contagem') ? count : rows;
         }
 
         // --- LÓGICA PARA PROPOSTAS / VENDAS / RENOVAÇÕES ---
         else if (queryInfo.acao === 'consultar_propostas') {
-          // Se a métrica for financeira ou de itens, consultamos a 'tab_proposta_itens' que é onde estão os valores e vigências
+          // Se a métrica for financeira ou de itens, consultamos a 'tab_proposta_itens'
           if (queryInfo.entidade === 'itens' || queryInfo.filtros?.renovacao || queryInfo.metricas.includes('soma')) {
             let query = supabase
               .from('tab_proposta_itens')
@@ -97,10 +108,17 @@ const handleEnviar = async () => {
           }
         }
 
-        // --- LÓGICA PARA INTERAÇÕES (PRODUTIVIDADE) ---
+        // --- LÓGICA PARA INTERAÇÕES / PRODUTIVIDADE (tab_interacoes_v2) ---
         else if (queryInfo.acao === 'consultar_interacoes') {
-          let query = supabase.from('tab_interacoes').select('*', { count: 'exact' }).eq('corretora_id', perfil?.corretora_id);
-          // Adicione aqui filtros de data ou tipo de ação se o seu JSON os fornecer
+          let query = supabase
+            .from('tab_interacoes_v2')
+            .select('*', { count: 'exact' })
+            .eq('corretora_id', perfil?.corretora_id);
+
+          if (queryInfo.filtros?.tipo_acao) {
+            query = query.eq('tipo_acao', queryInfo.filtros.tipo_acao);
+          }
+
           const { count, data: rows } = await query;
           resultadoDados = queryInfo.metricas.includes('contagem') ? count : rows;
         }

@@ -17,18 +17,17 @@ import {
   verticalListSortingStrategy,
   arrayMove
 } from '@dnd-kit/sortable';
-
-import { supabase } from '../../lib/supabaseClient'; 
-import { 
-  MessageCircle, 
-  FileText,   
-  Eraser, 
+import { supabase } from '../../lib/supabaseClient';
+import {
+  MessageCircle,
+  FileText,
+  Eraser,
   UserSearch,
-  AlertOctagon 
+  AlertOctagon
 } from 'lucide-react';
-import { SortableCard } from '../../components/kanban/SortableCard'; 
+import { SortableCard } from '../../components/kanban/SortableCard';
 import { BuscaGlobal } from '../../components/BuscaGlobal';
-import { ModalFechamento } from '../../components/propostas/ModalFechamento'; 
+import { ModalFechamento } from '../../components/propostas/ModalFechamento';
 import { maskCurrency, parseCurrencyToNumber } from '../../utils/masks';
 import { toast } from 'react-hot-toast';
 import { useKanbanConfig } from './useKanbanConfig';
@@ -36,28 +35,47 @@ import { MenuConfigColuna } from './MenuConfigColuna';
 
 interface Cliente {
   id: string;
-  nome: string;
-  razao_social?: string;
+  corretora_id: string;
+  corretor_id?: string;
   tipo_cliente: 'PF' | 'PJ';
-  status_kanban: 'novo' | 'vendido' | 'perdido';
-  fase_kanban: string;
-  posicao_kanban: number; 
+  origem: string;
+  cpf_cnpj?: string;
+  nome_razao_social: string;
+  nome_fantasia?: string;
+  cep?: string;
+  uf?: string;
+  municipio?: string;
+  bairro?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  cnae_principal?: string;
+  situacao_cadastral?: string;
+  fase_atendimento?: string;
+  temperatura?: string;
   data_retorno?: string;
   horario_retorno?: string;
+  contatos?: any[];
+  socios?: any[];
+  qtde_socios?: number;
+  dados_complementares_pf?: Record<string, any>;
+  dados_complementares_pj?: Record<string, any>;
+  criado_em?: string;
+  atualizado_em?: string;
+  status_kanban: 'novo' | 'vendido' | 'perdido' | 'lead';
+  fase_kanban: string;
+  posicao_kanban: number;
   tab_propostas?: any[];
-  tab_interacoes?: any[]; 
+  tab_interacoes_v2?: any[];
   usuarios_perfis?: { nome: string };
 }
-
-// Removida a função getFaseCliente que não estava sendo utilizada para sanar o erro de compilação.
 
 export default function KanbanAtendimentos() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeCliente, setActiveCliente] = useState<Cliente | null>(null);
-  
   const { colunas, loading: loadingConfig, refresh } = useKanbanConfig('atendimento');
-  
+
   const [termoBusca, setTermoBusca] = useState('');
   const [corretorBusca, setCorretorBusca] = useState('');
   const [dataInicio, setDataInicio] = useState('');
@@ -65,12 +83,9 @@ export default function KanbanAtendimentos() {
   const [valorMin, setValorMin] = useState('');
   const [valorMax, setValorMax] = useState('');
 
-  const [modalImpedimento, setModalImpedimento] = useState<{
-    isOpen: boolean;
-    mensagem: string;
-  }>({
+  const [modalImpedimento, setModalImpedimento] = useState({
     isOpen: false,
-    mensagem: '',
+    mensagem: ''
   });
 
   const [modalFechamento, setModalFechamento] = useState<{
@@ -90,115 +105,158 @@ export default function KanbanAtendimentos() {
 
   useEffect(() => {
     fetchClientes();
-  }, [termoBusca, dataInicio, dataFim, valorMin, valorMax, corretorBusca]);
+  }, [termoBusca, corretorBusca, dataInicio, dataFim, valorMin, valorMax]);
 
   async function fetchClientes() {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const { data: perfil } = await supabase
-      .from("usuarios_perfis")
-      .select("tipo_usuario, corretora_id")
-      .eq("id", user.id)
-      .single();
+      const { data: perfil } = await supabase
+        .from('usuarios_perfis')
+        .select('tipo_usuario, corretora_id')
+        .eq('id', user.id)
+        .single();
 
-    if (!perfil) return;
+      if (!perfil) return;
 
-    const camposProposta = 'id, status, valor_total_proposta';
-    const relacaoPropostas = (valorMin || valorMax) 
-      ? `tab_propostas!inner(${camposProposta})` 
-      : `tab_propostas(${camposProposta})`;
+      let query = supabase
+        .from('tab_clientes_v2')
+        .select('*, tab_interacoes_v2(id)')
+        .eq('status_kanban', 'lead')
+        .eq('corretora_id', perfil.corretora_id);
 
-    let query = supabase
-      .from('tab_clientes')
-      .select(`
-        *,
-        corretor:usuarios_perfis!tab_clientes_corretor_id_fkey(nome),
-        tab_interacoes(id),
-        ${relacaoPropostas}
-      `)
-      .eq('status_kanban', 'novo')
-      .eq('corretora_id', perfil.corretora_id);
-
-    if (perfil.tipo_usuario === 'CORRETOR') {
-      query = query.eq('corretor_id', user.id);
-    }
-
-    if (termoBusca) {
-      query = query.or(`nome.ilike.%${termoBusca}%,razao_social.ilike.%${termoBusca}%,cpf.ilike.%${termoBusca}%,cnpj.ilike.%${termoBusca}%,email.ilike.%${termoBusca}%,telefone_whats.ilike.%${termoBusca}%`);
-    }
-
-    if (corretorBusca) {
-      query = query.filter('usuarios_perfis.nome', 'ilike', `%${corretorBusca}%`);
-    }
-
-    if (dataInicio) query = query.gte('data_retorno', dataInicio);
-    if (dataFim) query = query.lte('data_retorno', dataFim);
-    if (valorMin) query = query.gte('tab_propostas.valor_total_proposta', parseCurrencyToNumber(valorMin));
-    if (valorMax) query = query.lte('tab_propostas.valor_total_proposta', parseCurrencyToNumber(valorMax));
-
-    const { data, error } = await query.order('posicao_kanban', { ascending: true });
-    if (error) throw error;
-
-    // --- LÓGICA DE ELEVAÇÃO AUTOMÁTICA (AUTO-FIX) ---
-    const rawClientes = data as Cliente[] || [];
-    
-    const clientesTratados = rawClientes.map(cliente => {
-      const interacoes = cliente.tab_interacoes || [];
-      const propostas = cliente.tab_propostas || [];
-      const temInteracao = interacoes.length > 0;
-      const temNegociacao = propostas.some(p => p.status === 'Em Negociação');
-
-      let novaFase = cliente.fase_kanban;
-
-      // Se tem Negociação em aberto, deve estar obrigatoriamente em 'negociacao'
-      if (temNegociacao && cliente.fase_kanban !== 'negociacao') {
-        novaFase = 'negociacao';
-      } 
-      // Se não tem negociação mas tem contato, deve estar em 'contato' (se estiver em lead)
-      else if (temInteracao && cliente.fase_kanban === 'lead') {
-        novaFase = 'contato';
+      if (perfil.tipo_usuario === 'CORRETOR') {
+        query = query.eq('corretor_id', user.id);
       }
 
-      // Se a fase foi corrigida pela lógica, atualiza o banco em background
-      if (novaFase !== cliente.fase_kanban) {
-        supabase
-          .from('tab_clientes')
-          .update({ fase_kanban: novaFase })
-          .eq('id', cliente.id)
-          .then(({ error: errUpdate }) => {
-            if (errUpdate) console.error(`Erro ao auto-mover cliente ${cliente.id}:`, errUpdate);
+      if (termoBusca) {
+        query = query.or(
+          `nome_razao_social.ilike.%${termoBusca}%,nome_fantasia.ilike.%${termoBusca}%,cpf_cnpj.ilike.%${termoBusca}%`
+        );
+      }
+
+      if (dataInicio) query = query.gte('data_retorno', dataInicio);
+      if (dataFim) query = query.lte('data_retorno', dataFim);
+
+      const { data: rawClientes, error } = await query.order('posicao_kanban', {
+        ascending: true
+      });
+
+      if (error) throw error;
+
+      const clientesList = (rawClientes || []) as Cliente[];
+      const clienteIds = clientesList.map(cliente => cliente.id);
+
+      const propostasMap: Record<string, any[]> = {};
+
+      if (clienteIds.length) {
+        const { data: propostasData, error: propostasError } = await supabase
+          .from('tab_propostas')
+          .select('id, status, valor_total_proposta, cliente_id')
+          .in('cliente_id', clienteIds);
+
+        if (propostasError) throw propostasError;
+
+        propostasData?.forEach(proposta => {
+          if (!propostasMap[proposta.cliente_id]) {
+            propostasMap[proposta.cliente_id] = [];
+          }
+
+          propostasMap[proposta.cliente_id].push(proposta);
+        });
+      }
+
+      const corretorIds = Array.from(
+        new Set(clientesList.map(cliente => cliente.corretor_id).filter(Boolean))
+      ) as string[];
+
+      const corretoresMap: Record<string, string> = {};
+
+      if (corretorIds.length) {
+        let corrQuery = supabase
+          .from('usuarios_perfis')
+          .select('id, nome')
+          .in('id', corretorIds);
+
+        if (corretorBusca) {
+          corrQuery = corrQuery.ilike('nome', `%${corretorBusca}%`);
+        }
+
+        const { data: corretoresData, error: corretoresError } = await corrQuery;
+
+        if (corretoresError) throw corretoresError;
+
+        corretoresData?.forEach(corretor => {
+          corretoresMap[corretor.id] = corretor.nome;
+        });
+      }
+
+      const vMin = valorMin ? parseCurrencyToNumber(valorMin) : 0;
+      const vMax = valorMax ? parseCurrencyToNumber(valorMax) : Infinity;
+
+      const clientesTratados = clientesList
+        .filter(cliente => !corretorBusca || !cliente.corretor_id || Boolean(corretoresMap[cliente.corretor_id]))
+        .map(cliente => {
+          const propostas = propostasMap[cliente.id] || [];
+          const temInteracao = (cliente.tab_interacoes_v2?.length || 0) > 0;
+          const temNegociacao = propostas.some(proposta => proposta.status === 'Em Negociação');
+
+          let novaFase = cliente.fase_kanban;
+
+          if (temNegociacao) novaFase = 'negociacao_lead';
+          else if (temInteracao) novaFase = 'contato_realizado';
+          else novaFase = 'nao_contatado';
+
+          if (novaFase !== cliente.fase_kanban) {
+            supabase
+              .from('tab_clientes_v2')
+              .update({ fase_kanban: novaFase, fase_atendimento: novaFase })
+              .eq('id', cliente.id)
+              .then(({ error }) => error && console.error(error));
+          }
+
+          return {
+            ...cliente,
+            fase_kanban: novaFase,
+            tab_propostas: propostas,
+            usuarios_perfis: {
+              nome: corretoresMap[cliente.corretor_id || ''] || 'Não atribuído'
+            }
+          };
+        })
+        .filter(cliente => {
+          if (!valorMin && !valorMax) return true;
+
+          return cliente.tab_propostas?.some(proposta => {
+            const valor = proposta.valor_total_proposta || 0;
+            return valor >= vMin && valor <= vMax;
           });
-          
-        return { ...cliente, fase_kanban: novaFase };
-      }
+        });
 
-      return cliente;
-    });
-
-    setClientes(clientesTratados);
-    // ------------------------------------------------
-    
-  } catch (error) {
-    console.error("Erro ao buscar clientes:", error);
+      setClientes(clientesTratados);
+    } catch (error) {
+      console.error('Erro ao buscar clientes:', error);
+    }
   }
-}
 
-  const getClientesDaColuna = (colunaId: string) => {
-    return clientes
-      .filter(cliente => cliente.fase_kanban === colunaId)
+  const getClientesDaColuna = (colunaId: string) =>
+    clientes
+      .filter(cliente =>
+        (cliente.fase_kanban || '').toLowerCase().trim() ===
+        (colunaId || '').toLowerCase().trim()
+      )
       .sort((a, b) => (a.posicao_kanban || 0) - (b.posicao_kanban || 0));
-  };
 
   function handleDragStart(event: DragStartEvent) {
-    const { active } = event;
-    setActiveId(active.id as string);
-    setActiveCliente(clientes.find(c => c.id === active.id) || null);
+    const id = event.active.id as string;
+    setActiveId(id);
+    setActiveCliente(clientes.find(cliente => cliente.id === id) || null);
   }
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
+
     setActiveId(null);
     setActiveCliente(null);
 
@@ -206,92 +264,95 @@ export default function KanbanAtendimentos() {
 
     const activeIdStr = active.id as string;
     const overIdStr = over.id as string;
+    const clienteAtivo = clientes.find(cliente => cliente.id === activeIdStr);
 
-    const clienteAtivo = clientes.find(c => c.id === activeIdStr);
     if (!clienteAtivo) return;
 
-    // 1. Identificação da Coluna de Destino
+    const colunasValidas = colunas.map(coluna => coluna.id);
+
     let colDestino = overIdStr;
-    const colunasValidas = ['lead', 'contato', 'negociacao'];
+
     if (!colunasValidas.includes(overIdStr)) {
-      const clienteOver = clientes.find(c => c.id === overIdStr);
+      const clienteOver = clientes.find(cliente => cliente.id === overIdStr);
       colDestino = clienteOver?.fase_kanban || clienteAtivo.fase_kanban;
     }
 
     const colOrigem = clienteAtivo.fase_kanban;
 
-    // --- CASO 1: REORDENAÇÃO NA MESMA COLUNA ---
     if (colOrigem === colDestino) {
       if (activeIdStr === overIdStr) return;
 
-      const itemsDaColuna = getClientesDaColuna(colOrigem);
-      const oldIndex = itemsDaColuna.findIndex(c => c.id === activeIdStr);
-      const newIndex = itemsDaColuna.findIndex(c => c.id === overIdStr);
+      const items = getClientesDaColuna(colOrigem);
+      const oldIndex = items.findIndex(cliente => cliente.id === activeIdStr);
+      const newIndex = items.findIndex(cliente => cliente.id === overIdStr);
 
-      const novaListaOrdenada = arrayMove(itemsDaColuna, oldIndex, newIndex);
+      if (oldIndex < 0 || newIndex < 0) return;
 
-      // Atualização Otimista no Estado
-      setClientes(prev => prev.map(c => {
-        const itemNovo = novaListaOrdenada.find(ni => ni.id === c.id);
-        if (itemNovo) {
-          return { ...c, posicao_kanban: novaListaOrdenada.indexOf(itemNovo) };
-        }
-        return c;
-      }));
+      const novaLista = arrayMove(items, oldIndex, newIndex);
 
-      // Persistência em Massa (Promessas paralelas para atualizar as posições)
-      const updates = novaListaOrdenada.map((item, index) => 
-        supabase.from('tab_clientes').update({ posicao_kanban: index }).eq('id', item.id)
+      setClientes(prev =>
+        prev.map(cliente => {
+          const index = novaLista.findIndex(item => item.id === cliente.id);
+          return index >= 0 ? { ...cliente, posicao_kanban: index } : cliente;
+        })
       );
+
+      const updates = novaLista.map((cliente, index) =>
+        supabase
+          .from('tab_clientes_v2')
+          .update({ posicao_kanban: index })
+          .eq('id', cliente.id)
+      );
+
       await Promise.all(updates);
       return;
     }
 
-    // --- CASO 2: MUDANÇA DE COLUNA (REGRAS DE NEGÓCIO) ---
-    const temInteracao = (clienteAtivo.tab_interacoes?.length ?? 0) > 0;
-    const temPropostaEmNegocicao = clienteAtivo.tab_propostas?.some((p: any) => p.status === 'Em Negociação');
+    const temInteracao = (clienteAtivo.tab_interacoes_v2?.length || 0) > 0;
+    const temNegociacao = clienteAtivo.tab_propostas?.some(
+      proposta => proposta.status === 'Em Negociação'
+    );
 
-    if (colOrigem === 'lead') {
-      if (colDestino === 'contato' && !temInteracao) {
-        setModalImpedimento({ isOpen: true, mensagem: "É necessário realizar ao menos 1 contato para mover para Contato." });
-        return;
-      }
-      if (colDestino === 'negociacao' && !temPropostaEmNegocicao) {
-        setModalImpedimento({ isOpen: true, mensagem: "É necessário ter uma negociação em aberto para mover para Negociação." });
-        return;
-      }
+    if (colDestino === 'contato_realizado' && !temInteracao) {
+      setModalImpedimento({
+        isOpen: true,
+        mensagem: 'É necessário realizar ao menos 1 interação para mover para Contato Realizado.'
+      });
+      return;
     }
 
-    if (colOrigem === 'contato') {
-      if (colDestino === 'lead' && temInteracao) {
-        setModalImpedimento({ isOpen: true, mensagem: "Este cliente já tem contato cadastrado e não pode retornar para Lead." });
-        return;
-      }
-      if (colDestino === 'negociacao' && !temPropostaEmNegocicao) {
-        setModalImpedimento({ isOpen: true, mensagem: "É necessário ter ao menos 1 negociação em aberto para avançar." });
-        return;
-      }
-    }
-
-    if (colOrigem === 'negociacao') {
-      if (colDestino === 'contato' && temPropostaEmNegocicao) {
-        setModalImpedimento({ isOpen: true, mensagem: "Possui negociação em aberto. Não pode retornar para Contato." });
-        return;
-      }
-      if (colDestino === 'lead') {
-        setModalImpedimento({ isOpen: true, mensagem: "Possui contato e negociação. Não pode retornar para Lead." });
-        return;
-      }
+    if (colDestino === 'negociacao_lead' && !temNegociacao) {
+      setModalImpedimento({
+        isOpen: true,
+        mensagem: 'É necessário ter uma proposta com status Em Negociação para mover para Negociação.'
+      });
+      return;
     }
 
     try {
-      setClientes(prev => prev.map(c => c.id === activeIdStr ? { ...c, fase_kanban: colDestino, posicao_kanban: 0 } : c));
-      const { error } = await supabase.from('tab_clientes').update({ fase_kanban: colDestino, posicao_kanban: 0 }).eq('id', activeIdStr);
+      setClientes(prev =>
+        prev.map(cliente =>
+          cliente.id === activeIdStr
+            ? { ...cliente, fase_kanban: colDestino, fase_atendimento: colDestino, posicao_kanban: 0 }
+            : cliente
+        )
+      );
+
+      const { error } = await supabase
+        .from('tab_clientes_v2')
+        .update({
+          fase_kanban: colDestino,
+          fase_atendimento: colDestino,
+          posicao_kanban: 0
+        })
+        .eq('id', activeIdStr);
+
       if (error) throw error;
-      toast.success("Movimentação realizada!");
-    } catch (err) {
-      console.error(err);
-      toast.error("Erro ao salvar");
+
+      toast.success('Movimentação realizada!');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao salvar');
       fetchClientes();
     }
   }
@@ -301,108 +362,161 @@ export default function KanbanAtendimentos() {
       <div className="mb-8 space-y-6">
         <div>
           <h1 className="text-2xl font-black italic uppercase tracking-tighter text-slate-800 dark:text-white">
-            Ciclo de Vendas para Novos Clientes
+            Ciclo de Vendas para Novos Clientes (Leads)
           </h1>
-          <p className="text-slate-500 text-sm font-medium">Gerencie o progresso comercial em tempo real</p>
+          <p className="text-slate-500 text-sm font-medium">
+            Gerencie o progresso comercial em tempo real
+          </p>
         </div>
 
         <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-zinc-900 p-6 rounded-[24px] border border-slate-200 dark:border-zinc-800 shadow-sm">
           <div className="flex-1 min-w-[250px]">
-            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Pesquisa Rápida</label>
+            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">
+              Pesquisa Rápida
+            </label>
             <BuscaGlobal onSearch={setTermoBusca} />
           </div>
 
           <div className="w-56">
-            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Filtrar Corretor</label>
+            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">
+              Filtrar Corretor
+            </label>
             <div className="relative">
               <UserSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input 
+              <input
                 type="text"
                 placeholder="Nome do Corretor..."
                 value={corretorBusca}
-                onChange={(e) => setCorretorBusca(e.target.value)}
-                className="w-full h-12 pl-10 pr-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-2 ring-blue-500/20"
+                onChange={e => setCorretorBusca(e.target.value)}
+                className="w-full h-12 pl-10 pr-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none"
               />
             </div>
           </div>
 
           <div className="flex flex-col gap-2 text-center">
-            <label className="block text-[10px] font-black uppercase text-slate-400 ml-1">Data Retorno</label>
+            <label className="block text-[10px] font-black uppercase text-slate-400 ml-1">
+              Data Retorno
+            </label>
             <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 h-12 px-4 rounded-2xl">
-              <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="bg-transparent border-none text-xs font-bold outline-none text-slate-600 dark:text-slate-300" />
+              <input
+                type="date"
+                value={dataInicio}
+                onChange={e => setDataInicio(e.target.value)}
+                className="bg-transparent border-none text-xs font-bold outline-none text-slate-600 dark:text-slate-300"
+              />
               <span className="text-slate-300 text-[10px] font-black italic">ATÉ</span>
-              <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="bg-transparent border-none text-xs font-bold outline-none text-slate-600 dark:text-slate-300" />
-            </div>
-          </div>     
-
-          <div className="flex flex-col gap-2 text-center">
-            <label className="block text-[10px] font-black uppercase text-slate-400 ml-1">Valor Proposta (R$)</label>
-            <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 h-12 px-4 rounded-2xl">
-              <input type="text" placeholder="Mín" value={valorMin} onChange={(e) => setValorMin(maskCurrency(e.target.value))} className="w-24 bg-transparent border-none text-xs font-bold outline-none text-emerald-600" />
-              <span className="text-slate-300 text-[10px] font-black italic">ATÉ</span>
-              <input type="text" placeholder="Máx" value={valorMax} onChange={(e) => setValorMax(maskCurrency(e.target.value))} className="w-24 bg-transparent border-none text-xs font-bold outline-none text-emerald-600" />
+              <input
+                type="date"
+                value={dataFim}
+                onChange={e => setDataFim(e.target.value)}
+                className="bg-transparent border-none text-xs font-bold outline-none text-slate-600 dark:text-slate-300"
+              />
             </div>
           </div>
 
-          <button 
-            onClick={() => { setDataInicio(''); setDataFim(''); setValorMin(''); setValorMax(''); setTermoBusca(''); setCorretorBusca(''); }}  
+          <div className="flex flex-col gap-2 text-center">
+            <label className="block text-[10px] font-black uppercase text-slate-400 ml-1">
+              Valor Proposta (R$)
+            </label>
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 h-12 px-4 rounded-2xl">
+              <input
+                type="text"
+                placeholder="Mín"
+                value={valorMin}
+                onChange={e => setValorMin(maskCurrency(e.target.value))}
+                className="w-24 bg-transparent border-none text-xs font-bold outline-none text-emerald-600"
+              />
+              <span className="text-slate-300 text-[10px] font-black italic">ATÉ</span>
+              <input
+                type="text"
+                placeholder="Máx"
+                value={valorMax}
+                onChange={e => setValorMax(maskCurrency(e.target.value))}
+                className="w-24 bg-transparent border-none text-xs font-bold outline-none text-emerald-600"
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              setDataInicio('');
+              setDataFim('');
+              setValorMin('');
+              setValorMax('');
+              setTermoBusca('');
+              setCorretorBusca('');
+            }}
             className="h-12 w-12 flex items-center justify-center bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl transition-all shadow-sm group"
           >
             <Eraser size={18} className="group-hover:rotate-12 transition-transform" />
           </button>
         </div>
       </div>
-      
+
       <DndContext
         sensors={sensors}
-        collisionDetection={pointerWithin} // Alterado de rectIntersection
+        collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-6 overflow-x-auto pb-10 items-stretch">
-          {!loadingConfig && colunas.map(col => (
-            <div key={col.id} className="flex-1 min-w-[380px] max-w-[480px] flex flex-col">
-              <div className="flex items-center justify-between mb-4 px-2">
-                <div className="flex items-center gap-2">
-                  <span 
-                    className="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest text-white"
-                    style={{ backgroundColor: col.colorHex }}
-                  >
-                    {col.title}
-                  </span>
-                  <span className="text-slate-400 text-sm font-bold bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-lg">
-                    {getClientesDaColuna(col.id).length}
-                  </span>
-                </div>
-                
-                <div className="relative">
-                  <MenuConfigColuna 
-                    fase={col} 
-                    grupo="atendimento" 
-                    onUpdate={refresh} 
-                  />
-                </div>
-              </div>
+          {!loadingConfig && colunas.map(col => {
+            const clientesColuna = getClientesDaColuna(col.id);
 
-              <KanbanColumn id={col.id}>
-                <SortableContext items={getClientesDaColuna(col.id).map(c => c.id)} strategy={verticalListSortingStrategy}>
-                  {getClientesDaColuna(col.id).map(cliente => (
-                    <SortableCard key={cliente.id} id={cliente.id} cliente={cliente} columnId={col.id} onUpdate={fetchClientes} />
-                  ))}
-                </SortableContext>
-              </KanbanColumn>
-            </div>
-          ))}
+            return (
+              <div key={col.id} className="flex-1 min-w-[380px] max-w-[480px] flex flex-col">
+                <div className="flex items-center justify-between mb-4 px-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest text-white"
+                      style={{ backgroundColor: col.colorHex }}
+                    >
+                      {col.title}
+                    </span>
+                    <span className="text-slate-400 text-sm font-bold bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-lg">
+                      {clientesColuna.length}
+                    </span>
+                  </div>
+
+                  <div className="relative">
+                    <MenuConfigColuna
+                      fase={col}
+                      grupo="atendimento"
+                      onUpdate={refresh}
+                    />
+                  </div>
+                </div>
+
+                <KanbanColumn id={col.id}>
+                  <SortableContext
+                    items={clientesColuna.map(cliente => cliente.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {clientesColuna.map(cliente => (
+                      <SortableCard
+                        key={cliente.id}
+                        id={cliente.id}
+                        cliente={cliente}
+                        columnId={col.id}
+                        onUpdate={fetchClientes}
+                      />
+                    ))}
+                  </SortableContext>
+                </KanbanColumn>
+              </div>
+            );
+          })}
         </div>
 
         <DragOverlay>
           {activeId && activeCliente ? (
             <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl shadow-2xl border-2 border-blue-500 cursor-grabbing w-[350px] rotate-2 opacity-90 scale-105 transition-transform">
               <p className="text-sm font-bold uppercase truncate">
-                {activeCliente.tipo_cliente === 'PJ' ? activeCliente.razao_social : activeCliente.nome}
+                {activeCliente.nome_fantasia || activeCliente.nome_razao_social}
               </p>
               <div className="flex gap-2 mt-2 opacity-40">
-                <MessageCircle size={14} /><FileText size={14} />
+                <MessageCircle size={14} />
+                <FileText size={14} />
               </div>
             </div>
           ) : null}
@@ -415,8 +529,12 @@ export default function KanbanAtendimentos() {
             <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <AlertOctagon className="text-red-600" size={32} />
             </div>
-            <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-2">Movimentação Bloqueada</h2>
-            <p className="text-slate-600 dark:text-slate-400 font-medium mb-6">{modalImpedimento.mensagem}</p>
+            <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-2">
+              Movimentação Bloqueada
+            </h2>
+            <p className="text-slate-600 dark:text-slate-400 font-medium mb-6">
+              {modalImpedimento.mensagem}
+            </p>
             <button
               onClick={() => setModalImpedimento({ isOpen: false, mensagem: '' })}
               className="w-full h-14 bg-slate-900 dark:bg-white dark:text-black text-white rounded-2xl font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"
@@ -430,10 +548,21 @@ export default function KanbanAtendimentos() {
       {modalFechamento.isOpen && (
         <ModalFechamento
           isOpen={modalFechamento.isOpen}
-          tipo={modalFechamento.tipo!} 
+          tipo={modalFechamento.tipo!}
           proposta={modalFechamento.propostas}
-          onClose={() => setModalFechamento({ isOpen: false, tipo: null, propostas: [] })}
-          onSuccess={() => { setModalFechamento({ isOpen: false, tipo: null, propostas: [] }); fetchClientes(); }}
+          onClose={() => setModalFechamento({
+            isOpen: false,
+            tipo: null,
+            propostas: []
+          })}
+          onSuccess={() => {
+            setModalFechamento({
+              isOpen: false,
+              tipo: null,
+              propostas: []
+            });
+            fetchClientes();
+          }}
         />
       )}
     </div>
@@ -442,17 +571,15 @@ export default function KanbanAtendimentos() {
 
 function KanbanColumn({ id, children }: { id: string; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
-  
+
   return (
-    <div 
-      ref={setNodeRef} 
-      className={`
-        p-3 rounded-[24px] min-h-[75vh] flex-1 flex flex-col border transition-all duration-200
-        ${isOver 
-          ? 'bg-slate-300/70 dark:bg-zinc-900 border-blue-400/50' 
+    <div
+      ref={setNodeRef}
+      className={`p-3 rounded-[24px] min-h-[75vh] flex-1 flex flex-col border transition-all duration-200 ${
+        isOver
+          ? 'bg-slate-300/70 dark:bg-zinc-900 border-blue-400/50'
           : 'bg-slate-200/60 dark:bg-zinc-950 border-slate-300/50 dark:border-zinc-800/80'
-        }
-      `}
+      }`}
     >
       <div className="flex flex-col gap-3 flex-1 h-full">
         {children}

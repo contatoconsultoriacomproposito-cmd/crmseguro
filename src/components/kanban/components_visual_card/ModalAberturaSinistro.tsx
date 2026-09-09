@@ -27,9 +27,9 @@ export const ModalAberturaSinistro = ({ isOpen, onClose, onSuccess, dados }: Mod
     
     setCarregando(true);
     try {
-        // 1. Buscar corretora_id e corretor_id do cliente
+        // 1. Buscar corretora_id e corretor_id do cliente na V2
         const { data: cliente, error: errCliente } = await supabase
-        .from('tab_clientes')
+        .from('tab_clientes_v2') // <-- Atualizado para V2
         .select('corretora_id, corretor_id')
         .eq('id', dados.clienteId)
         .single();
@@ -54,14 +54,14 @@ export const ModalAberturaSinistro = ({ isOpen, onClose, onSuccess, dados }: Mod
 
         if (errSinistro) throw errSinistro;
 
-        // 3. Criar a Ocorrência Inicial (AJUSTADO ABAIXO)
+        // 3. Criar a Ocorrência Inicial
         const { error: errOcorrencia } = await supabase
         .from('tab_sinistros_ocorrencias')
         .insert([{
             sinistro_id: sinistro.id,
             etapa: 'Abertura',
             relato: `ABERTURA DE SINISTRO: ${relato}`,
-            // ALTERAÇÃO AQUI: Usa a data selecionada pelo usuário
+            // Usa a data selecionada pelo usuário
             data_ocorrencia: dataOcorrencia 
         }]);
 

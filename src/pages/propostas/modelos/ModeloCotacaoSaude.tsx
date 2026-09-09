@@ -68,54 +68,70 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
   }, [propostaId]);
 
   async function carregarDadosProposta() {
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const { data: proposta, error: errorProp } = await supabase
-        .from("tab_propostas")
-        .select(`
-          *,
-          tab_clientes (*),
-          usuarios_perfis!tab_propostas_corretor_id_fkey (*) 
-        `)
-        .eq("id", propostaId)
-        .single();
+    // 1. Busca a proposta SEM o JOIN direto com tab_clientes_v2
+    const { data: proposta, error: errorProp } = await supabase
+      .from("tab_propostas")
+      .select(`
+        *,
+        usuarios_perfis!tab_propostas_corretor_id_fkey (*) 
+      `)
+      .eq("id", propostaId)
+      .single();
 
-      if (errorProp || !proposta) throw new Error("Erro ao buscar dados básicos da proposta.");
+    if (errorProp || !proposta) throw new Error("Erro ao buscar dados básicos da proposta.");
 
-      const corretor = proposta.usuarios_perfis;
+    const corretor = proposta.usuarios_perfis;
 
-      const { data: corretora } = await supabase
-        .from("usuarios_perfis")
-        .select(`
-          id,
-          cnpj_corretora,
-          registro_susep,
-          tab_configuracoes_site (
-            nome_exibicao,
-            dominio,
-            logo_url
-          )
-        `)
-        .eq("corretora_id", proposta.corretora_id)
-        .or("tipo_usuario.eq.CORRETORA,tipo_usuario.eq.ADMIN") 
-        .limit(1)
+    // 2. Busca o cliente de forma isolada se houver cliente_id
+    let clienteDb = null;
+    if (proposta.cliente_id) {
+      const { data: cliente, error: errorCliente } = await supabase
+        .from("tab_clientes_v2")
+        .select("*")
+        .eq("id", proposta.cliente_id)
         .maybeSingle();
 
-      setDadosBase({
-        proposta,
-        corretora,
-        corretor,
-        cliente: proposta.tab_clientes,
-      });
-
-    } catch (error) {
-      console.error("Erro ao estruturar cotação de saúde:", error);
-      alert("Houve um erro ao carregar o espelho da proposta.");
-    } finally {
-      setLoading(false);
+      if (!errorCliente) {
+        clienteDb = cliente;
+      }
     }
+
+    // 3. Busca os dados da corretora
+    const { data: corretora } = await supabase
+      .from("usuarios_perfis")
+      .select(`
+        id,
+        cnpj_corretora,
+        registro_susep,
+        tab_configuracoes_site (
+          nome_exibicao,
+          dominio,
+          logo_url
+        )
+      `)
+      .eq("corretora_id", proposta.corretora_id)
+      .or("tipo_usuario.eq.CORRETORA,tipo_usuario.eq.ADMIN") 
+      .limit(1)
+      .maybeSingle();
+
+    // 4. Armazena no estado com clienteDb isolado
+    setDadosBase({
+      proposta,
+      corretora,
+      corretor,
+      cliente: clienteDb,
+    });
+
+  } catch (error) {
+    console.error("Erro ao estruturar cotação de saúde:", error);
+    alert("Houve um erro ao carregar o espelho da proposta.");
+  } finally {
+    setLoading(false);
   }
+}
 
   const carregarImagemCache = (url: string): Promise<HTMLImageElement | null> => {
     return new Promise((resolve) => {
@@ -377,6 +393,23 @@ export default function ModeloCotacaoSaude({ propostaId, onClose }: ModeloCotaca
         <div className="bg-white p-6 rounded-lg shadow-xl flex items-center gap-3">
           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           <span className="font-medium text-gray-700">Carregando espelho de saúde...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Trava de segurança para impedir erro de desestruturação nula
+  if (!dadosBase) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+        <div className="bg-white p-6 rounded-lg shadow-xl text-center space-y-4">
+          <p className="text-red-600 font-medium">Erro ao carregar os dados da proposta de saúde.</p>
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+          >
+            Fechar
+          </button>
         </div>
       </div>
     );

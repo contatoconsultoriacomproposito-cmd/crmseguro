@@ -85,134 +85,140 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
   }, [propostaId]);
 
   async function carregarDadosProposta() {
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      // -------------------------------------------------------------------------
-      // MUDANÇA 1: LADO DIREITO (CONSULTOR) 
-      // Mudamos o select para trazer o perfil do corretor usando a Foreign Key correta (corretor_id)
-      // -------------------------------------------------------------------------
-      const { data: proposta, error: errorProp } = await supabase
-        .from("tab_propostas")
-        .select(`
-          *,
-          tab_clientes (*),
-          usuarios_perfis!tab_propostas_corretor_id_fkey (*) 
-        `)
-        .eq("id", propostaId)
-        .single();
+    // 1. Busca a proposta SEM o JOIN direto com tab_clientes_v2
+    const { data: proposta, error: errorProp } = await supabase
+      .from("tab_propostas")
+      .select(`
+        *,
+        usuarios_perfis!tab_propostas_corretor_id_fkey (*) 
+      `)
+      .eq("id", propostaId)
+      .single();
 
-      if (errorProp || !proposta) throw new Error("Erro ao buscar dados básicos da proposta.");
+    if (errorProp || !proposta) throw new Error("Erro ao buscar dados básicos da proposta.");
 
-      // O corretor responsável (ex: Bruce Duarte) agora vem amarrado de forma legítima
-      const corretor = proposta.usuarios_perfis;
+    const corretor = proposta.usuarios_perfis;
 
-      // -------------------------------------------------------------------------
-      // MUDANÇA 2: LADO ESQUERDO (CORRETORA EMISSORA)
-      // Removemos o filtro engessado de "tipo_usuario = CORRETORA" que quebrava o retorno.
-      // Agora aceitamos CORRETORA ou ADMIN sob o mesmo "corretora_id" para puxar as configs do site (Elisangela).
-      // -------------------------------------------------------------------------
-      const { data: corretora } = await supabase
-        .from("usuarios_perfis")
-        .select(`
-          id,
-          cnpj_corretora,
-          registro_susep,
-          tab_configuracoes_site (
-            nome_exibicao,
-            dominio,
-            logo_url
-          )
-        `)
-        .eq("corretora_id", proposta.corretora_id)
-        .or("tipo_usuario.eq.CORRETORA,tipo_usuario.eq.ADMIN") 
-        .limit(1)
+    // 2. Busca o cliente de forma isolada
+    let clienteDb = null;
+    if (proposta.cliente_id) {
+      const { data: cliente, error: errorCliente } = await supabase
+        .from("tab_clientes_v2")
+        .select("*")
+        .eq("id", proposta.cliente_id)
         .maybeSingle();
 
-      const { data: opcoesDb, error: errorOpcoes } = await supabase
-        .from("tab_proposta_opcoes")
-        .select(`
-          *,
-          base_seguradoras (*),
-          tab_proposta_itens (
-            *,
-            base_produtos (*)
-          )
-        `)
-        .eq("proposta_id", propostaId)
-        .order("ordem_opcao", { ascending: true });
-
-      if (errorOpcoes) throw errorOpcoes;
-
-      const opcoes = opcoesDb || [];
-      const matrizInicial: Record<string, Record<string, any>> = {};
-
-      opcoes.forEach((opt: any) => {
-        matrizInicial[opt.id] = {
-          compreensiva: "FIPE 100%",
-          dm: "R$ 50.000,00",
-          dc: "R$ 50.000,00",
-          assistencia: "400 KM",
-          carro: "Não Contratado",
-          franquia: { valor: "R$ 0,00", tipo: "Obrigatória" },
-          formaPagamento: opt.tab_proposta_itens?.[0]?.meio_pagamento || "Boleto",
-          parcelamento: opt.tab_proposta_itens?.[0]?.parcelamento || "1x",
-          valorTotal: opt.valor_total_opcao || 0
-        };
-
-        opt.tab_proposta_itens?.forEach((item: any) => {
-          const nomeProd = (item.base_produtos?.nome || "").toLowerCase();
-          const textoSalvo = item.coberturas_franquias;
-
-          if (!textoSalvo) return;
-
-          if (nomeProd.includes("colisão") || nomeProd.includes("compreensiva") || nomeProd.includes("seguro auto")) {
-            matrizInicial[opt.id].compreensiva = textoSalvo;
-          } else if (nomeProd.includes("material") || nomeProd.includes("dm")) {
-            matrizInicial[opt.id].dm = textoSalvo;
-          } else if (nomeProd.includes("corporal") || nomeProd.includes("dc")) {
-            matrizInicial[opt.id].dc = textoSalvo;
-          } else if (nomeProd.includes("assistência") || nomeProd.includes("guincho")) {
-            matrizInicial[opt.id].assistencia = textoSalvo;
-          } else if (nomeProd.includes("carro") || nomeProd.includes("reserva")) {
-            matrizInicial[opt.id].carro = textoSalvo;
-          } else if (nomeProd.includes("franquia")) {
-            matrizInicial[opt.id].franquia.valor = textoSalvo;
-          }
-        });
-      });
-
-      const clienteDb = proposta.tab_clientes;
-      if (clienteDb) {
-        setPerfilRisco({
-          sexo: clienteDb.sexo === "F" || clienteDb.sexo === "Feminino" ? "Feminino" : "Masculino",
-          tipoUso: "Particular", 
-          condutorMenor25: "Não",
-          garagemResidencia: "Coberta",
-          garagemTrabalho: "Coberta",
-          dispositivosSeguranca: [],
-          sinistrosAnteriores: "Não",
-          classeBonus: Number(proposta.classe_bonus || 0)
-        });
+      if (!errorCliente) {
+        clienteDb = cliente;
       }
-
-      setValoresMatriz(matrizInicial);
-      
-      setDadosBase({
-        proposta,
-        corretora,
-        corretor,
-        cliente: clienteDb,
-        opcoes
-      });
-
-    } catch (error) {
-      console.error("Erro ao estruturar cotação:", error);
-      alert("Houve um erro ao carregar o espelho da proposta.");
-    } finally {
-      setLoading(false);
     }
+
+    // 3. Busca a corretora emissora
+    const { data: corretora } = await supabase
+      .from("usuarios_perfis")
+      .select(`
+        id,
+        cnpj_corretora,
+        registro_susep,
+        tab_configuracoes_site (
+          nome_exibicao,
+          dominio,
+          logo_url
+        )
+      `)
+      .eq("corretora_id", proposta.corretora_id)
+      .or("tipo_usuario.eq.CORRETORA,tipo_usuario.eq.ADMIN") 
+      .limit(1)
+      .maybeSingle();
+
+    // 4. Busca opções da proposta
+    const { data: opcoesDb, error: errorOpcoes } = await supabase
+      .from("tab_proposta_opcoes")
+      .select(`
+        *,
+        base_seguradoras (*),
+        tab_proposta_itens (
+          *,
+          base_produtos (*)
+        )
+      `)
+      .eq("proposta_id", propostaId)
+      .order("ordem_opcao", { ascending: true });
+
+    if (errorOpcoes) throw errorOpcoes;
+
+    const opcoes = opcoesDb || [];
+    const matrizInicial: Record<string, Record<string, any>> = {};
+
+    opcoes.forEach((opt: any) => {
+      matrizInicial[opt.id] = {
+        compreensiva: "FIPE 100%",
+        dm: "R$ 50.000,00",
+        dc: "R$ 50.000,00",
+        assistencia: "400 KM",
+        carro: "Não Contratado",
+        franquia: { valor: "R$ 0,00", tipo: "Obrigatória" },
+        formaPagamento: opt.tab_proposta_itens?.[0]?.meio_pagamento || "Boleto",
+        parcelamento: opt.tab_proposta_itens?.[0]?.parcelamento || "1x",
+        valorTotal: opt.valor_total_opcao || 0
+      };
+
+      opt.tab_proposta_itens?.forEach((item: any) => {
+        const nomeProd = (item.base_produtos?.nome || "").toLowerCase();
+        const textoSalvo = item.coberturas_franquias;
+
+        if (!textoSalvo) return;
+
+        if (nomeProd.includes("colisão") || nomeProd.includes("compreensiva") || nomeProd.includes("seguro auto")) {
+          matrizInicial[opt.id].compreensiva = textoSalvo;
+        } else if (nomeProd.includes("material") || nomeProd.includes("dm")) {
+          matrizInicial[opt.id].dm = textoSalvo;
+        } else if (nomeProd.includes("corporal") || nomeProd.includes("dc")) {
+          matrizInicial[opt.id].dc = textoSalvo;
+        } else if (nomeProd.includes("assistência") || nomeProd.includes("guincho")) {
+          matrizInicial[opt.id].assistencia = textoSalvo;
+        } else if (nomeProd.includes("carro") || nomeProd.includes("reserva")) {
+          matrizInicial[opt.id].carro = textoSalvo;
+        } else if (nomeProd.includes("franquia")) {
+          matrizInicial[opt.id].franquia.valor = textoSalvo;
+        }
+      });
+    });
+
+    // Configura o perfil de risco com base no cliente retornado
+    if (clienteDb) {
+      setPerfilRisco({
+        sexo: clienteDb.sexo === "F" || clienteDb.sexo === "Feminino" ? "Feminino" : "Masculino",
+        tipoUso: "Particular", 
+        condutorMenor25: "Não",
+        garagemResidencia: "Coberta",
+        garagemTrabalho: "Coberta",
+        dispositivosSeguranca: [],
+        sinistrosAnteriores: "Não",
+        classeBonus: Number(proposta.classe_bonus || 0)
+      });
+    }
+
+    setValoresMatriz(matrizInicial);
+    
+    setDadosBase({
+      proposta,
+      corretora,
+      corretor,
+      cliente: clienteDb,
+      opcoes
+    });
+
+  } catch (error) {
+    console.error("Erro ao estruturar cotação:", error);
+    alert("Houve um erro ao carregar o espelho da proposta.");
+  } finally {
+    setLoading(false);
   }
+}
 
   const atualizarCelula = (opcaoId: string, campo: string, valor: any) => {
     setValoresMatriz(prev => ({
@@ -497,6 +503,23 @@ export default function ModeloCotacaoAuto({ propostaId, onClose }: ModeloCotacao
         <div className="bg-white p-6 rounded-lg shadow-xl flex items-center gap-3">
           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           <span className="font-medium text-gray-700">Construindo espelho comparativo...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Trava de segurança caso a consulta falhe ou dadosBase continue nulo
+  if (!dadosBase) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+        <div className="bg-white p-6 rounded-lg shadow-xl text-center space-y-4">
+          <p className="text-red-600 font-medium">Erro ao carregar os dados da proposta auto.</p>
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+          >
+            Fechar
+          </button>
         </div>
       </div>
     );

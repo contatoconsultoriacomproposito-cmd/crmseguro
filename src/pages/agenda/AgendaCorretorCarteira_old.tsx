@@ -60,7 +60,7 @@ export default function AgendaCorretorCarteira({ isOpen, onClose, cliente, onSuc
       setSinistrosAtivos(sinistros || []);
 
       const [resInteracoes, resOcorrencias] = await Promise.all([
-        supabase.from('tab_interacoes').select('*').eq('cliente_id', cliente.id).order('criado_em', { ascending: false }),
+        supabase.from('tab_interacoes_v2').select('*').eq('cliente_id', cliente.id).order('criado_em', { ascending: false }),
         supabase.from('tab_sinistros_ocorrencias')
           .select('*, tab_sinistros!inner(cliente_id, tab_proposta_itens(base_produtos(nome)))')
           .eq('tab_sinistros.cliente_id', cliente.id)
@@ -104,47 +104,42 @@ export default function AgendaCorretorCarteira({ isOpen, onClose, cliente, onSuc
   }
 
   async function salvarComercial() {
-    if (!tipoAcao || !textoAcao) return setErro("Preencha o tipo e o relato.");
-    setLoading(true);
-    setErro(null);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: perf } = await supabase.from('usuarios_perfis').select('corretora_id').eq('id', user?.id).single();
+  if (!tipoAcao || !textoAcao) return setErro("Preencha o tipo e o relato.");
+  setLoading(true);
+  setErro(null);
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: perf } = await supabase
+      .from('usuarios_perfis')
+      .select('corretora_id')
+      .eq('id', user?.id)
+      .single();
 
-      if (isProspeccao) {
-        // Alimenta exclusivamente a tabela de clientes frios conforme a regra de prospecção
-        const { error: errFrio } = await supabase.from('tab_clientes_frios').update({
-          data_retorno: dataRetorno || null,
-          horario_retorno: horarioRetorno || null,
-          ultimo_relato: textoAcao,
-          tipo_acao: tipoAcao
-        }).eq('id', cliente.id);
-        
-        if (errFrio) throw errFrio;
-      } else {
-        // Fluxo original para clientes ativos e fidelizados
-        await supabase.from('tab_interacoes').insert([{
-          cliente_id: cliente.id,
-          corretor_id: user?.id,
-          corretora_id: perf?.corretora_id,
-          tipo_acao: tipoAcao,
-          relato: textoAcao,
-          data_historico: new Date().toLocaleDateString('en-CA'),
-          get horario_historico() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
-        }]);
+    // 1. Inserção do histórico unificado na tab_interacoes_v2
+    const { error: errInteracao } = await supabase.from('tab_interacoes_v2').insert([{
+      cliente_id: cliente.id,
+      corretor_id: user?.id,
+      corretora_id: perf?.corretora_id,
+      tipo_acao: tipoAcao,
+      observacao: textoAcao
+    }]);
 
-        await supabase.from('tab_clientes').update({
-          data_retorno: dataRetorno || null,
-          horario_retorno: horarioRetorno || null,
-        }).eq('id', cliente.id);
-      }
+    if (errInteracao) throw errInteracao;
 
-      finalizarSucesso();
-    } catch (err: any) { 
-      setErro(err.message); 
-      setLoading(false); 
-    }
+    // 2. Atualização da data e horário de retorno na tab_clientes_v2
+    const { error: errCliente } = await supabase.from('tab_clientes_v2').update({
+      data_retorno: dataRetorno || null,
+      horario_retorno: horarioRetorno || null
+    }).eq('id', cliente.id);
+
+    if (errCliente) throw errCliente;
+
+    finalizarSucesso();
+  } catch (err: any) { 
+    setErro(err.message); 
+    setLoading(false); 
   }
+}
 
   async function salvarSinistro() {
     if (!sinistroSelecionadoId || !relatoSinistro) return setErro("Selecione o sinistro e relate a ocorrência.");
@@ -173,9 +168,10 @@ export default function AgendaCorretorCarteira({ isOpen, onClose, cliente, onSuc
       }).eq('id', sinistroSelecionadoId);
       if (errSin) throw errSin;
 
-      const { error: errCli } = await supabase.from('tab_clientes').update({
+      const { error: errCli } = await supabase.from('tab_clientes_v2').update({
         data_retorno_sinistro: dataRetornoSinistro || null,
-        horario_retorno_sinistro: horarioRetornoSinistro || null
+        horario_retorno_sinistro: horarioRetornoSinistro || null,
+        atualizado_em: new Date().toISOString()
       }).eq('id', cliente.id);
       if (errCli) throw errCli;
 

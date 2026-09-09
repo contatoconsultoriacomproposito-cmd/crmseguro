@@ -199,6 +199,7 @@ export default function LeadsProspeccao() {
       filtroFaixasSelecionadas,
       filtroFaseAtendimento, filtroTemperatura, filtroProximaAcao]);
 
+  
   // useEffect Definitivo: Abre o modal por ID local ou buscando diretamente no Supabase
   useEffect(() => {
     if (!perfilUsuario) return;
@@ -217,7 +218,7 @@ export default function LeadsProspeccao() {
         (async () => {
           try {
             const { data: leadDoBanco, error } = await supabase
-              .from("tab_clientes_frios")
+              .from("tab_clientes_v2")
               .select("*")
               .eq("id", leadIdDaUrl)
               .eq("corretora_id", perfilUsuario.corretora_id)
@@ -250,9 +251,9 @@ export default function LeadsProspeccao() {
     const de = (paginaAtual - 1) * itensPorPagina;
     const ate = de + itensPorPagina - 1;
 
-    // 1. QUERY PRINCIPAL UNIFICADA (Paginação + Dados)
+    // 1. QUERY PRINCIPAL UNIFICADA (Paginação + Dados na tab_clientes_v2)
     let query = supabase
-      .from("tab_clientes_frios")
+      .from("tab_clientes_v2")
       .select("*", { count: "exact" })
       .eq("corretora_id", perfilUsuario.corretora_id);
 
@@ -260,15 +261,15 @@ export default function LeadsProspeccao() {
     const termoGeral = pesquisaGeralDebounced?.trim();
     if (termoGeral) {
       query = query.or(
-        `razao_social.ilike.%${termoGeral}%,nome_fantasia.ilike.%${termoGeral}%,cnpj.ilike.%${termoGeral}%,nomes_socios.ilike.%${termoGeral}%`
+        `nome_razao_social.ilike.%${termoGeral}%,nome_fantasia.ilike.%${termoGeral}%,cpf_cnpj.ilike.%${termoGeral}%`
       );
     }
 
-    // Status de Prospecção
+    // Status de Prospecção (Estágio)
     if (filtroStatus) {
-      query = query.eq("status_prospeccao", filtroStatus);
+      query = query.eq("estagio", filtroStatus);
     } else if (!termoGeral) {
-      query = query.neq("status_prospeccao", "convertido");
+      query = query.neq("estagio", "convertido");
     }
 
     // Regra de perfil Corretor
@@ -287,45 +288,20 @@ export default function LeadsProspeccao() {
       query = query.in("cnae_principal", filtroCnaesSelecionados);
     }
 
-    if (filtroPorte) query = query.eq("porte", filtroPorte);
-    if (filtroMei !== "") query = query.eq("opcao_pelo_mei", filtroMei === "true");
-    if (filtroSimples !== "") query = query.eq("opcao_pelo_simples", filtroSimples === "true");
-    if (filtroMatriz) query = query.eq("descricao_identificador_matriz_filial", filtroMatriz);
-
-    if (filtroCapitalMin) query = query.gte("capital_social", Number(filtroCapitalMin));
-    if (filtroCapitalMax) query = query.lte("capital_social", Number(filtroCapitalMax));
-
-    if (filtroDataAberturaMin) query = query.gte("data_abertura", filtroDataAberturaMin);
-    if (filtroDataAberturaMax) query = query.lte("data_abertura", filtroDataAberturaMax);
-
     if (filtroDataRetornoMin) query = query.gte("data_retorno", filtroDataRetornoMin);
     if (filtroDataRetornoMax) query = query.lte("data_retorno", filtroDataRetornoMax);
 
-    // 🎯 ADICIONADOS: NOVOS FILTROS DE CRM E PROSPECÇÃO NA QUERY
+    // FILTROS DE CRM E PROSPECÇÃO
     if (filtroFaseAtendimento) {
       query = query.eq("fase_atendimento", filtroFaseAtendimento);
     }
     if (filtroTemperatura) {
       query = query.eq("temperatura", filtroTemperatura);
     }
-    // 🎯 FILTRAGEM CORRIGIDA DA PRÓXIMA AÇÃO
-    if (filtroProximaAcao) {
-      // Como 'proxima_acao' é um array no banco (ex: ["visitar"]), usamos .contains()
-      query = query.contains("proxima_acao", [filtroProximaAcao]);
-    }
-
-    // Filtro Faixas Etárias
-    if (filtroFaixasSelecionadas.length > 0) {
-      const filtrosFaixa = filtroFaixasSelecionadas
-        .map(f => `faixas_etarias.ilike.%${f}%`)
-        .join(",");
-      query = query.or(filtrosFaixa);
-    }
-
 
     // Executa paginação e ordenação principal
     const { data, error, count } = await query
-      .order("importado_em", { ascending: false })
+      .order("criado_em", { ascending: false })
       .range(de, ate);
 
     if (error) throw error;
@@ -333,17 +309,17 @@ export default function LeadsProspeccao() {
     setLeads(data || []);
     setTotalRegistros(count || 0);
     
-    // 2. BUSCAS SECUNDÁRIAS DE CONTAGEM OTIMIZADAS (ÚNICA REQUISIÇÃO)
+    // 2. BUSCAS SECUNDÁRIAS DE CONTAGEM OTIMIZADAS
     try {
       let baseFiltroContagem = supabase
-        .from("tab_clientes_frios")
-        .select("cnae_principal, faixas_etarias")
+        .from("tab_clientes_v2")
+        .select("cnae_principal, dados_complementares")
         .eq("corretora_id", perfilUsuario.corretora_id);
 
       if (filtroStatus) {
-        baseFiltroContagem = baseFiltroContagem.eq("status_prospeccao", filtroStatus);
+        baseFiltroContagem = baseFiltroContagem.eq("estagio", filtroStatus);
       } else if (!termoGeral) {
-        baseFiltroContagem = baseFiltroContagem.neq("status_prospeccao", "convertido");
+        baseFiltroContagem = baseFiltroContagem.neq("estagio", "convertido");
       }
 
       if (perfilUsuario.tipo_usuario === "CORRETOR") {
@@ -364,9 +340,15 @@ export default function LeadsProspeccao() {
             contagemCnae[cnaeNome] = (contagemCnae[cnaeNome] || 0) + 1;
           }
 
-          if (item.faixas_etarias) {
+          const complementares = typeof item.dados_complementares === 'string'
+            ? JSON.parse(item.dados_complementares)
+            : (item.dados_complementares || {});
+
+          const faixasTexto = complementares.faixas_etarias_texto || complementares.faixas_etarias;
+
+          if (faixasTexto) {
             const faixasUnicasNaEmpresa = new Set<string>(
-              item.faixas_etarias.split(" | ").map((f: string) => f.trim())
+              faixasTexto.split(" | ").map((f: string) => f.trim())
             );
 
             faixasUnicasNaEmpresa.forEach((faixa: string) => {
@@ -500,7 +482,7 @@ export default function LeadsProspeccao() {
         return;
       }
 
-      const { error } = await supabase.from("tab_clientes_frios").insert(registrosTratados);
+      const { error } = await supabase.from("tab_clientes_v2").insert(registrosTratados);
       if (error) throw error;
 
       toast.success(`${registrosTratados.length} leads frios importados e protegidos por RLS!`);
@@ -533,7 +515,7 @@ export default function LeadsProspeccao() {
     if (!window.confirm(`Tem certeza de que deseja apagar permanentemente ${idsParaExcluir.length} registro(s)?`)) return;
 
     try {
-      const { error } = await supabase.from("tab_clientes_frios").delete().in("id", idsParaExcluir);
+      const { error } = await supabase.from("tab_clientes_v2").delete().in("id", idsParaExcluir);
       if (error) throw error;
       
       toast.success("Registros removidos com sucesso!");
@@ -572,31 +554,40 @@ export default function LeadsProspeccao() {
   
   // Abertura do Modal e carga dos dados existentes
   const abrirTimeline = async (lead: any) => {
-    setLeadTimeline(lead);
-    setNovaAcaoObs("");
-    setNovaAcaoRetorno(lead.data_retorno || "");
-    setNovaAcaoHorarioRetorno(lead.horario_retorno || "");
-    
-    // Carrega os dados mais recentes salvos no lead
-    setFaseAtendimento(lead.fase_atendimento || "nao_contatado");
-    setTemperatura(lead.temperatura || "frio");
-    setResultadoAcao(lead.status_prospeccao || "em_prospeccao");
-    setContatosAdicionais(lead.contatos_adicionais || []);
-    setProximaAcao(lead.proxima_acao || []);
+  setLeadTimeline(lead);
+  setNovaAcaoObs("");
+  setNovaAcaoRetorno(lead.data_retorno || "");
+  setNovaAcaoHorarioRetorno(lead.horario_retorno || "");
+  
+  // Extração de dados complementares JSON
+  const complementares = typeof lead.dados_complementares === 'string'
+    ? JSON.parse(lead.dados_complementares)
+    : (lead.dados_complementares || {});
 
-    try {
-      const { data, error } = await supabase
-        .from("tab_clientes_frios_acoes")
-        .select("*")
-        .eq("cliente_frio_id", lead.id)
-        .order("criado_em", { ascending: false });
+  // Extração do array de contatos
+  const contatosArray = typeof lead.contatos === 'string'
+    ? JSON.parse(lead.contatos)
+    : (lead.contatos || []);
 
-      if (error) throw error;
-      setHistoricoAcoes(data || []);
-    } catch (err: any) {
-      console.error("Erro ao carregar histórico:", err);
-    }
-  };
+  setFaseAtendimento(lead.fase_atendimento || "nao_contatado");
+  setTemperatura(lead.temperatura || "frio");
+  setResultadoAcao(lead.estagio || "em_prospeccao");
+  setContatosAdicionais(contatosArray);
+  setProximaAcao(complementares.proxima_acao_sugerida || lead.proxima_acao || []);
+
+  try {
+    const { data, error } = await supabase
+      .from("tab_interacoes_v2")
+      .select("*")
+      .eq("cliente_id", lead.id)
+      .order("criado_em", { ascending: false });
+
+    if (error) throw error;
+    setHistoricoAcoes(data || []);
+  } catch (err: any) {
+    console.error("Erro ao carregar histórico:", err);
+  }
+};
 
 // Função de Salvar Interação e Atualizar Lead
 const salvarNovaAcaoAcompanhamento = async () => {
@@ -605,16 +596,16 @@ const salvarNovaAcaoAcompanhamento = async () => {
     if (faseAtendimento === "vendido") novoStatus = "ja_cliente";
     if (faseAtendimento === "perdido") novoStatus = "perdido";
 
-    // Mantém a data e horário preenchidos sempre que informados
     const dataRetornoFinal = novaAcaoRetorno || null;
     const horarioRetornoFinal = novaAcaoHorarioRetorno || null;
 
-    // 1. Registra o histórico da ação com tipo e desfecho
+    // 1. Registra a interação na tab_interacoes_v2
     const { error: errorAcao } = await supabase
-      .from("tab_clientes_frios_acoes")
+      .from("tab_interacoes_v2")
       .insert({
-        cliente_frio_id: leadTimeline.id,
+        cliente_id: leadTimeline.id,
         corretor_id: perfilUsuario?.id,
+        corretora_id: perfilUsuario?.corretora_id,
         tipo_acao: tipoAcaoRealizada,
         desfecho: desfechoAcaoRealizada,
         observacao: novaAcaoObs.trim() || null
@@ -622,19 +613,26 @@ const salvarNovaAcaoAcompanhamento = async () => {
 
     if (errorAcao) throw errorAcao;
 
-    // 2. Atualiza os dados consolidados do lead na tabela principal
+    // 2. Atualiza o lead na tab_clientes_v2
+    const complementaresAtuais = typeof leadTimeline.dados_complementares === 'string'
+      ? JSON.parse(leadTimeline.dados_complementares)
+      : (leadTimeline.dados_complementares || {});
+
     const payloadUpdate = {
-      status_prospeccao: novoStatus,
+      estagio: novoStatus,
       fase_atendimento: faseAtendimento,
       temperatura: temperatura,
-      proxima_acao: proximaAcao,
-      contatos_adicionais: contatosAdicionais,
+      contatos: contatosAdicionais,
       data_retorno: dataRetornoFinal,
-      horario_retorno: horarioRetornoFinal
+      horario_retorno: horarioRetornoFinal,
+      dados_complementares: {
+        ...complementaresAtuais,
+        proxima_acao_sugerida: proximaAcao
+      }
     };
 
     const { error: errorUpdate } = await supabase
-      .from("tab_clientes_frios")
+      .from("tab_clientes_v2")
       .update(payloadUpdate)
       .eq("id", leadTimeline.id);
 
@@ -703,11 +701,11 @@ const processarConversaoOuroFinal = async () => {
   try {
     if (!leadConversao) return;
 
-    // 1. Validação prévia de duplicidade na tabela de destino
+    // 1. Validação prévia de duplicidade na tabela de destino V2
     const { data: existente } = await supabase
-      .from("tab_clientes")
+      .from("tab_clientes_v2")
       .select("id")
-      .eq("cnpj", leadConversao.cnpj)
+      .eq("cpf_cnpj", leadConversao.cnpj)
       .eq("corretora_id", perfilUsuario?.corretora_id)
       .maybeSingle();
 
@@ -798,7 +796,7 @@ const processarConversaoOuroFinal = async () => {
 
     // 5. Inserção na tabela destino exigindo retorno explícito
     const { data: insertedData, error: insertErr } = await supabase
-      .from("tab_clientes")
+      .from("tab_clientes_v2")
       .insert([crmPayload])
       .select();
     
@@ -813,8 +811,8 @@ const processarConversaoOuroFinal = async () => {
 
     // 6. Atualização do status na origem para convertido somente após sucesso real
     const { error: updateErr } = await supabase
-      .from("tab_clientes_frios")
-      .update({ status_prospeccao: "convertido" })
+      .from("tab_clientes_v2")
+      .update({ estagio: "convertido" })
       .eq("id", leadConversao.id);
 
     if (updateErr) {
@@ -2792,22 +2790,37 @@ return (
                     <button 
                       type="button"
                       onClick={async () => {
+                        // Preserva e atualiza o JSON de contatos e dados complementares
+                        const contatosAtuais = [
+                          {
+                            id: crypto.randomUUID(),
+                            nome: leadEditar.nome_razao_social || '',
+                            email: leadEditar.email || '',
+                            telefone: leadEditar.ddd_telefone_1 || '',
+                            principal: true
+                          }
+                        ];
+
+                        const complementaresAtuais = typeof leadEditar.dados_complementares === 'string'
+                          ? JSON.parse(leadEditar.dados_complementares)
+                          : (leadEditar.dados_complementares || {});
+
+                        complementaresAtuais.nomes_socios_texto = leadEditar.nomes_socios || complementaresAtuais.nomes_socios_texto;
+                        complementaresAtuais.cpfs_socios_texto = leadEditar.cpfs_socios || complementaresAtuais.cpfs_socios_texto;
+
                         const { error } = await supabase
-                          .from("tab_clientes_frios")
+                          .from("tab_clientes_v2")
                           .update({
-                            status_prospeccao: leadEditar.status_prospeccao,
-                            ddd_telefone_1: leadEditar.ddd_telefone_1,
-                            email: leadEditar.email,
-                            telefone_adicional: leadEditar.telefone_adicional,
-                            nomes_socios: leadEditar.nomes_socios,
-                            cpfs_socios: leadEditar.cpfs_socios,
+                            estagio: leadEditar.status_prospeccao || leadEditar.estagio,
+                            contatos: contatosAtuais,
+                            dados_complementares: complementaresAtuais,
                             data_retorno: leadEditar.data_retorno || null, 
                             horario_retorno: leadEditar.horario_retorno || null
                           })
                           .eq("id", leadEditar.id);
                         
                         if (!error) { 
-                          toast.success("Registro updated com sucesso!"); 
+                          toast.success("Registro atualizado com sucesso!"); 
                           setLeadEditar(null); 
                           buscarLeadsFrios(); 
                         } else {

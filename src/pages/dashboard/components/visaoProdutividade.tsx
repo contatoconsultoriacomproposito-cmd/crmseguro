@@ -35,7 +35,7 @@ export default function VisaoProdutividade({
   // Cache por Aba
   const [interacoesCarteira, setInteracoesCarteira] = useState<any[] | null>(null);
   
-  // Para Importados: Ações passadas + Cadastro do cliente frio
+  // Para Importados: Ações passadas + Cadastro do cliente
   const [acoesImportados, setAcoesImportados] = useState<any[] | null>(null);
   const [clientesFriosLista, setClientesFriosLista] = useState<any[] | null>(null);
 
@@ -44,7 +44,7 @@ export default function VisaoProdutividade({
   // Estado para expandir cliente na Aba 3
   const [expandedClienteId, setExpandedClienteId] = useState<string | null>(null);
 
-  // 👉 ADICIONE ESTE NOVO ESTADO PARA A ABA 2 (IMPORTADOS):
+  // Estado para expandir cliente na Aba 2 (Importados)
   const [expandedClienteImportadoId, setExpandedClienteImportadoId] = useState<string | null>(null);
 
   // Estado para controlar o limite do Top Clientes na Aba 2 (Importados)
@@ -82,8 +82,8 @@ export default function VisaoProdutividade({
       if (!corretoraId) return;
       
       let query = supabase
-        .from('tab_interacoes')
-        .select('data_historico')
+        .from('tab_interacoes_v2')
+        .select('data_historico, criado_em')
         .eq('corretora_id', corretoraId);
 
       if (userLevel?.toUpperCase() === 'CORRETOR' && userId) {
@@ -91,12 +91,13 @@ export default function VisaoProdutividade({
       }
 
       const { data, error } = await query
-        .order('data_historico', { ascending: true })
+        .order('criado_em', { ascending: true })
         .limit(1)
         .maybeSingle();
 
-      if (!error && data?.data_historico) {
-        setDataInicio(data.data_historico);
+      if (!error && (data?.data_historico || data?.criado_em)) {
+        const dataMinima = data.data_historico || data.criado_em.substring(0, 10);
+        setDataInicio(dataMinima);
       } else {
         setDataInicio(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
       }
@@ -104,8 +105,7 @@ export default function VisaoProdutividade({
     buscarPrimeiraInteracao();
   }, [corretoraId, userLevel, userId]);
 
-  // BUSCA DE DADOS CONFORME A ABA ATIVA
-  useEffect(() => {
+ useEffect(() => {
     async function fetchData() {
       if (!corretoraId || !dataInicio) return;
 
@@ -115,14 +115,14 @@ export default function VisaoProdutividade({
       try {
         if (activeTab === 'carteira' && interacoesCarteira === null) {
           let query = supabase
-            .from('tab_interacoes') 
+            .from('tab_interacoes_v2') 
             .select(`
               *,
-              tab_clientes ( nome )
+              tab_clientes_v2!inner ( id, nome_razao_social, nome_fantasia )
             `)
             .eq('corretora_id', corretoraId)
-            .gte('data_historico', dataInicio)
-            .lte('data_historico', dataFim);
+            .gte('criado_em', `${dataInicio}T00:00:00`)
+            .lte('criado_em', `${dataFim}T23:59:59`);
 
           if (filtroCorretorFinal === 'casa') {
             query = query.eq('corretor_id', corretoraId);
@@ -135,24 +135,25 @@ export default function VisaoProdutividade({
           setInteracoesCarteira(data || []);
 
         } else if (activeTab === 'importados' && (acoesImportados === null || clientesFriosLista === null)) {
-          // 1. Busca Ações Passadas
+          // 1. Busca Ações Passadas via tab_interacoes_v2
           let queryAcoes = supabase
-            .from('tab_clientes_frios_acoes')
+            .from('tab_interacoes_v2')
             .select(`
               *,
-              tab_clientes_frios!inner (
+              tab_clientes_v2!inner (
                 id,
-                razao_social,
+                nome_razao_social,
                 nome_fantasia,
                 corretora_id,
                 temperatura,
-                proxima_acao,
+                dados_complementares_pf,
+                dados_complementares_pj,
                 data_retorno,
                 horario_retorno,
                 fase_atendimento
               )
             `)
-            .eq('tab_clientes_frios.corretora_id', corretoraId)
+            .eq('corretora_id', corretoraId)
             .gte('criado_em', `${dataInicio}T00:00:00`)
             .lte('criado_em', `${dataFim}T23:59:59`);
 
@@ -165,31 +166,31 @@ export default function VisaoProdutividade({
           const { data: resAcoes, error: errAcoes } = await queryAcoes;
           if (errAcoes) throw errAcoes;
 
-          // 2. Busca Clientes Frios gerais para Temperatura e Próxima Ação
-          let queryFrios = supabase
-            .from('tab_clientes_frios')
-            .select('id, razao_social, nome_fantasia, temperatura, proxima_acao, fase_atendimento, data_retorno, horario_retorno')
+          // 2. Busca Clientes V2
+          let queryV2 = supabase
+            .from('tab_clientes_v2')
+            .select('id, nome_razao_social, nome_fantasia, temperatura, dados_complementares_pf, dados_complementares_pj, fase_atendimento, data_retorno, horario_retorno')
             .eq('corretora_id', corretoraId);
 
           if (filtroCorretorFinal === 'casa') {
-            queryFrios = queryFrios.eq('corretor_id', corretoraId);
+            queryV2 = queryV2.eq('corretor_id', corretoraId);
           } else if (filtroCorretorFinal !== 'todos' && filtroCorretorFinal) {
-            queryFrios = queryFrios.eq('corretor_id', filtroCorretorFinal);
+            queryV2 = queryV2.eq('corretor_id', filtroCorretorFinal);
           }
 
-          const { data: resFrios, error: errFrios } = await queryFrios;
-          if (errFrios) throw errFrios;
+          const { data: resV2, error: errV2 } = await queryV2;
+          if (errV2) throw errV2;
 
           setAcoesImportados(resAcoes || []);
-          setClientesFriosLista(resFrios || []);
+          setClientesFriosLista(resV2 || []);
 
         } else if (activeTab === 'avulsos' && clientesAvulsos === null) {
           let query = supabase
-            .from('tab_clientes_agenda')
+            .from('tab_clientes_v2')
             .select('*')
             .eq('corretora_id', corretoraId)
-            .gte('created_at', `${dataInicio}T00:00:00`)
-            .lte('created_at', `${dataFim}T23:59:59`);
+            .gte('criado_em', `${dataInicio}T00:00:00`)
+            .lte('criado_em', `${dataFim}T23:59:59`);
 
           if (filtroCorretorFinal === 'casa') {
             query = query.eq('corretor_id', corretoraId);
@@ -199,7 +200,52 @@ export default function VisaoProdutividade({
 
           const { data, error } = await query;
           if (error) throw error;
-          setClientesAvulsos(data || []);
+
+          // Mapeamento mantendo total compatibilidade de contrato com componentes filhos/métricas de avulsos
+          const dataMapeada = (data || []).map((c: any) => {
+            let contatosArray = Array.isArray(c.contatos) ? c.contatos : [];
+            if (typeof c.contatos === 'string') {
+              try { 
+                contatosArray = JSON.parse(c.contatos); 
+              } catch { 
+                contatosArray = []; 
+              }
+            }
+            const contatoPrincipal = contatosArray.find((ct: any) => ct.principal) || contatosArray[0] || {};
+
+            // Extração e tratamento de PF
+            let dadosPf = {};
+            if (typeof c.dados_complementares_pf === 'object' && c.dados_complementares_pf !== null) {
+              dadosPf = c.dados_complementares_pf;
+            } else if (typeof c.dados_complementares_pf === 'string') {
+              try { dadosPf = JSON.parse(c.dados_complementares_pf); } catch { dadosPf = {}; }
+            }
+
+            // Extração e tratamento de PJ
+            let dadosPj = {};
+            if (typeof c.dados_complementares_pj === 'object' && c.dados_complementares_pj !== null) {
+              dadosPj = c.dados_complementares_pj;
+            } else if (typeof c.dados_complementares_pj === 'string') {
+              try { dadosPj = JSON.parse(c.dados_complementares_pj); } catch { dadosPj = {}; }
+            }
+
+            // Unifica os dados complementares de PF e PJ
+            const dadosComp: Record<string, any> = { ...dadosPf, ...dadosPj };
+
+            return {
+              ...c,
+              nome_cliente: c.nome_fantasia || c.nome_razao_social,
+              tel_cliente: contatoPrincipal.telefone || '',
+              email_cliente: contatoPrincipal.email || '',
+              razao_social: c.nome_razao_social,
+              created_at: c.criado_em,
+              breve_descricao: dadosComp.breve_descricao || '',
+              produto_interesse: dadosComp.produto_interesse || '',
+              produtos_gerais: dadosComp.produtos_gerais || ''
+            };
+          });
+
+          setClientesAvulsos(dataMapeada);
         }
       } catch (err) {
         console.error(`Erro ao carregar dados da aba ${activeTab}:`, err);
@@ -216,7 +262,7 @@ export default function VisaoProdutividade({
     if (!interacoesCarteira) return { counts: { whatsapp: 0, ligacao: 0, email: 0, reuniaoOn: 0, reuniaoPres: 0, visita: 0, outros: 0 }, topClientes: [], timeline: [] };
 
     const counts = { whatsapp: 0, ligacao: 0, email: 0, reuniaoOn: 0, reuniaoPres: 0, visita: 0, outros: 0 };
-    const rankingClientes: Record<string, { nome: string; qtd: number }> = {};
+    const rankingClientes: Record<string, { id: string; nome: string; qtd: number }> = {};
     const evolucaoTemporal: Record<string, number> = {};
 
     interacoesCarteira.forEach(inter => {
@@ -230,12 +276,14 @@ export default function VisaoProdutividade({
       else if (acao.includes('visita') || acao.includes('visitar')) counts.visita++;
       else counts.outros++;
 
-      const nomeCliente = inter.tab_clientes?.nome || "Cliente não Identificado";
+      const cliente = inter.tab_clientes_v2;
+      const nomeCliente = cliente?.nome_fantasia || cliente?.nome_razao_social || "Cliente não Identificado";
       const cId = inter.cliente_id || 'sem-id';
-      if (!rankingClientes[cId]) rankingClientes[cId] = { nome: nomeCliente, qtd: 0 };
+
+      if (!rankingClientes[cId]) rankingClientes[cId] = { id: cId, nome: nomeCliente, qtd: 0 };
       rankingClientes[cId].qtd += 1;
 
-      const dataRef = inter.data_historico;
+      const dataRef = inter.data_historico || (inter.criado_em ? inter.criado_em.substring(0, 10) : '');
       if (dataRef) evolucaoTemporal[dataRef] = (evolucaoTemporal[dataRef] || 0) + 1;
     });
 
@@ -261,15 +309,19 @@ export default function VisaoProdutividade({
     const counts = { whatsapp: 0, ligacao: 0, email: 0, visita: 0, outros: 0 };
     const desfechos = { atendeu: 0, aguardando: 0, caixaPostal: 0, ocupado: 0, recado: 0, pediuRetorno: 0, semInteresse: 0, outros: 0 };
     
-    const rankingClientes: Record<string, { nome: string; qtd: number }> = {};
+    const rankingClientes: Record<string, { id: string; nome: string; qtd: number }> = {};
     const evolucaoTemporal: Record<string, number> = {};
+
+    // Mapeamento direto de clientes para acesso rápido por ID
+    const clientesMap = new Map<string, any>();
+    clientesFriosLista.forEach(c => clientesMap.set(c.id, c));
 
     // Agrupamento de TODAS AS AÇÕES por Cliente (Visão 1 para N)
     const acoesPorClienteMap: Record<string, any> = {};
 
     acoesImportados.forEach(acaoItem => {
       const tipo = (acaoItem.tipo_acao || '').toLowerCase();
-      const desfechoStr = (acaoItem.desfecho || '').toLowerCase();
+      const desfechoStr = (acaoItem.resultado_acao || acaoItem.desfecho || '').toLowerCase();
 
       // 1. Contagem de Ações Passadas
       if (tipo === 'chamar_whats' || tipo.includes('whats') || tipo.includes('wpp')) counts.whatsapp++;
@@ -288,12 +340,13 @@ export default function VisaoProdutividade({
       else if (desfechoStr === 'sem_interesse') desfechos.semInteresse++;
       else desfechos.outros++;
 
-      // 3. Ranking e Agrupamento
-      const clienteObj = acaoItem.tab_clientes_frios;
-      const nomeCliente = clienteObj?.razao_social || clienteObj?.nome_fantasia || "Cliente Importado";
-      const cId = acaoItem.cliente_frio_id;
+      // 3. Resolução de Identidade do Cliente
+      const cId = acaoItem.cliente_id || acaoItem.cliente_frio_id;
+      const clienteObj = acaoItem.tab_clientes_v2 || clientesMap.get(cId);
+      
+      const nomeCliente = clienteObj?.nome_fantasia || clienteObj?.nome_razao_social || "Cliente Importado";
 
-      if (!rankingClientes[cId]) rankingClientes[cId] = { nome: nomeCliente, qtd: 0 };
+      if (!rankingClientes[cId]) rankingClientes[cId] = { id: cId, nome: nomeCliente, qtd: 0 };
       rankingClientes[cId].qtd += 1;
 
       // 4. Monta a Estrutura 1 para N do Cliente
@@ -311,8 +364,8 @@ export default function VisaoProdutividade({
       acoesPorClienteMap[cId].acoes.push({
         id: acaoItem.id,
         tipoAcao: acaoItem.tipo_acao,
-        desfecho: acaoItem.desfecho,
-        observacao: acaoItem.observacao,
+        desfecho: acaoItem.resultado_acao || acaoItem.desfecho,
+        observacao: acaoItem.relato || acaoItem.observacao,
         criado_em: acaoItem.criado_em
       });
 
@@ -336,9 +389,9 @@ export default function VisaoProdutividade({
       }
       // 2º Critério: Interação mais recente
       return new Date(b.ultimaAcaoEm).getTime() - new Date(a.ultimaAcaoEm).getTime();
-    })
+    });
 
-    // 6. Contagem de Próximas Ações e Temperatura (Vindo da `tab_clientes_frios`)
+    // 6. Contagem de Próximas Ações e Temperatura
     const proximasAcoesCounts = { chamar_whats: 0, ligar: 0, visitar: 0, enviar_email: 0, outros: 0 };
     const temperaturaCounts = { frio: 0, morno: 0, quente: 0, outros: 0 };
 
@@ -349,8 +402,18 @@ export default function VisaoProdutividade({
       else if (temp.includes('quente')) temperaturaCounts.quente++;
       else temperaturaCounts.outros++;
 
-      if (Array.isArray(c.proxima_acao)) {
-        c.proxima_acao.forEach((pAct: string) => {
+      const dadosPf = typeof c.dados_complementares_pf === 'string'
+        ? JSON.parse(c.dados_complementares_pf || '{}')
+        : (c.dados_complementares_pf || {});
+
+      const dadosPj = typeof c.dados_complementares_pj === 'string'
+        ? JSON.parse(c.dados_complementares_pj || '{}')
+        : (c.dados_complementares_pj || {});
+
+      const proxAcaoSugerida = dadosPf.proxima_acao_sugerida || dadosPj.proxima_acao_sugerida || c.proxima_acao;
+
+      if (Array.isArray(proxAcaoSugerida)) {
+        proxAcaoSugerida.forEach((pAct: string) => {
           const act = (pAct || '').toLowerCase();
           if (act === 'chamar_whats' || act.includes('whats')) proximasAcoesCounts.chamar_whats++;
           else if (act === 'ligar' || act.includes('ligar')) proximasAcoesCounts.ligar++;
@@ -629,7 +692,7 @@ export default function VisaoProdutividade({
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             <ChartCard title="Evolução Diária de Atendimentos (Importados)" timeline={statsImportados.timeline} isMounted={isMounted} />
 
-            {/* PAINEL DE PRÓXIMAS AÇÕES E TEMPERATURA (TAB_CLIENTES_FRIOS) */}
+            {/* PAINEL DE PRÓXIMAS AÇÕES E TEMPERATURA */}
             <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
               <h3 className="text-sm font-black uppercase text-slate-500 flex items-center gap-2">
                 <Flame size={18} className="text-amber-500" /> Próximas Ações & Temperatura da Carteira Fria

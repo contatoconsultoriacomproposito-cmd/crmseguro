@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
-import { Search, Calendar, ArrowDownCircle, CheckCircle, AlertTriangle, Check, Eye, Wallet, RefreshCcw, Landmark, ArrowUpRight, ArrowDownLeft, Equal, PlusCircle, Building2, XCircle, Ban, ChevronDown, ChevronUp, Printer, Activity, Percent, ArrowRight } from 'lucide-react';
+import { Search, Calendar, ArrowDownCircle, CheckCircle, AlertTriangle, Check, Eye, Wallet, RefreshCcw, Landmark, ArrowUpRight, ArrowDownLeft, Equal, PlusCircle, Building2, XCircle, ChevronDown, ChevronUp, Printer, Activity, Percent, ArrowRight } from 'lucide-react';
 
 interface ProvisaoItem {
   id: string;
@@ -29,7 +29,8 @@ interface ProvisaoItem {
     pct_corretor: number | string;
     pct_parceiro: number | string;
     meta_faixas_json: any;
-    tab_clientes: { nome: string | null; razao_social: string | null; nome_fantasia: string | null; } | null;
+    // Aponta explicitamente para a tab_clientes_v2
+    tab_clientes_v2: { nome_razao_social: string | null; nome_fantasia: string | null; tipo_cliente: string | null; } | null;
     base_produtos: { nome: string } | null;
     base_seguradoras: { nome: string } | null;
     tab_proposta_itens: { numero_apolice: string | null } | null;
@@ -145,44 +146,45 @@ export const ComissoesLista = () => {
   };
 
   const carregarProvisoesReal = async () => {
-    try {
-      let query = supabase
-        .from('tab_financeiro_provisoes')
-        .select(`
-          id, numero_parcela, data_vencimento_previsto, data_recebimento,
-          valor_base_parcela, valor_comissao_total, valor_direito_corretor,
-          valor_direito_parceiro, valor_direito_corretora_mae,
-          status_recebimento_seguradora, status_repasse_corretor, repasse_id,
-          valor_recebido_liquido, pct_desconto_baixa,
-          tab_comissoes_regras!tab_financeiro_provisoes_regra_fkey (
-            id, proposta_id, item_id, data_venda, quantidade_parcelas,
-            base_calculo_valor, pct_comissao_venda, pct_corretor, pct_parceiro, meta_faixas_json,
-            tab_clientes!tab_comissoes_regras_cliente_id_fkey ( nome, razao_social, nome_fantasia ),
-            base_produtos!tab_comissoes_regras_produto_id_fkey ( nome ),
-            base_seguradoras!tab_comissoes_regras_seguradora_id_fkey ( nome ),
-            tab_proposta_itens!tab_comissoes_regras_item_id_fkey ( numero_apolice )
-          )
-        `);
+  try {
+    let query = supabase
+      .from('tab_financeiro_provisoes')
+      .select(`
+        id, numero_parcela, data_vencimento_previsto, data_recebimento,
+        valor_base_parcela, valor_comissao_total, valor_direito_corretor,
+        valor_direito_parceiro, valor_direito_corretora_mae,
+        status_recebimento_seguradora, status_repasse_corretor, repasse_id,
+        valor_recebido_liquido, pct_desconto_baixa,
+        tab_comissoes_regras!tab_financeiro_provisoes_regra_fkey (
+          id, proposta_id, item_id, data_venda, quantidade_parcelas,
+          base_calculo_valor, pct_comissao_venda, pct_corretor, pct_parceiro, meta_faixas_json,
+          tab_clientes_v2!tab_comissoes_regras_cliente_id_fkey ( nome_razao_social, nome_fantasia, tipo_cliente ),
+          base_produtos!tab_comissoes_regras_produto_id_fkey ( nome ),
+          base_seguradoras!tab_comissoes_regras_seguradora_id_fkey ( nome ),
+          tab_proposta_itens!tab_comissoes_regras_item_id_fkey ( numero_apolice )
+        )
+      `);
 
-      if (statusFiltro !== 'TODOS') {
-        query = query.eq('status_recebimento_seguradora', statusFiltro);
-      }
-
-      if (vencimentoDe) query = query.gte('data_vencimento_previsto', vencimentoDe);
-      if (vencimentoAte) query = query.lte('data_vencimento_previsto', vencimentoAte);
-      if (baixaDe) query = query.gte('data_recebimento', baixaDe);
-      if (baixaAte) query = query.lte('data_recebimento', baixaAte);
-      if (vendaDe) query = query.gte('tab_comissoes_regras.data_venda', vendaDe);
-      if (vendaAte) query = query.lte('tab_comissoes_regras.data_venda', vendaAte);
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setProvisoes((data as unknown as ProvisaoItem[]) || []);
-    } catch (err) {
-      console.error(err);
-      toast.error("Erro ao carregar provisões.");
+    if (statusFiltro !== 'TODOS') {
+      query = query.eq('status_recebimento_seguradora', statusFiltro);
     }
-  };
+
+    if (vencimentoDe) query = query.gte('data_vencimento_previsto', vencimentoDe);
+    if (vencimentoAte) query = query.lte('data_vencimento_previsto', vencimentoAte);
+    if (baixaDe) query = query.gte('data_recebimento', baixaDe);
+    if (baixaAte) query = query.lte('data_recebimento', baixaAte);
+    if (vendaDe) query = query.gte('tab_comissoes_regras.data_venda', vendaDe);
+    if (vendaAte) query = query.lte('tab_comissoes_regras.data_venda', vendaAte);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    setProvisoes((data as unknown as ProvisaoItem[]) || []);
+  } catch (err) {
+    console.error(err);
+    toast.error("Erro ao carregar provisões.");
+  }
+};
 
   const limparFiltrosData = () => {
     setVendaDe(''); setVendaAte('');
@@ -319,7 +321,13 @@ export const ComissoesLista = () => {
 
   const obterNomeCliente = (cliente: any) => {
     if (!cliente) return '—';
-    return cliente.razao_social || cliente.nome || cliente.nome_fantasia || '—';
+    return (
+      cliente.nome_razao_social ||
+      cliente.nome_fantasia ||
+      cliente.razao_social ||
+      cliente.nome ||
+      '—'
+    );
   };
 
   // LOGICA DO NOVO FLUXO DE CAIXA CONSOLIDADO POR DIA (CRÉDITO x DÉBITO)
@@ -354,7 +362,7 @@ export const ComissoesLista = () => {
         mapaDias[data].totalDebitoBruto += bruto;
         mapaDias[data].totalDebitoLiquido += liquido;
         mapaDias[data].detalhesProvisoes.push({
-          cliente: obterNomeCliente(p.tab_comissoes_regras?.tab_clientes),
+          cliente: obterNomeCliente(p.tab_comissoes_regras?.tab_clientes_v2),
           parcela: `${p.numero_parcela}/${p.tab_comissoes_regras?.quantidade_parcelas || 1}`,
           bruto,
           liquido,
@@ -488,12 +496,12 @@ export const ComissoesLista = () => {
     .filter((p: ProvisaoItem) => {
       const r = p.tab_comissoes_regras;
       if (!r) return false;
-      return obterNomeCliente(r.tab_clientes).toLowerCase().includes(busca.toLowerCase()) ||
+      return obterNomeCliente(r.tab_clientes_v2).toLowerCase().includes(busca.toLowerCase()) ||
              (r.base_produtos?.nome?.toLowerCase() || '').includes(busca.toLowerCase()) ||
              (r.base_seguradoras?.nome?.toLowerCase() || '').includes(busca.toLowerCase()) ||
              (r.tab_proposta_itens?.numero_apolice?.toLowerCase() || '').includes(busca.toLowerCase());
     })
-    .sort((a, b) => obterNomeCliente(a.tab_comissoes_regras?.tab_clientes).toLowerCase().localeCompare(obterNomeCliente(b.tab_comissoes_regras?.tab_clientes).toLowerCase()));
+    .sort((a, b) => obterNomeCliente(a.tab_comissoes_regras?.tab_clientes_v2).toLowerCase().localeCompare(obterNomeCliente(b.tab_comissoes_regras?.tab_clientes_v2).toLowerCase()));
 
   const toggleLinhaExpandida = (id: string) => {
     setLinhasExpandidas(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
@@ -601,7 +609,7 @@ export const ComissoesLista = () => {
               const dataVenc = p.data_vencimento_previsto ? p.data_vencimento_previsto.split('-').reverse().join('/') : '—';
               const dataRec = p.data_recebimento ? p.data_recebimento.split('-').reverse().join('/') : '—';
               const dataVenda = p.tab_comissoes_regras?.data_venda ? p.tab_comissoes_regras.data_venda.split('-').reverse().join('/') : '—';
-              const clienteNome = obterNomeCliente(p.tab_comissoes_regras?.tab_clientes).toUpperCase();
+              const clienteNome = obterNomeCliente(p.tab_comissoes_regras?.tab_clientes_v2).toUpperCase();
               
               return `
               <tr>
@@ -926,7 +934,7 @@ export const ComissoesLista = () => {
                       <td className="p-4 font-black text-zinc-900 dark:text-white uppercase">
                         <div className="flex items-center gap-1.5">
                           <button onClick={() => toggleLinhaExpandida(p.id)} className="text-zinc-400 hover:text-zinc-600">{estaExpandida ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
-                          {obterNomeCliente(p.tab_comissoes_regras?.tab_clientes)}
+                          {obterNomeCliente(p.tab_comissoes_regras?.tab_clientes_v2)}
                         </div>
                       </td>
                       <td className="p-4 uppercase">{p.tab_comissoes_regras?.base_produtos?.nome || '—'}</td>
@@ -960,7 +968,7 @@ export const ComissoesLista = () => {
                               >
                                 <Check size={16} />
                               </button>
-                              <button onClick={() => cancelarProvisoesFuturasContrato(p.tab_comissoes_regras?.id || '', obterNomeCliente(p.tab_comissoes_regras?.tab_clientes))} title="Cancelar Contrato" className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-zinc-100"><Ban size={15} /></button>
+                              <button onClick={() => cancelarProvisoesFuturasContrato(p.tab_comissoes_regras?.id || '', obterNomeCliente(p.tab_comissoes_regras?.tab_clientes_v2))} />
                             </>
                           ) : (<span className="text-[10px] text-zinc-400">N/A</span>)}
                           <button onClick={() => { setItemDetalhado(p); setModalDetalhe(true); }} className="p-1.5 text-zinc-400 hover:text-blue-600 hover:bg-zinc-100 rounded-lg"><Eye size={15} /></button>
@@ -1177,7 +1185,7 @@ export const ComissoesLista = () => {
               <button onClick={() => setModalDetalhe(false)} className="text-zinc-400 font-bold text-sm">✕</button>
             </div>
             <div className="p-4 bg-zinc-50 rounded-2xl text-xs space-y-1">
-              <p><span className="text-zinc-400">Cliente:</span> <strong className="uppercase">{obterNomeCliente(itemDetalhado.tab_comissoes_regras?.tab_clientes)}</strong></p>
+              <p><span className="text-zinc-400">Cliente:</span> <strong className="uppercase">{obterNomeCliente(itemDetalhado.tab_comissoes_regras?.tab_clientes_v2)}</strong></p>
               <p><span className="text-zinc-400">Produto:</span> <span className="uppercase font-bold">{itemDetalhado.tab_comissoes_regras?.base_produtos?.nome || "—"}</span></p>
               <p><span className="text-zinc-400">Seguradora:</span> <span className="uppercase font-bold">{itemDetalhado.tab_comissoes_regras?.base_seguradoras?.nome || "—"}</span></p>
             </div>

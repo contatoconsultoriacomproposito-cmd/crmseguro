@@ -1,219 +1,414 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
+import { supabase } from "../../../lib/supabaseClient"; 
 import { 
   AlertCircle, 
-  CheckCircle2, 
-  MessageSquare, 
+  FileText, 
   Calendar, 
-  Plus // Corrigido: Adicionado o import do Plus
-} from 'lucide-react';
-import { supabase } from '../../../lib/supabaseClient';
-import { formatarDataBR } from '../../../utils/dateUtils';
-import { ModalGerenciamentoSinistro } from './ModalGerenciamentoSinistro';
+  Building2, 
+  User, 
+  PlusCircle, 
+  ShieldAlert, 
+  Clock, 
+  CheckCircle2,
+  Eye,
+  CheckCircle,
+  History,
+  ChevronDown,
+  ChevronUp
+} from "lucide-react";
+import { ModalGerenciamentoSinistro } from "./ModalGerenciamentoSinistro";
+import { formatarDataBR } from "../../../utils/dateUtils";
 
-export const TabSinistros = ({ clienteId }: { clienteId: string }) => {
-  const [sinistros, setSinistros] = useState<any[]>([]);
-  const [carregando, setCarregando] = useState(false);
+interface TabSinistrosProps {
+  clienteId?: string;
+  onUpdate?: () => void;
+}
+
+const ETAPAS = ['Abertura', 'Cadastro', 'Avaliação', 'Solução', 'Conclusão'];
+
+export default function TabSinistros({ clienteId, onUpdate }: TabSinistrosProps) {
+  const [itensProposta, setItensProposta] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   
-  // Estado para rastrear qual etapa o usuário clicou em cada sinistro
-  const [etapasSelecionadas, setEtapasSelecionadas] = useState<Record<string, string>>({});
-  const [sinistroParaGerenciar, setSinistroParaGerenciar] = useState<string | null>(null);
+  const [modalSinistroAberto, setModalSinistroAberto] = useState<boolean>(false);
+  const [itemSelecionadoId, setItemSelecionadoId] = useState<string | null>(null);
+  const [sinistroSelecionadoId, setSinistroSelecionadoId] = useState<string | null>(null);
 
-  const getEtapaAtiva = (etapa: string) => {
-    const etapas: Record<string, number> = {
-      'Abertura': 0,
-      'Cadastro': 1,
-      'Avaliação': 2,
-      'Solução': 3,
-      'Conclusão': 4
-    };
-    return etapas[etapa] ?? 0;
+  // Estado para controlar expansão do histórico de sinistros antigos por item
+  const [historicoAberto, setHistoricoAberto] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (clienteId) {
+      carregarProdutosDoCliente();
+    }
+  }, [clienteId]);
+
+  const toggleHistorico = (itemId: string) => {
+    setHistoricoAberto(prev => ({ ...prev, [itemId]: !prev[itemId] }));
   };
 
-  const fetchSinistros = async () => {
-    setCarregando(true);
+  const carregarProdutosDoCliente = async () => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('tab_sinistros')
+        .from("tab_proposta_itens")
         .select(`
-          id,
-          status,
-          etapa_atual,
-          data_abertura,
-          tab_proposta_itens (
-            base_produtos ( nome )
+          *,
+          base_produtos ( id, nome ),
+          tab_proposta_opcoes!inner (
+            id,
+            base_seguradoras ( id, nome ),
+            tab_propostas!inner (
+              id,
+              cliente_id,
+              tab_clientes_v2 ( id, nome_razao_social )
+            )
           ),
-          tab_sinistros_ocorrencias (
-            relato,
-            etapa,
-            data_ocorrencia,
-            criado_em
+          tab_sinistros (
+            id,
+            status,
+            etapa_atual,
+            data_abertura,
+            data_conclusao,
+            tab_sinistros_ocorrencias (
+              id,
+              etapa,
+              relato,
+              data_retorno,
+              horario_retorno,
+              criado_em
+            )
           )
         `)
-        .eq('cliente_id', clienteId)
-        .order('data_ocorrencia', { foreignTable: 'tab_sinistros_ocorrencias', ascending: false });
+        .eq("tab_proposta_opcoes.tab_propostas.cliente_id", clienteId);
 
       if (error) throw error;
-      
-      setSinistros(data || []);
 
-      // Inicializa cada sinistro mostrando sua 'etapa_atual' por padrão
-      const iniciais: Record<string, string> = {};
-      data?.forEach(s => {
-        iniciais[s.id] = s.etapa_atual;
-      });
-      setEtapasSelecionadas(iniciais);
-
-    } catch (error: any) {
-      console.error("Erro ao buscar sinistros:", error.message);
+      setItensProposta(data || []);
+    } catch (err) {
+      console.error("Erro ao carregar produtos para sinistro:", err);
+      setItensProposta([]);
     } finally {
-      setCarregando(false);
+      setLoading(false);
     }
   };
 
-  useEffect(() => { fetchSinistros(); }, [clienteId]);
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-8 text-slate-500 text-xs font-medium">
+        Carregando produtos e sinistros...
+      </div>
+    );
+  }
+
+  if (itensProposta.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-10 text-slate-400 bg-slate-50/50 dark:bg-zinc-800/20 rounded-2xl border border-dashed border-slate-200 dark:border-zinc-800">
+        <AlertCircle className="w-8 h-8 mb-2 text-slate-300 dark:text-zinc-600" />
+        <p className="text-xs font-medium">Nenhum produto/apólice encontrado para este cliente.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {carregando ? (
-        <div className="animate-pulse text-[10px] font-bold text-slate-400 text-center uppercase py-4">
-          Buscando sinistros e assistências...
-        </div>
-      ) : sinistros.length > 0 ? (
-        <>
-          {/* LISTAGEM DE CARDS */}
-          {sinistros.map((sinistro) => {
-            const etapaVisualizada = etapasSelecionadas[sinistro.id] || sinistro.etapa_atual;
-            const ocorrenciaExibida = sinistro.tab_sinistros_ocorrencias?.find(
-              (o: any) => o.etapa === etapaVisualizada
-            ) || sinistro.tab_sinistros_ocorrencias?.[0];
+      <div className="grid grid-cols-1 gap-4">
+        {itensProposta.map((item) => {
+          const opcao = item.tab_proposta_opcoes;
+          const proposta = opcao?.tab_propostas;
+          const cliente = proposta?.tab_clientes_v2;
+          const seguradoraObj = opcao?.base_seguradoras;
 
-            return (
-              <div key={sinistro.id} className="bg-white dark:bg-zinc-800 p-3 rounded-2xl border border-slate-100 dark:border-zinc-700 shadow-sm">
-                
-                {/* Header do Sinistro */}
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <AlertCircle size={12} className={sinistro.status === 'Encerrado' ? "text-green-500" : "text-red-500"} />
-                      <span className={`text-[10px] font-black uppercase tracking-tighter ${
-                        sinistro.status === 'Encerrado' ? "text-green-500" : "text-red-500"
-                      }`}>
-                        {sinistro.status === 'Encerrado' ? "Sinistro Finalizado" : "Sinistro Ativo"}
-                      </span>
-                    </div>
-                    <span className="text-sm font-bold text-slate-700 dark:text-white">
-                      {sinistro.tab_proposta_itens?.base_produtos?.nome || 'Produto não identificado'}
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                      sinistro.status === 'Aberto' ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'
-                    }`}>
-                      {sinistro.status}
-                    </span>
-                    <span className="text-[8px] text-slate-400 font-bold mt-1">
-                      Aberto em: {formatarDataBR(sinistro.data_abertura)}
-                    </span>
-                  </div>
+          const nomeCliente = cliente?.nome_razao_social || "Cliente não informado";
+          const seguradora = seguradoraObj?.nome || "Seguradora não informada";
+          const nomeProduto = item.base_produtos?.nome || "Produto não informado";
+          const valorPremio = item.valor_premio ?? item.valor_liquido;
+
+          const sinistrosList = item.tab_sinistros || [];
+          
+          // 1. Sinistro Aberto (Em andamento)
+          const sinistroAtivo = sinistrosList.find((s: any) => s.status === "Aberto");
+          const possuiSinistroAberto = !!sinistroAtivo;
+
+          // 2. Sinistros Encerrados (Histórico Concluído)
+          const sinistrosEncerrados = sinistrosList
+            .filter((s: any) => s.status === "Encerrado")
+            .sort((a: any, b: any) => new Date(b.data_conclusao || b.data_abertura).getTime() - new Date(a.data_conclusao || a.data_abertura).getTime());
+
+          // Ocorrências do sinistro ativo
+          const ocorrenciasAtivas = (sinistroAtivo?.tab_sinistros_ocorrencias || []).sort(
+            (a: any, b: any) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime()
+          );
+
+          const etapaAtivaIndex = sinistroAtivo ? ETAPAS.indexOf(sinistroAtivo.etapa_atual || "Abertura") : -1;
+
+          return (
+            <div 
+              key={item.id} 
+              className={`bg-white dark:bg-zinc-900 border rounded-2xl p-5 transition-all shadow-sm flex flex-col justify-between gap-4 ${
+                possuiSinistroAberto 
+                  ? "border-amber-300 dark:border-amber-900/60 ring-1 ring-amber-400/20" 
+                  : "border-slate-200 dark:border-zinc-800"
+              }`}
+            >
+              {/* Linha Superior: Cliente, Seguradora e Badges */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-zinc-800 pb-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <User className="w-4 h-4 text-slate-400" />
+                  <span>{nomeCliente}</span>
                 </div>
 
-                {/* Step Bar Visual Interativa */}
-                <div className="relative flex justify-between mb-8 px-2 mt-2">
-                  <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 dark:bg-zinc-700 -translate-y-1/2" />
-                  {['Abertura','Cadastro', 'Avaliação', 'Solução', 'Conclusão'].map((step, idx) => {
-                    const etapaAtualIndex = getEtapaAtiva(sinistro.etapa_atual);
-                    const isAtivo = idx <= etapaAtualIndex;
-                    const isConcluido = idx < etapaAtualIndex;
-                    const isSelecionado = etapaVisualizada === step;
-                    
-                    return (
-                      <button 
-                        key={step} 
-                        onClick={() => setEtapasSelecionadas(prev => ({ ...prev, [sinistro.id]: step }))}
-                        className="relative z-10 flex flex-col items-center group outline-none"
-                      >
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all ${
-                          isSelecionado 
-                            ? 'bg-blue-600 border-blue-600 text-white ring-4 ring-blue-50 dark:ring-blue-900/20 shadow-md' 
-                            : isAtivo 
-                              ? 'bg-white dark:bg-zinc-800 border-blue-600 text-blue-600' 
-                              : 'bg-white dark:bg-zinc-800 border-slate-200 text-slate-300'
-                        }`}>
-                          {isConcluido ? <CheckCircle2 size={14} /> : <span className="text-[10px] font-black">{idx + 1}</span>}
-                        </div>
-                        <span className={`absolute -bottom-5 text-[8px] font-black uppercase whitespace-nowrap transition-colors ${
-                          isSelecionado ? 'text-blue-600' : isAtivo ? 'text-slate-500' : 'text-slate-300'
-                        }`}>
-                          {step}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <div className="flex items-center gap-2.5">
+                  {possuiSinistroAberto && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
+                      <ShieldAlert size={12} className="animate-pulse" />
+                      Em Andamento ({sinistroAtivo.etapa_atual})
+                    </span>
+                  )}
 
-                {/* Box de Detalhes da Etapa (Dinâmico) */}
-                <div className="mt-2 p-3 bg-slate-50 dark:bg-zinc-900/50 rounded-xl border border-slate-100 dark:border-zinc-700 transition-all">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1">
-                      <MessageSquare size={12} className="text-blue-500" />
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">
-                        {etapaVisualizada === sinistro.etapa_atual ? "Status Atual" : `Registro: ${etapaVisualizada}`}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-slate-400">
-                      <Calendar size={10} />
-                      <span className="text-[9px] font-bold">
-                         {ocorrenciaExibida 
-                          ? formatarDataBR(ocorrenciaExibida.data_ocorrencia) 
-                          : 'Pendente'}
-                      </span>
-                    </div>
+                  {!possuiSinistroAberto && sinistrosEncerrados.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <CheckCircle size={11} />
+                      {sinistrosEncerrados.length} Sinistro(s) Concluído(s)
+                    </span>
+                  )}
+
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-bold">
+                    <Building2 className="w-4 h-4 text-slate-400" />
+                    <span className="text-blue-600 dark:text-blue-400">{seguradora}</span>
                   </div>
-                  <p className="text-[11px] text-slate-600 dark:text-zinc-400 italic leading-relaxed">
-                    {ocorrenciaExibida 
-                      ? `"${ocorrenciaExibida.relato}"` 
-                      : "Nenhuma informação registrada para esta etapa."}
-                  </p>
                 </div>
-                
-                <button 
-                  onClick={() => setSinistroParaGerenciar(sinistro.id)}
-                  className="w-full mt-3 py-2.5 bg-slate-900 dark:bg-white dark:text-black text-white rounded-xl text-[10px] font-black uppercase hover:bg-slate-800 transition-all"
-                >
-                  Gerenciar Sinistro
-                </button>
               </div>
-            );
-          })}
 
-          {/* O MODAL FICA AQUI (Fora do map) */}
-          {sinistroParaGerenciar && (
-            <ModalGerenciamentoSinistro
-              sinistroId={sinistroParaGerenciar}
-              onClose={() => setSinistroParaGerenciar(null)}
-              onSuccess={() => {
-                fetchSinistros(); 
-                setSinistroParaGerenciar(null);
-              }}
-            />
-          )}
+              {/* Linha do Meio: Produto, Valor e Vigência */}
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-extrabold text-slate-800 dark:text-white">
+                    <FileText className="w-4 h-4 text-blue-500" />
+                    <span>{nomeProduto}</span>
+                    {item.numero_apolice && (
+                      <span className="text-[11px] font-medium text-slate-400">
+                        • Apólice: {item.numero_apolice}
+                      </span>
+                    )}
+                  </div>
+                  {valorPremio !== undefined && valorPremio !== null && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400 pl-6 font-semibold">
+                      {Number(valorPremio).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </div>
+                  )}
+                </div>
 
-          {/* Botão de abrir novo sinistro */}
-          <button className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-200 dark:border-zinc-700 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-200 transition-all">
-            <Plus size={16} />
-            <span className="text-[10px] font-black uppercase">Abrir Sinistro Adicional</span>
-          </button>
-        </>
-      ) : (
-        <div className="py-10 text-center flex flex-col items-center justify-center">
-          <div className="w-12 h-12 bg-slate-50 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-3">
-            <AlertCircle size={24} className="text-slate-200 dark:text-zinc-600" />
-          </div>
-          <p className="text-[10px] text-slate-400 font-bold uppercase max-w-[150px] mx-auto">
-            Nenhum sinistro/Assistência em andamento.
-          </p>
-        </div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-zinc-800/50 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-zinc-800 font-medium">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <span>
+                    {item.data_inicio_vigencia ? new Date(item.data_inicio_vigencia).toLocaleDateString('pt-BR') : "--/--/----"} 
+                    {" a "} 
+                    {item.data_fim_vigencia ? new Date(item.data_fim_vigencia).toLocaleDateString('pt-BR') : "--/--/----"}
+                  </span>
+                </div>
+              </div>
+
+              {/* SECTION 1: TIMELINE DO SINISTRO ATIVO */}
+              {possuiSinistroAberto && (
+                <div className="mt-1 bg-amber-50/40 dark:bg-zinc-800/40 rounded-2xl p-4 border border-amber-100 dark:border-zinc-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-400 flex items-center gap-1.5 tracking-wider">
+                      <Clock size={13} /> Esteira de Acompanhamento (Ativo)
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      Aberto em: {formatarDataBR(sinistroAtivo.data_abertura)}
+                    </span>
+                  </div>
+
+                  {/* Indicador de Passos */}
+                  <div className="relative flex justify-between px-2 pt-1">
+                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-200 dark:bg-zinc-700 -translate-y-1/2 z-0" />
+                    {ETAPAS.map((etapaNome, idx) => {
+                      const isAtivo = idx <= etapaAtivaIndex;
+                      const isConcluido = idx < etapaAtivaIndex;
+                      return (
+                        <div key={etapaNome} className="relative z-10 flex flex-col items-center">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all ${
+                              isAtivo
+                                ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-200 dark:ring-amber-900'
+                                : 'bg-white dark:bg-zinc-900 border border-slate-300 text-slate-400'
+                            }`}
+                          >
+                            {isConcluido ? <CheckCircle2 size={13} /> : idx + 1}
+                          </div>
+                          <span className={`text-[9px] font-extrabold uppercase mt-1 ${
+                            isAtivo ? 'text-amber-700 dark:text-amber-400' : 'text-slate-400'
+                          }`}>
+                            {etapaNome}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Última Ocorrência */}
+                  {ocorrenciasAtivas.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-amber-200/50 dark:border-zinc-700/50 space-y-2">
+                      <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                        Última Ocorrência
+                      </span>
+                      <div className="p-2.5 bg-white dark:bg-zinc-800 rounded-xl border border-amber-100 dark:border-zinc-700/50">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] font-extrabold text-amber-700 dark:text-amber-400 uppercase">
+                            Etapa: {ocorrenciasAtivas[0].etapa}
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-semibold">
+                            {formatarDataBR(ocorrenciasAtivas[0].criado_em)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-700 dark:text-slate-300 italic font-medium">
+                          "{ocorrenciasAtivas[0].relato}"
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SECTION 2: HISTÓRICO DE SINISTROS ENCERRADOS / CONCLUÍDOS */}
+              {sinistrosEncerrados.length > 0 && (
+                <div className="mt-1 border border-emerald-100 dark:border-zinc-800 rounded-2xl bg-emerald-50/30 dark:bg-zinc-800/20 overflow-hidden">
+                  <button
+                    onClick={() => toggleHistorico(item.id)}
+                    className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400 hover:bg-emerald-50/60 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <History size={15} />
+                      <span>Histórico de Sinistros Concluídos ({sinistrosEncerrados.length})</span>
+                    </div>
+                    {historicoAberto[item.id] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+
+                  {/* Lista com os Sinistros Encerrados */}
+                  {(historicoAberto[item.id] || !possuiSinistroAberto) && (
+                    <div className="p-4 pt-2 space-y-4 border-t border-emerald-100 dark:border-zinc-800">
+                      {sinistrosEncerrados.map((sinConcluido: any) => {
+                        const ocoConcluidas = (sinConcluido.tab_sinistros_ocorrencias || []).sort(
+                          (a: any, b: any) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime()
+                        );
+                        const ultimaOcorrencia = ocoConcluidas[0];
+
+                        return (
+                          <div 
+                            key={sinConcluido.id} 
+                            className="bg-white dark:bg-zinc-800/80 rounded-2xl p-4 border border-emerald-200/60 dark:border-zinc-700/60 shadow-sm space-y-3"
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full">
+                                <CheckCircle size={12} /> Sinistro Concluído
+                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-semibold text-slate-400">
+                                  Concluído em: {sinConcluido.data_conclusao ? formatarDataBR(sinConcluido.data_conclusao) : formatarDataBR(sinConcluido.data_abertura)}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    setItemSelecionadoId(item.id);
+                                    setSinistroSelecionadoId(sinConcluido.id);
+                                    setModalSinistroAberto(true);
+                                  }}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-extrabold uppercase text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-zinc-700 border border-emerald-200 dark:border-zinc-600 rounded-lg hover:bg-emerald-100 transition-colors"
+                                >
+                                  <Eye size={12} /> Ver Detalhes
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Timeline Completa Concluída (100% Verde) */}
+                            <div className="relative flex justify-between px-2 pt-1">
+                              <div className="absolute top-1/2 left-0 w-full h-0.5 bg-emerald-200 dark:bg-emerald-900 -translate-y-1/2 z-0" />
+                              {ETAPAS.map((etapaNome) => (
+                                <div key={etapaNome} className="relative z-10 flex flex-col items-center">
+                                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black bg-emerald-600 text-white shadow-sm">
+                                    <CheckCircle2 size={12} />
+                                  </div>
+                                  <span className="text-[8px] font-extrabold uppercase mt-1 text-emerald-700 dark:text-emerald-400">
+                                    {etapaNome}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Relato Final da Conclusão */}
+                            {ultimaOcorrencia && (
+                              <div className="p-2.5 bg-slate-50 dark:bg-zinc-900/60 rounded-xl border border-slate-100 dark:border-zinc-800">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[9px] font-black text-slate-500 uppercase">
+                                    Relato Final ({ultimaOcorrencia.etapa}):
+                                  </span>
+                                  <span className="text-[8px] text-slate-400">
+                                    {formatarDataBR(ultimaOcorrencia.criado_em)}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-700 dark:text-slate-300 italic font-medium">
+                                  "{ultimaOcorrencia.relato}"
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Linha Inferior: Botão Dinâmico para Ação */}
+              <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-zinc-800">
+                {possuiSinistroAberto ? (
+                  <button
+                    onClick={() => {
+                      setItemSelecionadoId(item.id);
+                      setSinistroSelecionadoId(sinistroAtivo.id);
+                      setModalSinistroAberto(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-all shadow-md shadow-amber-600/20 active:scale-95"
+                  >
+                    <Eye size={15} />
+                    Acompanhar Sinistro Ativo
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setItemSelecionadoId(item.id);
+                      setSinistroSelecionadoId(null);
+                      setModalSinistroAberto(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-md shadow-blue-600/20 active:scale-95"
+                  >
+                    <PlusCircle size={15} />
+                    Abrir Sinistro / Assistência
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {modalSinistroAberto && (
+        <ModalGerenciamentoSinistro
+          onClose={() => {
+            setModalSinistroAberto(false);
+            setItemSelecionadoId(null);
+            setSinistroSelecionadoId(null);
+          }}
+          onSuccess={() => {
+            carregarProdutosDoCliente();
+            if (onUpdate) onUpdate();
+          }}
+          clienteId={clienteId}
+          itemId={itemSelecionadoId || undefined} 
+          sinistroId={sinistroSelecionadoId || undefined}
+        />
       )}
     </div>
   );
-}; // Chave final fechada corretamente aqui
+}

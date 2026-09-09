@@ -237,10 +237,9 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
               data_inicio_vigencia: dados?.inicioVigencia || null,
               data_fim_vigencia: (periodicidadeParaBanco === 'ÚNICO') ? null : (dados?.fimVigencia || null),
               periodicidade: periodicidadeParaBanco,
-              status_renovacao: dados?.status_renovacao, 
-              data_venda: form.dataVenda,
+              status_renovacao: dados?.status_renovacao || 'A RENOVAR', 
+              data_venda: form.dataVenda || null,
               data_renovacao: dados?.dataRenovacao || null,
-              // CORREÇÃO AQUI: De 'horario_renovacao' para 'horarioRenovacao'
               horario_renovacao: dados?.horarioRenovacao || "09:00", 
               notificacao_ativa: dados?.notificacaoAtiva ?? true
             })
@@ -250,7 +249,7 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         }
       }
 
-      await supabase.from('tab_interacoes').insert({
+      await supabase.from('tab_interacoes_v2').insert({
         cliente_id: propostaSelecionada.cliente_id,
         corretor_id: propostaSelecionada.corretor_id,
         corretora_id: propostaSelecionada.corretora_id,
@@ -261,7 +260,6 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         data_historico: new Date().toLocaleDateString('en-CA'),
         horario_historico: new Date().toLocaleTimeString('pt-BR', { hour12: false })
       });
-
       if (propostaSelecionada.cliente_id) {
         await sincronizarStatusCliente(propostaSelecionada.cliente_id);
       }

@@ -27,7 +27,7 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
   const [statusFiltro, setStatusFiltro] = useState<string>("Vendido");
   const [modoEdicao, setModoEdicao] = useState(false);
 
-  // 1. BUSCA O ESTADO REAL DO ITEM (IMAGEM 1 VS IMAGEM 2)
+  // 1. BUSCA O ESTADO REAL DO ITEM
   const fetchEstadoAtual = useCallback(async () => {
     setLoading(true);
     try {
@@ -50,7 +50,6 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
       if (error) throw error;
       setDadosAtuais(data);
       
-      // Se já está vinculado (Imagem 1), mostra o card verde. Se não (Imagem 2), abre busca.
       if (data?.status_renovacao === 'RENOVADO' && data?.proposta_sucessora_id) {
         setModoEdicao(false);
       } else {
@@ -63,7 +62,7 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
     }
   }, [itemOriginal.id_item]);
 
-  // 2. BUSCA CANDIDATAS PARA VÍNCULO (LISTA DA IMAGEM 2)
+  // 2. BUSCA CANDIDATAS PARA VÍNCULO (COM TRATAMENTO DE ARRAY VAZIO)
   const fetchCandidatas = useCallback(async () => {
     try {
       const { data: propostas } = await supabase
@@ -74,6 +73,11 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
 
       const ids = propostas?.map(p => p.id) || [];
       
+      if (ids.length === 0) {
+        setPropostasCandidatas([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("tab_proposta_itens")
         .select(`
@@ -109,7 +113,6 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
   async function handleAcao(novoStatus: 'RENOVADO' | 'PENDENTE' | 'NAO_RENOVADO', sucessoraId: string | null) {
     setLoading(true);
     try {
-      // DEFINIMOS A REGRA: Só fica ativa se estiver PENDENTE
       const isNotificacaoAtiva = novoStatus === 'PENDENTE';
 
       const { error } = await supabase
@@ -117,10 +120,7 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
         .update({
           status_renovacao: novoStatus,
           proposta_sucessora_id: sucessoraId,
-          // Se for renovado ou perdido, desativa a notificação para "limpar" a sidebar do corretor
           notificacao_ativa: isNotificacaoAtiva, 
-          // Se for pendente (excluir vínculo), limpamos a data de renovação. 
-          // Se for ação definitiva, registramos a data de hoje.
           data_renovacao: novoStatus === 'PENDENTE' ? null : new Date().toISOString().split('T')[0]
         })
         .eq("id", itemOriginal.id_item);
@@ -139,11 +139,23 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
 
   if (!isOpen) return null;
 
+  // Tratamento seguro para propriedades aninhadas que podem vir como array no Supabase
+  const produtoSucessoraNome = Array.isArray(dadosAtuais?.sucessora?.base_produtos) 
+    ? dadosAtuais.sucessora.base_produtos[0]?.nome 
+    : dadosAtuais?.sucessora?.base_produtos?.nome;
+
+  const opcaoSucessora = Array.isArray(dadosAtuais?.sucessora?.tab_proposta_opcoes) 
+    ? dadosAtuais.sucessora.tab_proposta_opcoes[0] 
+    : dadosAtuais?.sucessora?.tab_proposta_opcoes;
+
+  const propostaSucessoraObj = Array.isArray(opcaoSucessora?.tab_propostas) 
+    ? opcaoSucessora.tab_propostas[0] 
+    : opcaoSucessora?.tab_propostas;
+
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
       <div className="bg-white w-full max-w-xl rounded-[32px] shadow-2xl overflow-hidden border border-slate-200">
         
-        {/* HEADER CONFORME IMAGEM */}
         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <div>
             <div className="flex items-center gap-2">
@@ -160,8 +172,6 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
         </div>
 
         <div className="p-6 space-y-5">
-          
-          {/* INTERFACE DA IMAGEM 1: VÍNCULO JÁ EXISTENTE */}
           {dadosAtuais?.status_renovacao === 'RENOVADO' && dadosAtuais?.proposta_sucessora_id && !modoEdicao ? (
             <div className="space-y-4 animate-in fade-in zoom-in duration-300">
               <div className="bg-emerald-50 border-2 border-emerald-100 p-8 rounded-[32px] relative flex flex-col items-start min-h-[160px] justify-center">
@@ -173,10 +183,10 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
                   <div>
                     <span className="text-[10px] font-black text-emerald-600 uppercase italic mb-1 block">Proposta de Destino:</span>
                     <h4 className="text-xl font-black text-slate-700 tracking-tighter uppercase leading-tight">
-                      {dadosAtuais.sucessora?.base_produtos?.nome}
+                      {produtoSucessoraNome}
                     </h4>
                     <span className="text-blue-600 text-lg font-black tracking-tighter">
-                      PROP: {dadosAtuais.sucessora?.tab_proposta_opcoes?.[0]?.tab_propostas?.numero_proposta}
+                      PROP: {propostaSucessoraObj?.numero_proposta}
                     </span>
                   </div>
                   <Link2 size={48} className="text-emerald-200" />
@@ -199,7 +209,6 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
               </div>
             </div>
           ) : (
-            /* INTERFACE DA IMAGEM 2: BUSCANDO / NÃO VINCULADO */
             <div className="space-y-5 animate-in slide-in-from-bottom-2">
               <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex gap-3 items-center">
                 <div className="bg-amber-100 p-2 rounded-xl text-amber-600 font-black">#</div>
@@ -236,8 +245,11 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
                   </div>
                 ) : (
                   propostasCandidatas.map((item) => {
-                    const prop = item.tab_proposta_opcoes?.tab_propostas;
+                    const itemOpcao = Array.isArray(item.tab_proposta_opcoes) ? item.tab_proposta_opcoes[0] : item.tab_proposta_opcoes;
+                    const prop = Array.isArray(itemOpcao?.tab_propostas) ? itemOpcao.tab_propostas[0] : itemOpcao?.tab_propostas;
+                    const prodNome = Array.isArray(item.base_produtos) ? item.base_produtos[0]?.nome : item.base_produtos?.nome;
                     const isSelected = selectedItemSucessorId === item.id;
+
                     return (
                       <div 
                         key={item.id}
@@ -252,7 +264,7 @@ export default function ModalRenovacao({ isOpen, onClose, itemOriginal, onSucces
                           <div>
                             <span className="text-[9px] font-black text-blue-600 uppercase italic block mb-1">Vincular ao Produto:</span>
                             <span className="text-sm font-black text-slate-700 uppercase tracking-tighter">
-                              {item.base_produtos?.nome} — PROP: {prop?.numero_proposta}
+                              {prodNome} — PROP: {prop?.numero_proposta}
                             </span>
                           </div>
                           {isSelected && <CheckCircle2 size={22} className="text-blue-500" />}

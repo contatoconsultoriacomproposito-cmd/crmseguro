@@ -104,7 +104,7 @@ useEffect(() => {
       async function carregarDadosCliente() {
         try {
           const { data, error } = await supabase
-            .from("tab_clientes")
+            .from("tab_clientes_v2")
             .select("*")
             .eq("id", id)
             .single();
@@ -112,40 +112,53 @@ useEffect(() => {
           if (error) throw error;
 
           if (data) {
-            // Criamos um objeto com todos os campos normalizados
-            // Usamos o operador ?? "" para garantir que, se for null, vire string vazia
+            // Extrai dados do JSONB de contatos
+            let contatosArray = Array.isArray(data.contatos) ? data.contatos : [];
+            if (typeof data.contatos === 'string') {
+              try { contatosArray = JSON.parse(data.contatos); } catch { contatosArray = []; }
+            }
+            const contatoPrincipal = contatosArray.find((ct: any) => ct.principal) || contatosArray[0] || {};
+
+            // Extrai dados do JSONB de dados_complementares
+            let dadosComp: any = data.dados_complementares || {};
+            if (typeof data.dados_complementares === 'string') {
+              try { dadosComp = JSON.parse(data.dados_complementares); } catch { dadosComp = {}; }
+            }
+
+            const capitalSocialNum = dadosComp.capital_social;
+
             const formData = {
               // Campos de Empresa
-              cnpj: data.cnpj ?? "",
-              razao_social: data.razao_social ?? "",
+              cnpj: data.tipo_cliente === 'PJ' ? (data.cpf_cnpj ?? "") : "",
+              razao_social: data.tipo_cliente === 'PJ' ? (data.nome_razao_social ?? "") : "",
               nome_fantasia: data.nome_fantasia ?? "",
-              porte: data.porte ?? "",
-              natureza_juridica: data.natureza_juridica ?? "",
-              opcao_pelo_mei: data.opcao_pelo_mei ?? false,
-              opcao_pelo_simples: data.opcao_pelo_simples ?? false,
+              porte: dadosComp.porte ?? "",
+              natureza_juridica: dadosComp.natureza_juridica ?? "",
+              opcao_pelo_mei: dadosComp.opcao_pelo_mei ?? false,
+              opcao_pelo_simples: dadosComp.opcao_pelo_simples ?? false,
               cnae_principal: data.cnae_principal ?? "",
-              data_abertura: data.data_abertura ?? "",
+              data_abertura: dadosComp.data_abertura ?? "",
               situacao_cadastral: data.situacao_cadastral ?? "",
-              capital_social: data.capital_social 
-                ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(data.capital_social)
+              capital_social: capitalSocialNum 
+                ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(capitalSocialNum)
                 : "",
 
               // Campos de Pessoa Física
-              nome: data.nome ?? "",
-              cpf: data.cpf ?? "",
-              rg: data.rg ?? "",
-              data_nascimento: data.data_nascimento ?? "",
-              sexo: data.sexo ?? "",
-              naturalidade: data.naturalidade ?? "",
-              ocupacao: data.ocupacao ?? "",
-              data_emissao: data.data_emissao_doc ?? "", // Mapeamento correto do DB para o Estado
+              nome: data.tipo_cliente === 'PF' ? (data.nome_razao_social ?? "") : "",
+              cpf: data.tipo_cliente === 'PF' ? (data.cpf_cnpj ?? "") : "",
+              rg: dadosComp.rg ?? "",
+              data_nascimento: dadosComp.data_nascimento ?? "",
+              sexo: dadosComp.sexo ?? "",
+              naturalidade: dadosComp.naturalidade ?? "",
+              ocupacao: dadosComp.ocupacao ?? "",
+              data_emissao: dadosComp.data_emissao_doc ?? "",
               
-              // Contatos e Origem
-              ddd_telefone_1: data.ddd_telefone_1 ?? "",
-              email: data.email ?? "",
-              telefone_whats: data.telefone_whats ?? "",
-              telefone_adicional: data.telefone_adicional ?? "",
-              origem_cliente: data.origem_cliente ?? "Google",
+              // Contatos e Origem (Mapeados do JSONB)
+              ddd_telefone_1: contatoPrincipal.telefone ? contatoPrincipal.telefone.slice(0, 2) : "",
+              email: contatoPrincipal.email ?? "",
+              telefone_whats: contatoPrincipal.telefone ?? "",
+              telefone_adicional: contatoPrincipal.telefone_adicional ?? "",
+              origem_cliente: data.origem ?? "Google",
               
               // Endereços
               cep: data.cep ?? "",
@@ -155,18 +168,18 @@ useEffect(() => {
               logradouro: data.logradouro ?? "",
               numero: data.numero ?? "",
               complemento: data.complemento ?? "",
-              cep_pf: data.cep_pf ?? "",
-              uf_pf: data.uf_pf ?? "",
-              municipio_pf: data.municipio_pf ?? "",
-              bairro_pf: data.bairro_pf ?? "",
-              logradouro_pf: data.logradouro_pf ?? "",
-              numero_pf: data.numero_pf ?? "",
-              complemento_pf: data.complemento_pf ?? "",
+              cep_pf: data.cep ?? "",
+              uf_pf: data.uf ?? "",
+              municipio_pf: data.municipio ?? "",
+              bairro_pf: data.bairro ?? "",
+              logradouro_pf: data.logradouro ?? "",
+              numero_pf: data.numero ?? "",
+              complemento_pf: data.complemento ?? "",
               
               // Kanban e Sistema
-              descricao_identificador_matriz_filial: data.descricao_identificador_matriz_filial ?? "",
-              fase_kanban: data.fase_kanban ?? "lead",
-              status_kanban: data.status_kanban ?? "novo",
+              descricao_identificador_matriz_filial: dadosComp.matriz_filial ?? "",
+              fase_kanban: data.fase_atendimento ?? "lead",
+              status_kanban: data.fase_atendimento ?? data.fase_kanban ?? "novo",
               corretor_id: data.corretor_id ?? "",
               
               // JSONB
@@ -175,10 +188,7 @@ useEffect(() => {
 
             setForm(formData);
             setTipoCliente(data.tipo_cliente as TipoCliente);
-            
-            // Verifica se os endereços são iguais para marcar o checkbox
-            const enderecosIguais = data.cep === data.cep_pf && data.numero === data.numero_pf;
-            setMesmoEndereco(enderecosIguais);
+            setMesmoEndereco(true);
           }
         } catch (err) {
           console.error("Erro ao carregar cliente:", err);
@@ -321,19 +331,19 @@ useEffect(() => {
         return;
     }
 
-    // NOVA VALIDAÇÃO DE DUPLICIDADE
+    
+    // NOVA VALIDAÇÃO DE DUPLICIDADE (Utilizando cpf_cnpj na tab_clientes_v2)
     if (!isEditing && tipoCliente === "PF" && form.cpf) {
-      // Determinamos quem é a corretora "mãe" para filtrar a busca
       const idCorretoraMae = perfilUsuarioLogado?.tipo_usuario === "CORRETORA" 
         ? perfilUsuarioLogado.id 
         : perfilUsuarioLogado?.corretora_id;
 
       const { data: existente } = await supabase
-        .from("tab_clientes")
+        .from("tab_clientes_v2")
         .select("id, tipo_cliente")
-        .eq("cpf", form.cpf)
-        .eq("corretora_id", idCorretoraMae) // Só importa se for na mesma corretora
-        .eq("tipo_cliente", "PF")           // Só bloqueia se for outra ficha de Pessoa Física
+        .eq("cpf_cnpj", form.cpf)
+        .eq("corretora_id", idCorretoraMae)
+        .eq("tipo_cliente", "PF")
         .maybeSingle();
 
       if (existente) {
@@ -427,12 +437,20 @@ useEffect(() => {
     try {
       let error;
       if (isEditing) {
-        // ATUALIZAÇÃO
-        const result = await supabase.from("tab_clientes").update(payload).eq("id", id);
+        // ATUALIZAÇÃO NA V2
+        const result = await supabase
+          .from("tab_clientes_v2")
+          .update({
+            ...payload,
+            atualizado_em: new Date().toISOString()
+          })
+          .eq("id", id);
         error = result.error;
       } else {
-        // INSERÇÃO
-        const result = await supabase.from("tab_clientes").insert([payload]);
+        // INSERÇÃO NA V2
+        const result = await supabase
+          .from("tab_clientes_v2")
+          .insert([payload]);
         error = result.error;
       }
 

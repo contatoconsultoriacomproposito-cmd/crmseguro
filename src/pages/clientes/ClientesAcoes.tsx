@@ -39,10 +39,13 @@ export default function ClientesAcoes() {
 
   async function atualizarTemperatura(clienteId: string, novaTemp: string) {
     try {
-      // Atualiza na base principal se o cliente for de lá
+      // Atualiza na base principal V2
       await supabase
-        .from('tab_clientes')
-        .update({ temperatura: novaTemp })
+        .from('tab_clientes_v2')
+        .update({ 
+          temperatura: novaTemp,
+          atualizado_em: new Date().toISOString()
+        })
         .eq('id', clienteId);
 
       // Atualiza o estado visual em memória para dar feedback imediato na tela
@@ -60,10 +63,13 @@ export default function ClientesAcoes() {
 
   async function atualizarDataRetorno(clienteId: string, novaData: string) {
     try {
-      // Atualiza na base principal se o cliente for de lá
+      // Atualiza na base principal V2
       await supabase
-        .from('tab_clientes')
-        .update({ data_retorno: novaData })
+        .from('tab_clientes_v2')
+        .update({ 
+          data_retorno: novaData,
+          atualizado_em: new Date().toISOString()
+        })
         .eq('id', clienteId);
 
       // Atualiza o estado visual em memória para dar feedback imediato na tela
@@ -80,134 +86,79 @@ export default function ClientesAcoes() {
   }
 
   async function carregarRelatorio() {
-    if (!userProfile?.corretora_id) return;
-    setLoading(true);
-    try {
-      // 1) Busca de interações padrão (Base Principal - Clientes Antigos / Convertidos)
-      let queryInteracoes = supabase
-        .from('tab_interacoes')
-        .select(`
-          *,
-          cliente:tab_clientes (
-            id, nome, razao_social, temperatura, data_retorno, horario_retorno
-          )
-        `)
-        .eq('corretora_id', userProfile.corretora_id)
-        .gte('data_historico', dataInicio)
-        .lte('data_historico', dataFim);
+  if (!userProfile?.corretora_id) return;
+  setLoading(true);
+  try {
+    // Consulta unificada na tabela de interações (tab_interacoes_v2) trazendo dados do cliente (tab_clientes_v2)
+    let queryInteracoes = supabase
+      .from('tab_interacoes_v2')
+      .select(`
+        *,
+        cliente:tab_clientes_v2 (
+          id, nome_razao_social, nome_fantasia, temperatura, data_retorno, horario_retorno, corretor_id, corretora_id
+        )
+      `)
+      .eq('tab_clientes_v2.corretora_id', userProfile.corretora_id)
+      .gte('criado_em', `${dataInicio}T00:00:00`)
+      .lte('criado_em', `${dataFim}T23:59:59`);
 
-      if (userProfile.tipo_usuario === 'CORRETOR') {
-        queryInteracoes = queryInteracoes.eq('corretor_id', userProfile.id);
-      }
-
-      // 2) Busca de Clientes Frios (Tabela de Prospecção) com colunas reais existentes
-      let queryClientesFrios = supabase
-        .from('tab_clientes_frios')
-        .select('id, razao_social, nome_fantasia, corretora_id, corretor_id');
-
-      if (userProfile.tipo_usuario === 'CORRETOR') {
-        queryClientesFrios = queryClientesFrios.eq('corretor_id', userProfile.id);
-      } else {
-        queryClientesFrios = queryClientesFrios.eq('corretora_id', userProfile.corretora_id);
-      }
-
-      // 3) Busca de Ações Frias usando a coluna de data correta 'criado_em'
-      let queryAcoesFrias = supabase
-        .from('tab_clientes_frios_acoes')
-        .select('*')
-        .gte('criado_em', `${dataInicio}T00:00:00`)
-        .lte('criado_em', `${dataFim}T23:59:59`);
-
-      if (userProfile.tipo_usuario === 'CORRETOR') {
-        queryAcoesFrias = queryAcoesFrias.eq('corretor_id', userProfile.id);
-      }
-
-      const [resInteracoes, resClientesFrios, resAcoesFrias] = await Promise.all([
-        queryInteracoes.order('data_historico', { ascending: false }),
-        queryClientesFrios,
-        queryAcoesFrias.order('criado_em', { ascending: false })
-      ]);
-
-      if (resInteracoes.error) throw resInteracoes.error;
-      if (resClientesFrios.error) throw resClientesFrios.error;
-      if (resAcoesFrias.error) throw resAcoesFrias.error;
-
-      const agrupado: any = {};
-
-      // Mapeia Interações da Base Principal (Clientes Convertidos)
-      resInteracoes.data?.forEach((item: any) => {
-        const clienteId = item.cliente_id;
-        if (!item.cliente) return;
-        const tempCliente = item.cliente?.temperatura || 'morno';
-        if (filtroTemp !== 'todos' && tempCliente !== filtroTemp) return;
-
-        if (!agrupado[clienteId]) {
-          agrupado[clienteId] = { id: clienteId, info: item.cliente, acoes: [] };
-        }
-        agrupado[clienteId].acoes.push(item);
-      });
-
-      // Indexa os Clientes Frios para cruzamento rápido em memória
-      const clientesFriosMap = new Map<string, any>();
-      resClientesFrios.data?.forEach((c: any) => {
-        clientesFriosMap.set(c.id, c);
-      });
-
-      // Cruza as Ações Frias mapeando com as colunas reais da Prospecção
-      resAcoesFrias.data?.forEach((item: any) => {
-        const clienteId = item.cliente_frio_id;
-        if (!clienteId) return;
-
-        const cFrio = clientesFriosMap.get(clienteId);
-        if (!cFrio) return; 
-
-        // Como pertencem à tabela de Prospecção Fria, a temperatura base padrão é 'frio'
-        const tempCliente = 'frio';
-        if (filtroTemp !== 'todos' && tempCliente !== filtroTemp) return;
-
-        if (!agrupado[clienteId]) {
-          agrupado[clienteId] = {
-            id: clienteId,
-            info: {
-              id: cFrio.id,
-              nome: cFrio.nome_fantasia || cFrio.razao_social || 'Sem Nome',
-              razao_social: cFrio.razao_social || '',
-              temperatura: tempCliente,
-              data_retorno: item.data_retorno || '', // Resgata da ação de prospecção fria
-              horario_retorno: ''
-            },
-            acoes: []
-          };
-        } else {
-          // Se a ação atual do loop possuir uma data de retorno mais recente, atualiza a info de exibição
-          if (item.data_retorno && (!agrupado[clienteId].info.data_retorno || item.data_retorno > agrupado[clienteId].info.data_retorno)) {
-            agrupado[clienteId].info.data_retorno = item.data_retorno;
-          }
-        }
-
-        // Isola o timestamp criado_em em YYYY-MM-DD para uniformizar a ordenação
-        const dataAcao = item.criado_em ? item.criado_em.split('T')[0] : '';
-
-        agrupado[clienteId].acoes.push({
-          id: item.id,
-          tipo_acao: 'Prospecção Fria',
-          data_historico: dataAcao,
-          relato: item.observacao || ''
-        });
-      });
-
-      // Ordena cronologicamente decrescente as linhas do tempo combinadas
-      const resultadoFinal = Object.values(agrupado).map((item: any) => {
-        item.acoes.sort((a: any, b: any) => (b.data_historico || '').localeCompare(a.data_historico || ''));
-        return item;
-      });
-
-      setRelatorioData(resultadoFinal);
-    } catch (error) {
-      toast.error("Erro ao carregar dados");
-    } finally {
-      setLoading(false);
+    if (userProfile.tipo_usuario === 'CORRETOR') {
+      queryInteracoes = queryInteracoes.eq('corretor_id', userProfile.id);
     }
+
+    const { data: interacoesData, error } = await queryInteracoes.order('criado_em', { ascending: false });
+
+    if (error) throw error;
+
+    const agrupado: any = {};
+
+    interacoesData?.forEach((item: any) => {
+      const clienteId = item.cliente_id;
+      if (!item.cliente) return;
+
+      const tempCliente = item.cliente?.temperatura || 'frio';
+      if (filtroTemp !== 'todos' && tempCliente !== filtroTemp) return;
+
+      if (!agrupado[clienteId]) {
+        agrupado[clienteId] = {
+          id: clienteId,
+          info: {
+            id: item.cliente.id,
+            nome: item.cliente.nome_fantasia || item.cliente.nome_razao_social || 'Sem Nome',
+            razao_social: item.cliente.nome_razao_social || '',
+            temperatura: tempCliente,
+            data_retorno: item.cliente.data_retorno || item.data_retorno || '',
+            horario_retorno: item.cliente.horario_retorno || ''
+          },
+          acoes: []
+        };
+      }
+
+      // Isola a data de criação no formato YYYY-MM-DD para manter padrão de ordenação
+      const dataAcao = item.criado_em ? item.criado_em.split('T')[0] : (item.data_historico || '');
+
+      agrupado[clienteId].acoes.push({
+        id: item.id,
+        tipo_acao: item.tipo_acao || 'Interação',
+        desfecho: item.desfecho || '',
+        data_historico: dataAcao,
+        relato: item.observacao || item.relato || ''
+      });
+    });
+
+    // Ordena cronologicamente decrescente as linhas do tempo dos clientes
+    const resultadoFinal = Object.values(agrupado).map((item: any) => {
+      item.acoes.sort((a: any, b: any) => (b.data_historico || '').localeCompare(a.data_historico || ''));
+      return item;
+    });
+
+    setRelatorioData(resultadoFinal);
+  } catch (error) {
+    console.error("Erro ao carregar relatório:", error);
+    toast.error("Erro ao carregar dados do relatório");
+  } finally {
+    setLoading(false);
+  }
   }
 
   const getTempStyle = (temp: string, active: boolean) => {
