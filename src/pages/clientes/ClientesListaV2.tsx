@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Search, RotateCcw, User, Building2, ChevronDown, ChevronUp,
   Eye, Calendar, Trash2, Car, Heart, Home, Briefcase, Stethoscope, Smile, ShieldAlert,
-  ChevronRight, ChevronLeft, Loader2, Plus, Users
+  ChevronRight, ChevronLeft, Loader2, Plus, Users, UserPlus
 } from 'lucide-react';
-import { buscarClientesV2, buscarListaCnaes, excluirClienteV2, buscarClienteCompletoPorId, criarClienteV2, atualizarClienteV2 } from './clienteServiceV2';
+import { buscarClientesV2, buscarListaCnaes, excluirClienteV2, buscarClienteCompletoPorId, criarClienteV2, atualizarClienteV2, converterClienteEmLead } from './clienteServiceV2';
 import type { FiltrosClientesV2, ClienteV2Formatado, CnaeOpcao  } from './clienteServiceV2';
 import { CnaeMultiSelect } from './CnaeMultiSelect';
 import { ModalCadastroCliente } from './ModalCadastroCliente';
@@ -154,6 +154,7 @@ export const ClientesListaV2: React.FC = () => {
   const [listaCnaes, setListaCnaes] = useState<CnaeOpcao[]>([]);
   const [exibirAvancados, setExibirAvancados] = useState<boolean>(true);
   const [sociosExpandidos, setSociosExpandidos] = useState<Record<string, boolean>>({});
+  const [clienteParaConverter, setClienteParaConverter] = useState<ClienteV2Formatado | null>(null);
   const [gruposExpandidos, setGruposExpandidos] = useState({
     localizacao: false,
     perfilEmpresa: false,
@@ -251,6 +252,28 @@ export const ClientesListaV2: React.FC = () => {
       toast.error("Erro ao excluir o cliente. Tente novamente.");
     }
   };
+
+  // Apenas abre o nosso modal customizado
+  const handleConverterParaLead = (cliente: ClienteV2Formatado) => {
+    setClienteParaConverter(cliente);
+  };
+
+  // Executa a ação de fato quando o usuário confirmar no modal
+
+  const confirmarConversao = async () => {
+    if (!clienteParaConverter) return;
+
+    const sucesso = await converterClienteEmLead(clienteParaConverter.id);
+    if (sucesso) {
+      toast.success("Cliente convertido em Lead com sucesso!");
+      await carregarClientes();
+    } else {
+      toast.error("Falha ao converter o cliente em Lead.");
+    }
+    setClienteParaConverter(null);
+  };
+
+  
   
   return (
     <div className="p-6 bg-slate-50 min-h-screen font-sans">
@@ -814,6 +837,17 @@ export const ClientesListaV2: React.FC = () => {
                           >
                               <Calendar size={15} />
                           </button>
+                          {/* Validação direta inline (sem precisar de função auxiliar) */}
+                          {(!cliente.status_kanban || cliente.status_kanban.toString().trim() === '' || cliente.status_kanban.toString().trim().toLowerCase() === 'novo') && (
+                            <button
+                              onClick={() => handleConverterParaLead(cliente)}
+                              title="Converter em Lead"
+                              className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center justify-center"
+                            >
+                              <UserPlus size={18} />
+                            </button>
+                          )}
+
                           <button
                               title="Excluir"
                               className="border border-slate-200 bg-white p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:bg-slate-100 text-red-500 transition-colors"
@@ -866,29 +900,57 @@ export const ClientesListaV2: React.FC = () => {
         handleSubmit={handleSalvarCliente}
     />
     )}
-      {modalAcaoAberto && clienteSelecionado && (
-        <ModalAcoesComerciais
-            isOpen={modalAcaoAberto}
-            lead={clienteSelecionado}
-            clienteContexto={clienteSelecionado}
-            onClose={() => {
-            setModalAcaoAberto(false);
-            setClienteSelecionado(null);
-            }}
-            onSave={async (dadosAcao) => {
-            try {
-                await salvarAcaoComercialV2(dadosAcao);
-                await carregarClientes();
-                setModalAcaoAberto(false);
-                setClienteSelecionado(null);
-            } catch (err) {
-                console.error('Erro ao salvar no ClientesListaV2:', err);
-                toast.error("Ocorreu um erro ao registrar a interação. Verifique os dados e tente novamente.");
-            }
-            }}
-        />
-        )}
+    {modalAcaoAberto && clienteSelecionado && (
+      <ModalAcoesComerciais
+          isOpen={modalAcaoAberto}
+          lead={clienteSelecionado}
+          clienteContexto={clienteSelecionado}
+          onClose={() => {
+          setModalAcaoAberto(false);
+          setClienteSelecionado(null);
+          }}
+          onSave={async (dadosAcao) => {
+          try {
+              await salvarAcaoComercialV2(dadosAcao);
+              await carregarClientes();
+              setModalAcaoAberto(false);
+              setClienteSelecionado(null);
+          } catch (err) {
+              console.error('Erro ao salvar no ClientesListaV2:', err);
+              toast.error("Ocorreu um erro ao registrar a interação. Verifique os dados e tente novamente.");
+          }
+          }}
+      />
+      )}
+
+    {/* Modal de Confirmação Customizado */}
+    {clienteParaConverter && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+          <h3 className="text-lg font-bold text-slate-800 mb-2">Converter em Lead?</h3>
+          <p className="text-slate-600 mb-6">
+            Deseja realmente enviar <strong>{clienteParaConverter.nome_razao_social}</strong> para o Funil de Vendas?
+          </p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setClienteParaConverter(null)}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmarConversao}
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+            >
+              Sim, converter
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     </div>
   );
 };
+
 export default ClientesListaV2;

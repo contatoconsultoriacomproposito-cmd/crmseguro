@@ -60,6 +60,7 @@ export interface ClienteV2Formatado {
   proxima_acao: string | null;
   produtos: string[];
   clienteOriginal: any;
+  status_kanban?: string;
 }
 
 interface UsuarioSessao {
@@ -731,6 +732,7 @@ export const buscarClientesV2 = async (
         data_retorno: interacaoPendente?.data_retorno || cli.data_retorno || null,
         proxima_acao: interacaoPendente?.proxima_acao || 'Nenhuma ação pendente',
         produtos: produtosPorCliente[cli.id] || [],
+        status_kanban: cli.status_kanban, // <--- ADICIONE ESTA LINHA AQUI!
         clienteOriginal: cli
       };
     });
@@ -822,6 +824,48 @@ export async function salvarAcaoComercialV2(payload: any) {
   } catch (error) {
     console.error('Erro ao salvar ação comercial no service:', error);
     throw error;
+  }
+}
+
+// ==========================================
+// CONVERTER EM LEAD (PARA APARECER NO KANBAN)
+// ==========================================
+
+export async function converterClienteEmLead(clienteId: string): Promise<boolean> {
+  try {
+    // 1. Verifica se existe ao menos 1 registro na tab_interacoes para este cliente
+    const { count, error: countError } = await supabase
+      .from('tab_interacoes')
+      .select('id', { count: 'exact', head: true })
+      .eq('cliente_id', clienteId);
+
+    if (countError) {
+      console.error('Erro ao verificar interações do cliente:', countError);
+      return false;
+    }
+
+    // Define a fase com base na existência de interações
+    const novaFaseKanban = (count && count > 0) ? 'contato_realizado' : 'nao_contatado';
+
+    // 2. Atualiza a tab_clientes
+    const { error: updateError } = await supabase
+      .from('tab_clientes')
+      .update({
+        status_kanban: 'lead',
+        fase_kanban: novaFaseKanban,
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', clienteId);
+
+    if (updateError) {
+      console.error('Erro ao converter cliente para Lead:', updateError);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Erro ao executar conversão para Lead:', error);
+    return false;
   }
 }
 
