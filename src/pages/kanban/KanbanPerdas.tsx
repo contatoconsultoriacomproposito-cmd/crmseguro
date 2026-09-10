@@ -151,7 +151,9 @@ export default function KanbanPerdas() {
       }
 
       if (termoBusca) {
-        query = query.or(`nome_razao_social.ilike.%${termoBusca}%,cpf.ilike.%${termoBusca}%,cnpj.ilike.%${termoBusca}%,email.ilike.%${termoBusca}%,telefone_whats.ilike.%${termoBusca}%`);
+        query = query.or(
+          `nome_razao_social.ilike.%${termoBusca}%,nome_fantasia.ilike.%${termoBusca}%,cpf_cnpj.ilike.%${termoBusca}%`
+        );
       }
 
       if (dataInicio) query = query.gte('data_retorno', dataInicio);

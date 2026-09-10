@@ -41,7 +41,8 @@ const obterNomeExibicao = (item: any, fallbackDefault = 'Cliente sem nome'): str
     item.nome_cliente,
     item.nome,
     item.empresa,
-    item.nome_contato
+    item.nome_contato,
+    item.nome_razao_social
   ];
 
   const nomeValido = possiveisNomes.find(
@@ -71,7 +72,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       dataFutura.setDate(dataFutura.getDate() + 30);
       const [diaFut, mesFut, anoFut] = dataFutura.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).split('/');
       const dataLimiteRenovacaoStr = `${anoFut}-${mesFut}-${diaFut}`;
-      
 
       const listaGeral: Notificacao[] = [];
 
@@ -85,7 +85,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const isAdmin = perfil?.tipo_usuario === 'CORRETORA';
       const corretoraDonaId = perfil?.corretora_id || user.id;
 
-      // 2. PREPARAÇÃO DAS QUERIES OTIMIZADAS
+      // 2. PREPARAÇÃO DAS QUERIES OTIMIZADAS (Com colunas validadas na DDL)
       let queryInd = supabase
         .from('tab_indicacoes')
         .select(`id, nome_cliente, created_at, status_indicacao, corretor_id, tab_parceiros(nome_parceiro)`)
@@ -94,7 +94,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       let queryClientes = supabase
         .from('tab_clientes')
-        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, contatos, dados_complementares_pf, dados_complementares_pj, corretor_id')
+        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_atendimento, dados_complementares_pf, corretor_id')
         .eq('corretora_id', corretoraDonaId);
 
       let queryRenovacoes = supabase
@@ -106,7 +106,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           notificacao_ativa,
           status_renovacao,
           corretor_id,
-          opcao_id
+          opcao_id,
+          tab_proposta_opcoes(
+            tab_propostas(
+              corretor_id,
+              tab_clientes(id, nome_razao_social, nome_fantasia)
+            )
+          )
         `)
         .eq('notificacao_ativa', true)
         .eq('status_renovacao', 'A RENOVAR')
@@ -121,7 +127,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       let queryAgenda = supabase
         .from('tab_clientes')
-        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, contatos, dados_complementares_pf, dados_complementares_pj, fase_atendimento, temperatura, corretor_id')
+        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, fase_atendimento, corretor_id')
         .not('data_retorno', 'is', null)
         .lte('data_retorno', hojeLocalStr)
         .eq('corretora_id', corretoraDonaId);
@@ -141,7 +147,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const rawFrios      = resultados[3].status === 'fulfilled' ? (resultados[3].value.data ?? []) : [];
       const rawAgenda     = resultados[4].status === 'fulfilled' ? (resultados[4].value.data ?? []) : [];
 
-      // Filtragem por corretor em memória de forma totalmente segura
       let finalIndicacoes = rawIndicacoes;
       let finalClientes = rawClientes;
       let finalRenovacoes = rawRenovacoes;
@@ -152,7 +157,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         finalIndicacoes = rawIndicacoes.filter((i: any) => !i.corretor_id || i.corretor_id === user.id);
         finalClientes = rawClientes.filter((c: any) => !c.corretor_id || c.corretor_id === user.id);
         finalRenovacoes = rawRenovacoes.filter((r: any) => {
-          const prop = r.tab_proposta_opcoes?.tab_propostas;
+          const prop = Array.isArray(r.tab_proposta_opcoes) 
+            ? r.tab_proposta_opcoes[0]?.tab_propostas 
+            : r.tab_proposta_opcoes?.tab_propostas;
           return (!r.corretor_id || r.corretor_id === user.id) && (!prop?.corretor_id || prop.corretor_id === user.id);
         });
         finalFrios = rawFrios.filter((f: any) => !f.corretor_id || f.corretor_id === user.id);
@@ -206,8 +213,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           });
         }
 
-        if (c.data_nascimento) {
-          const partes = c.data_nascimento.split('-');
+        // Lê a data de nascimento de dentro do JSONB dados_complementares_pf se existir
+        const dataNascimentoPf = c.dados_complementares_pf?.data_nascimento;
+        if (dataNascimentoPf) {
+          const partes = dataNascimentoPf.split('-');
           if (partes.length === 3 && `${partes[1]}-${partes[2]}` === mesDiaHoje) {
             listaGeral.push({
               id: `aniv-${c.id}`,
@@ -271,14 +280,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       finalAgenda.forEach((item: any) => {
         const nomeExibicao = obterNomeExibicao(item, 'Cliente Agenda');
-        const subtituloNotificacao = item.breve_descricao || item.tel_cliente || item.email_cliente || 'Retorno de agenda';
 
         listaGeral.push({
           id: `ag-${item.id}`,
           tipo: 'AGENDA',
           prioridade: 'NORMAL',
           titulo: `AGENDA: ${nomeExibicao}`,
-          subtitulo: subtituloNotificacao,
+          subtitulo: 'Retorno de agenda',
           data: item.data_retorno,
           horario: item.horario_retorno,
           atrasado: item.data_retorno < hojeLocalStr,
@@ -309,7 +317,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
 
     if (n.tipo === 'COMERCIAL' || n.tipo === 'ANIVERSARIO' || n.tipo === 'PROSPECCAO' || n.tipo === 'AGENDA') {
-      // Como o ModalAcoesComerciais exige um objeto 'lead', buscamos o cliente no banco primeiro
       const { data: cliente } = await supabase
         .from('tab_clientes')
         .select('*')
@@ -370,7 +377,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         />
       )}
 
-      {/* Modal Comercial Oficial usando o serviceV2 */}
       {modalAtivo?.tipo === 'CONTATO_GERAL' && clienteParaModal && (
         <ModalAcoesComerciais
           isOpen={true}
@@ -381,7 +387,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           }}
           onSave={async (dadosAcao) => {
             try {
-              // Chama diretamente o service v2 que você já tem pronto
               await salvarAcaoComercialV2(dadosAcao);
             } catch (error) {
               console.error('Erro ao salvar pelo service v2:', error);
@@ -394,7 +399,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         />
       )}
 
-      {/* Modal de Sinistro Oficial (Recebe clienteId nativamente conforme a interface dele) */}
       {modalAtivo?.tipo === 'SINISTRO_GERAL' && (
         <ModalGerenciamentoSinistro
           clienteId={modalAtivo.id}

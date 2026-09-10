@@ -494,6 +494,39 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
     setOpen(false);
   };
 
+  const obterTipoPadronizado = (tipoOriginal: string) => {
+    const t = (tipoOriginal || '').toUpperCase();
+    
+    if (t.includes('SINISTRO') || t.includes('ASSISTENCIA')) {
+      return {
+        label: 'RETORNO DE SINISTRO/ASSISTÊNCIA',
+        badgeBg: 'bg-red-600 text-white',
+        sigla: 'S'
+      };
+    }
+    if (t.includes('RENOVACAO') || t.includes('RENOVAÇÃO')) {
+      return {
+        label: 'RENOVAÇÃO',
+        badgeBg: 'bg-emerald-600 text-white',
+        sigla: 'R'
+      };
+    }
+    return {
+      label: 'RETORNO COMERCIAL',
+      badgeBg: 'bg-amber-400 text-black',
+      sigla: 'C'
+    };
+  };
+
+  const limparNomeCliente = (titulo: string) => {
+    if (!titulo) return '';
+    if (titulo.includes(':')) {
+      const partes = titulo.split(':');
+      return partes.slice(1).join(':').trim();
+    }
+    return titulo.trim();
+  };
+
   return (
     <div className="relative">
       <button 
@@ -542,21 +575,33 @@ function NotificationBell({ collapsed }: { collapsed: boolean }) {
               {notificacoes.length === 0 ? (
                 <p className="text-center py-8 text-zinc-400 text-xs font-medium">Tudo em dia! 🚀</p>
               ) : (
-                notificacoes.map((n) => (
-                  <div 
-                    key={n.id}
-                    className="p-3 rounded-xl border border-zinc-50 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 flex items-center gap-3 hover:border-blue-200 dark:hover:border-blue-500/30 transition-all cursor-pointer group"
-                    onClick={() => handleAction(n)}
-                  >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0 ${n.tipo === 'COMERCIAL' ? (n.atrasado ? 'bg-red-600 text-white' : 'bg-emerald-700 text-white') : (n.atrasado ? 'bg-purple-800 text-white' : 'bg-yellow-400 text-black')}`}>
-                      {n.tipo === 'COMERCIAL' ? 'C' : 'S'}
+                notificacoes.map((n) => {
+                  const tipoInfo = obterTipoPadronizado(n.tipo);
+                  const nomeCliente = limparNomeCliente(n.titulo);
+
+                  return (
+                    <div 
+                      key={n.id}
+                      className="p-3 rounded-xl border border-zinc-50 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 flex items-center gap-3 hover:border-blue-200 dark:hover:border-blue-500/30 transition-all cursor-pointer group"
+                      onClick={() => handleAction(n)}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0 ${tipoInfo.badgeBg}`}>
+                        {tipoInfo.sigla}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                          {tipoInfo.label}
+                        </p>
+                        <p className="text-xs font-bold truncate dark:text-zinc-200 group-hover:text-blue-600 transition-colors">
+                          {nomeCliente}
+                        </p>
+                        <p className="text-[10px] text-zinc-500 font-medium">
+                          {n.atrasado ? 'Atraso: ' : 'Data: '}{n.data}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold truncate dark:text-zinc-200 group-hover:text-blue-600 transition-colors">{n.titulo}</p>
-                      <p className="text-[10px] text-zinc-400 font-medium">{n.atrasado ? 'Atraso: ' : 'Hoje: '}{n.data}</p>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
