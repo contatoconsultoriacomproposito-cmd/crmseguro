@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../auth/AuthContext';
-import { toast } from 'sonner';
 
-// Importação dos modais
+// Importação dos modais oficiais corretos
 import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
-import ModalContato from '../pages/agenda/AgendaCorretorCarteira_old';
+import { ModalAcoesComerciais } from '../pages/clientes/ModalAcoesComerciais';
+import { ModalGerenciamentoSinistro } from '../components/kanban/components_visual_card/ModalGerenciamentoSinistro';
+import { salvarAcaoComercialV2 } from '../pages/clientes/clienteServiceV2';
 
 export interface Notificacao {
   id: string;
@@ -91,13 +92,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         .eq('status_indicacao', 'NOVO')
         .eq('corretora_id', corretoraDonaId);
 
-      // CORREÇÃO 1: Substituído 'data_nascimento' por 'contatos' e 'dados_complementares'
       let queryClientes = supabase
         .from('tab_clientes')
         .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, contatos, dados_complementares_pf, dados_complementares_pj, corretor_id')
         .eq('corretora_id', corretoraDonaId);
 
-      // CORREÇÃO 2: Simplificada a query de renovações sem JOINs profundos via PostgREST
       let queryRenovacoes = supabase
         .from('tab_proposta_itens')
         .select(`
@@ -304,7 +303,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    if (n.tipo === 'COMERCIAL' || n.tipo === 'SINISTRO' || n.tipo === 'ANIVERSARIO') {
+    if (n.tipo === 'SINISTRO') {
+      setModalAtivo({ tipo: 'SINISTRO_GERAL', id: n.ref_id });
+      return;
+    }
+
+    if (n.tipo === 'COMERCIAL' || n.tipo === 'ANIVERSARIO' || n.tipo === 'PROSPECCAO' || n.tipo === 'AGENDA') {
+      // Como o ModalAcoesComerciais exige um objeto 'lead', buscamos o cliente no banco primeiro
       const { data: cliente } = await supabase
         .from('tab_clientes')
         .select('*')
@@ -315,18 +320,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setClienteParaModal(cliente);
         setModalAtivo({ tipo: 'CONTATO_GERAL', id: n.ref_id });
       } else {
-        toast.error('Cliente não encontrado.');
+        console.error('Cliente não encontrado para a notificação.');
       }
-      return;
-    }
-
-    if (n.tipo === 'PROSPECCAO') {
-      window.location.href = `/clientes/leads?leadId=${n.ref_id}`;
-      return;
-    }
-
-    if (n.tipo === 'AGENDA') {
-      window.location.href = `/agenda?id=${n.ref_id}`;
       return;
     }
   };
@@ -375,18 +370,38 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         />
       )}
 
+      {/* Modal Comercial Oficial usando o serviceV2 */}
       {modalAtivo?.tipo === 'CONTATO_GERAL' && clienteParaModal && (
-        <ModalContato
+        <ModalAcoesComerciais
           isOpen={true}
-          cliente={clienteParaModal}
+          lead={clienteParaModal}
           onClose={() => {
             setModalAtivo(null);
             setClienteParaModal(null);
           }}
+          onSave={async (dadosAcao) => {
+            try {
+              // Chama diretamente o service v2 que você já tem pronto
+              await salvarAcaoComercialV2(dadosAcao);
+            } catch (error) {
+              console.error('Erro ao salvar pelo service v2:', error);
+            } finally {
+              carregarNotificacoes();
+              setModalAtivo(null);
+              setClienteParaModal(null);
+            }
+          }}
+        />
+      )}
+
+      {/* Modal de Sinistro Oficial (Recebe clienteId nativamente conforme a interface dele) */}
+      {modalAtivo?.tipo === 'SINISTRO_GERAL' && (
+        <ModalGerenciamentoSinistro
+          clienteId={modalAtivo.id}
+          onClose={() => setModalAtivo(null)}
           onSuccess={() => {
             carregarNotificacoes();
             setModalAtivo(null);
-            setClienteParaModal(null);
           }}
         />
       )}
