@@ -60,7 +60,7 @@ export default function AgendaCorretorCarteira({ isOpen, onClose, cliente, onSuc
       setSinistrosAtivos(sinistros || []);
 
       const [resInteracoes, resOcorrencias] = await Promise.all([
-        supabase.from('tab_interacoes_v2').select('*').eq('cliente_id', cliente.id).order('criado_em', { ascending: false }),
+        supabase.from('tab_interacoes').select('*').eq('cliente_id', cliente.id).order('criado_em', { ascending: false }),
         supabase.from('tab_sinistros_ocorrencias')
           .select('*, tab_sinistros!inner(cliente_id, tab_proposta_itens(base_produtos(nome)))')
           .eq('tab_sinistros.cliente_id', cliente.id)
@@ -115,8 +115,8 @@ export default function AgendaCorretorCarteira({ isOpen, onClose, cliente, onSuc
       .eq('id', user?.id)
       .single();
 
-    // 1. Inserção do histórico unificado na tab_interacoes_v2
-    const { error: errInteracao } = await supabase.from('tab_interacoes_v2').insert([{
+    // 1. Inserção do histórico unificado na tab_interacoes
+    const { error: errInteracao } = await supabase.from('tab_interacoes').insert([{
       cliente_id: cliente.id,
       corretor_id: user?.id,
       corretora_id: perf?.corretora_id,
@@ -126,8 +126,8 @@ export default function AgendaCorretorCarteira({ isOpen, onClose, cliente, onSuc
 
     if (errInteracao) throw errInteracao;
 
-    // 2. Atualização da data e horário de retorno na tab_clientes_v2
-    const { error: errCliente } = await supabase.from('tab_clientes_v2').update({
+    // 2. Atualização da data e horário de retorno na tab_clientes
+    const { error: errCliente } = await supabase.from('tab_clientes').update({
       data_retorno: dataRetorno || null,
       horario_retorno: horarioRetorno || null
     }).eq('id', cliente.id);
@@ -168,7 +168,7 @@ export default function AgendaCorretorCarteira({ isOpen, onClose, cliente, onSuc
       }).eq('id', sinistroSelecionadoId);
       if (errSin) throw errSin;
 
-      const { error: errCli } = await supabase.from('tab_clientes_v2').update({
+      const { error: errCli } = await supabase.from('tab_clientes').update({
         data_retorno_sinistro: dataRetornoSinistro || null,
         horario_retorno_sinistro: horarioRetornoSinistro || null,
         atualizado_em: new Date().toISOString()

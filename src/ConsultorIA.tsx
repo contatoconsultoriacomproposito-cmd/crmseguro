@@ -50,10 +50,10 @@ const handleEnviar = async () => {
         const queryInfo = JSON.parse(respostaFinal);
         let resultadoDados: any = null;
 
-        // --- LÓGICA PARA CLIENTES (tab_clientes_v2) ---
+        // --- LÓGICA PARA CLIENTES (tab_clientes) ---
         if (queryInfo.acao === 'consultar_clientes') {
           let query = supabase
-            .from('tab_clientes_v2')
+            .from('tab_clientes')
             .select('*', { count: 'exact' })
             .eq('corretora_id', perfil?.corretora_id);
 
@@ -108,10 +108,10 @@ const handleEnviar = async () => {
           }
         }
 
-        // --- LÓGICA PARA INTERAÇÕES / PRODUTIVIDADE (tab_interacoes_v2) ---
+        // --- LÓGICA PARA INTERAÇÕES / PRODUTIVIDADE (tab_interacoes) ---
         else if (queryInfo.acao === 'consultar_interacoes') {
           let query = supabase
-            .from('tab_interacoes_v2')
+            .from('tab_interacoes')
             .select('*', { count: 'exact' })
             .eq('corretora_id', perfil?.corretora_id);
 

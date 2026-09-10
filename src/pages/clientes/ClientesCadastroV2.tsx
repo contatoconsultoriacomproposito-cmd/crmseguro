@@ -38,7 +38,7 @@ export default function ClientesCadastroV2() {
     carregarCorretores();
   }, [userProfile]);
 
-  // Função para salvar o cliente na tab_clientes_v2 no Supabase
+  // Função para salvar o cliente na tab_clientes no Supabase
   const salvarClienteNoBanco = async (payload: any) => {
   // 1. Desencapsula o payload caso venha envolvido no objeto { cliente: ... }
   const dadosForm = payload.cliente || payload;
@@ -143,7 +143,7 @@ export default function ClientesCadastroV2() {
     sexo: sexo || null,
   };
 
-  // 3. Payload final alinhado estritamente com o schema public.tab_clientes_v2
+  // 3. Payload final alinhado estritamente com o schema public.tab_clientes
   const payloadFinal = {
     corretora_id: userProfile?.corretora_id,
     corretor_id: corretorResponsavelId,
@@ -196,7 +196,7 @@ export default function ClientesCadastroV2() {
   };
 
   const { data, error } = await supabase
-    .from('tab_clientes_v2')
+    .from('tab_clientes')
     .insert([payloadFinal])
     .select()
     .single();
@@ -248,7 +248,7 @@ export default function ClientesCadastroV2() {
     }
   };
 
-  // Salvamento da Ação Comercial na tab_interacoes_v2
+  // Salvamento da Ação Comercial na tab_interacoes
   const handleSaveAcaoComercial = async (dadosAcao: any) => {
     const clienteIdReal =
       clienteSalvo?.id || dadosAcao.cliente_id || dadosAcao.lead_id;
@@ -296,7 +296,7 @@ export default function ClientesCadastroV2() {
       let payloadsParaInserir: any[] = [];
 
       if (listaAgendamentos) {
-        // Se houver array de agendamentos, cria um registro na tab_interacoes_v2 para CADA UM deles
+        // Se houver array de agendamentos, cria um registro na tab_interacoes para CADA UM deles
         payloadsParaInserir = listaAgendamentos.map((ag: any) => {
           const dataRet = ag.data_retorno || ag.data || null;
           const horaRet = ag.horario_retorno || ag.horario || null;
@@ -350,7 +350,7 @@ export default function ClientesCadastroV2() {
 
       // 2. Insere todas as interações no Supabase em lote
       const { error } = await supabase
-        .from('tab_interacoes_v2')
+        .from('tab_interacoes')
         .insert(payloadsParaInserir);
 
       if (error) {
@@ -375,7 +375,7 @@ export default function ClientesCadastroV2() {
       }
 
       await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update(updateClientePayload)
         .eq('id', clienteIdReal);
 

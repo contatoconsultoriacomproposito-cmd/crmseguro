@@ -224,20 +224,20 @@ export default function AgendaCorretor() {
       }
 
       let queryCli = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('id, nome_razao_social, nome_fantasia, tipo_cliente, cpf_cnpj, contatos, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_atendimento, temperatura, corretora_id, corretor_id')
         .eq('corretora_id', perfil.corretora_id)
         .or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
 
       let queryAgendaFria = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('*')
         .eq('corretora_id', perfil.corretora_id)
         .eq('fase_atendimento', 'Contato Inicial')
         .not('data_retorno', 'is', null);
 
       let queryProspeccaoFria = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('*')
         .eq('corretora_id', perfil.corretora_id)
         .eq('fase_atendimento', 'Não Contatado')
@@ -256,7 +256,7 @@ export default function AgendaCorretor() {
             corretora_id, 
             corretor_id,
             cliente_id,
-            tab_clientes_v2!tab_propostas_cliente_id_fkey ( 
+            tab_clientes!tab_propostas_cliente_id_fkey ( 
               id, 
               nome_razao_social, 
               nome_fantasia, 
@@ -349,7 +349,7 @@ export default function AgendaCorretor() {
       dadosRenovacoes.forEach(renov => {
         const opcao = Array.isArray(renov.tab_proposta_opcoes) ? renov.tab_proposta_opcoes[0] : renov.tab_proposta_opcoes;
         const proposta = Array.isArray(opcao?.tab_propostas) ? opcao.tab_propostas[0] : opcao?.tab_propostas;
-        const infoCli = Array.isArray(proposta?.tab_clientes_v2) ? proposta.tab_clientes_v2[0] : proposta?.tab_clientes_v2;
+        const infoCli = Array.isArray(proposta?.tab_clientes) ? proposta.tab_clientes[0] : proposta?.tab_clientes;
         
         const corretorIdItem = proposta?.corretor_id;
         const contatosArray = parseContatos(infoCli?.contatos);
@@ -568,7 +568,7 @@ export default function AgendaCorretor() {
   const abrirModalAcoesComerciais = useCallback(async (clienteId: string) => {
     if (!clienteId) return;
     const { data, error } = await supabase
-      .from('tab_clientes_v2')
+      .from('tab_clientes')
       .select('*')
       .eq('id', clienteId)
       .maybeSingle();
@@ -599,7 +599,7 @@ export default function AgendaCorretor() {
         setClienteFrioSelecionado(clienteData);
         setModalFrioAberto(true);
       } else if (clienteId) {
-        const { data, error } = await supabase.from('tab_clientes_v2').select('*').eq('id', clienteId).single();
+        const { data, error } = await supabase.from('tab_clientes').select('*').eq('id', clienteId).single();
         if (data && !error) {
           setClienteFrioSelecionado(data as ClienteDados);
           setModalFrioAberto(true);
@@ -634,7 +634,7 @@ export default function AgendaCorretor() {
             *,
             tab_propostas(
               *,
-              tab_clientes_v2(*)
+              tab_clientes(*)
             )
           )
         `)
@@ -697,7 +697,7 @@ export default function AgendaCorretor() {
       if (!perfil) return;
 
       let query = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('*')
         .eq('corretora_id', perfil.corretora_id)
         .or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
@@ -711,7 +711,7 @@ export default function AgendaCorretor() {
 
       for (const cliente of clientes) {
         await supabase.functions.invoke('sync-to-google-calendar', {
-          body: { record: cliente, origem: 'tab_clientes_v2' }
+          body: { record: cliente, origem: 'tab_clientes' }
         });
       }
       toast.success('Google Agenda populada com sucesso!');
@@ -806,7 +806,7 @@ export default function AgendaCorretor() {
     try {
       if (origem === 'AGENDA_FRIA') {
         const { error: dbError } = await supabase
-          .from('tab_clientes_v2')
+          .from('tab_clientes')
           .update({ data_retorno: novaData, horario_retorno: novoHorario, atualizado_em: new Date().toISOString() })
           .eq('id', clienteId);
         if (dbError) throw dbError;
@@ -825,7 +825,7 @@ export default function AgendaCorretor() {
           ? { data_retorno_sinistro: novaData, horario_retorno_sinistro: novoHorario, atualizado_em: new Date().toISOString() }
           : { data_retorno: novaData, horario_retorno: novoHorario, atualizado_em: new Date().toISOString() };
 
-        const { error: dbError } = await supabase.from('tab_clientes_v2').update(updateData).eq('id', clienteId);
+        const { error: dbError } = await supabase.from('tab_clientes').update(updateData).eq('id', clienteId);
         if (dbError) throw dbError;
         toast.success(`${isSinistro ? 'Sinistro' : 'Retorno'} atualizado!`);
       }

@@ -29,7 +29,7 @@ export const VisualCardHeader = ({ cliente, onUpdate, onOpenDocs }: HeaderProps)
   const handleDeletarCliente = async () => {
     const nomeCliente = cliente.nome_fantasia || cliente.nome_razao_social || cliente.nome || cliente.razao_social || 'este cliente';
     if (window.confirm(`Tem certeza que deseja excluir ${nomeCliente}?`)) {
-      const { error } = await supabase.from('tab_clientes_v2').delete().eq('id', cliente.id);
+      const { error } = await supabase.from('tab_clientes').delete().eq('id', cliente.id);
       if (!error && onUpdate) onUpdate();
     }
   };

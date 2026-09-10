@@ -66,8 +66,14 @@ interface Cliente {
   fase_kanban: string;
   posicao_kanban: number;
   tab_propostas?: any[];
-  tab_interacoes_v2?: any[];
+  tab_interacoes?: any[];
   usuarios_perfis?: { nome: string };
+}
+
+interface CorretorOpcao {
+  id: string;
+  nome: string;
+  tipo_usuario: string;
 }
 
 export default function KanbanAtendimentos() {
@@ -77,7 +83,10 @@ export default function KanbanAtendimentos() {
   const { colunas, loading: loadingConfig, refresh } = useKanbanConfig('atendimento');
 
   const [termoBusca, setTermoBusca] = useState('');
-  const [corretorBusca, setCorretorBusca] = useState('');
+  const [corretoresLista, setCorretoresLista] = useState<CorretorOpcao[]>([]);
+  const [corretorSelecionado, setCorretorSelecionado] = useState<string | null>(null);
+  const [perfilUsuario, setPerfilUsuario] = useState<{ id: string; tipo_usuario: string; corretora_id: string } | null>(null);
+
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [valorMin, setValorMin] = useState('');
@@ -103,31 +112,71 @@ export default function KanbanAtendimentos() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // 1. Carrega dados do perfil e a lista de corretores disponíveis
   useEffect(() => {
-    fetchClientes();
-  }, [termoBusca, corretorBusca, dataInicio, dataFim, valorMin, valorMax]);
+    carregarPerfilECorretores();
+  }, []);
 
-  async function fetchClientes() {
+  async function carregarPerfilECorretores() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: perfil } = await supabase
         .from('usuarios_perfis')
-        .select('tipo_usuario, corretora_id')
+        .select('id, tipo_usuario, corretora_id, nome')
         .eq('id', user.id)
         .single();
 
       if (!perfil) return;
+      setPerfilUsuario(perfil);
+
+      if (perfil.tipo_usuario === 'CORRETORA') {
+        // Busca todos os corretores vinculados a esta corretora + a própria corretora
+        const { data: corretores } = await supabase
+          .from('usuarios_perfis')
+          .select('id, nome, tipo_usuario')
+          .or(`id.eq.${user.id},corretora_id.eq.${user.id}`)
+          .eq('ativo', true)
+          .order('nome', { ascending: true });
+
+        if (corretores) {
+          setCorretoresLista(corretores);
+        }
+        // Define como PADRÃO o filtro no ID da Corretora (Atendimento Direto)
+        setCorretorSelecionado(user.id);
+      } else {
+        // Se for CORRETOR, trava no próprio ID
+        setCorretorSelecionado(user.id);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar perfil/corretores:', err);
+    }
+  }
+
+  // 2. Dispara a busca quando qualquer filtro alterar
+  useEffect(() => {
+    if (perfilUsuario) {
+      fetchClientes();
+    }
+  }, [termoBusca, corretorSelecionado, dataInicio, dataFim, valorMin, valorMax, perfilUsuario]);
+
+  async function fetchClientes() {
+    try {
+      // SE O FILTRO DE CORRETOR AINDA NÃO FOI DEFINIDO, ABORTA A BUSCA
+      if (!perfilUsuario || corretorSelecionado === null) return;
 
       let query = supabase
-        .from('tab_clientes_v2')
-        .select('*, tab_interacoes_v2(id)')
+        .from('tab_clientes')
+        .select('*, tab_interacoes(id)')
         .eq('status_kanban', 'lead')
-        .eq('corretora_id', perfil.corretora_id);
+        .eq('corretora_id', perfilUsuario.corretora_id);
 
-      if (perfil.tipo_usuario === 'CORRETOR') {
-        query = query.eq('corretor_id', user.id);
+      // FILTRO DE CORRETOR:
+      if (perfilUsuario.tipo_usuario === 'CORRETOR') {
+        query = query.eq('corretor_id', perfilUsuario.id);
+      } else if (corretorSelecionado !== 'TODOS') {
+        query = query.eq('corretor_id', corretorSelecionado);
       }
 
       if (termoBusca) {
@@ -162,7 +211,6 @@ export default function KanbanAtendimentos() {
           if (!propostasMap[proposta.cliente_id]) {
             propostasMap[proposta.cliente_id] = [];
           }
-
           propostasMap[proposta.cliente_id].push(proposta);
         });
       }
@@ -174,16 +222,10 @@ export default function KanbanAtendimentos() {
       const corretoresMap: Record<string, string> = {};
 
       if (corretorIds.length) {
-        let corrQuery = supabase
+        const { data: corretoresData, error: corretoresError } = await supabase
           .from('usuarios_perfis')
           .select('id, nome')
           .in('id', corretorIds);
-
-        if (corretorBusca) {
-          corrQuery = corrQuery.ilike('nome', `%${corretorBusca}%`);
-        }
-
-        const { data: corretoresData, error: corretoresError } = await corrQuery;
 
         if (corretoresError) throw corretoresError;
 
@@ -196,10 +238,9 @@ export default function KanbanAtendimentos() {
       const vMax = valorMax ? parseCurrencyToNumber(valorMax) : Infinity;
 
       const clientesTratados = clientesList
-        .filter(cliente => !corretorBusca || !cliente.corretor_id || Boolean(corretoresMap[cliente.corretor_id]))
         .map(cliente => {
           const propostas = propostasMap[cliente.id] || [];
-          const temInteracao = (cliente.tab_interacoes_v2?.length || 0) > 0;
+          const temInteracao = (cliente.tab_interacoes?.length || 0) > 0;
           const temNegociacao = propostas.some(proposta => proposta.status === 'Em Negociação');
 
           let novaFase = cliente.fase_kanban;
@@ -210,7 +251,7 @@ export default function KanbanAtendimentos() {
 
           if (novaFase !== cliente.fase_kanban) {
             supabase
-              .from('tab_clientes_v2')
+              .from('tab_clientes')
               .update({ fase_kanban: novaFase, fase_atendimento: novaFase })
               .eq('id', cliente.id)
               .then(({ error }) => error && console.error(error));
@@ -221,7 +262,7 @@ export default function KanbanAtendimentos() {
             fase_kanban: novaFase,
             tab_propostas: propostas,
             usuarios_perfis: {
-              nome: corretoresMap[cliente.corretor_id || ''] || 'Não atribuído'
+              nome: corretoresMap[cliente.corretor_id || ''] || 'Atendimento Direto'
             }
           };
         })
@@ -299,7 +340,7 @@ export default function KanbanAtendimentos() {
 
       const updates = novaLista.map((cliente, index) =>
         supabase
-          .from('tab_clientes_v2')
+          .from('tab_clientes')
           .update({ posicao_kanban: index })
           .eq('id', cliente.id)
       );
@@ -308,7 +349,7 @@ export default function KanbanAtendimentos() {
       return;
     }
 
-    const temInteracao = (clienteAtivo.tab_interacoes_v2?.length || 0) > 0;
+    const temInteracao = (clienteAtivo.tab_interacoes?.length || 0) > 0;
     const temNegociacao = clienteAtivo.tab_propostas?.some(
       proposta => proposta.status === 'Em Negociação'
     );
@@ -339,7 +380,7 @@ export default function KanbanAtendimentos() {
       );
 
       const { error } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({
           fase_kanban: colDestino,
           fase_atendimento: colDestino,
@@ -356,6 +397,17 @@ export default function KanbanAtendimentos() {
       fetchClientes();
     }
   }
+
+  const limparFiltros = () => {
+    setDataInicio('');
+    setDataFim('');
+    setValorMin('');
+    setValorMax('');
+    setTermoBusca('');
+    if (perfilUsuario?.tipo_usuario === 'CORRETORA') {
+      setCorretorSelecionado(perfilUsuario.id);
+    }
+  };
 
   return (
     <div className="px-4 py-8 bg-[#F8FAFC] dark:bg-[#09090B] min-h-screen w-full">
@@ -377,21 +429,31 @@ export default function KanbanAtendimentos() {
             <BuscaGlobal onSearch={setTermoBusca} />
           </div>
 
-          <div className="w-56">
-            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">
-              Filtrar Corretor
-            </label>
-            <div className="relative">
-              <UserSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="text"
-                placeholder="Nome do Corretor..."
-                value={corretorBusca}
-                onChange={e => setCorretorBusca(e.target.value)}
-                className="w-full h-12 pl-10 pr-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none"
-              />
+          {/* FILTRO DE CORRETOR (EXIBIDO SE FOR PERFIL CORRETORA) */}
+          {perfilUsuario?.tipo_usuario === 'CORRETORA' && (
+            <div className="w-64">
+              <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">
+                Filtrar Responsável
+              </label>
+              <div className="relative">
+                <UserSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                <select
+                  value={corretorSelecionado || ''}
+                  onChange={e => setCorretorSelecionado(e.target.value)}
+                  className="w-full h-12 pl-10 pr-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-200 outline-none cursor-pointer appearance-none"
+                >
+                  {corretoresLista.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.id === perfilUsuario.id
+                        ? `Atendimento Direto (${item.nome})`
+                        : item.nome}
+                    </option>
+                  ))}
+                  <option value="TODOS">Todos os Corretores</option>
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex flex-col gap-2 text-center">
             <label className="block text-[10px] font-black uppercase text-slate-400 ml-1">
@@ -438,15 +500,9 @@ export default function KanbanAtendimentos() {
           </div>
 
           <button
-            onClick={() => {
-              setDataInicio('');
-              setDataFim('');
-              setValorMin('');
-              setValorMax('');
-              setTermoBusca('');
-              setCorretorBusca('');
-            }}
+            onClick={limparFiltros}
             className="h-12 w-12 flex items-center justify-center bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl transition-all shadow-sm group"
+            title="Limpar Filtros"
           >
             <Eraser size={18} className="group-hover:rotate-12 transition-transform" />
           </button>

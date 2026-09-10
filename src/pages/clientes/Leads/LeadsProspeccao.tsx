@@ -218,7 +218,7 @@ export default function LeadsProspeccao() {
         (async () => {
           try {
             const { data: leadDoBanco, error } = await supabase
-              .from("tab_clientes_v2")
+              .from("tab_clientes")
               .select("*")
               .eq("id", leadIdDaUrl)
               .eq("corretora_id", perfilUsuario.corretora_id)
@@ -251,9 +251,9 @@ export default function LeadsProspeccao() {
     const de = (paginaAtual - 1) * itensPorPagina;
     const ate = de + itensPorPagina - 1;
 
-    // 1. QUERY PRINCIPAL UNIFICADA (Paginação + Dados na tab_clientes_v2)
+    // 1. QUERY PRINCIPAL UNIFICADA (Paginação + Dados na tab_clientes)
     let query = supabase
-      .from("tab_clientes_v2")
+      .from("tab_clientes")
       .select("*", { count: "exact" })
       .eq("corretora_id", perfilUsuario.corretora_id);
 
@@ -312,7 +312,7 @@ export default function LeadsProspeccao() {
     // 2. BUSCAS SECUNDÁRIAS DE CONTAGEM OTIMIZADAS
     try {
       let baseFiltroContagem = supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .select("cnae_principal, dados_complementares")
         .eq("corretora_id", perfilUsuario.corretora_id);
 
@@ -482,7 +482,7 @@ export default function LeadsProspeccao() {
         return;
       }
 
-      const { error } = await supabase.from("tab_clientes_v2").insert(registrosTratados);
+      const { error } = await supabase.from("tab_clientes").insert(registrosTratados);
       if (error) throw error;
 
       toast.success(`${registrosTratados.length} leads frios importados e protegidos por RLS!`);
@@ -515,7 +515,7 @@ export default function LeadsProspeccao() {
     if (!window.confirm(`Tem certeza de que deseja apagar permanentemente ${idsParaExcluir.length} registro(s)?`)) return;
 
     try {
-      const { error } = await supabase.from("tab_clientes_v2").delete().in("id", idsParaExcluir);
+      const { error } = await supabase.from("tab_clientes").delete().in("id", idsParaExcluir);
       if (error) throw error;
       
       toast.success("Registros removidos com sucesso!");
@@ -577,7 +577,7 @@ export default function LeadsProspeccao() {
 
   try {
     const { data, error } = await supabase
-      .from("tab_interacoes_v2")
+      .from("tab_interacoes")
       .select("*")
       .eq("cliente_id", lead.id)
       .order("criado_em", { ascending: false });
@@ -599,9 +599,9 @@ const salvarNovaAcaoAcompanhamento = async () => {
     const dataRetornoFinal = novaAcaoRetorno || null;
     const horarioRetornoFinal = novaAcaoHorarioRetorno || null;
 
-    // 1. Registra a interação na tab_interacoes_v2
+    // 1. Registra a interação na tab_interacoes
     const { error: errorAcao } = await supabase
-      .from("tab_interacoes_v2")
+      .from("tab_interacoes")
       .insert({
         cliente_id: leadTimeline.id,
         corretor_id: perfilUsuario?.id,
@@ -613,7 +613,7 @@ const salvarNovaAcaoAcompanhamento = async () => {
 
     if (errorAcao) throw errorAcao;
 
-    // 2. Atualiza o lead na tab_clientes_v2
+    // 2. Atualiza o lead na tab_clientes
     const complementaresAtuais = typeof leadTimeline.dados_complementares === 'string'
       ? JSON.parse(leadTimeline.dados_complementares)
       : (leadTimeline.dados_complementares || {});
@@ -632,7 +632,7 @@ const salvarNovaAcaoAcompanhamento = async () => {
     };
 
     const { error: errorUpdate } = await supabase
-      .from("tab_clientes_v2")
+      .from("tab_clientes")
       .update(payloadUpdate)
       .eq("id", leadTimeline.id);
 
@@ -703,7 +703,7 @@ const processarConversaoOuroFinal = async () => {
 
     // 1. Validação prévia de duplicidade na tabela de destino V2
     const { data: existente } = await supabase
-      .from("tab_clientes_v2")
+      .from("tab_clientes")
       .select("id")
       .eq("cpf_cnpj", leadConversao.cnpj)
       .eq("corretora_id", perfilUsuario?.corretora_id)
@@ -796,7 +796,7 @@ const processarConversaoOuroFinal = async () => {
 
     // 5. Inserção na tabela destino exigindo retorno explícito
     const { data: insertedData, error: insertErr } = await supabase
-      .from("tab_clientes_v2")
+      .from("tab_clientes")
       .insert([crmPayload])
       .select();
     
@@ -811,7 +811,7 @@ const processarConversaoOuroFinal = async () => {
 
     // 6. Atualização do status na origem para convertido somente após sucesso real
     const { error: updateErr } = await supabase
-      .from("tab_clientes_v2")
+      .from("tab_clientes")
       .update({ estagio: "convertido" })
       .eq("id", leadConversao.id);
 
@@ -2809,7 +2809,7 @@ return (
                         complementaresAtuais.cpfs_socios_texto = leadEditar.cpfs_socios || complementaresAtuais.cpfs_socios_texto;
 
                         const { error } = await supabase
-                          .from("tab_clientes_v2")
+                          .from("tab_clientes")
                           .update({
                             estagio: leadEditar.status_prospeccao || leadEditar.estagio,
                             contatos: contatosAtuais,

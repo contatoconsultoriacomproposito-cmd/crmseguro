@@ -91,7 +91,7 @@ export default function ProdutosLista() {
     setClienteDrawer({ isOpen: true, loading: true, dados: null });
     try {
       const { data, error } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .select('id, dados')
         .eq("id", clienteId)
         .single();
@@ -152,7 +152,7 @@ export default function ProdutosLista() {
       const perfilAtivo = perfilAtual || userProfile;
       if (!perfilAtivo?.corretora_id) return;
 
-      // 1. Busca os itens da proposta SEM a relação automática com tab_clientes_v2
+      // 1. Busca os itens da proposta SEM a relação automática com tab_clientes
       let query = supabase
         .from("tab_proposta_itens")
         .select(`
@@ -218,12 +218,12 @@ export default function ProdutosLista() {
         )
       );
 
-      // 3. Busca os nomes na tab_clientes_v2 de forma isolada
-      // 3. Busca os nomes na tab_clientes_v2 de forma isolada
+      // 3. Busca os nomes na tab_clientes de forma isolada
+      // 3. Busca os nomes na tab_clientes de forma isolada
       let clientesMap: Record<string, any> = {};
       if (clienteIds.length > 0) {
         const { data: clientesData, error: cliError } = await supabase
-          .from("tab_clientes_v2")
+          .from("tab_clientes")
           .select("id, nome_razao_social, cpf_cnpj") // Removido 'dados'
           .in("id", clienteIds);
 

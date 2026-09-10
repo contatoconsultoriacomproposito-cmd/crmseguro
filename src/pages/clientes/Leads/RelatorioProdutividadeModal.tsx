@@ -54,15 +54,15 @@ export default function RelatorioProdutividadeModal({
   setLoading(true);
   try {
     let query = supabase
-      .from("tab_interacoes_v2")
+      .from("tab_interacoes")
       .select(`
         id, tipo_acao, desfecho, criado_em, observacao, cliente_id,
-        tab_clientes_v2 (
+        tab_clientes (
           id, nome_razao_social, nome_fantasia, cpf_cnpj, temperatura, fase_atendimento,
           municipio, uf, data_retorno, horario_retorno, dados_complementares_pf, dados_complementares_pj
         )
       `)
-      .eq("tab_clientes_v2.corretora_id", corretoraId);
+      .eq("tab_clientes.corretora_id", corretoraId);
 
     if (corretorId) {
       query = query.eq("corretor_id", corretorId);
@@ -100,7 +100,7 @@ export default function RelatorioProdutividadeModal({
       if (clienteId) {
         if (!mapaClientes[clienteId]) {
           mapaClientes[clienteId] = { 
-            cliente: acao.tab_clientes_v2, 
+            cliente: acao.tab_clientes, 
             totalAcoes: 0, 
             ultimaInteracao: acao.criado_em, 
             acoes: [] 

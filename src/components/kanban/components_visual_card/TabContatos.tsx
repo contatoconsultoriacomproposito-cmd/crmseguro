@@ -37,7 +37,7 @@ export const TabContatos: React.FC<TabContatosProps> = ({
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('tab_interacoes_v2')
+        .from('tab_interacoes')
         .select('*')
         .eq('cliente_id', clienteId)
         .order('criado_em', { ascending: false });
@@ -60,7 +60,7 @@ export const TabContatos: React.FC<TabContatosProps> = ({
     if (!window.confirm('Tem certeza que deseja excluir este registro de interação?')) return;
     try {
       const { error } = await supabase
-        .from('tab_interacoes_v2')
+        .from('tab_interacoes')
         .delete()
         .eq('id', id);
 

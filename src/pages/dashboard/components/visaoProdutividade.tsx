@@ -82,7 +82,7 @@ export default function VisaoProdutividade({
       if (!corretoraId) return;
       
       let query = supabase
-        .from('tab_interacoes_v2')
+        .from('tab_interacoes')
         .select('data_historico, criado_em')
         .eq('corretora_id', corretoraId);
 
@@ -115,10 +115,10 @@ export default function VisaoProdutividade({
       try {
         if (activeTab === 'carteira' && interacoesCarteira === null) {
           let query = supabase
-            .from('tab_interacoes_v2') 
+            .from('tab_interacoes') 
             .select(`
               *,
-              tab_clientes_v2!inner ( id, nome_razao_social, nome_fantasia )
+              tab_clientes!inner ( id, nome_razao_social, nome_fantasia )
             `)
             .eq('corretora_id', corretoraId)
             .gte('criado_em', `${dataInicio}T00:00:00`)
@@ -135,12 +135,12 @@ export default function VisaoProdutividade({
           setInteracoesCarteira(data || []);
 
         } else if (activeTab === 'importados' && (acoesImportados === null || clientesFriosLista === null)) {
-          // 1. Busca Ações Passadas via tab_interacoes_v2
+          // 1. Busca Ações Passadas via tab_interacoes
           let queryAcoes = supabase
-            .from('tab_interacoes_v2')
+            .from('tab_interacoes')
             .select(`
               *,
-              tab_clientes_v2!inner (
+              tab_clientes!inner (
                 id,
                 nome_razao_social,
                 nome_fantasia,
@@ -168,7 +168,7 @@ export default function VisaoProdutividade({
 
           // 2. Busca Clientes V2
           let queryV2 = supabase
-            .from('tab_clientes_v2')
+            .from('tab_clientes')
             .select('id, nome_razao_social, nome_fantasia, temperatura, dados_complementares_pf, dados_complementares_pj, fase_atendimento, data_retorno, horario_retorno')
             .eq('corretora_id', corretoraId);
 
@@ -186,7 +186,7 @@ export default function VisaoProdutividade({
 
         } else if (activeTab === 'avulsos' && clientesAvulsos === null) {
           let query = supabase
-            .from('tab_clientes_v2')
+            .from('tab_clientes')
             .select('*')
             .eq('corretora_id', corretoraId)
             .gte('criado_em', `${dataInicio}T00:00:00`)
@@ -276,7 +276,7 @@ export default function VisaoProdutividade({
       else if (acao.includes('visita') || acao.includes('visitar')) counts.visita++;
       else counts.outros++;
 
-      const cliente = inter.tab_clientes_v2;
+      const cliente = inter.tab_clientes;
       const nomeCliente = cliente?.nome_fantasia || cliente?.nome_razao_social || "Cliente não Identificado";
       const cId = inter.cliente_id || 'sem-id';
 
@@ -342,7 +342,7 @@ export default function VisaoProdutividade({
 
       // 3. Resolução de Identidade do Cliente
       const cId = acaoItem.cliente_id || acaoItem.cliente_frio_id;
-      const clienteObj = acaoItem.tab_clientes_v2 || clientesMap.get(cId);
+      const clienteObj = acaoItem.tab_clientes || clientesMap.get(cId);
       
       const nomeCliente = clienteObj?.nome_fantasia || clienteObj?.nome_razao_social || "Cliente Importado";
 

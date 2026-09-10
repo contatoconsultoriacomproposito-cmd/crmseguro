@@ -178,7 +178,7 @@ export default function ParceirosTriagem() {
     if (!termo || termo.length < 3 || !userProfile?.corretora_id) return;
     setBuscandoCRM(true);
     const { data } = await supabase
-      .from('tab_clientes_v2')
+      .from('tab_clientes')
       .select('*')
       .eq('corretora_id', userProfile.corretora_id)
       .or(`nome_razao_social.ilike.*${termo}*,cnpj.ilike.*${termo}*,cpf.ilike.*${termo}*`)

@@ -183,7 +183,7 @@ export default function ModeloCotacaoDental({ propostaId, onClose }: ModeloCotac
   try {
     setLoading(true);
 
-    // 1. Busca a proposta SEM o JOIN direto com tab_clientes_v2
+    // 1. Busca a proposta SEM o JOIN direto com tab_clientes
     const { data: proposta, error: errorProp } = await supabase
       .from("tab_propostas")
       .select(`
@@ -201,7 +201,7 @@ export default function ModeloCotacaoDental({ propostaId, onClose }: ModeloCotac
     let clienteDb = null;
     if (proposta.cliente_id) {
       const { data: cliente, error: errorCliente } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .select("*")
         .eq("id", proposta.cliente_id)
         .maybeSingle();

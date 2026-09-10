@@ -72,7 +72,7 @@ export default function TabProdutos({ clienteId, onUpdate }: TabProdutosProps) {
     setClienteDrawer({ isOpen: true, loading: true, dados: null });
     try {
       const { data, error } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .select('id, dados')
         .eq("id", idCli)
         .single();
@@ -191,7 +191,7 @@ export default function TabProdutos({ clienteId, onUpdate }: TabProdutosProps) {
       let clientesMap: Record<string, any> = {};
       if (clienteIds.length > 0) {
         const { data: clientesData, error: cliError } = await supabase
-          .from("tab_clientes_v2")
+          .from("tab_clientes")
           .select("id, nome_razao_social, cpf_cnpj")
           .in("id", clienteIds);
 

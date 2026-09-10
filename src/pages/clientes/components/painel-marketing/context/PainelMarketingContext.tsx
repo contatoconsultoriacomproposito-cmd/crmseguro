@@ -35,7 +35,7 @@ export interface DadosCadastraisExtra {
   ddd_telefone_1?: string | null;
   telefone_adicional?: string | null;
   nomes_socios?: string | null;
-  tabela_origem?: 'tab_clientes_v2' | null;
+  tabela_origem?: 'tab_clientes' | null;
 }
 
 // Interface restaurada com a propriedade opcional para sanar os erros do compilador
@@ -186,7 +186,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
 
         // 1ª TENTATIVA: Filtro exato via JSONB operador 'contains' (cs)
         const { data: dataExact, error: errorExact } = await supabase
-          .from('tab_clientes_v2')
+          .from('tab_clientes')
           .select('*')
           .eq('corretora_id', corretoraIdFiltro)
           .filter('contatos', 'cs', JSON.stringify([{ email: emailOriginal }]))
@@ -202,7 +202,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
         } else {
           // 2ª TENTATIVA (FALLBACK): Busca usando textSearch/or no campo casted ou ilike na busca textual
           const { data: dataFallback, error: errorFallback } = await supabase
-            .from('tab_clientes_v2')
+            .from('tab_clientes')
             .select('*')
             .eq('corretora_id', corretoraIdFiltro)
             .textSearch('contatos', emailBusca, { type: 'websearch', config: 'english' })
@@ -212,7 +212,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
           // Se o textSearch não for suportado na coluna, faz o fallback simples sem ILIKE em JSONB:
           if (errorFallback || !dataFallback || dataFallback.length === 0) {
             const { data: dataAll } = await supabase
-              .from('tab_clientes_v2')
+              .from('tab_clientes')
               .select('*')
               .eq('corretora_id', corretoraIdFiltro)
               .order('criado_em', { ascending: false })
@@ -285,7 +285,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
             ddd_telefone_1: contatoEncontrado.telefone || contatoEncontrado.whatsapp || null,
             nomes_socios: complementares.nomes_socios_texto || complementares.nomes_socios,
             cpfs_socios: complementares.cpfs_socios_texto || complementares.cpfs_socios,
-            tabela_origem: 'tab_clientes_v2'
+            tabela_origem: 'tab_clientes'
           };
         }
       }
@@ -426,7 +426,7 @@ export const PainelMarketingProvider: React.FC<{ children: React.ReactNode }> = 
 
       try {
         let queryLeads = supabase
-          .from('tab_clientes_v2')
+          .from('tab_clientes')
           .select('id, nome_razao_social, nome_fantasia, tipo_cliente, contatos, corretor_id')
           .eq('corretora_id', idCorretoraReal);
 

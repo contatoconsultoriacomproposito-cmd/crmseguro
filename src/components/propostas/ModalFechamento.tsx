@@ -249,7 +249,7 @@ export function ModalFechamento({ isOpen, onClose, onSuccess, proposta, tipo: ty
         }
       }
 
-      await supabase.from('tab_interacoes_v2').insert({
+      await supabase.from('tab_interacoes').insert({
         cliente_id: propostaSelecionada.cliente_id,
         corretor_id: propostaSelecionada.corretor_id,
         corretora_id: propostaSelecionada.corretora_id,

@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 import { SortableCard } from '../../components/kanban/SortableCard';
 import { BuscaGlobal } from '../../components/BuscaGlobal';
-//import { ModalFechamento } from '../../components/propostas/ModalFechamento';
 import { maskCurrency, parseCurrencyToNumber } from '../../utils/masks';
 import { toast } from 'react-hot-toast';
 import { useKanbanConfig } from './useKanbanConfig';
@@ -47,8 +46,20 @@ interface Cliente {
   horario_retorno?: string;
   corretor_id?: string;
   tab_propostas?: any[];
-  tab_interacoes_v2?: any[];
+  tab_interacoes?: any[];
   usuarios_perfis?: { nome: string };
+}
+
+interface Corretor {
+  id: string;
+  nome: string;
+}
+
+interface PerfilUsuario {
+  id: string;
+  tipo_usuario: string;
+  corretora_id: string;
+  nome: string;
 }
 
 export default function KanbanPerdas() {
@@ -58,8 +69,12 @@ export default function KanbanPerdas() {
 
   const { colunas, loading: loadingConfig, refresh } = useKanbanConfig('perdas');
 
+  // Controle do usuário e corretores
+  const [perfilUsuario, setPerfilUsuario] = useState<PerfilUsuario | null>(null);
+  const [corretoresLista, setCorretoresLista] = useState<Corretor[]>([]);
+  const [corretorSelecionado, setCorretorSelecionado] = useState<string | null>(null);
+
   const [termoBusca, setTermoBusca] = useState('');
-  const [corretorBusca, setCorretorBusca] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [valorMin, setValorMin] = useState('');
@@ -75,31 +90,64 @@ export default function KanbanPerdas() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // 1. Carrega Perfil e Corretores ao montar o componente
   useEffect(() => {
-    fetchClientes();
-  }, [termoBusca, dataInicio, dataFim, valorMin, valorMax, corretorBusca]);
+    carregarPerfilECorretores();
+  }, []);
 
-  async function fetchClientes() {
+  async function carregarPerfilECorretores() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: perfil } = await supabase
         .from('usuarios_perfis')
-        .select('tipo_usuario, corretora_id')
+        .select('id, tipo_usuario, corretora_id, nome')
         .eq('id', user.id)
         .single();
 
       if (!perfil) return;
 
-      let query = supabase
-        .from('tab_clientes_v2')
-        .select('*, tab_interacoes_v2(id, status_agendamento)')
-        .eq('status_kanban', 'perdido')
+      setPerfilUsuario(perfil);
+
+      // Define o valor padrão selecionado no filtro
+      setCorretorSelecionado(perfil.id);
+
+      // Busca a lista de corretores da mesma corretora
+      const { data: corretores } = await supabase
+        .from('usuarios_perfis')
+        .select('id, nome')
         .eq('corretora_id', perfil.corretora_id);
 
-      if (perfil.tipo_usuario === 'CORRETOR') {
-        query = query.eq('corretor_id', user.id);
+      if (corretores) {
+        setCorretoresLista(corretores);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar perfil e corretores:', error);
+    }
+  }
+
+  // 2. Dispara a busca quando os filtros mudam
+  useEffect(() => {
+    fetchClientes();
+  }, [termoBusca, dataInicio, dataFim, valorMin, valorMax, corretorSelecionado]);
+
+  async function fetchClientes() {
+    try {
+      // TRAVA DE SEGURANÇA: Cancela a execução se o perfil/filtro ainda não carregou
+      if (!perfilUsuario || corretorSelecionado === null) return;
+
+      let query = supabase
+        .from('tab_clientes')
+        .select('*, tab_interacoes(id, status_agendamento)')
+        .eq('status_kanban', 'perdido')
+        .eq('corretora_id', perfilUsuario.corretora_id);
+
+      // Aplica regra de permissão / filtro de responsável
+      if (perfilUsuario.tipo_usuario === 'CORRETOR') {
+        query = query.eq('corretor_id', perfilUsuario.id);
+      } else if (corretorSelecionado !== 'TODOS') {
+        query = query.eq('corretor_id', corretorSelecionado);
       }
 
       if (termoBusca) {
@@ -136,16 +184,10 @@ export default function KanbanPerdas() {
       const corretoresMap: Record<string, string> = {};
 
       if (corretorIds.length) {
-        let corrQuery = supabase
+        const { data: corretoresData } = await supabase
           .from('usuarios_perfis')
           .select('id, nome')
           .in('id', corretorIds);
-
-        if (corretorBusca) {
-          corrQuery = corrQuery.ilike('nome', `%${corretorBusca}%`);
-        }
-
-        const { data: corretoresData } = await corrQuery;
 
         corretoresData?.forEach(c => {
           corretoresMap[c.id] = c.nome;
@@ -156,10 +198,9 @@ export default function KanbanPerdas() {
       const vMax = valorMax ? parseCurrencyToNumber(valorMax) : Infinity;
 
       const clientesTratados = rawClientes
-        .filter(cliente => !corretorBusca || !cliente.corretor_id || !!corretoresMap[cliente.corretor_id])
         .map(cliente => {
           const propostas = propostasMap[cliente.id] || [];
-          const interacoes = cliente.tab_interacoes_v2 || [];
+          const interacoes = cliente.tab_interacoes || [];
 
           const temVendido = propostas.some(p => p.status === 'Vendido');
           const temPerdido = propostas.some(p => p.status === 'Perdido');
@@ -179,7 +220,7 @@ export default function KanbanPerdas() {
 
           if (novaFase !== cliente.fase_kanban) {
             supabase
-              .from('tab_clientes_v2')
+              .from('tab_clientes')
               .update({ fase_kanban: novaFase })
               .eq('id', cliente.id);
 
@@ -263,7 +304,7 @@ export default function KanbanPerdas() {
       await Promise.all(
         novaLista.map((item, index) =>
           supabase
-            .from('tab_clientes_v2')
+            .from('tab_clientes')
             .update({ posicao_kanban: index })
             .eq('id', item.id)
         )
@@ -273,7 +314,7 @@ export default function KanbanPerdas() {
     }
 
     const propostas = clienteAtivo.tab_propostas || [];
-    const interacoes = clienteAtivo.tab_interacoes_v2 || [];
+    const interacoes = clienteAtivo.tab_interacoes || [];
 
     const temVendido = propostas.some(p => p.status === 'Vendido');
     const temPerdido = propostas.some(p => p.status === 'Perdido');
@@ -315,7 +356,7 @@ export default function KanbanPerdas() {
       );
 
       const { error } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({ fase_kanban: colDestino, posicao_kanban: 0 })
         .eq('id', activeIdStr);
 
@@ -345,17 +386,24 @@ export default function KanbanPerdas() {
             <BuscaGlobal onSearch={setTermoBusca} />
           </div>
 
-          <div className="w-56">
-            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Filtrar Corretor</label>
+          <div className="w-64">
+            <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">Filtrar Responsável</label>
             <div className="relative">
-              <UserSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="text"
-                placeholder="Nome do Corretor..."
-                value={corretorBusca}
-                onChange={e => setCorretorBusca(e.target.value)}
-                className="w-full h-12 pl-10 pr-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none"
-              />
+              <UserSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+              <select
+                value={corretorSelecionado || ''}
+                onChange={e => setCorretorSelecionado(e.target.value)}
+                className="w-full h-12 pl-10 pr-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-200 outline-none cursor-pointer appearance-none"
+              >
+                {corretoresLista.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {item.id === perfilUsuario?.id
+                      ? `Atendimento Direto (${item.nome})`
+                      : item.nome}
+                  </option>
+                ))}
+                <option value="TODOS">Todos os Corretores</option>
+              </select>
             </div>
           </div>
 
@@ -384,7 +432,7 @@ export default function KanbanPerdas() {
               setValorMin('');
               setValorMax('');
               setTermoBusca('');
-              setCorretorBusca('');
+              if (perfilUsuario) setCorretorSelecionado(perfilUsuario.id);
             }}
             className="h-12 w-12 flex items-center justify-center bg-red-50 text-red-500 hover:bg-red-100 rounded-2xl"
           >

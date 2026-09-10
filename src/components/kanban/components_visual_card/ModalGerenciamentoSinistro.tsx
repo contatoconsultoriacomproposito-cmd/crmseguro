@@ -5,7 +5,7 @@ import { formatarDataBR } from '../../../utils/dateUtils';
 
 interface Props {
   sinistroId?: string;   // ID de tab_sinistros (opcional se for abertura nova)
-  clienteId?: string;    // ID de tab_clientes_v2
+  clienteId?: string;    // ID de tab_clientes
   itemId?: string;       // ID de tab_proposta_itens (ou produtoId)
   produtoId?: string;    // Alias paraitemId caso seu código antigo envie produtoId
   onClose: () => void;
@@ -70,7 +70,7 @@ export const ModalGerenciamentoSinistro = ({
           .from('tab_sinistros')
           .select(`
             *,
-            tab_clientes_v2 (
+            tab_clientes (
               id,
               nome_razao_social
             ),
@@ -202,12 +202,12 @@ export const ModalGerenciamentoSinistro = ({
 
       if (errOco) throw new Error(`Erro ao gravar histórico: ${errOco.message}`);
 
-      // PASSO 3: Atualiza Agenda de Sinistro na tab_clientes_v2
+      // PASSO 3: Atualiza Agenda de Sinistro na tab_clientes
       const targetClienteId = sinistro?.cliente_id || (clienteId !== 'undefined' ? clienteId : null);
 
       if (targetClienteId) {
         const { error: errCli } = await supabase
-          .from('tab_clientes_v2')
+          .from('tab_clientes')
           .update({
             data_retorno_sinistro: isFinalizando ? null : dataRetorno || null,
             horario_retorno_sinistro: isFinalizando ? null : horarioRetorno || null,

@@ -138,9 +138,9 @@ export const AgendaCorretorAvulso: React.FC<AgendaCorretorAvulsoProps> = ({ even
     if (!confirm('Deseja excluir este agendamento permanentemente?')) return;
     setLoading(true);
     try {
-      // Limpa os campos de retorno no cadastro do cliente na tab_clientes_v2
+      // Limpa os campos de retorno no cadastro do cliente na tab_clientes
       const { error } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({ 
           data_retorno: null, 
           horario_retorno: null,
@@ -238,9 +238,9 @@ export const AgendaCorretorAvulso: React.FC<AgendaCorretorAvulsoProps> = ({ even
         };
 
         if (v.id) {
-          return supabase.from('tab_clientes_v2').update(payloadFinal).eq('id', v.id);
+          return supabase.from('tab_clientes').update(payloadFinal).eq('id', v.id);
         } else {
-          return supabase.from('tab_clientes_v2').insert([payloadFinal]);
+          return supabase.from('tab_clientes').insert([payloadFinal]);
         }
       });   
 

@@ -168,7 +168,7 @@ export async function buscarHistoricoInteracoesPorCliente(clienteId: string) {
   if (!clienteId) return [];
 
   const { data, error } = await supabase
-    .from('tab_interacoes_v2')
+    .from('tab_interacoes')
     .select('*')
     .eq('cliente_id', clienteId)
     .order('criado_em', { ascending: false });
@@ -184,7 +184,7 @@ export async function buscarHistoricoInteracoesPorCliente(clienteId: string) {
 export async function buscarClienteCompletoPorId(id: string) {
   try {
     const { data, error } = await supabase
-      .from('tab_clientes_v2')
+      .from('tab_clientes')
       .select('*')
       .eq('id', id)
       .single();
@@ -200,7 +200,7 @@ export async function buscarClienteCompletoPorId(id: string) {
 export async function excluirClienteV2(id: string): Promise<boolean> {
   try {
     const { error } = await supabase
-      .from('tab_clientes_v2')
+      .from('tab_clientes')
       .delete()
       .eq('id', id);
 
@@ -313,7 +313,7 @@ export async function criarClienteV2(payload: any) {
     };
 
     const { data, error } = await supabase
-      .from('tab_clientes_v2')
+      .from('tab_clientes')
       .insert([novoCliente])
       .select()
       .single();
@@ -387,7 +387,7 @@ export async function atualizarClienteV2(id: string, payload: any) {
     };
 
     const { data, error } = await supabase
-      .from('tab_clientes_v2')
+      .from('tab_clientes')
       .update(dadosParaAtualizar)
       .eq('id', id)
       .select()
@@ -418,10 +418,10 @@ export const buscarClientesV2 = async (
     }
 
     let query = supabase
-      .from('tab_clientes_v2')
+      .from('tab_clientes')
       .select(`
         *,
-        interacoes:tab_interacoes_v2(
+        interacoes:tab_interacoes(
           proxima_acao,
           data_retorno,
           status_agendamento,
@@ -512,7 +512,7 @@ export const buscarClientesV2 = async (
     if (filtros.data_retorno_sinistro_fim) query = query.lte('data_retorno_sinistro', filtros.data_retorno_sinistro_fim);
 
     if ((filtros.tipo_acao && filtros.tipo_acao !== '') || (filtros.proxima_acao_interacao && filtros.proxima_acao_interacao !== '')) {
-      let interacaoQuery = supabase.from('tab_interacoes_v2').select('cliente_id').eq('corretora_id', sessao.corretora_id);
+      let interacaoQuery = supabase.from('tab_interacoes').select('cliente_id').eq('corretora_id', sessao.corretora_id);
 
       if (filtros.tipo_acao && filtros.tipo_acao !== '') {
         interacaoQuery = interacaoQuery.eq('tipo_acao', filtros.tipo_acao);
@@ -746,13 +746,13 @@ export const buscarClientesV2 = async (
 };
 
 // ==========================================
-// REGISTRAR AÇÃO COMERCIAL / INTERAÇÃO (tab_interacoes_v2)
+// REGISTRAR AÇÃO COMERCIAL / INTERAÇÃO (tab_interacoes)
 // ==========================================
 export async function salvarAcaoComercialV2(payload: any) {
   try {
     const sessao = await obterDadosSessao();
 
-    // Separa os contatos (que vão para tab_clientes_v2) do restante do payload
+    // Separa os contatos (que vão para tab_clientes) do restante do payload
     const { contatos, ...dadosInteracao } = payload;
 
     // Garante os campos obrigatórios e auditoria da interação
@@ -773,19 +773,19 @@ export async function salvarAcaoComercialV2(payload: any) {
       criado_em: new Date().toISOString()
     };
 
-    // 1. Insere a interação na tabela tab_interacoes_v2
+    // 1. Insere a interação na tabela tab_interacoes
     const { data: interacaoSalva, error: erroInteracao } = await supabase
-      .from('tab_interacoes_v2')
+      .from('tab_interacoes')
       .insert([interacaoParaInserir])
       .select()
       .single();
 
     if (erroInteracao) {
-      console.error('Erro ao inserir interação na tab_interacoes_v2:', erroInteracao);
+      console.error('Erro ao inserir interação na tab_interacoes:', erroInteracao);
       throw erroInteracao;
     }
 
-    // 2. Atualiza os dados na tab_clientes_v2
+    // 2. Atualiza os dados na tab_clientes
     if (payload.cliente_id) {
       const dadosUpdateCliente: Record<string, any> = {
         atualizado_em: new Date().toISOString()
@@ -809,12 +809,12 @@ export async function salvarAcaoComercialV2(payload: any) {
       if (payload.status_kanban) dadosUpdateCliente.status_kanban = payload.status_kanban;
 
       const { error: erroUpdateCliente } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update(dadosUpdateCliente)
         .eq('id', payload.cliente_id);
 
       if (erroUpdateCliente) {
-        console.error('Erro ao atualizar tab_clientes_v2 ao salvar interação:', erroUpdateCliente);
+        console.error('Erro ao atualizar tab_clientes ao salvar interação:', erroUpdateCliente);
       }
     }
 

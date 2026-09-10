@@ -39,7 +39,7 @@ export default function AgendaCorretor({
   const [loading, setLoading] = useState(false);
   const [historicoAcoes, setHistoricoAcoes] = useState<any[]>([]);
 
-  // Campos de estado de tab_clientes_v2
+  // Campos de estado de tab_clientes
   const [faseAtendimento, setFaseAtendimento] = useState<string>('nao_contatado');
   const [temperatura, setTemperatura] = useState<string>('frio');
   const [estagio, setEstagio] = useState<string>('nao_prospectado');
@@ -48,16 +48,16 @@ export default function AgendaCorretor({
   const [novaAcaoHorarioRetorno, setNovaAcaoHorarioRetorno] = useState<string>('09:00');
   const [contatos, setContatos] = useState<ContatoItem[]>([]);
 
-  // Campos de estado de tab_interacoes_v2
+  // Campos de estado de tab_interacoes
   const [tipoAcaoRealizada, setTipoAcaoRealizada] = useState<string>('ligar');
   const [resultadoAcaoRealizada, setResultadoAcaoRealizada] = useState<string>('atendeu');
   const [relatoObs, setRelatoObs] = useState<string>('');
 
-  // Carrega o histórico de interações (tab_interacoes_v2)
+  // Carrega o histórico de interações (tab_interacoes)
   const carregarHistoricoCliente = useCallback(async (clienteId: string) => {
     try {
       const { data, error } = await supabase
-        .from('tab_interacoes_v2')
+        .from('tab_interacoes')
         .select('*')
         .eq('cliente_id', clienteId)
         .order('criado_em', { ascending: false });
@@ -138,9 +138,9 @@ export default function AgendaCorretor({
         return;
       }
 
-      // 1. Grava no histórico (tab_interacoes_v2)
+      // 1. Grava no histórico (tab_interacoes)
       const { error: errInteracao } = await supabase
-        .from('tab_interacoes_v2')
+        .from('tab_interacoes')
         .insert({
           cliente_id: cliente.id,
           corretora_id: corretoraId,
@@ -165,9 +165,9 @@ export default function AgendaCorretor({
         proxima_acao_sugerida: [proximaAcao]
       };
 
-      // 2. Atualiza os dados cadastrais (tab_clientes_v2)
+      // 2. Atualiza os dados cadastrais (tab_clientes)
       const { error: errCliente } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({
           fase_atendimento: faseAtendimento,
           temperatura: temperatura,
@@ -301,7 +301,7 @@ export default function AgendaCorretor({
           
           <div className="bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-200 dark:border-zinc-700/60 space-y-3">
             
-            {/* Atualização de tab_clientes_v2 */}
+            {/* Atualização de tab_clientes */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-zinc-300 uppercase mb-1">
@@ -356,7 +356,7 @@ export default function AgendaCorretor({
               </div>
             </div>
 
-            {/* Registro em tab_interacoes_v2 */}
+            {/* Registro em tab_interacoes */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-zinc-300 uppercase mb-1">

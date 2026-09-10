@@ -342,7 +342,7 @@ export const ModalAcoesComerciais: React.FC<
     setErroValidacao('');
     setMostrarTodosProdutos(false);
 
-    // 2. Busca o histórico de interações direto da tabela tab_interacoes_v2
+    // 2. Busca o histórico de interações direto da tabela tab_interacoes
     try {
       const historicoBanco = await buscarHistoricoInteracoesPorCliente(activeLead.id);
       
@@ -745,7 +745,7 @@ export const ModalAcoesComerciais: React.FC<
     // Primeiro agendamento para extrair os dados da próxima ação
     const primeiroAgendamento = agendamentos[0] || null;
 
-    // Payload formatado de acordo com a tabela tab_interacoes_v2
+    // Payload formatado de acordo com a tabela tab_interacoes
     const payload = {
       cliente_id: activeLead?.id,
       tipo_acao: tipoAcao,

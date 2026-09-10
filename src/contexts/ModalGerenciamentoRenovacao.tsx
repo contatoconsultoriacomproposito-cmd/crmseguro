@@ -68,7 +68,7 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
 
             if (clienteId) {
               const { data: cliente } = await supabase
-                .from('tab_clientes_v2')
+                .from('tab_clientes')
                 .select('nome_fantasia, nome_razao_social')
                 .eq('id', clienteId)
                 .maybeSingle();
@@ -84,7 +84,7 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
           tab_proposta_opcoes: {
             tab_propostas: {
               cliente_id: clienteId,
-              tab_clientes_v2: clienteData
+              tab_clientes: clienteData
             }
           }
         };
@@ -163,7 +163,7 @@ export const ModalGerenciamentoRenovacao: React.FC<ModalProps> = ({ itemId, onCl
 
   const itemOriginalParaVinculo = {
     id_item: itemId ?? '', 
-    cliente: String(infoProposta?.tab_clientes_v2?.nome_fantasia || infoProposta?.tab_clientes_v2?.nome_razao_social || 'Cliente não identificado'),
+    cliente: String(infoProposta?.tab_clientes?.nome_fantasia || infoProposta?.tab_clientes?.nome_razao_social || 'Cliente não identificado'),
     cliente_id: String(infoProposta?.cliente_id || '')
   };
 

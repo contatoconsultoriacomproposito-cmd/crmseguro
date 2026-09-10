@@ -92,7 +92,7 @@ export default function PropostasCadastro() {
     const buscarClienteInicial = async () => {
       if (clienteIdAlvo && !selectedClient) {
         const { data: cli } = await supabase
-          .from("tab_clientes_v2")
+          .from("tab_clientes")
           .select("*")
           .eq("id", clienteIdAlvo)
           .maybeSingle();
@@ -118,7 +118,7 @@ export default function PropostasCadastro() {
       const queryCnpjCpf = termoLimpo.length >= 3 ? `%${termoLimpo}%` : queryTexto;
 
       let query = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('*')
         .or(`nome_razao_social.ilike.${queryTexto},nome_fantasia.ilike.${queryTexto},cpf_cnpj.ilike.${queryCnpjCpf}`);
 
@@ -240,7 +240,7 @@ export default function PropostasCadastro() {
       let clienteData = null;
       if (idDoCliente) {
         const { data: cli, error: errCli } = await supabase
-          .from("tab_clientes_v2")
+          .from("tab_clientes")
           .select("*")
           .eq("id", idDoCliente)
           .maybeSingle();
@@ -421,7 +421,7 @@ export default function PropostasCadastro() {
         if (error) throw error;
         currentPropostaId = data.id;
 
-       await supabase.from('tab_interacoes_v2').insert({
+       await supabase.from('tab_interacoes').insert({
           cliente_id: selectedClient.id,
           corretor_id: corretorFinal,
           corretora_id: perfil.corretora_id,
@@ -477,7 +477,7 @@ export default function PropostasCadastro() {
       }
 
       await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({ fase_kanban: faseAlvo })
         .eq('id', selectedClient.id);
       

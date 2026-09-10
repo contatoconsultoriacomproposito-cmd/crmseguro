@@ -124,7 +124,7 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
   try {
     setLoading(true);
 
-    // 1. Busca a proposta especificando a FK do corretor (SEM tab_clientes_v2 no JOIN)
+    // 1. Busca a proposta especificando a FK do corretor (SEM tab_clientes no JOIN)
     const { data: proposta, error: errorProp } = await supabase
       .from("tab_propostas")
       .select(`
@@ -142,7 +142,7 @@ export default function ModeloCotacaoEmpresarial({ propostaId, onClose }: Modelo
     let clienteDb = null;
     if (proposta.cliente_id) {
       const { data: cliente, error: errorCliente } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .select("*")
         .eq("id", proposta.cliente_id)
         .maybeSingle();

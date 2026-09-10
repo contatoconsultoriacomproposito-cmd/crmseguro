@@ -104,7 +104,7 @@ useEffect(() => {
       async function carregarDadosCliente() {
         try {
           const { data, error } = await supabase
-            .from("tab_clientes_v2")
+            .from("tab_clientes")
             .select("*")
             .eq("id", id)
             .single();
@@ -332,14 +332,14 @@ useEffect(() => {
     }
 
     
-    // NOVA VALIDAÇÃO DE DUPLICIDADE (Utilizando cpf_cnpj na tab_clientes_v2)
+    // NOVA VALIDAÇÃO DE DUPLICIDADE (Utilizando cpf_cnpj na tab_clientes)
     if (!isEditing && tipoCliente === "PF" && form.cpf) {
       const idCorretoraMae = perfilUsuarioLogado?.tipo_usuario === "CORRETORA" 
         ? perfilUsuarioLogado.id 
         : perfilUsuarioLogado?.corretora_id;
 
       const { data: existente } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .select("id, tipo_cliente")
         .eq("cpf_cnpj", form.cpf)
         .eq("corretora_id", idCorretoraMae)
@@ -439,7 +439,7 @@ useEffect(() => {
       if (isEditing) {
         // ATUALIZAÇÃO NA V2
         const result = await supabase
-          .from("tab_clientes_v2")
+          .from("tab_clientes")
           .update({
             ...payload,
             atualizado_em: new Date().toISOString()
@@ -449,7 +449,7 @@ useEffect(() => {
       } else {
         // INSERÇÃO NA V2
         const result = await supabase
-          .from("tab_clientes_v2")
+          .from("tab_clientes")
           .insert([payload]);
         error = result.error;
       }

@@ -50,7 +50,7 @@ export default function ClientesLista() {
       setSalvandoAgendamento(true);
 
       const { error } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({
           data_retorno: dataRetornoInput || null,
           horario_retorno: horarioRetornoInput ? `${horarioRetornoInput}:00` : null,
@@ -125,7 +125,7 @@ async function carregarClientes() {
 
     // 1. Busca os clientes da corretora
     let query = supabase
-      .from("tab_clientes_v2")
+      .from("tab_clientes")
       .select("*")
       .eq("corretora_id", userProfile.corretora_id)
       .order("criado_em", { ascending: false });
@@ -322,7 +322,7 @@ async function carregarClientes() {
     setTransferindo(true);
     try {
       const { error } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .update({ 
             corretor_id: transferPara,
             atualizado_em: new Date().toISOString()
@@ -393,7 +393,7 @@ async function carregarClientes() {
     try {
       setExcluindoId(confirmarExclusao.id);
       let deleteQuery = supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .delete()
         .eq("id", confirmarExclusao.id)
         .eq("corretora_id", userProfile.corretora_id);
@@ -416,7 +416,7 @@ async function carregarClientes() {
     }
   }
 
-  // BUSCA ATUALIZADA: Mapeia contatos em JSON e campos da tab_clientes_v2
+  // BUSCA ATUALIZADA: Mapeia contatos em JSON e campos da tab_clientes
   const clientesFiltrados = clientes.filter((c) => {
     const atendeFiltroCorretor = filtroCorretor === "todos" || c.corretor_id === filtroCorretor;
     if (!atendeFiltroCorretor) return false;

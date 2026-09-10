@@ -61,7 +61,7 @@ export default function TabSinistros({ clienteId, onUpdate }: TabSinistrosProps)
             tab_propostas!inner (
               id,
               cliente_id,
-              tab_clientes_v2 ( id, nome_razao_social )
+              tab_clientes ( id, nome_razao_social )
             )
           ),
           tab_sinistros (
@@ -116,7 +116,7 @@ export default function TabSinistros({ clienteId, onUpdate }: TabSinistrosProps)
         {itensProposta.map((item) => {
           const opcao = item.tab_proposta_opcoes;
           const proposta = opcao?.tab_propostas;
-          const cliente = proposta?.tab_clientes_v2;
+          const cliente = proposta?.tab_clientes;
           const seguradoraObj = opcao?.base_seguradoras;
 
           const nomeCliente = cliente?.nome_razao_social || "Cliente não informado";

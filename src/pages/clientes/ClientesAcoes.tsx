@@ -41,7 +41,7 @@ export default function ClientesAcoes() {
     try {
       // Atualiza na base principal V2
       await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({ 
           temperatura: novaTemp,
           atualizado_em: new Date().toISOString()
@@ -65,7 +65,7 @@ export default function ClientesAcoes() {
     try {
       // Atualiza na base principal V2
       await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({ 
           data_retorno: novaData,
           atualizado_em: new Date().toISOString()
@@ -89,16 +89,16 @@ export default function ClientesAcoes() {
   if (!userProfile?.corretora_id) return;
   setLoading(true);
   try {
-    // Consulta unificada na tabela de interações (tab_interacoes_v2) trazendo dados do cliente (tab_clientes_v2)
+    // Consulta unificada na tabela de interações (tab_interacoes) trazendo dados do cliente (tab_clientes)
     let queryInteracoes = supabase
-      .from('tab_interacoes_v2')
+      .from('tab_interacoes')
       .select(`
         *,
-        cliente:tab_clientes_v2 (
+        cliente:tab_clientes (
           id, nome_razao_social, nome_fantasia, temperatura, data_retorno, horario_retorno, corretor_id, corretora_id
         )
       `)
-      .eq('tab_clientes_v2.corretora_id', userProfile.corretora_id)
+      .eq('tab_clientes.corretora_id', userProfile.corretora_id)
       .gte('criado_em', `${dataInicio}T00:00:00`)
       .lte('criado_em', `${dataFim}T23:59:59`);
 

@@ -46,7 +46,7 @@ export const ModalInclusaoAcao = ({ clienteId, onClose, onSuccess }: ModalProps)
 
       // 1. SALVAR O HISTÓRICO NA TAB_INTERACOES
       const { error: errorInteracao } = await supabase
-        .from('tab_interacoes_v2')
+        .from('tab_interacoes')
         .insert([{
           cliente_id: clienteId,
           corretor_id: user.id,
@@ -61,7 +61,7 @@ export const ModalInclusaoAcao = ({ clienteId, onClose, onSuccess }: ModalProps)
 
       // 2. ATUALIZAR O COMPROMISSO FUTURO
       const { error: errorCliente } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .update({
           data_retorno: dataRetorno || null,
           horario_retorno: horarioRetorno || null,

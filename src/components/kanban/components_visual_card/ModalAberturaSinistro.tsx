@@ -29,7 +29,7 @@ export const ModalAberturaSinistro = ({ isOpen, onClose, onSuccess, dados }: Mod
     try {
         // 1. Buscar corretora_id e corretor_id do cliente na V2
         const { data: cliente, error: errCliente } = await supabase
-        .from('tab_clientes_v2') // <-- Atualizado para V2
+        .from('tab_clientes') // <-- Atualizado para V2
         .select('corretora_id, corretor_id')
         .eq('id', dados.clienteId)
         .single();

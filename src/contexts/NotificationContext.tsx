@@ -93,7 +93,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // CORREÇÃO 1: Substituído 'data_nascimento' por 'contatos' e 'dados_complementares'
       let queryClientes = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, contatos, dados_complementares_pf, dados_complementares_pj, corretor_id')
         .eq('corretora_id', corretoraDonaId);
 
@@ -114,14 +114,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         .lte('data_renovacao', dataLimiteRenovacaoStr);
 
       let queryFrios = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, corretor_id')
         .lte('data_retorno', hojeLocalStr)
         .neq('fase_atendimento', 'vendido')
         .eq('corretora_id', corretoraDonaId);
 
       let queryAgenda = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, contatos, dados_complementares_pf, dados_complementares_pj, fase_atendimento, temperatura, corretor_id')
         .not('data_retorno', 'is', null)
         .lte('data_retorno', hojeLocalStr)
@@ -227,7 +227,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       finalRenovacoes.forEach((ren: any) => {
         const opcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
         const proposta = optionDeepSafe(opcao?.tab_propostas);
-        const clienteObj = proposta?.tab_clientes_v2;
+        const clienteObj = proposta?.tab_clientes;
         const cliente = Array.isArray(clienteObj) ? clienteObj[0] : clienteObj;
 
         const nomeCli = obterNomeExibicao(cliente, 'Cliente sem nome');
@@ -306,7 +306,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     if (n.tipo === 'COMERCIAL' || n.tipo === 'SINISTRO' || n.tipo === 'ANIVERSARIO') {
       const { data: cliente } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('*')
         .eq('id', n.ref_id)
         .single();
@@ -340,7 +340,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const channel = supabase
       .channel('notificacoes-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes_v2' }, () => carregarNotificacoes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_proposta_itens' }, () => carregarNotificacoes())
       .subscribe();

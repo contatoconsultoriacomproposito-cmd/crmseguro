@@ -72,7 +72,7 @@ export default function PropostasLista() {
 
       return {
         "Proposta": p.numero_proposta,
-        "Cliente": p.tab_clientes_v2?.nome_razao_social,
+        "Cliente": p.tab_clientes?.nome_razao_social,
         "Corretor": p.usuarios_perfis?.nome,
         "Nº Cotação": numerosCotacao || "NÃO INFORMADO",
         "Cotações": qtdeCotacoes,
@@ -114,7 +114,7 @@ export default function PropostasLista() {
 
       return [
         p.numero_proposta,
-        p.tab_clientes_v2?.nome_razao_social,
+        p.tab_clientes?.nome_razao_social,
         numCotacao || "-",
         p.tab_proposta_opcoes?.length || 0,
         produtosNomes || "-",
@@ -248,7 +248,7 @@ export default function PropostasLista() {
       return;
     }
 
-    // Busca separada de clientes para evitar erro de FK em tab_clientes_v2
+    // Busca separada de clientes para evitar erro de FK em tab_clientes
     const clienteIds = Array.from(
       new Set(propostasData.map((p: any) => p.cliente_id).filter(Boolean))
     );
@@ -256,7 +256,7 @@ export default function PropostasLista() {
     let clientesMap: Record<string, any> = {};
     if (clienteIds.length > 0) {
       const { data: clientesData, error: clientesError } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .select("id, nome_razao_social, tipo_cliente, cpf_cnpj")
         .in("id", clienteIds);
 
@@ -273,7 +273,7 @@ export default function PropostasLista() {
       ...p,
       // O PostgREST retorna o objeto com a chave "usuarios_perfis"
       usuarios_perfis: p.usuarios_perfis, 
-      tab_clientes_v2: clientesMap[p.cliente_id] || null,
+      tab_clientes: clientesMap[p.cliente_id] || null,
     }));
 
     setPropostas(propostasEnriquecidas);
@@ -291,7 +291,7 @@ export default function PropostasLista() {
     return propostas.filter(p => {
       const matchTerm = !term || 
         (p.numero_proposta || "").toLowerCase().includes(term) ||
-        (p.tab_clientes_v2?.nome_razao_social || "").toLowerCase().includes(term);
+        (p.tab_clientes?.nome_razao_social || "").toLowerCase().includes(term);
 
       const matchCorretor = selectedCorretores.length === 0 || 
         selectedCorretores.includes(p.corretor_id) || 
@@ -596,7 +596,7 @@ export default function PropostasLista() {
                     <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Vence: {formatarDataBR(p.data_validade)}</div>
                   </td>
                   <td className="px-4 py-4">
-                    <div className="text-sm font-bold text-slate-700 uppercase">{p.tab_clientes_v2?.nome_razao_social}</div>
+                    <div className="text-sm font-bold text-slate-700 uppercase">{p.tab_clientes?.nome_razao_social}</div>
                     <div className="text-[10px] text-slate-400 font-medium italic">Corretor: {p.usuarios_perfis?.nome}</div>
                   </td>
                   {/* --- VISUALIZAÇÃO DA GRADE DE PROPOSTAS--- */}

@@ -94,7 +94,7 @@ export const TabPropostas: React.FC<TabPropostasProps> = ({ clienteId, onUpdate 
       }
 
       const { data: clienteData } = await supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select('id, nome_razao_social, tipo_cliente, cpf_cnpj')
         .eq('id', clienteId)
         .single();
@@ -102,7 +102,7 @@ export const TabPropostas: React.FC<TabPropostasProps> = ({ clienteId, onUpdate 
       const propostasEnriquecidas = propostasData.map((p: any) => ({
         ...p,
         usuarios_perfis: p.usuarios_perfis, 
-        tab_clientes_v2: clienteData || null,
+        tab_clientes: clienteData || null,
       }));
 
       setPropostas(propostasEnriquecidas);

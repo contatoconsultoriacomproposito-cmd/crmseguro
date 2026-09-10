@@ -28,7 +28,7 @@ interface DadosComplementaresV2 {
   opcao_pelo_simples?: boolean;
 }
 
-// Interface ajustada para a tab_clientes_v2
+// Interface ajustada para a tab_clientes
 interface LeadCliente {
   id: string;
   nome_razao_social: string;
@@ -60,9 +60,9 @@ export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps)
     const queryTexto = `%${termo}%`;
     const queryCnpj = termoLimpo.length >= 3 ? `%${termoLimpo}%` : queryTexto;
 
-    // Consulta apontando para tab_clientes_v2
+    // Consulta apontando para tab_clientes
     const { data, error } = await supabase
-      .from('tab_clientes_v2')
+      .from('tab_clientes')
       .select(`
         id, 
         nome_razao_social, 
@@ -81,7 +81,7 @@ export default function VisaoBuscaRapida({ corretoraId }: VisaoBuscaRapidaProps)
       .limit(20);
 
     if (error) {
-      console.error('Erro ao buscar empresas na tab_clientes_v2:', error);
+      console.error('Erro ao buscar empresas na tab_clientes:', error);
       setResultados([]);
     } else {
       setResultados((data as LeadCliente[]) || []);

@@ -81,7 +81,7 @@ export default function ModeloCotacaoVida({ propostaId, onClose }: ModeloCotacao
       setLoading(true);
       const { data: proposta, error: errorProp } = await supabase
         .from("tab_propostas")
-        .select(`*, tab_clientes_v2 (*), usuarios_perfis!tab_propostas_corretor_id_fkey (*)`)
+        .select(`*, tab_clientes (*), usuarios_perfis!tab_propostas_corretor_id_fkey (*)`)
         .eq("id", propostaId)
         .single();
 
@@ -96,7 +96,7 @@ export default function ModeloCotacaoVida({ propostaId, onClose }: ModeloCotacao
         .limit(1)
         .maybeSingle();
 
-      setDadosBase({ proposta, corretora, corretor, cliente: proposta.tab_clientes_v2 });
+      setDadosBase({ proposta, corretora, corretor, cliente: proposta.tab_clientes });
     } catch (error) {
       console.error("Erro:", error);
       alert("Houve um erro ao carregar o espelho da proposta.");

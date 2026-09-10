@@ -94,9 +94,9 @@ export default function CorretoresLista() {
     setContagemClientes(0)
 
     try {
-      // Atualizado para consultar a tab_clientes_v2
+      // Atualizado para consultar a tab_clientes
       const { count, error } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .select("*", { count: 'exact', head: true })
         .eq("corretor_id", corretor.id)
 
@@ -116,10 +116,10 @@ export default function CorretoresLista() {
   setDeleting(true)
 
   try {
-    // 1. Transfere clientes se houver (utilizando a tab_clientes_v2)
+    // 1. Transfere clientes se houver (utilizando a tab_clientes)
     if (contagemClientes > 0) {
       const { error: transferError } = await supabase
-        .from("tab_clientes_v2")
+        .from("tab_clientes")
         .update({ corretor_id: transferirParaId })
         .eq("corretor_id", corretorParaExcluir.id)
 

@@ -60,7 +60,7 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
     return null;
   }, []);
 
-  // Helper de busca paginada centralizado para a tab_clientes_v2
+  // Helper de busca paginada centralizado para a tab_clientes
   const fetchAllRows = useCallback(async (
     selectFields: string, 
     statusFiltroAtual: string[] = [], 
@@ -73,7 +73,7 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
 
     while (hasMore) {
       let query = supabase
-        .from('tab_clientes_v2')
+        .from('tab_clientes')
         .select(selectFields)
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
