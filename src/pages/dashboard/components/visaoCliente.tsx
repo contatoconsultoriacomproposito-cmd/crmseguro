@@ -113,7 +113,6 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
     return allRows;
   }, [corretoraId, userLevel, userId]);
 
-  
   // Lazy loading por aba e alteração de filtros
   useEffect(() => {
     if (!corretoraId) return;
@@ -128,7 +127,7 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
             municipio, bairro, data_retorno,
             nome_razao_social, nome_fantasia, status_kanban, fase_kanban,
             dados_complementares_pf, dados_complementares_pj
-          `, statusFiltro, 'carteira'); // 👈 Removido o 'sexo' daqui!
+          `, statusFiltro, 'carteira');
           
           const dataMapeada = (data || []).map((c: any) => {
             const dadosPf = parseJsonb(c.dados_complementares_pf);
@@ -144,7 +143,7 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
               data_nascimento: dadosComp.data_nascimento || null,
               municipio_pf: dadosComp.municipio_pf || c.municipio,
               bairro_pf: dadosComp.bairro_pf || c.bairro,
-              sexo: dadosComp.sexo || null // 👈 Mantém o mapeamento vindo do JSONB com segurança!
+              sexo: dadosComp.sexo || null
             };
           });
           if (isMounted) setClientesCarteira(dataMapeada);
@@ -246,6 +245,7 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
+
     const aniversariantes: { id: string; nome: string; dataNasc: string; diasFaltando: number }[] = [];
     const kanbanMap: Record<string, number> = {};
     const sexoMap: Record<string, number> = { Masculino: 0, Feminino: 0, Outro: 0, 'Não informado': 0 };
@@ -255,34 +255,74 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
       const cId = c.corretor_id || 'sem_corretor';
       const cNome = mapaCorretores.get(cId) || (cId === 'sem_corretor' ? 'Sem Corretor' : 'Corretor Desconhecido');
       if (!porCorretorMap[cId]) porCorretorMap[cId] = { nome: cNome, pf: 0, pj: 0, total: 0 };
-      if (c.tipo_cliente === 'PJ') porCorretorMap[cId].pj++; else porCorretorMap[cId].pf++;
+      
+      if (c.tipo_cliente === 'PJ') {
+        porCorretorMap[cId].pj++;
+      } else {
+        porCorretorMap[cId].pf++;
+      }
       porCorretorMap[cId].total++;
 
-      // 2. Simples / MEI
+      // 2. Simples / MEI (Lendo do JSONB dados_complementares_pj ou direto se mapeado)
       if (c.tipo_cliente === 'PJ') {
-        if (c.opcao_pelo_simples === true) simplesSim++; else simplesNao++;
-        if (c.opcao_pelo_mei === true) meiSim++; else meiNao++;
+        const dadosPj = c.dados_complementares_pj || {};
+        const eSimples = c.opcao_pelo_simples ?? dadosPj.opcao_pelo_simples ?? dadosPj.simples_nacional;
+        const eMei = c.opcao_pelo_mei ?? dadosPj.opcao_pelo_mei ?? dadosPj.mei;
+
+        if (eSimples === true || eSimples === 'SIM' || eSimples === 'S') simplesSim++; else simplesNao++;
+        if (eMei === true || eMei === 'SIM' || eMei === 'S') meiSim++; else meiNao++;
       }
 
-      // 3. Município e Bairro
-      const mun = (c.tipo_cliente === 'PJ' ? c.municipio : c.municipio_pf) || 'Não Informado';
-      const bai = (c.tipo_cliente === 'PJ' ? c.bairro : c.bairro_pf) || 'Não Informado';
+      // 3. Município e Bairro (Agora utilizando as colunas diretas do schema)
+      const mun = (c.municipio || 'Não Informado').trim();
+      const bai = (c.bairro || 'Não Informado').trim();
       const locKey = `${mun.toUpperCase()} - ${bai.toUpperCase()}`;
-      if (!localizacaoMap[locKey]) localizacaoMap[locKey] = { municipio: mun, bairro: bai, total: 0 };
+      
+      if (!localizacaoMap[locKey]) {
+        localizacaoMap[locKey] = { municipio: mun, bairro: bai, total: 0 };
+      }
       localizacaoMap[locKey].total++;
 
-      // 4. Aniversariantes
-      if (c.data_nascimento) {
-        const [ano, mes, dia] = String(c.data_nascimento).substring(0, 10).split('-').map(Number);
-        if (ano && mes && dia) {
+      // 4. Aniversariantes (Busca no JSONB dados_complementares_pf ou no fallback c.data_nascimento)
+      const rawDataNasc = c.dados_complementares_pf?.data_nascimento || c.data_nascimento;
+
+      if (rawDataNasc && c.tipo_cliente === 'PF') {
+        let dia: number | null = null;
+        let mes: number | null = null;
+        const strData = String(rawDataNasc).trim();
+
+        // Formato Brasileiro (DD/MM/YYYY)
+        if (strData.includes('/')) {
+          const partes = strData.split('/');
+          if (partes.length >= 2) {
+            dia = parseInt(partes[0], 10);
+            mes = parseInt(partes[1], 10);
+          }
+        } 
+        // Formato ISO / SQL (YYYY-MM-DD ou ISO Timestamp)
+        else if (strData.includes('-')) {
+          const limpaIso = strData.substring(0, 10);
+          const partes = limpaIso.split('-');
+          if (partes.length === 3) {
+            dia = parseInt(partes[2], 10);
+            mes = parseInt(partes[1], 10);
+          }
+        }
+
+        if (dia && mes && !isNaN(dia) && !isNaN(mes) && mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
           const proxNiver = new Date(hoje.getFullYear(), mes - 1, dia);
-          if (proxNiver < hoje) proxNiver.setFullYear(hoje.getFullYear() + 1);
+          
+          // Se já passou este ano, projeta para o próximo ano
+          if (proxNiver < hoje) {
+            proxNiver.setFullYear(hoje.getFullYear() + 1);
+          }
+
           const diffDias = Math.ceil((proxNiver.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
 
-          if (diffDias <= 30) {
+          if (diffDias >= 0 && diffDias <= 30) {
             aniversariantes.push({
               id: c.id,
-              nome: c.tipo_cliente === 'PF' ? (c.nome || 'Sem Nome') : (c.razao_social || c.nome_fantasia || 'Sem Razão Social'),
+              nome: c.nome_razao_social || c.nome || 'Sem Nome',
               dataNasc: `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}`,
               diasFaltando: diffDias
             });
@@ -290,13 +330,14 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
         }
       }
 
-      // 5. Kanban
+      // 5. Status / Fase Kanban
       const status = c.fase_kanban || c.status_kanban || 'Sem Fase';
       kanbanMap[status] = (kanbanMap[status] || 0) + 1;
 
-      // 6. Sexo
-      if (c.sexo) {
-        const sUpper = String(c.sexo).trim().toUpperCase();
+      // 6. Sexo (Busca no JSONB dados_complementares_pf ou direto no objeto)
+      const sexoValor = c.dados_complementares_pf?.sexo || c.sexo;
+      if (sexoValor) {
+        const sUpper = String(sexoValor).trim().toUpperCase();
         if (sUpper.startsWith('M')) sexoMap['Masculino']++;
         else if (sUpper.startsWith('F')) sexoMap['Feminino']++;
         else sexoMap['Outro']++;
@@ -341,7 +382,10 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
     const hoje = new Date();
 
     clientesImportados.forEach((c) => {
-      const dc = parseJsonb(c.dados_complementares);
+      // 🟢 CORREÇÃO CRÍTICA: Mescla os dados PF e PJ
+      const dcPf = parseJsonb(c.dados_complementares_pf);
+      const dcPj = parseJsonb(c.dados_complementares_pj);
+      const dc = { ...dcPf, ...dcPj };
       
       // Capital Social
       if (dc.capital_social) {
@@ -656,25 +700,33 @@ export const VisaoCliente: React.FC<VisaoClienteProps> = ({
 
               {/* 5 & 4: KANBAN E ANIVERSARIANTES */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* 5. STATUS / FASE KANBAN */}
                 <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
                   <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
                     5. Status / Fase Kanban
                   </h3>
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {Object.entries(metricasCarteira.kanbanMap).map(([fase, qtd], idx) => (
-                      <div key={idx} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg text-xs font-bold text-slate-700">
-                        <span className="uppercase">{fase}</span>
-                        <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full font-black">{qtd}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {!metricasCarteira?.kanbanMap || Object.keys(metricasCarteira.kanbanMap).length === 0 ? (
+                    <div className="text-center py-8 text-xs font-bold text-slate-400 uppercase">
+                      Nenhum registro de Kanban encontrado.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {Object.entries(metricasCarteira.kanbanMap).map(([fase, qtd], idx) => (
+                        <div key={idx} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg text-xs font-bold text-slate-700">
+                          <span className="uppercase">{fase.replace(/_/g, ' ')}</span>
+                          <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full font-black">{qtd}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
+                {/* 4. ANIVERSARIANTES (PRÓXIMOS 30 DIAS) */}
                 <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
                   <h3 className="font-black text-sm uppercase tracking-wider text-slate-800">
                     4. Aniversariantes (Próximos 30 dias)
                   </h3>
-                  {metricasCarteira.aniversariantes.length === 0 ? (
+                  {!metricasCarteira?.aniversariantes || metricasCarteira.aniversariantes.length === 0 ? (
                     <div className="text-center py-8 text-xs font-bold text-slate-400 uppercase">
                       Nenhum aniversariante nos próximos 30 dias.
                     </div>
