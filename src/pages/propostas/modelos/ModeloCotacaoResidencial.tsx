@@ -1,76 +1,194 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
-import { X, Printer, Loader2, Shield, User, Building2, MapPin, ClipboardCheck, Plus, Trash2 } from "lucide-react";
+import { X, Printer, Loader2, Shield, ClipboardCheck, Plus, Trash2 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatarDataBR } from "../../../utils/dateUtils";
 
-interface ModeloCotacaoResidencialProps {
+export type SistemaProtecao = 
+  | "Extintores" 
+  | "Hidrantes" 
+  | "Sprinklers" 
+  | "Alarme Monitorado" 
+  | "Câmeras (CFTV)" 
+  | "Vigilância Armada" 
+  | string;
+
+export interface ModeloCotacaoResidencialProps {
   propostaId: string;
   onClose: () => void;
 }
 
-interface LinhaCobertura {
-  id: string; // Alterado para string para aceitar chaves dinâmicas customizadas
+export interface LinhaCobertura {
+  id: string;
+  numero?: string | number;
   nome: string;
-  significado: string; 
-  tipoInput: "texto" | "moeda";
+  significado?: string;
+  oqueProtege: string;
+  exemploPratico: string;
+  importancia: string;
+  tipoInput?: "texto" | "moeda";
 }
 
-// Significados base (Dicionário padrão)
-const SIGNIFICADOS_COBERTURAS: Record<string, string> = {
-  basica: "Proteção em caso de incêndio, queda de raio, explosão, queda de aeronaves, além de fumaça, impacto de veículos, tumultos, greves, lockout e para emissão de novos documentos pessoais e do imóvel se forem danificados.",
-  moradia_temporaria: "Auxílio para gastos com aluguel, condomínio, hospedagem e alimentação durante todo o período de reparo do imóvel segurado caso algum problema impossibilite a moradia.",
-  vendaval_granizo: "Auxílio para reparos no imóvel em caso de ventos fortes, ciclone, granizo, neve e geada, além dos eventos citados.",
-  danos_eletricos: "Auxílio para reparo de eletrônicos, eletrodomésticos e instalações elétricas do imóvel em caso de queda de raio ou problema elétrico.",
-  roubo: "Auxílio caso os bens do segurado ou da família forem roubados ou danificados no interior do imóvel, inclusive em caso de estragos causados no imóvel, como arrombamento de portas ou janelas.",
-  vidros_marmores: "Proteção em caso de quebra ou danos a estes materiais, incluindo tampo de mesas e espelhos, seja por quebra, choque térmico, acidentes ou ventos e vendavais.",
-  alagamento: "Proteção em caso de rompimento de encanamento, canalização, enchentes, chuva forte, reservatórios externos ao imóvel e mais.",
-  desmoronamento: "Auxílio para reparos no imóvel decorrentes de desmoronamento total ou parcial, como queda de parede, coluna, teto e mais.",
-  rc_familiar: "Auxílio caso o segurado, seus familiares e até animais domésticos causarem danos a outras pessoas ou aos bens delas.",
-  tremor_terra: "Auxílio para reparos no imóvel em caso de tremor de terra, terremoto ou maremoto e, ainda, por incêndio ou explosão consequente desses eventos.",
-  equipamentos_eletronicos: "Proteção se caso algum acidente de causa externa estrague os eletrodomésticos ou equipamentos eletrônicos.",
-  ruptura_tubulacoes: "Proteção em caso de rompimento acidental de caixa d'água, tubulação de gás, água ou canalização de esgoto, além de auxílio no reparo de pias, vasos sanitários e chuveiros.",
-  desp_salvamento: "Auxílio com as despesas de salvamento, desentulho e demolição realizadas pelo segurado durante ou após a ocorrência de um sinistro."
-};
-
-const ESTRUTURA_COBERTURAS_PADRAO: LinhaCobertura[] = [
-  { id: "basica", nome: "Básica (Incêndio, Raio, Explosão)", significado: SIGNIFICADOS_COBERTURAS["basica"], tipoInput: "texto" },
-  { id: "moradia_temporaria", nome: "Moradia Temporária", significado: SIGNIFICADOS_COBERTURAS["moradia_temporaria"], tipoInput: "texto" },
-  { id: "vendaval_granizo", nome: "Vendaval, Granizo e Geada", significado: SIGNIFICADOS_COBERTURAS["vendaval_granizo"], tipoInput: "texto" },
-  { id: "danos_eletricos", nome: "Danos Elétricos", significado: SIGNIFICADOS_COBERTURAS["danos_eletricos"], tipoInput: "texto" },
-  { id: "roubo", nome: "Roubo e Furto", significado: SIGNIFICADOS_COBERTURAS["roubo"], tipoInput: "texto" },
-  { id: "vidros_marmores", nome: "Vidros, Mármores e Granitos", significado: SIGNIFICADOS_COBERTURAS["vidros_marmores"], tipoInput: "texto" },
-  { id: "alagamento", nome: "Alagamento e Inundação", significado: SIGNIFICADOS_COBERTURAS["alagamento"], tipoInput: "texto" },
-  { id: "desmoronamento", nome: "Desmoronamento", significado: SIGNIFICADOS_COBERTURAS["desmoronamento"], tipoInput: "texto" },
-  { id: "rc_familiar", nome: "Responsabilidade Civil Familiar", significado: SIGNIFICADOS_COBERTURAS["rc_familiar"], tipoInput: "moeda" },
-  { id: "tremor_terra", nome: "Tremor de Terra e Terremoto", significado: SIGNIFICADOS_COBERTURAS["tremor_terra"], tipoInput: "texto" },
-  { id: "equipamentos_eletronicos", nome: "Equipamentos Eletrônicos", significado: SIGNIFICADOS_COBERTURAS["equipamentos_eletronicos"], tipoInput: "texto" },
-  { id: "ruptura_tubulacoes", nome: "Ruptura de Tubulações", significado: SIGNIFICADOS_COBERTURAS["ruptura_tubulacoes"], tipoInput: "texto" },
-  { id: "desp_salvamento", nome: "Salvamento, Desentulho e Demolição", significado: SIGNIFICADOS_COBERTURAS["desp_salvamento"], tipoInput: "texto" }
-];
-
-interface PerfilRiscoResidencial {
+export interface PerfilRiscoResidencial {
   tipoResidencia: "Casa" | "Apartamento" | "Sobrado" | "Outros";
   tipoMoradia: "Habitual" | "Veraneio" | "Desocupada";
   tipoConstrucao: "Alvenaria" | "Metálica" | "Mista" | "Madeira";
   localizacao: "Rua/Avenida" | "Condomínio Fechado" | "Outros";
-  sistemasProtecao: string[];
+  sistemasProtecao: SistemaProtecao[];
   sinistrosAnteriores: "Sim" | "Não";
 }
+
+const ESTRUTURA_COBERTURAS_PADRAO: LinhaCobertura[] = [
+  {
+    id: "basica",
+    numero: 1,
+    nome: "Básica",
+    oqueProtege: "Protege os bens segurados contra os eventos básicos previstos no contrato, incluindo incêndio, fumaça, queda de raio, explosão/implosão, impacto de veículos/objetos, queda de aeronaves e tumultos, greves e lockout. A cobertura também prevê recomposição de documentos pessoais e do imóvel e despesas com despachantes, dentro dos limites estabelecidos.",
+    exemploPratico: "Um incêndio começa na cozinha e se espalha pela residência, destruindo móveis, eletrodomésticos e parte da estrutura. Um raio atinge a residência e provoca danos previstos à edificação/instalações. Uma explosão causa danos ao imóvel e ao conteúdo. Um veículo invade a residência e danifica muro, garagem e bens. Uma aeronave ou objeto por ela conduzido cai sobre a residência. Um tumulto provoca danos materiais ao imóvel. Depois de um grande sinistro, o segurado ainda precisa recompor documentos pessoais e do imóvel.",
+    importancia: "É a base obrigatória da apólice. As demais coberturas entram para ampliar a proteção para riscos específicos que vão muito além desses eventos básicos.",
+    tipoInput: "texto"
+  },
+  {
+    id: "moradia_temporaria",
+    numero: 1,
+    nome: "Moradia Temporária",
+    oqueProtege: "Garante despesas com moradia temporária quando a residência não puder permanecer ocupada, total ou parcialmente, em consequência de um sinistro coberto, respeitando o periodo indenitário contratado.",
+    exemploPratico: "A casa sofre um incêndio e a família precisa sair imediatamente. Ο apartamento fica temporariamente sem condições de uso após um sinistro. A família precisa ficar em um hotel enquanto a residência é reparada. O imóvel fica parcialmente interditado e é necessário buscar uma alternativa de moradia. O cliente muitas vezes pensa: \"Minha casa tem seguro, mas onde vou morar durante a reforma?\"",
+    importancia: "Não paga o conserto da casa. Protege a família contra o custo de ficar temporariamente fora dela. É uma cobertura de continuidade da vida familiar.",
+    tipoInput: "texto"
+  },
+  {
+    id: "vendaval_granizo",
+    numero: 3,
+    nome: "Vendaval, Furacão, Ciclone. Tornado, Granizo, Neve e Geada",
+    oqueProtege: "Protege os bens segurados contra danos materiais diretamente causados pelos fenômenos climáticos previstos. O documento estabelece critérios específicos para caracterização dos eventos.",
+    exemploPratico: "Um vendaval destelha a residência. Uma forte chuva de granizo danifica telhado, janelas e outros bens. Uma tempestade provoca queda de árvores sobre a casa. O vento causa danos à cobertura e permite a entrada de água posteriormente. Em regiões sujeitas a neve ou geada, o fenômeno provoca danos aos bens segurados. Uma residência de praia sofre danos após uma forte tempestade.",
+    importancia: "O ponto comercial é mostrar que \"incêndio\" não é o único grande risco para uma casa. Uma tempestade severa pode produzir um prejuízo de dezenas de milhares de reais em poucas horas.",
+    tipoInput: "texto"
+  },
+  {
+    id: "danos_eletricos",
+    numero: 4,
+    nome: "Danos Elétricos",
+    oqueProtege: "Protege instalações elétricas/eletrônicas, equipamentos e aparelhos eletroeletrônicos contra danos elétricos previstos, inclusive em consequência de queda de raio, independentemente do local onde o raio tenha ocorrido. Inclui fenômenos como variações anormais de tensão, curto-circuito, arco voltaico e descargas elétricas.",
+    exemploPratico: "Uma oscilação de tensão queima a televisão. Um notebook é danificado por um fenômeno elétrico. Vários aparelhos são atingidos durante uma anomalia na rede. Um curto-circuito provoca danos em equipamentos e instalações. Um raio causa danos elétricos nos aparelhos da residência. Geladeira, televisão, computador, home theater e outros equipamentos podem representar milhares de reais concentrados em um único evento.",
+    importancia: "Aqui está um excelente argumento: não é preciso haver incêndio para um prejuízo elétrico ser enorme. Danos Elétricos é uma proteção específica para o risco elétrico, diferente de simplesmente proteger a casa contra incêndio.",
+    tipoInput: "texto"
+  },
+  {
+    id: "roubo",
+    numero: 5,
+    nome: "Roubo",
+    oqueProtege: "Protege bens do segurado, familiares e moradores contra roubo ou furto qualificado dentro da residência. Também contempla danos materiais causados ao imóvel ou conteúdo durante a prática ou tentativa do roubo/furto qualificado.",
+    exemploPratico: "A familia viaja e a residência é invadida. Criminosos arrombam uma porta e levam televisão, computadores e outros bens. O ladrão tenta entrar e danifica porta, fechadura e outros elementos. O criminoso leva equipamentos eletrônicos de alto valor. A família possui bens relevantes dentro da residência e quer proteção patrimonial contra invasão. Uma casa de veraneio permanece fechada durante boa parte do ano e fica especialmente vulnerável a invasões.",
+    importancia: "É diferente de Equipamentos Portáteis: Roubo olha para o risco de subtração dentro da residência, enquanto a cobertura de Portáteis possui proteção mais ampla para os equipamentos relacionados, inclusive em trânsito externo.",
+    tipoInput: "texto"
+  },
+  {
+    id: "vidros_marmores",
+    numero: 7,
+    nome: "Vidros, Mármores, Granitos e Porcelanatos",
+    oqueProtege: "Protege vidros, inclusive temperados e blindados, espelhos, mármores, granitos, porcelanatos e quartzo instalados na residência, em diversos elementos como janelas, portas, pisos, boxes, divisórias, móveis, cortinas de vidro, louças sanitárias, cooktop e balcões, contra os eventos previstos.",
+    exemploPratico: "Uma porta de vidro quebra acidentalmente. O box de vidro do banheiro é danificado. Um cooktop de vidro sofre quebra coberta. Uma cortina de vidro da varanda é danificada. Um espelho instalado na residência quebra em uma situação coberta. Uma bancada de mármore/granito sofre dano. Um choque térmico provoca a quebra de um vidro. Uma criança ou outro morador causa involuntariamente a quebra de um elemento de vidro.",
+    importancia: "Excelente cobertura para mostrar que \"pequenos acidentes dentro de casa podem gerar reparos caros\". Não é simplesmente \"seguro de janela\": o alcance inclui diversos materiais e componentes da residência.",
+    tipoInput: "texto"
+  },
+  {
+    id: "alagamento",
+    numero: 9,
+    nome: "Alagamento e Inundação",
+    oqueProtege: "Protege os bens contra alagamento, inundação e enchente decorrentes de acúmulo de água nas ruas, problemas de drenagem ou transbordamento de lagos/rios por fortes chuvas, além de determinadas entradas de água provenientes de ruptura de tubulações externas ao imóvel.",
+    exemploPratico: "Uma chuva muito forte faz a água subir na rua e entrar na residência. O bairro sofre uma inundação e a água atinge móveis e eletrodomésticos. A garagem fica alagada e a água atinge bens armazenados. A residência está em região com histórico de enchentes. Uma falha de drenagem faz a água invadir o imóvel. Uma tubulação externa ao imóvel se rompe e provoca entrada de água em determinadas condições.",
+    importancia: "Alagamento não é automaticamente a mesma coisa que ruptura de tubulação interna. Por isso essa cobertura é importante: protege um risco relacionado à entrada/acúmulo de água por causas específicas de alagamento e inundação.",
+    tipoInput: "texto"
+  },
+  {
+    id: "desmoronamento",
+    numero: 10,
+    nome: "Desmoronamento",
+    oqueProtege: "Protege os bens segurados contra danos materiais decorrentes de desmoronamento total ou parcial do imóvel. Para desmoronamento parcial, o documento considers o colapso de parede ou elemento estrutural como coluna, viga ou laje.",
+    exemploPratico: "Uma parede estrutural desmorona e danifica móveis e equipamentos. Uma laje ou elemento estrutural desaba e atinge o conteúdo da casa. Parte da residència sofre colapso. Um desmoronamento parcial torna parte do imóvel inutilizável. O colapso estrutural provoca uma cadeia de danos dentro da residência.",
+    importancia: "É uma proteção específica para colapso estrutural. Não deve ser confundida com danos causados simplesmente por água, vendaval ou outros eventos, que possuem coberturas próprias.",
+    tipoInput: "texto"
+  },
+  {
+    id: "rc_familiar",
+    numero: 12,
+    nome: "Responsabilidade Civil Familiar — com Danos Morais",
+    oqueProtege: "Reembolsa valores pelos quais o segurado seja civilmente responsável, em sentença judicial ou acordo autorizado, por danos involuntários corporais ou materiais causados a terceiros. Abrange situações relacionadas à residência, queda de objetos, atos do segurado e familiares, empregados domésticos e animais domésticos. Também contempla danos morais decorrentes dos danos corporais/materiais cobertos, dentro do sublimite previsto.",
+    exemploPratico: "Uma telha/objeto da residência cai e atinge o patrimônio de um vizinho. Um vazamento originado na residência causa danos ao apartamento vizinho. Um vazamento de água/esgoto provoca prejuízo ao imóvel de terceiro. Um objeto é lançado ou cai da residência e danifica um veículo. O cachorro do segurado causa dano a uma pessoa ou a outro animal, nas condições da cobertura. Uma ação involuntária do segurado ou de um familiar causa dano a terceiro. O terceiro ingressa judicialmente buscando indenização. Além do dano material/corporal coberto, surge dano moral diretamente decorrente do evento.",
+    importancia: "Essa é uma das coberturas que mais permite uma venda consultiva: “Você protege sua casa, mas quem protege você quando o problema causado pela sua casa atinge outra pessoa?” É responsabilidade civil, não patrimônio próprio.",
+    tipoInput: "moeda"
+  },
+  {
+    id: "tremor_terra",
+    numero: 21,
+    nome: "Tremor de Terra, Terremoto e Maremoto",
+    oqueProtege: "Protege os bens segurados contra danos materiais diretamente causados por tremor de terra, terremoto ou maremoto e também por incêndio ou explosão consequentes desses eventos.",
+    exemploPratico: "Um terremoto provoca rachaduras e danos relevantes na residência. Um tremor provoca queda de elementos estruturais e danos ao conteúdo. Um maremoto provoca danos à residência em local sujeito ao fenômeno. Um terremoto provoca posteriormente um incêndio coberto pela própria modalidade. Um evento sísmico provoca uma explosão consequente e danos materiais.",
+    importancia: "É uma cobertura para um risco catastrófico específico, que não deve ser presumido simplesmente porque a residência possui a cobertura básica.",
+    tipoInput: "texto"
+  },
+  {
+    id: "equipamentos_eletronicos",
+    numero: 25,
+    nome: "Equipamentos Eletrônicos e Eletrodomésticos",
+    oqueProtege: "Protege equipamentos eletrônicos, portáteis e eletrodomésticos existentes no endereço segurado contra acidentes decorrentes de causa externa que exijam reparo ou reposição para que continuem funcionando normalmente.",
+    exemploPratico: "A televisão sofre uma queda acidental e precisa ser reparada. A geladeira é danificada por um acidente externo. Uma máquina de lavar sofre dano acidental. Um eletrodoméstico é atingido por um acidente e deixa de funcionar. Equipamentos eletrônicos da família sofrem danos acidentais. Um equipamento eletrônico sofre um acidente que exige reparo para voltar a funcionar.",
+    importancia: "Aqui existe uma diferença comercial muito importante: Danos Elétricos = fenômeno elétrico; Equipamentos = acidente decorrente de causa externa. O cliente pode ter ambos porque são riscos diferentes.",
+    tipoInput: "texto"
+  },
+  {
+    id: "ruptura_tubulacoes",
+    numero: 33,
+    nome: "Ruptura de Tubulações",
+    oqueProtege: "Protege contra danos materiais decorrentes da ruptura acidental de tubulações/canalizações de esgoto, gás e água ou caixa d’água, incluindo determinadas canalizações externas à parede, como mangueiras/rabichos de pia, vaso sanitário, ducha e semelhantes.",
+    exemploPratico: "Uma mangueira da pia rompe durante a madrugada e causa um grande vazamento. Uma tubulação do banheiro se rompe e alaga parte da casa. Uma conexão do vaso sanitário rompe e causa danos ao piso e móveis. A caixa d’água sofre ruptura e libera grande volume de água. Uma tubulação de gás sofre ruptura e gera uma situação de risco com danos materiais. A água atinge móveis, pisos, paredes e equipamentos.",
+    importancia: "Aqui está uma pergunta comercial muito forte: “Se um cano romper dentro da sua casa às 2h da manhã, quanto pode custar o prejuízo antes de você conseguir controlar a água?” É diferente de Alagamento/Inundação porque trata da ruptura acidental das instalações/tubulações previstas.",
+    tipoInput: "texto"
+  },
+  {
+    id: "bicicleta",
+    numero: 37,
+    nome: "Bicicleta",
+    oqueProtege: "Protege bicicletas, inclusive elétricas, do segurado e moradores, quando relacionadas na apólice, contra roubo, furto qualificado e determinados danos, inclusive algumas situações fora do local de risco e durante transporte, respeitando as condições da cobertura.",
+    exemploPratico: "Uma bicicleta de alto valor é roubada durante um passeio, observadas as condições da cobertura. A bicicleta é furtada mediante arrombamento. A bicicleta fica guardada em bicicletário de condomínio devidamente presa e é furtada. A bicicleta sofre dano em acidente com o veículo que a transporta, nas condições previstas. Uma e-bike de alto valor é roubada e o cliente precisa ter proteção específica. Um cliente possui bicicleta esportiva de R$ 10 mil, R$ 20 mil ou mais e não quer assumir sozinho esse patrimônio.",
+    importancia: "O grande argumento é: bicicleta de alto valor virou patrimônio relevante. E a cobertura possui regras específicas de identificação, guarda e utilização. Não é simplesmente presumir que qualquer bicicleta esteja automaticamente protegida.",
+    tipoInput: "texto"
+  },
+  {
+    id: "equipamentos_portateis",
+    numero: 52,
+    nome: "Equipamentos Portáteis",
+    oqueProtege: "Protege aparelhos portáteis de propriedade do segurado, cônjuge, filhos, familiares e moradores contra danos materiais decorrentes de causa externa, inclusive roubo ou furto qualificado, tanto dentro da residência quanto em trânsito externo em todo o território nacional. Os objetos devem ser relacionados individualmente na apólice.",
+    exemploPratico: "O notebook do segurado é roubado durante uma viagem. Um aparelho celular sofre um acidente durante uma saída. Uma câmera é danificada durante uma viagem pelo Brasil. Um notebook é danificado dentro da própria residência. Equipamentos portáteis de alto valor são levados para trabalho, estudo ou lazer. O equipamento acompanha o segurado em viagens e deslocamentos. Um equipamento portátil é roubado fora da residência nas condições previstas.",
+    importancia: "Essa é uma das coberturas mais interessantes para explicar ao cliente: “Seu patrimônio não fica parado dentro de casa.” Ela acompanha determinados equipamentos portáteis inclusive em trânsito externo nacional. É mais ampla, nesse aspecto, que a cobertura de Roubo da residência.",
+    tipoInput: "texto"
+  },
+  {
+    id: "desp_salvamento",
+    numero: 58,
+    nome: "Despesas de Salvamento, Desentulho e Demolição",
+    oqueProtege: "Reembolsa despesas comprovadas de salvamento, desentulho e demolição realizadas durante ou depois de determinados sinistros indenizados, além de despesas para evitar/minorar o dano e determinadas despesas de implosão quando o imóvel for condenado pela Defesa Civil.",
+    exemploPratico: "Depois de um incêndio, é necessário retirar grande quantidade de entulho. Parte da estrutura precisa ser removida após um desmoronamento. É necessário escorar, desmontar, limpar e transportar resíduos. Após um sinistro grave, a Defesa Civil condena o imóvel e surge necessidade de demolição/implosão dentro das condições previstas. A família toma medidas emergenciais para salvar bens e impedir que o prejuízo aumente. O custo de retirada e transporte do entulho pode ser significativo mesmo depois que o sinistro principal já foi reconhecido.",
+    importancia: "Essa cobertura resolve uma pergunta que quase ninguém faz antes do sinistro: “Quem paga para limpar o estrago depois que o evento acontece?” O seguro não trata apenas do bem destruído; há também custos para salvar, limpar e remover o que ficou para trás.",
+    tipoInput: "texto"
+  }
+];
 
 export default function ModeloCotacaoResidencial({ propostaId, onClose }: ModeloCotacaoResidencialProps) {
   const [loading, setLoading] = useState(true);
   const [dadosBase, setDadosBase] = useState<any>(null);
   const [valoresMatriz, setValoresMatriz] = useState<Record<string, Record<string, any>>>({});
   
-  // Lista dinâmica de coberturas e controle de visibilidade (selecionadas para impressão)
   const [listaCoberturas, setListaCoberturas] = useState<LinhaCobertura[]>(ESTRUTURA_COBERTURAS_PADRAO);
   const [coberturasAtivas, setCoberturasAtivas] = useState<string[]>(ESTRUTURA_COBERTURAS_PADRAO.map(c => c.id));
 
-  // Estados do formulário de inserção de novas coberturas
   const [novoNome, setNovoNome] = useState("");
-  const [novoSignificado, setNovoSignificado] = useState("");
+  const [novoOqueProtege, setNovoOqueProtege] = useState("");
+  const [novoExemploPratico, setNovoExemploPratico] = useState("");
+  const [novoImportancia, setNovoImportancia] = useState("");
 
   const [perfilRisco, setPerfilRisco] = useState<PerfilRiscoResidencial>({
     tipoResidencia: "Casa",
@@ -81,9 +199,6 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     sinistrosAnteriores: "Não"
   });
 
-  const [celulaAtiva, setCelulaAtiva] = useState<{ opcaoId: string; cobId: string } | null>(null);
-  const [perfilEditando, setPerfilEditando] = useState<keyof PerfilRiscoResidencial | null>(null);
-
   useEffect(() => {
     if (propostaId) {
       carregarDadosProposta();
@@ -91,117 +206,112 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
   }, [propostaId]);
 
   async function carregarDadosProposta() {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    // 1. Busca a proposta SEM o JOIN direto com tab_clientes
-    const { data: proposta, error: errorProp } = await supabase
-      .from("tab_propostas")
-      .select(`
-        *,
-        usuarios_perfis!tab_propostas_corretor_id_fkey (*) 
-      `)
-      .eq("id", propostaId)
-      .single();
+      const { data: proposta, error: errorProp } = await supabase
+        .from("tab_propostas")
+        .select(`
+          *,
+          usuarios_perfis!tab_propostas_corretor_id_fkey (*) 
+        `)
+        .eq("id", propostaId)
+        .single();
 
-    if (errorProp || !proposta) throw new Error("Erro ao buscar dados básicos da proposta.");
+      if (errorProp || !proposta) throw new Error("Erro ao buscar dados básicos da proposta.");
 
-    const corretor = proposta.usuarios_perfis;
+      const corretor = proposta.usuarios_perfis;
 
-    // 2. Busca o cliente de forma independente se houver cliente_id
-    let clienteDb = null;
-    if (proposta.cliente_id) {
-      const { data: cliente, error: errorCliente } = await supabase
-        .from("tab_clientes")
-        .select("*")
-        .eq("id", proposta.cliente_id)
+      let clienteDb = null;
+      if (proposta.cliente_id) {
+        const { data: cliente, error: errorCliente } = await supabase
+          .from("tab_clientes")
+          .select("*")
+          .eq("id", proposta.cliente_id)
+          .maybeSingle();
+
+        if (!errorCliente) {
+          clienteDb = cliente;
+        }
+      }
+
+      const { data: corretora } = await supabase
+        .from("usuarios_perfis")
+        .select(`
+          id,
+          cnpj_corretora,
+          registro_susep,
+          tab_configuracoes_site (
+            nome_exibicao,
+            dominio,
+            logo_url
+          )
+        `)
+        .eq("corretora_id", proposta.corretora_id)
+        .or("tipo_usuario.eq.CORRETORA,tipo_usuario.eq.ADMIN") 
+        .limit(1)
         .maybeSingle();
 
-      if (!errorCliente) {
-        clienteDb = cliente;
-      }
-    }
-
-    // 3. Busca a corretora
-    const { data: corretora } = await supabase
-      .from("usuarios_perfis")
-      .select(`
-        id,
-        cnpj_corretora,
-        registro_susep,
-        tab_configuracoes_site (
-          nome_exibicao,
-          dominio,
-          logo_url
-        )
-      `)
-      .eq("corretora_id", proposta.corretora_id)
-      .or("tipo_usuario.eq.CORRETORA,tipo_usuario.eq.ADMIN") 
-      .limit(1)
-      .maybeSingle();
-
-    // 4. Busca opções e itens (mantém a lógica específica do modal se houver)
-    const { data: opcoesDb, error: errorOpcoes } = await supabase
-      .from("tab_proposta_opcoes")
-      .select(`
-        *,
-        base_seguradoras (*),
-        tab_proposta_itens (
+      const { data: opcoesDb, error: errorOpcoes } = await supabase
+        .from("tab_proposta_opcoes")
+        .select(`
           *,
-          base_produtos (*)
-        )
-      `)
-      .eq("proposta_id", propostaId)
-      .order("ordem_opcao", { ascending: true });
+          base_seguradoras (*),
+          tab_proposta_itens (
+            *,
+            base_produtos (*)
+          )
+        `)
+        .eq("proposta_id", propostaId)
+        .order("ordem_opcao", { ascending: true });
 
-    if (errorOpcoes) throw errorOpcoes;
+      if (errorOpcoes) throw errorOpcoes;
 
-    const opcoes = opcoesDb || [];
-    const matrizInicial: Record<string, Record<string, any>> = {};
+      const opcoes = opcoesDb || [];
+      const matrizInicial: Record<string, Record<string, any>> = {};
 
-    opcoes.forEach((opt: any) => {
-      matrizInicial[opt.id] = {
-        formaPagamento: opt.tab_proposta_itens?.[0]?.meio_pagamento || "Boleto",
-        parcelamento: opt.tab_proposta_itens?.[0]?.parcelamento || "1x",
-        valorTotal: opt.valor_total_opcao || 0
-      };
-
-      listaCoberturas.forEach(cob => {
-        matrizInicial[opt.id][cob.id] = "R$ 0,00";
-      });
-
-      opt.tab_proposta_itens?.forEach((item: any) => {
-        const nomeProd = (item.base_produtos?.nome || "").toLowerCase();
-        const textoSalvo = item.coberturas_franquias;
-
-        if (!textoSalvo) return;
+      opcoes.forEach((opt: any) => {
+        matrizInicial[opt.id] = {
+          formaPagamento: opt.tab_proposta_itens?.[0]?.meio_pagamento || "Boleto",
+          parcelamento: opt.tab_proposta_itens?.[0]?.parcelamento || "1x",
+          valorTotal: opt.valor_total_opcao || 0
+        };
 
         listaCoberturas.forEach(cob => {
-          if (nomeProd.includes(cob.id.toLowerCase()) || nomeProd.includes(cob.nome.toLowerCase().split(' ')[0])) {
-            matrizInicial[opt.id][cob.id] = textoSalvo;
-          }
+          matrizInicial[opt.id][cob.id] = "R$ 0,00";
+        });
+
+        opt.tab_proposta_itens?.forEach((item: any) => {
+          const nomeProd = (item.base_produtos?.nome || "").toLowerCase();
+          const textoSalvo = item.coberturas_franquias;
+
+          if (!textoSalvo) return;
+
+          listaCoberturas.forEach(cob => {
+            if (nomeProd.includes(cob.id.toLowerCase()) || nomeProd.includes(cob.nome.toLowerCase().split(' ')[0])) {
+              matrizInicial[opt.id][cob.id] = textoSalvo;
+            }
+          });
         });
       });
-    });
 
-    setValoresMatriz(matrizInicial);
+      setValoresMatriz(matrizInicial);
 
-    // 5. Atualiza o estado
-    setDadosBase({
-      proposta,
-      corretora,
-      corretor,
-      cliente: clienteDb,
-      opcoes
-    });
+      setDadosBase({
+        proposta,
+        corretora,
+        corretor,
+        cliente: clienteDb,
+        opcoes
+      });
 
-  } catch (error) {
-    console.error("Erro ao carregar dados da proposta:", error);
-    alert("Houve um erro ao carregar o espelho da proposta.");
-  } finally {
-    setLoading(false);
+    } catch (error) {
+      console.error("Erro ao carregar dados da proposta:", error);
+      alert("Houve um erro ao carregar o espelho da proposta.");
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   const atualizarCelula = (opcaoId: string, campo: string, valor: any) => {
     setValoresMatriz(prev => ({
@@ -214,7 +324,7 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     setPerfilRisco(prev => ({ ...prev, [campo]: valor }));
   };
 
-  const gerenciarCheckboxSeguranca = (opcao: string) => {
+  const gerenciarCheckboxSeguranca = (opcao: SistemaProtecao) => {
     const atuais = [...perfilRisco.sistemasProtecao];
     const index = atuais.indexOf(opcao);
     if (index > -1) {
@@ -223,6 +333,16 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
       atuais.push(opcao);
     }
     atualizarPerfil("sistemasProtecao", atuais);
+  };
+
+  const aplicarMascaraMoeda = (v: string) => {
+    const apenasNumeros = v.replace(/\D/g, "");
+    if (!apenasNumeros) return "R$ 0,00";
+    const valorNumerico = parseFloat(apenasNumeros) / 100;
+    return valorNumerico.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
   };
 
   const formatarMoeda = (valor: number) => {
@@ -240,7 +360,6 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     });
   };
 
-  // Inclusão dinâmica de nova cobertura customizada
   const adicionarNovaCoberturaManual = () => {
     if (!novoNome.trim()) {
       alert("Informe o nome da cobertura para adicioná-la.");
@@ -249,17 +368,17 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     const novoId = "custom_" + Date.now();
     const novaCob: LinhaCobertura = {
       id: novoId,
+      numero: "+",
       nome: novoNome.trim(),
-      significado: novoSignificado.trim() || "Cobertura customizada adicionada manualmente.",
+      oqueProtege: novoOqueProtege.trim() || "Cobertura customizada adicionada manualmente.",
+      exemploPratico: novoExemploPratico.trim() || "Exemplo comercial customizado.",
+      importancia: novoImportancia.trim() || "Proteção sob medida adicionada pelo corretor.",
       tipoInput: "texto"
     };
 
-    // Atualiza a estrutura de dados de coberturas
     setListaCoberturas(prev => [...prev, novaCob]);
-    // Deixa marcada automaticamente para impressão
     setCoberturasAtivas(prev => [...prev, novoId]);
 
-    // Inicializa a nova célula em todas as seguradoras com R$ 0,00
     if (dadosBase?.opcoes) {
       setValoresMatriz(prev => {
         const atualizado = { ...prev };
@@ -272,10 +391,11 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     }
 
     setNovoNome("");
-    setNovoSignificado("");
+    setNovoOqueProtege("");
+    setNovoExemploPratico("");
+    setNovoImportancia("");
   };
 
-  // Exclusão física completa da cobertura da lista local
   const deletarCoberturaCompletamente = (id: string) => {
     setListaCoberturas(prev => prev.filter(c => c.id !== id));
     setCoberturasAtivas(prev => prev.filter(i => i !== id));
@@ -284,7 +404,7 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
   const exportarPDFProposta = async () => {
     if (!dadosBase) return;
 
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const { proposta, cliente, corretor, corretora, opcoes } = dadosBase;
 
     const formatarValorParaPDF = (val: any) => {
@@ -304,88 +424,74 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     const urlLogoCorretora = corretora?.tab_configuracoes_site?.logo_url;
     const imgLogoCorretora = urlLogoCorretora ? await carregarImagemCache(urlLogoCorretora) : null;
 
-    // Cabeçalho
     doc.setFillColor(30, 41, 59);
-    doc.rect(0, 0, 210, 38, "F");
+    doc.rect(0, 0, 297, 34, "F");
     
     let inicioTextoX = 15;
     if (imgLogoCorretora) {
       doc.setFillColor(255, 255, 255);
-      doc.rect(15, 6, 32, 12, "F"); 
-      doc.addImage(imgLogoCorretora, "PNG", 16, 7, 30, 10);
+      doc.rect(15, 5, 32, 12, "F"); 
+      doc.addImage(imgLogoCorretora, "PNG", 16, 6, 30, 10);
       inicioTextoX = 52;
     }
 
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(13);
+    doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text(corretora?.tab_configuracoes_site?.nome_exibicao || "CORRETORA DE SEGUROS", inicioTextoX, 14);
+    doc.text(corretora?.tab_configuracoes_site?.nome_exibicao || "CORRETORA DE SEGUROS", inicioTextoX, 12);
     
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text(`CNPJ: ${corretora?.cnpj_corretora || "-"}`, inicioTextoX, 20);
-    doc.text(`SUSEP: ${corretora?.registro_susep || "-"}`, inicioTextoX, 25);
-    doc.text(`Site: ${corretora?.tab_configuracoes_site?.dominio || "-"}`, inicioTextoX, 30);
+    doc.text(`CNPJ: ${corretora?.cnpj_corretora || "-"}`, inicioTextoX, 17);
+    doc.text(`SUSEP: ${corretora?.registro_susep || "-"}`, inicioTextoX, 21);
+    doc.text(`Site: ${corretora?.tab_configuracoes_site?.dominio || "-"}`, inicioTextoX, 25);
 
-    const colunaDireitaX = 130;
+    const colunaDireitaX = 200;
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
-    doc.text(`PROPOSTA Nº: ${proposta.numero_proposta || "-"}`, colunaDireitaX, 12);
-    doc.text(`VALIDADE: ${proposta.data_validade ? formatarDataBR(proposta.data_validade) : "-"}`, colunaDireitaX, 16);
+    doc.text(`PROPOSTA Nº: ${proposta.numero_proposta || "-"}`, colunaDireitaX, 10);
+    doc.text(`VALIDADE: ${proposta.data_validade ? formatarDataBR(proposta.data_validade) : "-"}`, colunaDireitaX, 14);
     
     doc.setDrawColor(71, 85, 105);
-    doc.line(colunaDireitaX, 19, 195, 19);
+    doc.line(colunaDireitaX, 17, 282, 17);
 
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text(`Consultor: ${corretor?.nome || "-"}`, colunaDireitaX, 23);
-    doc.text(`Telefone: ${corretor?.telefone_corretor || "-"}`, colunaDireitaX, 27);
-    doc.text(`E-mail: ${corretor?.email || "-"}`, colunaDireitaX, 31);
+    doc.text(`Consultor: ${corretor?.nome || "-"}`, colunaDireitaX, 21);
+    doc.text(`Telefone: ${corretor?.telefone_corretor || "-"}`, colunaDireitaX, 25);
+    doc.text(`E-mail: ${corretor?.email || "-"}`, colunaDireitaX, 29);
 
-    // DADOS DO SEGURADO
     doc.setTextColor(51, 51, 51);
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setFont("helvetica", "bold");
-    doc.text("DADOS DO SEGURADO", 15, 46);
-    doc.line(15, 48, 195, 48);
+    doc.text("DADOS DO SEGURADO E RISCO", 15, 41);
+    doc.line(15, 43, 282, 43);
 
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     const isPJ = cliente?.tipo_cliente === "PJ";
-    doc.text(`Nome/Razão Social: ${isPJ ? cliente?.razao_social : cliente?.nome || "-"}`, 15, 54);
-    doc.text(`CPF/CNPJ: ${isPJ ? cliente?.cnpj : cliente?.cpf || "-"}`, 15, 59);
-    doc.text(`WhatsApp: ${cliente?.telefone_whats || "-"} | Email: ${cliente?.email || "-"}`, 15, 64);
-    doc.text(`CEP de Risco: ${isPJ ? cliente?.cep : cliente?.cep_pf || "-"} (${isPJ ? `${cliente?.municipio} - ${cliente?.uf}` : `${cliente?.municipio_pf} - ${cliente?.uf_pf}` || "-"})`, 15, 69);
+    doc.text(`Cliente: ${isPJ ? cliente?.razao_social : cliente?.nome || "-"} | CPF/CNPJ: ${isPJ ? cliente?.cnpj : cliente?.cpf || "-"}`, 15, 48);
+    doc.text(`Residência: ${perfilRisco.tipoResidencia} | Moradia: ${perfilRisco.tipoMoradia} | Construção: ${perfilRisco.tipoConstrucao} | Localização: ${perfilRisco.localizacao}`, 15, 53);
 
-    // PERFIL DO RISCO
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text("PERFIL DO RISCO", 15, 78);
-    doc.line(15, 80, 195, 80);
-
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "normal");
-
-    // Linha 1 (Posição Y: 86)
-    doc.text(`Residência: ${perfilRisco.tipoResidencia}`, 15, 86);
-    doc.text(`Moradia: ${perfilRisco.tipoMoradia}`, 75, 86);
-    doc.text(`Construção: ${perfilRisco.tipoConstrucao}`, 135, 86);
-
-    // Linha 2 (Posição Y: 91)
-    doc.text(`Localização: ${perfilRisco.localizacao}`, 15, 91);
-    doc.text(`Sinistros Anteriores: ${perfilRisco.sinistrosAnteriores}`, 135, 91);
-
-    // Sistemas de Proteção (Como pode ser uma lista longa, colocamos em uma linha dedicada, Y: 96)
-    // Ajuste o startY da tabela para começar em 102 (ao invés de 96) para não encavalar
-    doc.text(`Sistemas de Proteção: ${perfilRisco.sistemasProtecao?.length > 0 ? perfilRisco.sistemasProtecao.join(", ") : "Nenhum"}`, 15, 96);
-
-    // TABELA DE COBERTURAS - FILTRADAS DINAMICAMENTE (Apenas ativas/marcadas vão para o PDF)
-    const tableHead = [["Cobertura", "O que significa", ...opcoes.map((o: any) => o.base_seguradoras?.nome || "Opção")]];
+    const tableHead = [[
+      "N°", 
+      "Cobertura", 
+      "O que protege na prática", 
+      "Exemplos comerciais para fortalecer o argumento", 
+      "Por que ela é importante / não é substituta", 
+      ...opcoes.map((o: any) => o.base_seguradoras?.nome || "Opção")
+    ]];
 
     const tableBody = listaCoberturas
-      .filter(cob => coberturasAtivas.includes(cob.id)) // Garante que excluídas via checkbox não saiam
-      .map((cob) => {
-        const row = [cob.nome, cob.significado];
+      .filter(cob => coberturasAtivas.includes(cob.id))
+      .map((cob, idx) => {
+        const row = [
+          String(cob.numero || idx + 1),
+          cob.nome, 
+          cob.oqueProtege,
+          cob.exemploPratico,
+          cob.importancia
+        ];
         opcoes.forEach((opt: any) => {
           const valor = valoresMatriz[opt.id]?.[cob.id];
           row.push(formatarValorParaPDF(valor));
@@ -393,9 +499,9 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
         return row;
       });
 
-    const rowFormaPgto = ["Forma de Pagamento", ""];
-    const rowParcelas = ["Condição de Parcelamento", ""];
-    const rowPremioTotal = ["INVESTIMENTO TOTAL", ""];
+    const rowFormaPgto = ["-", "Forma de Pagamento", "", "", ""];
+    const rowParcelas = ["-", "Condição de Parcelamento", "", "", ""];
+    const rowPremioTotal = ["-", "INVESTIMENTO TOTAL", "", "", ""];
 
     opcoes.forEach((opt: any) => {
       const vMatriz = valoresMatriz[opt.id];
@@ -407,20 +513,23 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     tableBody.push(rowFormaPgto, rowParcelas, rowPremioTotal);
 
     autoTable(doc, {
-      startY: 102,
+      startY: 57,
       margin: { left: 15, right: 15 },
       head: tableHead,
       body: tableBody,
       theme: "grid",
-      styles: { fontSize: 7, cellPadding: 2, valign: "middle", overflow: 'linebreak' },
+      styles: { fontSize: 6, cellPadding: 1.5, valign: "middle", overflow: 'linebreak' },
       headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: "center" },
       columnStyles: { 
-        0: { cellWidth: 35 }, 
-        1: { cellWidth: 60, minCellHeight: 10 },
+        0: { cellWidth: 8, halign: "center" },
+        1: { cellWidth: 30, fontStyle: "bold" }, 
+        2: { cellWidth: 50 },
+        3: { cellWidth: 50 },
+        4: { cellWidth: 50 },
       },
       didDrawCell: (data) => {
-        if (data.section === "head" && data.column.index >= 2) {
-          const opt = opcoes[data.column.index - 2];
+        if (data.section === "head" && data.column.index >= 5) {
+          const opt = opcoes[data.column.index - 5];
           if (cacheLogos[opt.id]) {
             doc.addImage(cacheLogos[opt.id]!, "PNG", data.cell.x + 2, data.cell.y + 2, 10, 3);
           }
@@ -433,12 +542,22 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
       }
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY + 10;
-    doc.setFontSize(8);
+    const finalY = (doc as any).lastAutoTable.finalY + 8;
+    doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
     doc.text("As coberturas apresentadas seguem as Condições Gerais de cada Seguradora.", 15, finalY);
 
-    doc.save(`Proposta_${proposta.numero_proposta || "Preview"}.pdf`);
+    doc.save(`Proposta_Residencial_${proposta.numero_proposta || "Preview"}.pdf`);
+  };
+
+  const todosSelecionados = coberturasAtivas.length === listaCoberturas.length && listaCoberturas.length > 0;
+  
+  const alternarTodos = () => {
+    if (todosSelecionados) {
+      setCoberturasAtivas([]);
+    } else {
+      setCoberturasAtivas(listaCoberturas.map((c) => c.id));
+    }
   };
 
   if (loading) {
@@ -452,7 +571,6 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     );
   }
 
-  // Trava para impedir a quebra caso a busca falhe ou dadosBase continue nulo
   if (!dadosBase) {
     return (
       <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
@@ -469,430 +587,337 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
     );
   }
 
-  const { proposta, cliente, corretor, corretora, opcoes } = dadosBase;
+  const { proposta, opcoes } = dadosBase;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-50 w-full max-w-6xl rounded-xl shadow-2xl overflow-hidden border border-slate-200 border-box flex flex-col my-8">
+    <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm">
+      <div className="bg-slate-50 w-full max-w-[98vw] h-[96vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-300">
         
-        {/* BARRA SUPERIOR DE CONTROLES */}
-        <div className="bg-white px-6 py-4 border-b border-slate-200 flex justify-between items-center sticky top-0 z-10">
-          <div>
-            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Shield className="text-emerald-600 h-5 w-5" /> 
-              Espelho da Proposta Comercial Empresarial
-            </h3>
-            <p className="text-xs text-slate-500">Ref: Proposta #{proposta?.numero_proposta}</p>
+        {/* CABEÇALHO */}
+        <div className="bg-white px-6 py-3.5 border-b border-slate-200 flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600">
+              <Shield className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 leading-snug">Comparativo Residencial Completo (5 Colunas Ítegras)</h2>
+              <p className="text-xs text-slate-500">Proposta nº {proposta?.numero_proposta || "Não informada"}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={exportarPDFProposta}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all flex items-center gap-2 shadow-sm"
+          <div className="flex gap-3">
+            <button 
+              onClick={exportarPDFProposta} 
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
             >
-              <Printer className="h-4 w-4" /> Imprimir / PDF
+              <Printer className="w-4 h-4" /> 
+              Exportar PDF (Paisagem)
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
-              <X className="h-5 w-5" />
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+              title="Fechar"
+            >
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-160px)]">
+        {/* ÁREA DE ROLAGEM PRINCIPAL */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           
-          {/* SEÇÃO: CORRETOR E CORRETORA */}
-          <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-start gap-4">
-              {corretora?.tab_configuracoes_site?.logo_url ? (
-                <div className="bg-slate-50 p-1.5 rounded border border-slate-100 flex items-center justify-center max-w-[110px]">
-                  <img 
-                    src={corretora.tab_configuracoes_site.logo_url} 
-                    alt="Logo Corretora" 
-                    className="max-h-12 object-contain"
-                  />
-                </div>
-              ) : (
-                <div className="bg-slate-100 p-3 rounded-full text-slate-400">
-                  <Building2 className="h-6 w-6" />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <span className="text-xs uppercase font-bold text-slate-400 block tracking-wider">Corretora Emissora</span>
-                <span className="text-sm font-bold text-slate-800 block truncate">
-                  {corretora?.tab_configuracoes_site?.nome_exibicao || corretora?.nome || "Não Identificada"}
-                </span>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                  CNPJ: {corretora?.cnpj_corretora || "-"} | SUSEP: {corretora?.registro_susep || "-"}
-                </p>
-                <div className="flex flex-wrap gap-x-3 mt-1.5 pt-1.5 border-t border-slate-100 text-xs text-slate-600">
-                  {corretora?.tab_configuracoes_site?.dominio && (
-                    <span><strong className="text-slate-400">Site:</strong> {corretora.tab_configuracoes_site.dominio}</span>
-                  )}
-                  {corretora?.tab_configuracoes_site?.whatsapp_notificacao && (
-                    <span><strong className="text-slate-400">Whats Atendimento:</strong> {corretora.tab_configuracoes_site.whatsapp_notificacao}</span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 border-t md:border-t-0 md:border-l border-slate-100 md:pl-4">
-              <User className="h-5 w-5 text-slate-400 mt-0.5" />
-              <div>
-                <span className="text-xs uppercase font-bold text-slate-400 block tracking-wider">Consultor Responsável</span>
-                <span className="text-sm font-semibold text-slate-800">{corretor?.nome || "-"}</span>
-                <p className="text-xs text-slate-500 mt-0.5">E-mail: {corretor?.email || "-"} | Tel: {corretor?.telefone_corretor || "-"}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* SEÇÃO: DADOS DO SEGURADO */}
-          <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-            <span className="text-xs uppercase font-bold text-slate-400 block tracking-wider mb-3">Dados do Segurado e Risco</span>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-y-3 gap-x-6 text-sm">
-              <div>
-                <span className="text-slate-400 block text-xs">Nome / Razão Social:</span>
-                <span className="font-medium text-slate-800">{cliente?.tipo_cliente === "PJ" ? cliente?.razao_social : cliente?.nome}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-xs">Documento (CPF/CNPJ):</span>
-                <span className="font-medium text-slate-800">{cliente?.tipo_cliente === "PJ" ? cliente?.cnpj : cliente?.cpf}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-xs">Localização do Risco (CEP):</span>
-                <span className="font-medium text-slate-800 flex items-center gap-1">
-                  <MapPin className="h-3 w-3 text-slate-400" />
-                  {cliente?.tipo_cliente === "PJ" ? cliente?.cep : cliente?.cep_pf} 
-                  <span className="text-xs text-slate-500">
-                    ({cliente?.tipo_cliente === "PJ" ? cliente?.municipio : cliente?.municipio_pf})
-                  </span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* BLOCO EDITÁVEL DO PERFIL DE RISCO EMPRESARIAL */}
-          <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-4">
-            <span className="text-xs uppercase font-bold text-slate-400 flex items-center gap-1.5 tracking-wider">
-              <ClipboardCheck className="h-4 w-4 text-emerald-600" /> Informações Complementares do Risco
-            </span>
-
-            <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("tipoResidencia")}>
-                <span className="text-slate-400 block text-xs">1) Tipo de Residência:</span>
-                {perfilEditando === "tipoResidencia" ? (
-                    <select
-                    value={perfilRisco.tipoResidencia}
-                    onChange={(e) => atualizarPerfil("tipoResidencia", e.target.value)}
-                    onBlur={() => setPerfilEditando(null)}
-                    autoFocus
-                    className="w-full mt-1 border rounded p-1 text-xs focus:outline-emerald-500"
-                    >
-                    <option value="Casa">Casa</option>
-                    <option value="Apartamento">Apartamento</option>
-                    <option value="Sobrado">Sobrado</option>
-                    <option value="Condomínio de Casas">Condomínio de Casas</option>
-                    </select>
-                ) : (
-                    <span className="font-semibold text-slate-700">{perfilRisco.tipoResidencia || "Não informado"}</span>
-                )}
-            </div>
+          {/* PERFIL DE RISCO */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+            <h3 className="text-md font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-emerald-600" />
+              Perfil de Risco do Imóvel
+            </h3>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm border-t border-slate-100 pt-3">
-              <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("tipoMoradia")}>
-                <span className="text-slate-400 block text-xs">1) Atividade Principal:</span>
-                {perfilEditando === "tipoMoradia" ? (
-                  <select
-                    value={perfilRisco.tipoMoradia}
-                    onChange={(e) => atualizarPerfil("tipoMoradia", e.target.value)}
-                    onBlur={() => setPerfilEditando(null)}
-                    autoFocus
-                    className="w-full mt-1 border rounded p-1 text-xs focus:outline-emerald-500"
-                  >
-                    <option value="Habitual">Habitual</option>
-                    <option value="Veraneio">Veraneio</option>
-                    <option value="Desocupada">Desocupada</option>
-                  </select>
-                ) : (
-                  <span className="font-semibold text-slate-700">{perfilRisco.tipoMoradia}</span>
-                )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-5 text-xs">
+              <div>
+                <label className="block font-medium text-slate-600 mb-1">Residência</label>
+                <select 
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
+                  value={perfilRisco.tipoResidencia} 
+                  onChange={e => atualizarPerfil("tipoResidencia", e.target.value)}
+                >
+                  <option value="Casa">Casa</option>
+                  <option value="Apartamento">Apartamento</option>
+                  <option value="Sobrado">Sobrado</option>
+                  <option value="Outros">Outros</option>
+                </select>
               </div>
-
-              <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("tipoConstrucao")}>
-                <span className="text-slate-400 block text-xs">2) Tipo de Construção:</span>
-                {perfilEditando === "tipoConstrucao" ? (
-                  <select
-                    value={perfilRisco.tipoConstrucao}
-                    onChange={(e) => atualizarPerfil("tipoConstrucao", e.target.value)}
-                    onBlur={() => setPerfilEditando(null)}
-                    autoFocus
-                    className="w-full mt-1 border rounded p-1 text-xs focus:outline-emerald-500"
-                  >
-                    <option value="Alvenaria">Alvenaria</option>
-                    <option value="Metálica">Metálica</option>
-                    <option value="Mista">Mista</option>
-                    <option value="Madeira">Madeira</option>
-                  </select>
-                ) : (
-                  <span className="font-semibold text-slate-700">{perfilRisco.tipoConstrucao}</span>
-                )}
+              <div>
+                <label className="block font-medium text-slate-600 mb-1">Moradia</label>
+                <select 
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
+                  value={perfilRisco.tipoMoradia} 
+                  onChange={e => atualizarPerfil("tipoMoradia", e.target.value)}
+                >
+                  <option value="Habitual">Habitual</option>
+                  <option value="Veraneio">Veraneio</option>
+                  <option value="Desocupada">Desocupada</option>
+                </select>
               </div>
-
-              <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("localizacao")}>
-                <span className="text-slate-400 block text-xs">3) Localização:</span>
-                {perfilEditando === "localizacao" ? (
-                  <select
-                    value={perfilRisco.localizacao}
-                    onChange={(e) => atualizarPerfil("localizacao", e.target.value)}
-                    onBlur={() => setPerfilEditando(null)}
-                    autoFocus
-                    className="w-full mt-1 border rounded p-1 text-xs focus:outline-emerald-500"
-                  >
-                    <option value="Rua/Avenida">Rua/Avenida</option>
-                    <option value="Condomínio Fechado">Condomínio Fechado</option>
-                    <option value="Outros">Outros</option>
-                  </select>
-                ) : (
-                  <span className="font-semibold text-slate-700">{perfilRisco.localizacao}</span>
-                )}
+              <div>
+                <label className="block font-medium text-slate-600 mb-1">Construção</label>
+                <select 
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
+                  value={perfilRisco.tipoConstrucao} 
+                  onChange={e => atualizarPerfil("tipoConstrucao", e.target.value)}
+                >
+                  <option value="Alvenaria">Alvenaria</option>
+                  <option value="Metálica">Metálica</option>
+                  <option value="Mista">Mista</option>
+                  <option value="Madeira">Madeira</option>
+                </select>
               </div>
-
-              <div className="cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors" onClick={() => setPerfilEditando("sinistrosAnteriores")}>
-                <span className="text-slate-400 block text-xs">4) Sinistros Anteriores?</span>
-                {perfilEditando === "sinistrosAnteriores" ? (
-                  <select
-                    value={perfilRisco.sinistrosAnteriores}
-                    onChange={(e) => atualizarPerfil("sinistrosAnteriores", e.target.value)}
-                    onBlur={() => setPerfilEditando(null)}
-                    autoFocus
-                    className="w-full mt-1 border rounded p-1 text-xs focus:outline-emerald-500"
-                  >
-                    <option value="Sim">Sim</option>
-                    <option value="Não">Não</option>
-                  </select>
-                ) : (
-                  <span className="font-semibold text-slate-700">{perfilRisco.sinistrosAnteriores}</span>
-                )}
+              <div>
+                <label className="block font-medium text-slate-600 mb-1">Localização</label>
+                <select 
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
+                  value={perfilRisco.localizacao} 
+                  onChange={e => atualizarPerfil("localizacao", e.target.value)}
+                >
+                  <option value="Rua/Avenida">Rua/Avenida</option>
+                  <option value="Condomínio Fechado">Condomínio Fechado</option>
+                  <option value="Outros">Outros</option>
+                </select>
               </div>
+              <div>
+                <label className="block font-medium text-slate-600 mb-1">Sinistros Anteriores?</label>
+                <select 
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
+                  value={perfilRisco.sinistrosAnteriores} 
+                  onChange={e => atualizarPerfil("sinistrosAnteriores", e.target.value)}
+                >
+                  <option value="Não">Não</option>
+                  <option value="Sim">Sim</option>
+                </select>
+              </div>
+            </div>
 
-              <div className="p-2 rounded bg-slate-50/60 border border-slate-100 col-span-1 sm:col-span-2 md:col-span-4">
-                <span className="text-slate-400 block text-xs mb-1">Sistemas de Proteção:</span>
-                <div className="flex flex-wrap gap-x-4 gap-y-2 mt-1">
-                  {["Câmeras", "Alarme Monitorado", "Cerca Elétrica", "Vigilância Armada"].map((disp) => (
-                    <label key={disp} className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer">
+            <div className="pt-3 border-t border-slate-100">
+              <label className="block text-xs font-medium text-slate-600 mb-2">Sistemas de Proteção Identificados</label>
+              <div className="flex flex-wrap gap-3">
+                {["Extintores", "Hidrantes", "Sprinklers", "Alarme Monitorado", "Câmeras (CFTV)", "Vigilância Armada"].map(sys => (
+                  <label key={sys} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer p-1.5 hover:bg-slate-50 rounded transition-colors border border-transparent hover:border-slate-200">
+                    <input 
+                      type="checkbox" 
+                      className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                      checked={perfilRisco.sistemasProtecao.includes(sys)} 
+                      onChange={() => gerenciarCheckboxSeguranca(sys)} 
+                    />
+                    {sys}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* GRADE DE COBERTURAS - ROLAGEM HORIZONTAL E VERTICAL OTIMIZADA PARA 100% DE ZOOM */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 relative overflow-hidden">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh] w-full border-collapse">
+              <table className="w-full text-left border-collapse min-w-[1200px] text-xs">
+                <thead className="sticky top-0 z-20 bg-slate-100 border-b-2 border-slate-200 shadow-sm">
+                  <tr className="text-slate-700 uppercase tracking-wider font-semibold">
+                    <th className="p-3 w-10 text-center align-middle bg-slate-100">
                       <input
                         type="checkbox"
-                        checked={perfilRisco.sistemasProtecao.includes(disp)}
-                        onChange={() => gerenciarCheckboxSeguranca(disp)}
-                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                        className="w-4 h-4 rounded border-slate-400 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        checked={todosSelecionados}
+                        onChange={alternarTodos}
+                        title="Marcar/Desmarcar todas"
                       />
-                      {disp}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* NOVO CONTROLADOR: ADICIONAR NOVA COBERTURA NA LISTA */}
-          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-3">
-            <span className="text-xs uppercase font-bold text-slate-400 block tracking-wider">
-              Lançar Nova Cobertura (Não prevista no Padrão)
-            </span>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input 
-                type="text" 
-                placeholder="Nome da Cobertura (ex: Danos a Terceiros em Carga)" 
-                className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
-                value={novoNome}
-                onChange={e => setNovoNome(e.target.value)}
-              />
-              <input 
-                type="text" 
-                placeholder="O que significa (Significado prático)" 
-                className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
-                value={novoSignificado}
-                onChange={e => setNovoSignificado(e.target.value)}
-              />
-              <button 
-                onClick={adicionarNovaCoberturaManual}
-                className="bg-slate-800 text-white hover:bg-slate-900 px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all"
-              >
-                <Plus className="h-3.5 w-3.5" /> Adicionar na Matriz
-              </button>
-            </div>
-          </div>
-          
-          {/* MATRIZ DE COBERTURAS EMPRESARIAIS */}
-          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-max border-collapse table-fixed">
-                <thead>
-                  <tr className="bg-slate-800 text-white text-[10px] uppercase">
-                    <th style={{ width: '230px', minWidth: '230px', maxWidth: '230px' }} className="py-3 px-4 border-r border-slate-700 text-left">
-                      Cobertura (Marque para incluir no PDF)
                     </th>
-                    <th style={{ width: '220px', minWidth: '220px', maxWidth: '220px' }} className="py-3 px-4 border-r border-slate-700 text-left">
-                      O que significa
-                    </th>
-                    {opcoes.map((opt: any) => (
-                      <th key={opt.id} style={{ width: '140px', minWidth: '140px', maxWidth: '140px' }} className="py-3 px-4 text-center border-l border-slate-700 bg-slate-900">
-                        <div className="flex flex-col items-center gap-1">
-                          {opt.base_seguradoras?.logo_url && (
-                            <img 
-                              src={opt.base_seguradoras.logo_url} 
-                              alt={opt.base_seguradoras?.nome} 
-                              className="h-6 object-contain bg-white rounded p-0.5"
-                            />
-                          )}
-                          <span>{opt.base_seguradoras?.nome || "Opção"}</span>
-                        </div>
+                    <th className="p-3 w-12 text-center align-middle border-r border-slate-200 bg-slate-100 font-bold">N°</th>
+                    <th className="p-3 min-w-[160px] max-w-[200px] align-middle bg-slate-100 font-bold">Cobertura</th>
+                    <th className="p-3 min-w-[260px] max-w-[320px] align-middle bg-slate-100 font-bold">O que protege na prática</th>
+                    <th className="p-3 min-w-[260px] max-w-[320px] align-middle bg-slate-100 font-bold">Exemplos comerciais para fortalecer o argumento</th>
+                    <th className="p-3 min-w-[240px] max-w-[300px] align-middle border-r border-slate-200 bg-slate-100 font-bold">Por que ela é importante / não é substituta</th>
+                    
+                    {opcoes.map((opt: any, idx: number) => (
+                      <th key={opt.id} className="p-3 font-bold text-slate-800 text-center border-l border-slate-200 min-w-[160px] max-w-[200px] align-middle bg-slate-200/60">
+                        {opt.base_seguradoras?.nome || `Opção ${idx + 1}`}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="text-xs divide-y divide-slate-200">
-                  {listaCoberturas.map((cob) => {
-                    const estaSelecionada = coberturasAtivas.includes(cob.id);
+                <tbody className="divide-y divide-slate-200 text-slate-700">
+                  {listaCoberturas.map((cob, index) => {
+                    const isAtiva = coberturasAtivas.includes(cob.id);
                     return (
-                      <tr 
-                        key={cob.id} 
-                        className={`transition-colors ${estaSelecionada ? "hover:bg-slate-50/80" : "bg-slate-100/60 opacity-50 italic"}`}
-                      >
-                        {/* COLUNA 1: CHECKBOX DE EXCLUSÃO DE IMPRESSÃO / NOME */}
-                        <td style={{ width: '230px', minWidth: '230px', maxWidth: '230px' }} className="py-3 px-4 font-bold text-slate-700 bg-slate-50/50 border-r">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <input 
-                                type="checkbox"
-                                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 cursor-pointer"
-                                checked={estaSelecionada}
-                                onChange={() => {
-                                  setCoberturasAtivas(prev => 
-                                    prev.includes(cob.id) ? prev.filter(id => id !== cob.id) : [...prev, cob.id]
-                                  );
-                                }}
-                              />
-                              <span className="break-words leading-tight">{cob.nome}</span>
-                            </div>
-                            {cob.id.startsWith("custom_") && (
-                              <button 
-                                onClick={() => deletarCoberturaCompletamente(cob.id)}
-                                title="Excluir Permanentemente"
-                                className="text-rose-500 hover:text-rose-700 p-0.5"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
+                      <tr key={cob.id} className={`hover:bg-slate-50/80 transition-colors ${!isAtiva ? 'opacity-40 bg-slate-50/50' : ''}`}>
+                        <td className="p-3 text-center align-middle">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            checked={isAtiva}
+                            onChange={() => {
+                              if (isAtiva) {
+                                setCoberturasAtivas(prev => prev.filter(id => id !== cob.id));
+                              } else {
+                                setCoberturasAtivas(prev => [...prev, cob.id]);
+                              }
+                            }}
+                          />
                         </td>
-                        
-                        {/* COLUNA 2: SIGNIFICADO */}
-                        <td style={{ width: '220px', minWidth: '220px', maxWidth: '220px' }} className="py-3 px-4 text-[10px] text-slate-500 border-r">
-                          <div className="break-words leading-snug">{cob.significado}</div>
+                        <td className="p-3 font-bold text-center text-slate-500 align-middle border-r border-slate-100">
+                          {cob.numero || index + 1}
                         </td>
-                        
-                        {/* COLUNAS DINÂMICAS: SEGURADORAS */}
-                        {opcoes.map((opt: any) => {
-                          const esAtivo = celulaAtiva?.opcaoId === opt.id && celulaAtiva?.cobId === cob.id;
-                          let valorAtual = valoresMatriz[opt.id]?.[cob.id];
-
-                          // Limpeza absoluta: se for inválido, nulo ou "Não Contratado", padroniza estritamente em R$ 0,00
-                          if (!valorAtual || valorAtual === "Não Contratado" || valorAtual === "") {
-                            valorAtual = "R$ 0,00";
-                          }
-
-                          return (
-                            <td 
-                              key={opt.id} 
-                              style={{ width: '140px', minWidth: '140px', maxWidth: '140px' }}
-                              className={`py-2 px-2 text-center border-l ${estaSelecionada ? "cursor-pointer hover:bg-emerald-50/40" : "cursor-not-allowed"}`}
-                              onClick={() => estaSelecionada && setCelulaAtiva({ opcaoId: opt.id, cobId: cob.id })}
+                        <td className="p-3 align-middle font-semibold text-slate-800 break-words max-w-[200px]">
+                          <div>{cob.nome}</div>
+                          {cob.id.startsWith("custom_") && (
+                            <button 
+                              onClick={() => deletarCoberturaCompletamente(cob.id)}
+                              className="text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1 mt-1 font-medium"
                             >
-                              {esAtivo ? (
-                                <input
-                                  type="text"
-                                  autoFocus
-                                  className="w-full text-center border border-emerald-500 rounded px-1 py-0.5 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
-                                  value={valorAtual === "R$ 0,00" ? "" : valorAtual.replace("R$ ", "")}
-                                  onChange={(e) => atualizarCelula(opt.id, cob.id, e.target.value.trim() === "" ? "R$ 0,00" : `R$ ${e.target.value}`)}
-                                  onBlur={() => setCelulaAtiva(null)}
-                                />
-                              ) : (
-                                <span className="font-medium text-slate-700 block select-none">
-                                  {valorAtual}
-                                </span>
-                              )}
-                            </td>
-                          );
-                        })}
+                              <Trash2 className="w-3 h-3" /> Remover
+                            </button>
+                          )}
+                        </td>
+                        <td className="p-3 align-middle leading-relaxed break-words whitespace-normal max-w-[320px] text-[11px] text-slate-600">
+                          {cob.oqueProtege}
+                        </td>
+                        <td className="p-3 align-middle leading-relaxed break-words whitespace-normal max-w-[320px] text-[11px] text-slate-600 bg-slate-50/50">
+                          {cob.exemploPratico}
+                        </td>
+                        <td className="p-3 align-middle leading-relaxed break-words whitespace-normal max-w-[300px] text-[11px] text-slate-600 border-r border-slate-100">
+                          {cob.importancia}
+                        </td>
+                        
+                        {opcoes.map((opt: any) => (
+                          <td key={opt.id} className="p-3 border-l border-slate-100 align-middle min-w-[160px]">
+                            <input
+                              type="text"
+                              disabled={!isAtiva}
+                              className="w-full text-center py-2 px-1 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 transition-all shadow-inner"
+                              value={valoresMatriz[opt.id]?.[cob.id] || "R$ 0,00"}
+                              onChange={(e) => {
+                                const valorFormatado = aplicarMascaraMoeda(e.target.value);
+                                atualizarCelula(opt.id, cob.id, valorFormatado);
+                              }}
+                            />
+                          </td>
+                        ))}
                       </tr>
                     );
                   })}
 
-                  {/* FORMA DE PAGAMENTO */}
-                  <tr className="bg-slate-50/80 font-semibold">
-                    <td className="py-3 px-4 border-r text-slate-700">Forma de Pagamento</td>
-                    <td className="py-3 px-4 border-r"></td>
+                  <tr className="bg-slate-100 border-t-2 border-slate-300">
+                    <td colSpan={6} className="p-3 text-right font-bold text-slate-700 uppercase tracking-wide">
+                      Forma de Pagamento
+                    </td>
                     {opcoes.map((opt: any) => (
-                      <td key={opt.id} className="py-2 px-2 text-center border-l">
-                        <select
-                          className="bg-transparent text-center font-medium text-slate-700 focus:outline-none w-full cursor-pointer text-xs"
-                          value={valoresMatriz[opt.id]?.formaPagamento || "Boleto"}
+                      <td key={`pgto-${opt.id}`} className="p-3 border-l border-slate-300 bg-slate-50">
+                        <input
+                          type="text"
+                          className="w-full text-center p-2 border border-slate-300 rounded text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                          value={valoresMatriz[opt.id]?.formaPagamento || ""}
                           onChange={(e) => atualizarCelula(opt.id, "formaPagamento", e.target.value)}
-                        >
-                          <option value="Boleto">Boleto</option>
-                          <option value="Cartão de Crédito">Cartão de Crédito</option>
-                          <option value="Débito em Conta">Débito em Conta</option>
-                          <option value="Pix">Pix</option>
-                        </select>
+                          placeholder="Ex: Boleto Bancário"
+                        />
                       </td>
                     ))}
                   </tr>
-
-                  {/* CONDIÇÃO DE PARCELAMENTO */}
-                  <tr className="bg-slate-50/80 font-semibold">
-                    <td className="py-3 px-4 border-r text-slate-700">Condição de Parcelamento</td>
-                    <td className="py-3 px-4 border-r"></td>
+                  
+                  <tr className="bg-slate-100">
+                    <td colSpan={6} className="p-3 text-right font-bold text-slate-700 uppercase tracking-wide">
+                      Condição de Parcelamento
+                    </td>
                     {opcoes.map((opt: any) => (
-                      <td key={opt.id} className="py-2 px-2 text-center border-l">
-                        <input 
+                      <td key={`parc-${opt.id}`} className="p-3 border-l border-slate-300 bg-slate-50">
+                        <input
                           type="text"
-                          className="bg-transparent text-center font-medium text-slate-700 focus:outline-none w-full text-xs"
-                          value={valoresMatriz[opt.id]?.parcelamento || "1x"}
+                          className="w-full text-center p-2 border border-slate-300 rounded text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                          value={valoresMatriz[opt.id]?.parcelamento || ""}
                           onChange={(e) => atualizarCelula(opt.id, "parcelamento", e.target.value)}
+                          placeholder="Ex: 4x sem juros"
                         />
                       </td>
                     ))}
                   </tr>
 
-                  {/* INVESTIMENTO TOTAL */}
-                  <tr className="bg-emerald-50/50 font-bold text-slate-800">
-                    <td className="py-3 px-4 border-r text-slate-800 text-sm uppercase">INVESTIMENTO TOTAL</td>
-                    <td className="py-3 px-4 border-r"></td>
-                    {opcoes.map((opt: any) => {
-                      const esPremioAtivo = celulaAtiva?.opcaoId === opt.id && celulaAtiva?.cobId === "valorTotal";
-                      const vTotal = valoresMatriz[opt.id]?.valorTotal || 0;
-                      return (
-                        <td 
-                          key={opt.id} 
-                          className="py-3 px-2 text-center border-l text-emerald-700 font-bold text-sm cursor-pointer hover:bg-emerald-100/40"
-                          onClick={() => setCelulaAtiva({ opcaoId: opt.id, cobId: "valorTotal" })}
-                        >
-                          {esPremioAtivo ? (
-                            <input 
-                              type="number"
-                              autoFocus
-                              className="w-full text-center border border-emerald-600 rounded p-0.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
-                              value={vTotal || ""}
-                              onChange={(e) => atualizarCelula(opt.id, "valorTotal", parseFloat(e.target.value) || 0)}
-                              onBlur={() => setCelulaAtiva(null)}
-                            />
-                          ) : (
-                            <span>{formatarMoeda(vTotal)}</span>
-                          )}
-                        </td>
-                      );
-                    })}
+                  <tr className="bg-emerald-50/80 border-t-2 border-emerald-300">
+                    <td colSpan={6} className="p-4 text-right font-black text-emerald-800 text-sm uppercase tracking-wide">
+                      Investimento Total
+                    </td>
+                    {opcoes.map((opt: any) => (
+                      <td key={`total-${opt.id}`} className="p-3 border-l border-emerald-300 bg-emerald-100/40">
+                        <input
+                          type="text"
+                          className="w-full text-center py-2 px-1 border-2 border-emerald-400 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-black text-emerald-800 shadow-sm bg-white"
+                          value={valoresMatriz[opt.id]?.valorTotal !== undefined 
+                            ? (typeof valoresMatriz[opt.id]?.valorTotal === 'number' 
+                                ? formatarMoeda(valoresMatriz[opt.id]?.valorTotal) 
+                                : valoresMatriz[opt.id]?.valorTotal) 
+                            : "R$ 0,00"}
+                          onChange={(e) => {
+                            atualizarCelula(opt.id, "valorTotal", aplicarMascaraMoeda(e.target.value));
+                          }}
+                        />
+                      </td>
+                    ))}
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* ADICIONAR NOVA COBERTURA COM TODAS AS COLUNAS */}
+          <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Plus className="w-4 h-4 text-emerald-600" />
+              Adicionar Cobertura Extra à Grade
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end text-xs">
+              <div className="md:col-span-3">
+                <label className="block font-medium text-slate-600 mb-1">Nome da Cobertura</label>
+                <input 
+                  type="text" 
+                  value={novoNome} 
+                  onChange={e => setNovoNome(e.target.value)} 
+                  className="w-full p-2 bg-white border border-slate-300 rounded outline-none focus:ring-2 focus:ring-emerald-500" 
+                  placeholder="Ex: Danos ao Jardim" 
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label className="block font-medium text-slate-600 mb-1">O que protege na prática</label>
+                <input 
+                  type="text" 
+                  value={novoOqueProtege} 
+                  onChange={e => setNovoOqueProtege(e.target.value)} 
+                  className="w-full p-2 bg-white border border-slate-300 rounded outline-none focus:ring-2 focus:ring-emerald-500" 
+                  placeholder="Descrição da proteção" 
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label className="block font-medium text-slate-600 mb-1">Exemplo comercial</label>
+                <input 
+                  type="text" 
+                  value={novoExemploPratico} 
+                  onChange={e => setNovoExemploPratico(e.target.value)} 
+                  className="w-full p-2 bg-white border border-slate-300 rounded outline-none focus:ring-2 focus:ring-emerald-500" 
+                  placeholder="Exemplo para o cliente" 
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block font-medium text-slate-600 mb-1">Por que importa?</label>
+                <input 
+                  type="text" 
+                  value={novoImportancia} 
+                  onChange={e => setNovoImportancia(e.target.value)} 
+                  className="w-full p-2 bg-white border border-slate-300 rounded outline-none focus:ring-2 focus:ring-emerald-500" 
+                  placeholder="Argumento de venda" 
+                />
+              </div>
+              <div className="md:col-span-1">
+                <button 
+                  onClick={adicionarNovaCoberturaManual} 
+                  className="w-full bg-slate-800 hover:bg-slate-900 text-white p-2 rounded font-medium transition-colors"
+                >
+                  Adicionar
+                </button>
+              </div>
             </div>
           </div>
 
