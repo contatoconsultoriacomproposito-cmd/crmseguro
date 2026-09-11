@@ -7,7 +7,8 @@ interface Props {
   sinistroId?: string;   // ID de tab_sinistros (opcional se for abertura nova)
   clienteId?: string;    // ID de tab_clientes
   itemId?: string;       // ID de tab_proposta_itens (ou produtoId)
-  produtoId?: string;    // Alias paraitemId caso seu código antigo envie produtoId
+  produtoId?: string;
+    // Alias paraitemId caso seu código antigo envie produtoId
   onClose: () => void;
   onSuccess: () => void;
 }

@@ -97,9 +97,9 @@ function PublicOnlyWrapper() {
     )
   }
 
-  // Só envia para o Dashboard se estiver autenticado E com perfil ativo
+  // 🔄 ALTRADO: Redireciona para /agenda em vez de /dashboard
   if (user && userProfile && userProfile.ativo !== false) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to="/agenda" replace />
   }
 
   return <Outlet />
@@ -195,7 +195,7 @@ export default function App() {
         {/* ================= FALLBACK INTELIGENTE ================= */}
         <Route 
           path="*" 
-          element={<Navigate to={user && userProfile?.ativo ? "/dashboard" : "/"} replace />} 
+          element={<Navigate to={user && userProfile?.ativo ? "/agenda" : "/"} replace />} 
         />
 
       </Routes>

@@ -398,7 +398,7 @@ try {
 
     adicionarEvento({
       id: `${renovacao.id}_renov`,
-      title: `${nomeTitulo} - ${produto}`,
+      title: `[RENOVAÇÃO] ${nomeTitulo} - ${produto}`, // <--- 1. Adicionado prefixo [RENOVAÇÃO]
       start: `${renovacao.data_renovacao}T${renovacao.horario_renovacao || '09:00:00'}`,
       extendedProps: {
         clienteId: cliente.id,
@@ -411,7 +411,7 @@ try {
         razaoSocial: cliente.nome_razao_social,
         nomeFantasia: cliente.nome_fantasia,
         produtoInteresse: produto,
-        fase: cliente.fase_atendimento || 'RENOVAÇÃO',
+        fase: 'RENOVAÇÃO', // <--- 2. Fixado como 'RENOVAÇÃO' em vez de usar a fase do cliente
         horario: renovacao.horario_renovacao || '09:00',
         origem: 'RENOVACAO',
         tipoEvento: 'RENOVACAO',
@@ -961,92 +961,92 @@ try {
 };
 
 const renderEventContent = useCallback(
-(info: any) => {
-const {
-origem,
-fase,
-tipo,
-status,
-horario,
-corretorId
-} = info.event.extendedProps;
+  (info: any) => {
+    const {
+      origem,
+      fase,
+      tipo,
+      status,
+      horario,
+      corretorId
+    } = info.event.extendedProps;
 
+    const nomeDoCorretor =
+      listaCorretores.find(corretor => corretor.id === corretorId)?.nome ||
+      'Ag. Casa';
 
-  const nomeDoCorretor =
-    listaCorretores.find(corretor => corretor.id === corretorId)?.nome ||
-    'Ag. Casa';
+    let colorClasses =
+      'bg-purple-50 border-purple-500 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300';
 
-  let colorClasses =
-    'bg-purple-50 border-purple-500 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300';
+    if (origem === 'SINISTRO') {
+      colorClasses =
+        'bg-red-50 border-red-500 text-red-700 dark:bg-red-950/40 dark:text-red-300';
+    } else if (origem === 'RENOVACAO') {
+      colorClasses =
+        'bg-purple-50 border-purple-500 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300';
+    } else if (fase === 'QUALIFICADO') {
+      colorClasses =
+        'bg-amber-50 border-amber-500 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300';
+    } else if (fase === 'NEGOCIACAO') {
+      colorClasses =
+        'bg-emerald-50 border-emerald-500 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300';
+    } else if (fase === 'PERDIDO') {
+      colorClasses =
+        'bg-red-50 border-red-500 text-red-800 dark:bg-red-950/40 dark:text-red-300';
+    } else if (fase === 'CLIENTE') {
+      colorClasses =
+        'bg-blue-50 border-blue-500 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300';
+    }
 
-  if (origem === 'SINISTRO') {
-    colorClasses =
-      'bg-red-50 border-red-500 text-red-700 dark:bg-red-950/40 dark:text-red-300';
-  } else if (origem === 'RENOVACAO') {
-    colorClasses =
-      'bg-amber-50 border-amber-500 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300';
-  } else if (fase === 'QUALIFICADO') {
-    colorClasses =
-      'bg-amber-50 border-amber-500 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300';
-  } else if (fase === 'NEGOCIACAO') {
-    colorClasses =
-      'bg-emerald-50 border-emerald-500 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300';
-  } else if (fase === 'PERDIDO') {
-    colorClasses =
-      'bg-red-50 border-red-500 text-red-800 dark:bg-red-950/40 dark:text-red-300';
-  } else if (fase === 'CLIENTE') {
-    colorClasses =
-      'bg-blue-50 border-blue-500 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300';
-  }
+    const rotuloTopo = origem === 'RENOVACAO' ? 'RENOVAÇÃO' : (fase || 'LEAD');
 
-  return (
-    <div
-      className={`flex flex-col p-1.5 rounded-lg border-l-4 shadow-sm hover:scale-[1.02] transition-transform ${colorClasses}`}
-    >
-      <div className="flex items-center justify-between mb-1 border-b border-black/10 pb-1">
-        <span className="text-[10px] font-black uppercase tracking-wider truncate mr-1">
-          {fase || 'LEAD'}
+    return (
+      <div
+        className={`flex flex-col p-1.5 rounded-lg border-l-4 shadow-sm w-full max-w-full overflow-hidden transition-all ${colorClasses}`}
+      >
+        <div className="flex items-center justify-between mb-1 border-b border-black/10 pb-1 w-full overflow-hidden">
+          <span className="text-[10px] font-black uppercase tracking-wider truncate mr-1">
+            {rotuloTopo}
+          </span>
+
+          {(tipoUsuario === 'ADMIN' || tipoUsuario === 'CORRETORA') && (
+            <span className="text-[8px] px-1 py-0.5 rounded uppercase font-bold truncate max-w-[55px] text-right bg-black/10 text-current flex-shrink-0">
+              {nomeDoCorretor}
+            </span>
+          )}
+        </div>
+
+        {/* Título com quebra automática de linha para expandir na altura sem invadir o lado */}
+        <span className="text-[11px] font-bold leading-snug mb-1 whitespace-normal break-words w-full">
+          {info.event.title}
         </span>
 
-        {(tipoUsuario === 'ADMIN' || tipoUsuario === 'CORRETORA') && (
-          <span className="text-[8px] px-1 py-0.5 rounded uppercase font-bold truncate max-w-[60px] text-right bg-black/10 text-current">
-            {nomeDoCorretor}
-          </span>
-        )}
+        <div className="mt-1 flex flex-col gap-0.5 text-[9px] leading-tight opacity-90 w-full">
+          {tipo && (
+            <div className="flex justify-between items-center">
+              <span className="font-bold opacity-75">Tipo:</span>
+              <span className="truncate ml-1">{tipo}</span>
+            </div>
+          )}
+
+          {horario && (
+            <div className="flex justify-between items-center">
+              <span className="font-bold opacity-75">Horário:</span>
+              <span className="ml-1">{horario}</span>
+            </div>
+          )}
+
+          {status && status !== '-' && (
+            <div className="flex justify-between items-center">
+              <span className="font-bold opacity-75">Status:</span>
+              <span className="truncate ml-1">{status}</span>
+            </div>
+          )}
+        </div>
       </div>
-
-      <span className="text-[11px] font-bold leading-tight mb-1">
-        {info.event.title}
-      </span>
-
-      <div className="mt-1 flex flex-col gap-0.5 text-[9px] leading-tight opacity-90">
-        {tipo && (
-          <div className="flex justify-between">
-            <span className="font-bold opacity-75">Tipo:</span>
-            <span>{tipo}</span>
-          </div>
-        )}
-
-        {horario && (
-          <div className="flex justify-between">
-            <span className="font-bold opacity-75">Horário:</span>
-            <span>{horario}</span>
-          </div>
-        )}
-
-        {status && status !== '-' && (
-          <div className="flex justify-between">
-            <span className="font-bold opacity-75">Status:</span>
-            <span className="truncate ml-1">{status}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-},
-[listaCorretores, tipoUsuario]
-
-
+    );
+  },
+  [listaCorretores, tipoUsuario]
 );
 
 if (loading) {
