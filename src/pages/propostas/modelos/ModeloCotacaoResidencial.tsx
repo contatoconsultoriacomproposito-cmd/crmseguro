@@ -477,7 +477,7 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
       "N°", 
       "Cobertura", 
       "O que protege na prática", 
-      "Exemplos comerciais para fortalecer o argumento", 
+      "Exemplos práticos", 
       "Por que ela é importante / não é substituta", 
       ...opcoes.map((o: any) => o.base_seguradoras?.nome || "Opção")
     ]];
@@ -732,7 +732,7 @@ export default function ModeloCotacaoResidencial({ propostaId, onClose }: Modelo
                     <th className="p-3 w-12 text-center align-middle border-r border-slate-200 bg-slate-100 font-bold">N°</th>
                     <th className="p-3 min-w-[160px] max-w-[200px] align-middle bg-slate-100 font-bold">Cobertura</th>
                     <th className="p-3 min-w-[260px] max-w-[320px] align-middle bg-slate-100 font-bold">O que protege na prática</th>
-                    <th className="p-3 min-w-[260px] max-w-[320px] align-middle bg-slate-100 font-bold">Exemplos comerciais para fortalecer o argumento</th>
+                    <th className="p-3 min-w-[260px] max-w-[320px] align-middle bg-slate-100 font-bold">Exemplos práticos</th>
                     <th className="p-3 min-w-[240px] max-w-[300px] align-middle border-r border-slate-200 bg-slate-100 font-bold">Por que ela é importante / não é substituta</th>
                     
                     {opcoes.map((opt: any, idx: number) => (
