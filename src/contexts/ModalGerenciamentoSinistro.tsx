@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, CheckCircle2, Clock, AlertCircle, CheckCircle, ShieldAlert } from 'lucide-react';
-import { supabase } from '../../../lib/supabaseClient';
-import { formatarDataBR } from '../../../utils/dateUtils';
+import { supabase } from '../lib/supabaseClient';
+import { formatarDataBR } from '../utils/dateUtils';
 
 interface Props {
   sinistroId?: string;   // ID de tab_sinistros (opcional se for abertura nova)

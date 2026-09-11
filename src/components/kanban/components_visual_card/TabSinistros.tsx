@@ -16,7 +16,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
-import { ModalGerenciamentoSinistro } from "./ModalGerenciamentoSinistro";
+import { ModalGerenciamentoSinistro } from "../../../contexts/ModalGerenciamentoSinistro";
 import { formatarDataBR } from "../../../utils/dateUtils";
 
 interface TabSinistrosProps {

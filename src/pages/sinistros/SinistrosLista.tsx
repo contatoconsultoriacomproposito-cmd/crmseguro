@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { formatarDataBR } from '../../utils/dateUtils';
 import { Search, ExternalLink, User, Briefcase, Hash, Trash2, AlertTriangle } from 'lucide-react';
-import { ModalGerenciamentoSinistro } from '../../components/kanban/components_visual_card/ModalGerenciamentoSinistro';
+import { ModalGerenciamentoSinistro } from '../../contexts/ModalGerenciamentoSinistro';
 
 export const RelatorioSinistros = () => {
   const [sinistros, setSinistros] = useState<any[]>([]);

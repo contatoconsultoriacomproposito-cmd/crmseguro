@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 // Importação dos modais oficiais corretos
 import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
 import { ModalAcoesComerciais } from '../pages/clientes/ModalAcoesComerciais';
-import { ModalGerenciamentoSinistro } from '../components/kanban/components_visual_card/ModalGerenciamentoSinistro';
+import { ModalGerenciamentoSinistro } from './ModalGerenciamentoSinistro';
 import { salvarAcaoComercialV2 } from '../pages/clientes/clienteServiceV2';
 
 export interface Notificacao {
