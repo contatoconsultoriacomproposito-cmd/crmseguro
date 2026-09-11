@@ -264,38 +264,81 @@ const obterDadosSessao = async (): Promise<UsuarioSessao | null> => {
 // ==========================================
 export async function criarClienteV2(payload: any) {
   try {
-    const isPF = payload.tipoCliente === 'PF';
+    // 1. Extrai campos aceitando camelCase ou snake_case
+    const tipoCliente = payload.tipo_cliente || payload.tipoCliente;
+    let corretoraId = payload.corretora_id || payload.corretoraId;
+    let corretorId = payload.corretor_id || payload.corretorId || payload.dono_id || null;
+    const nomeRazaoSocial = payload.nome_razao_social || payload.nomeRazaoSocial;
+    const cpfCnpj = payload.cpf_cnpj || payload.cpfCnpj;
+
+    // Validation
+    if (!tipoCliente) {
+      throw new Error("O campo 'tipo_cliente' (PF ou PJ) é obrigatório.");
+    }
+
+    // 2. Fallback de Segurança: Se não veio corretora_id no payload, busca na sessão ativa do usuário
+    if (!corretoraId || !corretorId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: perfil } = await supabase
+          .from('usuarios_perfis')
+          .select('id, corretora_id, tipo_usuario')
+          .eq('id', user.id)
+          .single();
+
+        if (perfil) {
+          if (!corretoraId) {
+            corretoraId = perfil.tipo_usuario === 'CORRETORA' ? perfil.id : perfil.corretora_id;
+          }
+          // CORREÇÃO AQUI: Se corretorId for nulo, assume o id do usuário ou da corretora
+          if (!corretorId) {
+            corretorId = perfil.tipo_usuario === 'CORRETORA' ? perfil.id : user.id;
+          }
+        }
+      }
+    }
+
+    // Garantia final: Se corretorId ainda estiver nulo, ele DEVE ser igual a corretoraId
+    if (!corretorId && corretoraId) {
+      corretorId = corretoraId;
+    }
+
+    if (!corretoraId) {
+      throw new Error("O campo 'corretora_id' é obrigatório para cadastrar um cliente.");
+    }
+
+    const isPF = tipoCliente === 'PF';
 
     const dadosPF = isPF ? {
-      modo_cadastro: payload.modoCadastro || 'COMPLETO',
+      modo_cadastro: payload.modoCadastro || payload.modo_cadastro || 'COMPLETO',
       naturalidade: payload.naturalidade || null,
       pep: payload.pep || false
     } : {};
 
-    const dadosReceita = parseRealJson(payload.dadosReceita, {});
+    const dadosReceitaObj = parseRealJson(payload.dadosReceita || payload.dados_pj, {});
     const dadosPJ = !isPF ? {
-      porte: payload.porte || dadosReceita.porte || null,
-      data_abertura: payload.dataAbertura || dadosReceita.data_abertura || null,
-      matriz_filial: payload.matrizFilial || dadosReceita.matriz_filial || null,
-      modo_cadastro: payload.modoCadastro || 'RAPIDO',
-      capital_social: payload.capitalSocial || dadosReceita.capital_social || null,
-      cnae_principal: payload.cnaePrincipal || dadosReceita.cnae_principal || null,
-      opcao_pelo_mei: payload.opcaoPeloMei ?? dadosReceita.opcao_pelo_mei ?? false,
-      natureza_juridica: payload.naturezaJuridica || dadosReceita.natureza_juridica || null,
-      opcao_pelo_simples: payload.opcaoPeloSimples ?? dadosReceita.opcao_pelo_simples ?? false,
-      situacao_cadastral: payload.situacaoCadastral || dadosReceita.situacao_cadastral || 'ATIVA'
+      porte: payload.porte || dadosReceitaObj.porte || null,
+      data_abertura: payload.dataAbertura || payload.data_abertura || dadosReceitaObj.data_abertura || null,
+      matriz_filial: payload.matrizFilial || payload.matriz_filial || dadosReceitaObj.matriz_filial || null,
+      modo_cadastro: payload.modoCadastro || payload.modo_cadastro || 'RAPIDO',
+      capital_social: payload.capitalSocial || payload.capital_social || dadosReceitaObj.capital_social || null,
+      cnae_principal: payload.cnaePrincipal || payload.cnae_principal || dadosReceitaObj.cnae_principal || null,
+      opcao_pelo_mei: payload.opcaoPeloMei ?? payload.opcao_pelo_mei ?? dadosReceitaObj.opcao_pelo_mei ?? false,
+      natureza_juridica: payload.naturezaJuridica || payload.natureza_juridica || dadosReceitaObj.natureza_juridica || null,
+      opcao_pelo_simples: payload.opcaoPeloSimples ?? payload.opcao_pelo_simples ?? dadosReceitaObj.opcao_pelo_simples ?? false,
+      situacao_cadastral: payload.situacaoCadastral || payload.situacao_cadastral || dadosReceitaObj.situacao_cadastral || 'ATIVA'
     } : {};
 
     const novoCliente = {
-      corretora_id: payload.corretora_id,
-      corretor_id: payload.corretor_id || payload.dono_id || null,
-      tipo_cliente: payload.tipoCliente,
+      corretora_id: corretoraId,
+      corretor_id: corretorId, // Agora NUNCA será nulo se a corretora_id existir!
+      tipo_cliente: tipoCliente,
       origem: payload.origem || 'MANUAL',
-      cpf_cnpj: payload.cpfCnpj ? payload.cpfCnpj.replace(/\D/g, '') : null,
-      nome_razao_social: payload.nomeRazaoSocial,
-      nome_fantasia: payload.nomeFantasia || null,
+      cpf_cnpj: cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : null,
+      nome_razao_social: nomeRazaoSocial,
+      nome_fantasia: payload.nome_fantasia || payload.nomeFantasia || null,
       
-      // Endereço Principal (Fiscal/Matriz)
+      // Endereço Principal
       cep: payload.cep || null,
       logradouro: payload.logradouro || null,
       numero: payload.numero || null,
@@ -303,10 +346,10 @@ export async function criarClienteV2(payload: any) {
       municipio: payload.municipio || null,
       uf: payload.uf || null,
       complemento: payload.complemento || null,
-      cnae_principal: payload.cnaePrincipal || null,
-      situacao_cadastral: payload.situacaoCadastral || 'ATIVA',
+      cnae_principal: payload.cnae_principal || payload.cnaePrincipal || null,
+      situacao_cadastral: payload.situacao_cadastral || payload.situacaoCadastral || 'ATIVA',
 
-      // Listas e Dados Complementares Separados
+      // JSONB sem stringify
       contatos: padronizarContatos(payload.contatos),
       socios: padronizarSocios(payload.socios),
       dados_complementares_pf: dadosPF,

@@ -596,6 +596,10 @@ export const ModalCadastroCliente = ({
     return erros;
   };
 
+  // =========================================================
+  // SUBMIT E AÇÕES COMERCIAIS
+  // =========================================================
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (saving || isLoading) return;
@@ -607,15 +611,22 @@ export const ModalCadastroCliente = ({
       return;
     }
 
+    // Pega a corretora do usuário logado
+    const corretoraId = usuarioLogado?.corretora_id || usuarioLogado?.id;
+    
+    // CORREÇÃO AQUI: Se não selecionou um dono/corretor específico, assume o usuário logado / corretora
+    const donoFinal = donoId || usuarioLogado?.id || corretoraId;
+
     const payloadCliente = {
+      corretora_id: corretoraId,
       tipo_cliente: tipoCliente,
       modoCadastro,
       cpf_cnpj: cpfCnpj,
       nome_razao_social: nomeRazaoSocial,
       nome_fantasia: nomeFantasia,
       dados_pj: tipoCliente === 'PJ' ? dadosReceita : null,
-      dono_id: donoId,
-      corretor_id: donoId,
+      dono_id: donoFinal,
+      corretor_id: donoFinal,
       cep, logradouro, numero, bairro, municipio, uf, complemento,
       socios,
       contatos,
@@ -631,8 +642,12 @@ export const ModalCadastroCliente = ({
       return;
     }
 
+    // Pega a corretora do usuário logado
+    const corretoraId = usuarioLogado?.corretora_id || usuarioLogado?.id;
+
     handleSubmit(
       {
+        corretora_id: corretoraId,
         tipo_cliente: tipoCliente,
         modoCadastro,
         cpf_cnpj: cpfCnpj,
