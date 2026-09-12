@@ -232,25 +232,25 @@ try {
       : Promise.resolve({ data: [] as any[] });
 
   let queryClientes = supabase
-    .from('tab_clientes')
-    .select(`
-      id,
-      nome_razao_social,
-      nome_fantasia,
-      tipo_cliente,
-      cpf_cnpj,
-      contatos,
-      data_retorno,
-      horario_retorno,
-      data_retorno_sinistro,
-      horario_retorno_sinistro,
-      fase_atendimento,
-      temperatura,
-      corretora_id,
-      corretor_id
-    `)
-    .eq('corretora_id', perfil.corretora_id)
-    .or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
+  .from('tab_clientes')
+  .select(`
+    id,
+    nome_razao_social,
+    nome_fantasia,
+    tipo_cliente,
+    cpf_cnpj,
+    contatos,
+    data_retorno,
+    horario_retorno,
+    data_retorno_sinistro,
+    horario_retorno_sinistro,
+    fase_atendimento,
+    temperatura,
+    corretora_id,
+    corretor_id
+  `)
+  .eq('corretora_id', perfil.corretora_id)
+  .or('data_retorno.not.is.null,data_retorno_sinistro.not.is.null');
 
   if (isCorretor) {
     queryClientes = queryClientes.eq('corretor_id', perfil.id);

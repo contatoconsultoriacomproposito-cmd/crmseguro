@@ -1,1059 +1,423 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom"; // Adicionado useParams
-import { 
-  Building2, User, Save, ArrowLeft, 
-  MapPin, Briefcase, Phone, Mail, Calendar, CheckCircle2, Loader2
-} from "lucide-react";
-import { supabase } from "../../lib/supabaseClient";
-import { useAuth } from "../../auth/AuthContext";
-import { buscarCNPJ, buscarCEP } from "../../services/brasilApi";
-import { maskCPF, maskCNPJ, maskPhone } from "../../utils/masks";
-import { validarCPF } from "../../utils/validarCPF";
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
+import { ModalCadastroCliente } from './ModalCadastroCliente';
+import { ModalAcoesComerciais } from './ModalAcoesComerciais';
+import { toast } from 'react-hot-toast';
 
-type TipoCliente = "PF" | "PJ";
-
-interface Corretor {
-  id: string;
-  nome: string;
-}
-
-export default function ClientesCadastro() {
-  const { id } = useParams(); // Captura o ID da URL
+export default function ClientesCadastroV2() {
+  const { userProfile } = useAuth();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [perfilUsuarioLogado, setPerfilUsuarioLogado] = useState<any>(null);
-  const isEditing = Boolean(id); // Define se estamos editando ou criando
-  
-  const [cpfInvalido, setCpfInvalido] = useState(false);
-  const [tipoCliente, setTipoCliente] = useState<TipoCliente>("PJ");
-  const [loading, setLoading] = useState(false);
-  const [loadingData, setLoadingData] = useState(isEditing); // Loading inicial para carregar dados
-  const [loadingCNPJ, setLoadingCNPJ] = useState(false);
-  const [loadingCEP, setLoadingCEP] = useState(false);
-  const [loadingCEPPF, setLoadingCEPPF] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [isPreenchimentoManual, setIsPreenchimentoManual] = useState(false);
-  const [corretores, setCorretores] = useState<Corretor[]>([]);
-  const [mesmoEndereco, setMesmoEndereco] = useState(true);
 
-  const [form, setForm] = useState({
-    cnpj: "", razao_social: "", nome_fantasia: "", porte: "", capital_social: "", 
-    natureza_juridica: "", opcao_pelo_mei: false, opcao_pelo_simples: false,
-    ddd_telefone_1: "", descricao_identificador_matriz_filial: "",
-    cep: "", uf: "", municipio: "", bairro: "", logradouro: "", numero: "", complemento: "",
-    nome: "", cpf: "", rg: "", data_nascimento: "", sexo:"",naturalidade: "",ocupacao: "",data_emissao: "",
-    cep_pf: "", uf_pf: "", municipio_pf: "", bairro_pf: "", logradouro_pf: "", numero_pf: "", complemento_pf: "",
-    email: "", telefone_whats: "", telefone_adicional: "", 
-    origem_cliente: "Google", fase_kanban: "lead", status_kanban: "novo", corretor_id: "",
-    socios: [] as Array<{ nome: string; cpf_cnpj: string; telefone: string; faixa_etaria: string }>,
-    
-    // NOVOS CAMPOS ADICIONADOS PARA BATER COM O BANCO:
-    cnae_principal: "",
-    data_abertura: "",
-    situacao_cadastral: ""
-  });
+  // Estados dos Modais
+  const [modalOpen, setModalOpen] = useState(true);
+  const [modalAcaoOpen, setModalAcaoOpen] = useState(false);
+  const [clienteSalvo, setClienteSalvo] = useState<any>(null);
+  const [salvandoCliente, setSalvandoCliente] = useState(false);
 
+  // Estado para armazenar a lista de corretores
+  const [corretoresDisponiveis, setCorretoresDisponiveis] = useState<any[]>([]);
 
-// 1. CARREGAR PERFIL E LISTA DE CORRETORES (CORRIGIDO)
-useEffect(() => {
-  async function carregarConfiguracoesIniciais() {
-    try {
-      if (!user) return;
+  // Busca os corretores da corretora logada
+  useEffect(() => {
+    async function carregarCorretores() {
+      if (userProfile?.tipo_usuario === 'CORRETORA' && userProfile?.corretora_id) {
+        const { data, error } = await supabase
+          .from('usuarios_perfis')
+          .select('id, nome')
+          .eq('corretora_id', userProfile.corretora_id)
+          .eq('tipo_usuario', 'CORRETOR')
+          .eq('ativo', true);
 
-      const { data: perfil, error: perfilError } = await supabase
-        .from("usuarios_perfis")
-        .select("id, nome, tipo_usuario, corretora_id")
-        .eq("id", user.id)
-        .single();
-
-      if (perfilError) throw perfilError;
-
-      if (perfil) {
-        setPerfilUsuarioLogado(perfil);
-
-        // A lógica agora é a mesma para todos: 
-        // Identificar o grupo (corretora_id) e buscar todo mundo.
-        const idDoGrupo = perfil.tipo_usuario === "CORRETORA" ? perfil.id : perfil.corretora_id;
-
-        // Busca todos os corretores do grupo
-        const { data: listaCorretores, error: erroLista } = await supabase
-          .from("usuarios_perfis")
-          .select("id, nome")
-          .eq("corretora_id", idDoGrupo)
-          .eq("tipo_usuario", "CORRETOR")
-          .order("nome");
-        
-        if (erroLista) throw erroLista;
-        if (listaCorretores) setCorretores(listaCorretores);
-
-        // Define o padrão caso seja novo cadastro
-        if (!isEditing && !form.corretor_id) {
-            setForm(prev => ({ ...prev, corretor_id: perfil.id }));
+        if (!error && data) {
+          setCorretoresDisponiveis(data);
         }
       }
+    }
+    carregarCorretores();
+  }, [userProfile]);
+
+  // Função para salvar o cliente na tab_clientes no Supabase
+  const salvarClienteNoBanco = async (payload: any) => {
+  // 1. Desencapsula o payload caso venha envolvido no objeto { cliente: ... }
+  const dadosForm = payload.cliente || payload;
+
+  const {
+    // Captura TODAS as possíveis variações onde o ID do corretor possa estar
+    dono_id,
+    donoId,
+    corretorId,
+    corretor_id,
+    corretor,
+    dono,
+    corretorResponsavel,
+    corretor_responsavel,
+
+    // Identificação e Controle
+    cpfCnpj,
+    cpf_cnpj,
+    nomeRazaoSocial,
+    nome_razao_social,
+    nomeFantasia,
+    nome_fantasia,
+    tipoCliente,
+    tipo_cliente,
+    cnaePrincipal,
+    cnae_principal,
+    situacaoCadastral,
+    situacao_cadastral,
+    faseAtendimento,
+    fase_atendimento,
+    origem,
+    temperatura,
+
+    // Endereço
+    cep,
+    uf,
+    municipio,
+    bairro,
+    logradouro,
+    numero,
+    complemento,
+
+    // Listas
+    contatos,
+    socios,
+
+    // JSONB
+    dadosComplementares,
+    dados_complementares,
+    dadosReceita,
+    dataNascimento,
+    data_nascimento,
+    rgNumero,
+    rg_numero,
+    rgOrgao,
+    rg_orgao,
+    estadoCivil,
+    estado_civil,
+    ocupacao,
+    sexo,
+    modoCadastro,
+  } = dadosForm;
+
+  // Resgata com busca exaustiva por qualquer campo contendo o ID do corretor
+  const idExtraidoObjeto =
+    typeof corretor === 'object' ? corretor?.id : corretor;
+
+  const idExtraidoDono =
+    typeof dono === 'object' ? dono?.id : dono;
+
+  const idSelecionadoNoForm =
+    dono_id ||
+    donoId ||
+    corretor_id ||
+    corretorId ||
+    corretorResponsavel ||
+    corretor_responsavel ||
+    idExtraidoObjeto ||
+    idExtraidoDono;
+
+  // Se for perfil CORRETOR, força o ID do usuário logado.
+  // Se for CORRETORA, utiliza estritamente o selecionado no select do modal.
+  const corretorResponsavelId =
+    userProfile?.tipo_usuario === 'CORRETOR'
+      ? userProfile?.id
+      : idSelecionadoNoForm || userProfile?.id;
+
+  // Define o tipo de cliente final (PF ou PJ)
+  const tipoClienteFinal = (tipoCliente || tipo_cliente || 'PJ').toUpperCase() as 'PF' | 'PJ';
+  const isPJ = tipoClienteFinal === 'PJ';
+
+  // 2. Consolidação dos campos extras para a estrutura JSONB
+  const jsonbComplementar = {
+    ...(dados_complementares || dadosComplementares || {}),
+    ...(dadosReceita || {}),
+    modo_cadastro: modoCadastro || null,
+    data_nascimento: dataNascimento || data_nascimento || null,
+    rg_numero: rgNumero || rg_numero || null,
+    rg_orgao: rgOrgao || rg_orgao || null,
+    estado_civil: estadoCivil || estado_civil || null,
+    ocupacao: ocupacao || null,
+    sexo: sexo || null,
+  };
+
+  // 3. Payload final alinhado estritamente com o schema public.tab_clientes
+  const payloadFinal = {
+    corretora_id: userProfile?.corretora_id,
+    corretor_id: corretorResponsavelId,
+    tipo_cliente: tipoClienteFinal,
+    cpf_cnpj:
+      cpfCnpj?.replace(/\D/g, '') ||
+      cpf_cnpj?.replace(/\D/g, '') ||
+      null,
+    nome_razao_social: nomeRazaoSocial || nome_razao_social,
+    nome_fantasia: nomeFantasia || nome_fantasia || null,
+
+    origem: origem || 'MANUAL',
+    fase_atendimento:
+      faseAtendimento || fase_atendimento || 'nao_contatado',
+    temperatura: temperatura || 'frio',
+
+    cnae_principal:
+      cnaePrincipal ||
+      cnae_principal ||
+      dadosReceita?.cnae_principal ||
+      null,
+    situacao_cadastral:
+      situacaoCadastral ||
+      situacao_cadastral ||
+      dadosReceita?.situacao_cadastral ||
+      null,
+
+    // Endereço
+    cep: cep || null,
+    uf: uf || null,
+    municipio: municipio || null,
+    bairro: bairro || null,
+    logradouro: logradouro || null,
+    numero: numero || null,
+    complemento: complemento || null,
+
+    // Listas JSONB
+    contatos:
+      Array.isArray(contatos) && contatos.length > 0
+        ? contatos
+        : [],
+    socios:
+      Array.isArray(socios) && socios.length > 0
+        ? socios
+        : [],
+
+    // Direcionamento dinâmico do JSONB de acordo com o tipo do cliente
+    dados_complementares_pf: isPJ ? {} : jsonbComplementar,
+    dados_complementares_pj: isPJ ? jsonbComplementar : {},
+  };
+
+  const { data, error } = await supabase
+    .from('tab_clientes')
+    .insert([payloadFinal])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao salvar no Supabase:', error);
+    toast.error(`Erro ao cadastrar cliente: ${error.message}`);
+    throw error;
+  }
+
+  return data;
+};
+
+  // Clique no botão "Salvar Cliente"
+  const handleSaveCliente = async (payload: any) => {
+    try {
+      setSalvandoCliente(true);
+      await salvarClienteNoBanco(payload);
+      toast.success('Cliente cadastrado com sucesso!');
+      navigate('/clientes/lista');
     } catch (err) {
-      console.error("Erro na inicialização:", err);
+      console.error(err);
+    } finally {
+      setSalvandoCliente(false);
     }
-  }
-  carregarConfiguracoesIniciais();
-}, [user]);
-
-  // 2. CARREGAR DADOS DO CLIENTE (SE FOR EDIÇÃO)
-  useEffect(() => {
-    if (isEditing && id) {
-      async function carregarDadosCliente() {
-        try {
-          const { data, error } = await supabase
-            .from("tab_clientes")
-            .select("*")
-            .eq("id", id)
-            .single();
-
-          if (error) throw error;
-
-          if (data) {
-            // Extrai dados do JSONB de contatos
-            let contatosArray = Array.isArray(data.contatos) ? data.contatos : [];
-            if (typeof data.contatos === 'string') {
-              try { contatosArray = JSON.parse(data.contatos); } catch { contatosArray = []; }
-            }
-            const contatoPrincipal = contatosArray.find((ct: any) => ct.principal) || contatosArray[0] || {};
-
-            // Extrai dados do JSONB de dados_complementares
-            let dadosComp: any = data.dados_complementares || {};
-            if (typeof data.dados_complementares === 'string') {
-              try { dadosComp = JSON.parse(data.dados_complementares); } catch { dadosComp = {}; }
-            }
-
-            const capitalSocialNum = dadosComp.capital_social;
-
-            const formData = {
-              // Campos de Empresa
-              cnpj: data.tipo_cliente === 'PJ' ? (data.cpf_cnpj ?? "") : "",
-              razao_social: data.tipo_cliente === 'PJ' ? (data.nome_razao_social ?? "") : "",
-              nome_fantasia: data.nome_fantasia ?? "",
-              porte: dadosComp.porte ?? "",
-              natureza_juridica: dadosComp.natureza_juridica ?? "",
-              opcao_pelo_mei: dadosComp.opcao_pelo_mei ?? false,
-              opcao_pelo_simples: dadosComp.opcao_pelo_simples ?? false,
-              cnae_principal: data.cnae_principal ?? "",
-              data_abertura: dadosComp.data_abertura ?? "",
-              situacao_cadastral: data.situacao_cadastral ?? "",
-              capital_social: capitalSocialNum 
-                ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(capitalSocialNum)
-                : "",
-
-              // Campos de Pessoa Física
-              nome: data.tipo_cliente === 'PF' ? (data.nome_razao_social ?? "") : "",
-              cpf: data.tipo_cliente === 'PF' ? (data.cpf_cnpj ?? "") : "",
-              rg: dadosComp.rg ?? "",
-              data_nascimento: dadosComp.data_nascimento ?? "",
-              sexo: dadosComp.sexo ?? "",
-              naturalidade: dadosComp.naturalidade ?? "",
-              ocupacao: dadosComp.ocupacao ?? "",
-              data_emissao: dadosComp.data_emissao_doc ?? "",
-              
-              // Contatos e Origem (Mapeados do JSONB)
-              ddd_telefone_1: contatoPrincipal.telefone ? contatoPrincipal.telefone.slice(0, 2) : "",
-              email: contatoPrincipal.email ?? "",
-              telefone_whats: contatoPrincipal.telefone ?? "",
-              telefone_adicional: contatoPrincipal.telefone_adicional ?? "",
-              origem_cliente: data.origem ?? "Google",
-              
-              // Endereços
-              cep: data.cep ?? "",
-              uf: data.uf ?? "",
-              municipio: data.municipio ?? "",
-              bairro: data.bairro ?? "",
-              logradouro: data.logradouro ?? "",
-              numero: data.numero ?? "",
-              complemento: data.complemento ?? "",
-              cep_pf: data.cep ?? "",
-              uf_pf: data.uf ?? "",
-              municipio_pf: data.municipio ?? "",
-              bairro_pf: data.bairro ?? "",
-              logradouro_pf: data.logradouro ?? "",
-              numero_pf: data.numero ?? "",
-              complemento_pf: data.complemento ?? "",
-              
-              // Kanban e Sistema
-              descricao_identificador_matriz_filial: dadosComp.matriz_filial ?? "",
-              fase_kanban: data.fase_atendimento ?? "lead",
-              status_kanban: data.fase_atendimento ?? data.fase_kanban ?? "novo",
-              corretor_id: data.corretor_id ?? "",
-              
-              // JSONB
-              socios: data.socios || []
-            };
-
-            setForm(formData);
-            setTipoCliente(data.tipo_cliente as TipoCliente);
-            setMesmoEndereco(true);
-          }
-        } catch (err) {
-          console.error("Erro ao carregar cliente:", err);
-          alert("Erro ao carregar dados do cliente.");
-          navigate("/kanban/atendimento");
-        } finally {
-          setLoadingData(false);
-        }
-      }
-      carregarDadosCliente();
-    }
-  }, [id, isEditing, navigate]);
-
-  // 3. SINCRONIZAR ENDEREÇOS (Somente se mesmoEndereco estiver ativo e for novo ou editando)
-  useEffect(() => {
-    if (tipoCliente === "PJ" && mesmoEndereco) {
-      setForm(prev => ({
-        ...prev,
-        cep_pf: prev.cep, uf_pf: prev.uf, municipio_pf: prev.municipio,
-        bairro_pf: prev.bairro, logradouro_pf: prev.logradouro,
-        numero_pf: prev.numero, complemento_pf: prev.complemento,
-      }));
-    }
-  }, [form.cep, form.uf, form.municipio, form.bairro, form.logradouro, form.numero, form.complemento, mesmoEndereco, tipoCliente]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    const val = type === "checkbox" ? (e.target as HTMLInputElement).checked : value;
-    
-    let masked = val;
-    if (name === "cpf") masked = maskCPF(value as string);
-    if (name === "cnpj") masked = maskCNPJ(value as string);
-    if (name === "telefone_whats" || name === "telefone_adicional") masked = maskPhone(value as string);
-
-    setForm(prev => ({ ...prev, [name]: masked }));
   };
 
-  const handleSocioChange = (index: number, field: "cpf_cnpj" | "telefone", value: string) => {
-    setForm(prev => {
-      const listaAtualizada = [...prev.socios];
-      let valorMascarado = value;
+  // Clique no botão "Registrar Ação Comercial" / "Cadastrar e Criar Oportunidade"
+  const handleOpenAcaoComercial = async (dadosClienteForm: any) => {
+    try {
+      setSalvandoCliente(true);
 
-      if (field === "cpf_cnpj") {
-        const apenasNumeros = value.replace(/\D/g, "");
-        // Se o usuário apagar os asteriscos e digitar um documento limpo, aplica a máscara correspondente
-        if (apenasNumeros.length <= 11) {
-          valorMascarado = maskCPF(value);
-        } else {
-          valorMascarado = maskCNPJ(value);
-        }
-      }
-      
-      if (field === "telefone") {
-        valorMascarado = maskPhone(value);
+      let clienteAtual = clienteSalvo;
+
+      // Se ainda não salvou o cliente no banco, realiza o cadastro primeiro
+      if (!clienteAtual || !clienteAtual.id) {
+        clienteAtual = await salvarClienteNoBanco(dadosClienteForm);
+        setClienteSalvo(clienteAtual);
       }
 
-      listaAtualizada[index] = {
-        ...listaAtualizada[index],
-        [field]: valorMascarado
-      };
-
-      return { ...prev, socios: listaAtualizada };
-    });
+      setModalAcaoOpen(true);
+    } catch (err) {
+      console.error(
+        'Não foi possível salvar o cliente para registrar a ação:',
+        err
+      );
+    } finally {
+      setSalvandoCliente(false);
+    }
   };
 
-  async function handleBuscarCNPJ() {
-    const cnpjLimpo = form.cnpj.replace(/\D/g, "");
-    if (cnpjLimpo.length !== 14) return alert("CNPJ inválido");
-    setLoadingCNPJ(true);
-  
-    try {
-      const data = await buscarCNPJ(cnpjLimpo);
-      setIsPreenchimentoManual(false); // Se a API voltou a funcionar, mantém a trava de segurança padrão
-      
-      setForm(prev => ({
-        ...prev,
-        razao_social: (data.razao_social || "").toUpperCase(),
-        nome_fantasia: (data.nome_fantasia || "").toUpperCase(),
-        porte: (data.porte || "").toUpperCase(),
-        capital_social: data.capital_social
-        ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(data.capital_social)
-        : "",
-        natureza_juridica: (data.natureza_juridica || "").toUpperCase(),
-        opcao_pelo_mei: data.opcao_pelo_mei || false,
-        opcao_pelo_simples: data.opcao_pelo_simples || false,
-        ddd_telefone_1: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : "",
-        descricao_identificador_matriz_filial: (data.descricao_identificador_matriz_filial || "").toUpperCase(),
-        cep: data.cep || prev.cep,
-        uf: (data.uf || prev.uf).toUpperCase(),
-        municipio: (data.municipio || prev.municipio).toUpperCase(),
-        logradouro: (data.logradouro || prev.logradouro).toUpperCase(),
-        bairro: (data.bairro || prev.bairro).toUpperCase(), 
-        numero: data.numero || prev.numero,
-        complemento: (data.complemento || prev.complemento).toUpperCase(),
-        socios: (data.socios || []).map((s) => ({
-          nome: (s.nome || "").toUpperCase(),
-          cpf_cnpj: s.cpf_cnpj || "",
-          telefone: "",
-          faixa_etaria: s.faixa_etaria || "Não informada"
-        })),
-        
-        // ADICIONADO AQUI:
-        cnae_principal: (data.cnae_principal || "").toUpperCase(),
-        data_abertura: data.data_abertura || "",
-        situacao_cadastral: (data.situacao_cadastral || "").toUpperCase()
-      }));
-    } catch (error) {
-      // Em vez de apenas um alert genérico, avisamos e destravamos os campos!
-      console.error("Erro na busca automatizada de CNPJ:", error);
-      alert("Não foi possível consultar os dados automaticamente (Limite de requisições atingido ou instabilidade). Liberamos os campos para preenchimento manual.");
-      setIsPreenchimentoManual(true); 
-    } finally { 
-      setLoadingCNPJ(false); 
-    }
-  }
+  // Salvamento da Ação Comercial na tab_interacoes
+  const handleSaveAcaoComercial = async (dadosAcao: any) => {
+    const clienteIdReal =
+      clienteSalvo?.id || dadosAcao.cliente_id || dadosAcao.lead_id;
 
-  async function handleBuscarCEP(tipo: "PJ" | "PF") {
-    const campoCep = tipo === "PJ" ? "cep" : "cep_pf";
-    const cepLimpo = form[campoCep].replace(/\D/g, "");
-    if (cepLimpo.length !== 8) return alert("CEP inválido");
-    tipo === "PJ" ? setLoadingCEP(true) : setLoadingCEPPF(true);
-    try {
-      const data = await buscarCEP(cepLimpo);
-      if (tipo === "PJ") {
-        setForm(prev => ({ ...prev, uf: data.state, municipio: data.city, bairro: data.neighborhood, logradouro: data.street }));
-      } else {
-        setForm(prev => ({ ...prev, uf_pf: data.state, municipio_pf: data.city, bairro_pf: data.neighborhood, logradouro_pf: data.street }));
-      }
-    } catch { alert("CEP não encontrado"); }
-    finally { tipo === "PJ" ? setLoadingCEP(false) : setLoadingCEPPF(false); }
-  }
-
- async function handleSalvar(e: React.FormEvent) {
-    e.preventDefault();
-    setCpfInvalido(false);
-
-    if (!validarCPF(form.cpf)) {
-        setCpfInvalido(true);
-        alert("O CPF digitado é inválido!");
-        return;
-    }
-
-    
-    // NOVA VALIDAÇÃO DE DUPLICIDADE (Utilizando cpf_cnpj na tab_clientes)
-    if (!isEditing && tipoCliente === "PF" && form.cpf) {
-      const idCorretoraMae = perfilUsuarioLogado?.tipo_usuario === "CORRETORA" 
-        ? perfilUsuarioLogado.id 
-        : perfilUsuarioLogado?.corretora_id;
-
-      const { data: existente } = await supabase
-        .from("tab_clientes")
-        .select("id, tipo_cliente")
-        .eq("cpf_cnpj", form.cpf)
-        .eq("corretora_id", idCorretoraMae)
-        .eq("tipo_cliente", "PF")
-        .maybeSingle();
-
-      if (existente) {
-        setLoading(false);
-        alert("Atenção: Já existe um cadastro de Pessoa Física com este CPF nesta corretora.");
-        return;
-      }
-    }
-
-    // VALIDAÇÃO: Se for perfil corretora, obriga a escolher um responsável
-    if (perfilUsuarioLogado?.tipo_usuario === "CORRETORA" && !form.corretor_id) {
-      alert("Por favor, selecione um Responsável pelo Cliente (pode ser a própria corretora ou um corretor).");
+    if (!clienteIdReal || clienteIdReal === 'temp-id') {
+      toast.error('Não foi possível identificar o cliente. Tente novamente.');
       return;
     }
 
-    setLoading(true);
-
-    // --- LÓGICA DE HIERARQUIA CORRIGIDA ---
-    // --- LÓGICA DE HIERARQUIA ATUALIZADA ---
-    
-    // 1. A Corretora_id é sempre fixa para quem pertence o cadastro
-    const finalCorretoraId = perfilUsuarioLogado?.tipo_usuario === "CORRETORA" 
-      ? perfilUsuarioLogado.id 
-      : perfilUsuarioLogado?.corretora_id;
-
-    // 2. O Corretor_id respeita o que foi escolhido no formulário.
-    // Se o corretor deixou o campo vazio, assume que ele mesmo é o responsável (fallback para o próprio user.id).
-    const finalCorretorId = form.corretor_id || perfilUsuarioLogado?.id;
-    
-    // --------------------------------------
-
-    const toUpper = (val: any) => (typeof val === "string" ? val.toUpperCase() : val);
-
-    const capitalLimpo = typeof form.capital_social === "string" 
-        ? form.capital_social.replace(/\./g, "").replace(",", ".") 
-        : form.capital_social;
-    const capitalNumerico = (capitalLimpo === "" || capitalLimpo === null) ? null : parseFloat(capitalLimpo as string);
-
-    const statusFinal = isEditing ? form.status_kanban : "novo";
-
-    const payload = {
-      tipo_cliente: tipoCliente,
-      corretora_id: finalCorretoraId,
-      corretor_id: finalCorretorId,
-      cnpj: form.cnpj,
-      razao_social: toUpper(form.razao_social),
-      nome_fantasia: toUpper(form.nome_fantasia),
-      porte: toUpper(form.porte),
-      capital_social: capitalNumerico,
-      natureza_juridica: toUpper(form.natureza_juridica),
-      opcao_pelo_mei: form.opcao_pelo_mei,
-      opcao_pelo_simples: form.opcao_pelo_simples,
-      ddd_telefone_1: form.ddd_telefone_1,
-      descricao_identificador_matriz_filial: toUpper(form.descricao_identificador_matriz_filial),
-      nome: toUpper(form.nome),
-      cpf: form.cpf,
-      rg: form.rg,
-      data_nascimento: form.data_nascimento === "" ? null : form.data_nascimento,
-      data_emissao_doc: form.data_emissao === "" ? null : form.data_emissao,
-      naturalidade: toUpper(form.naturalidade),
-      ocupacao: toUpper(form.ocupacao),
-      sexo: form.sexo,
-      cep: form.cep,
-      uf: toUpper(form.uf),
-      municipio: toUpper(form.municipio),
-      bairro: toUpper(form.bairro),
-      logradouro: toUpper(form.logradouro),
-      numero: form.numero,
-      complemento: toUpper(form.complemento),
-      cep_pf: form.cep_pf,
-      uf_pf: toUpper(form.uf_pf),
-      municipio_pf: toUpper(form.municipio_pf),
-      bairro_pf: toUpper(form.bairro_pf),
-      logradouro_pf: toUpper(form.logradouro_pf),
-      numero_pf: form.numero_pf,
-      complemento_pf: toUpper(form.complemento_pf),
-      email: form.email,
-      telefone_whats: form.telefone_whats,
-      telefone_adicional: form.telefone_adicional,
-      origem_cliente: toUpper(form.origem_cliente),
-      fase_kanban: form.fase_kanban.toLowerCase(),
-      status_kanban: statusFinal,
-      socios: form.socios,
-      
-      // NOVOS CAMPOS MAPEADOS DIRETAMENTE PARA O BANCO:
-      cnae_principal: toUpper(form.cnae_principal),
-      data_abertura: form.data_abertura === "" ? null : form.data_abertura,
-      situacao_cadastral: toUpper(form.situacao_cadastral)
-    };
+    // Lê obrigatoriamente o corretor_id que foi gravado com sucesso no cliente
+    const corretorResponsavelId =
+      clienteSalvo?.corretor_id ||
+      (userProfile?.tipo_usuario === 'CORRETOR'
+        ? userProfile?.id
+        : null) ||
+      userProfile?.id;
 
     try {
-      let error;
-      if (isEditing) {
-        // ATUALIZAÇÃO NA V2
-        const result = await supabase
-          .from("tab_clientes")
-          .update({
-            ...payload,
-            atualizado_em: new Date().toISOString()
-          })
-          .eq("id", id);
-        error = result.error;
+      // 1. Extrai a lista de agendamentos enviados pelo Modal
+      const listaAgendamentos = Array.isArray(dadosAcao.agendamentos) && dadosAcao.agendamentos.length > 0
+        ? dadosAcao.agendamentos
+        : Array.isArray(dadosAcao.proximas_acoes) && dadosAcao.proximas_acoes.length > 0
+        ? dadosAcao.proximas_acoes
+        : null;
+
+      // Dados base comuns a todas as interações (sem o produtos_interesse fixo)
+      const dadosBaseInteracao = {
+        cliente_id: clienteIdReal,
+        tipo_acao:
+          dadosAcao.tipo_acao || dadosAcao.acao_realizada?.tipo,
+        resultado_acao:
+          dadosAcao.resultado_acao ||
+          dadosAcao.acao_realizada?.resultado,
+        objetivo_acao:
+          dadosAcao.objetivo_acao ||
+          dadosAcao.acao_realizada?.objetivo,
+        relato:
+          dadosAcao.relato ||
+          dadosAcao.acao_realizada?.resultado ||
+          'Ação comercial registrada',
+        corretora_id: userProfile?.corretora_id,
+        corretor_id: corretorResponsavelId,
+      };
+
+      let payloadsParaInserir: any[] = [];
+
+      if (listaAgendamentos) {
+        // Se houver array de agendamentos, cria um registro na tab_interacoes para CADA UM deles
+        payloadsParaInserir = listaAgendamentos.map((ag: any) => {
+          const dataRet = ag.data_retorno || ag.data || null;
+          const horaRet = ag.horario_retorno || ag.horario || null;
+
+          // Extrai o produto individual do agendamento; se não houver, utiliza o array geral como fallback
+          const produtosAgendamento = 
+            (Array.isArray(ag.produtos_interesse) && ag.produtos_interesse.length > 0)
+              ? ag.produtos_interesse
+              : ag.produto_interesse
+              ? [ag.produto_interesse]
+              : dadosAcao.produtos_interesse || [];
+
+          return {
+            ...dadosBaseInteracao,
+            produtos_interesse: produtosAgendamento,
+            proxima_acao: ag.proxima_acao || ag.tipo || dadosAcao.proxima_acao_tipo || null,
+            data_retorno: dataRet,
+            horario_retorno: horaRet,
+            relato_proxima_acao: ag.relato_proxima_acao || ag.relato || null,
+            status_agendamento: dataRet ? 'PENDENTE' : null,
+          };
+        });
       } else {
-        // INSERÇÃO NA V2
-        const result = await supabase
-          .from("tab_clientes")
-          .insert([payload]);
-        error = result.error;
+        // Fallback caso venha apenas um agendamento único nos campos legados
+        const dataRetornoFinal =
+          dadosAcao.data_retorno ||
+          dadosAcao.proxima_acao?.data_retorno ||
+          null;
+
+        const horarioRetornoFinal =
+          dadosAcao.horario_retorno ||
+          dadosAcao.proxima_acao?.horario_retorno ||
+          null;
+
+        payloadsParaInserir.push({
+          ...dadosBaseInteracao,
+          produtos_interesse: dadosAcao.produtos_interesse || [],
+          proxima_acao:
+            dadosAcao.proxima_acao?.tipo ||
+            dadosAcao.proxima_acao_tipo ||
+            null,
+          data_retorno: dataRetornoFinal,
+          horario_retorno: horarioRetornoFinal,
+          relato_proxima_acao:
+            dadosAcao.relato_proxima_acao ||
+            dadosAcao.proxima_acao?.relato ||
+            null,
+          status_agendamento: dataRetornoFinal ? 'PENDENTE' : null,
+        });
       }
 
-      if (error) throw error;
+      // 2. Insere todas as interações no Supabase em lote
+      const { error } = await supabase
+        .from('tab_interacoes')
+        .insert(payloadsParaInserir);
 
-      setShowSuccess(true);
-      setTimeout(() => navigate("/kanban/atendimento"), 2300);
-    } catch (err: any) {
-      alert(`Erro ao salvar: ${err.message}`);
-    } finally {
-      setLoading(false);
+      if (error) {
+        console.error('Erro ao salvar Ação Comercial:', error);
+        toast.error(`Erro ao salvar ação: ${error.message}`);
+        return;
+      }
+
+      // 3. Atualiza o cliente: altera a fase_atendimento para 'LEAD' e grava o primeiro agendamento como referência
+      const primeiroAgendamento = payloadsParaInserir[0];
+      const updateClientePayload: any = {
+        fase_atendimento: 'LEAD',
+      };
+
+      if (dadosAcao.contatos && dadosAcao.contatos.length > 0) {
+        updateClientePayload.contatos = dadosAcao.contatos;
+      }
+
+      if (primeiroAgendamento?.data_retorno) {
+        updateClientePayload.data_retorno = primeiroAgendamento.data_retorno;
+        updateClientePayload.horario_retorno = primeiroAgendamento.horario_retorno;
+      }
+
+      await supabase
+        .from('tab_clientes')
+        .update(updateClientePayload)
+        .eq('id', clienteIdReal);
+
+      toast.success('Cliente e agendamentos salvos com sucesso! 🎉');
+      setModalAcaoOpen(false);
+      setModalOpen(false);
+      navigate('/clientes/lista');
+    } catch (err) {
+      console.error('Falha na requisição:', err);
     }
-  }
+  };
 
-  if (loadingData) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8FAFC] dark:bg-[#09090B]">
-        <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
-        <p className="text-slate-500 font-medium">Carregando dados do cliente...</p>
-      </div>
-    );
-  }
+  const handleClose = () => {
+    setModalOpen(false);
+    navigate('/clientes/lista');
+  };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#09090B] text-slate-900 dark:text-zinc-100 pb-20">
-      
-      {showSuccess && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-10 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-zinc-800 text-center animate-in zoom-in slide-in-from-bottom-4 duration-500">
-            <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="text-emerald-500" size={44} />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">Sucesso!</h2>
-            <p className="text-slate-500 dark:text-zinc-400">O cadastro foi {isEditing ? "atualizado" : "finalizado"} com sucesso.</p>
-          </div>
+    <div className="relative min-h-[80vh] flex items-center justify-center p-4">
+      <ModalCadastroCliente
+        isOpen={modalOpen}
+        isLoading={salvandoCliente}
+        saving={salvandoCliente}
+        onClose={handleClose}
+        handleSubmit={handleSaveCliente}
+        corretoraId={userProfile?.corretora_id}
+        corretorId={userProfile?.id}
+        onOpenAcaoComercialModal={handleOpenAcaoComercial}
+        usuarioLogado={userProfile}
+        corretoresDisponiveis={corretoresDisponiveis}
+      />
+
+      {modalAcaoOpen && (
+        <div className="relative z-[60]">
+          <ModalAcoesComerciais
+            isOpen={modalAcaoOpen}
+            onClose={() => setModalAcaoOpen(false)}
+            clienteContexto={clienteSalvo}
+            onSave={handleSaveAcaoComercial}
+          />
         </div>
       )}
-
-      <header className="sticky top-0 z-10 bg-white/80 dark:bg-zinc-955/80 backdrop-blur-md border-b border-slate-200 dark:border-zinc-800">
-        <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button type="button" onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-full transition-colors"><ArrowLeft size={20} /></button>
-            <div>
-              <h1 className="text-xl font-bold">{isEditing ? "Editar Cliente" : "Cadastro de Cliente"}</h1>
-              <p className="text-xs text-slate-500">{isEditing ? `Editando: ${form.nome || form.razao_social}` : "Gerencie leads e clientes no CRM"}</p>
-            </div>
-          </div>
-          <div className="flex gap-1 p-1 bg-slate-100 dark:bg-zinc-900 rounded-xl">
-            <TabButton active={tipoCliente === "PJ"} onClick={() => !isEditing && setTipoCliente("PJ")} icon={<Building2 size={16} />} label="PJ" />
-            <TabButton active={tipoCliente === "PF"} onClick={() => !isEditing && setTipoCliente("PF")} icon={<User size={16} />} label="PF" />
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 mt-8">
-        <form onSubmit={handleSalvar} className="space-y-6">
-          <Section icon={<Briefcase className="text-blue-500" />} title={tipoCliente === "PJ" ? "Dados Empresariais" : "Dados Pessoais"}>
-            {tipoCliente === "PJ" ? (
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-5">
-                
-                {/* Banner de Aviso de Contingência Manual */}
-                {isPreenchimentoManual && (
-                  <div className="md:col-span-6 p-4 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 rounded-xl text-xs text-amber-700 dark:text-amber-400 font-medium animate-in fade-in slide-in-from-top-2 duration-300">
-                    ⚠️ <strong>Modo de Contingência Ativado:</strong> A consulta automática falhou ou atingiu o limite de requisições por minuto. Você pode digitar os dados da empresa manualmente para não travar o seu atendimento.
-                  </div>
-                )}
-
-                <div className="md:col-span-2">
-                  <ActionInput label="CNPJ" name="cnpj" value={form.cnpj} onChange={handleChange} onAction={handleBuscarCNPJ} loading={loadingCNPJ} placeholder="00.000.000/0000-00" />
-                </div>
-                
-                {/* Campo Tipo (Matriz/Filial): Deixamos aberto para escrita no modo emergencial */}
-                <div className="md:col-span-4">
-                  <Input 
-                    label="Tipo (Matriz/Filial)" 
-                    name="descricao_identificador_matriz_filial" 
-                    value={form.descricao_identificador_matriz_filial} 
-                    onChange={handleChange}
-                    readOnly={!isEditing && !isPreenchimentoManual} 
-                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""} 
-                  />
-                </div>
-                
-                {/* Razão Social e Nome Fantasia passam a respeitar o isPreenchimentoManual */}
-                <div className="md:col-span-3">
-                  <Input 
-                    label="Razão Social" 
-                    name="razao_social" 
-                    value={form.razao_social} 
-                    onChange={handleChange} 
-                    readOnly={!isEditing && !isPreenchimentoManual} 
-                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                  />
-                </div>
-                
-                <div className="md:col-span-3">
-                  <Input 
-                    label="Nome Fantasia" 
-                    name="nome_fantasia" 
-                    value={form.nome_fantasia} 
-                    onChange={handleChange} 
-                    readOnly={!isEditing && !isPreenchimentoManual} 
-                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                  />
-                </div>
-
-                {/* NOVOS CAMPOS EMPRESARIAIS */}
-                <div className="md:col-span-4">
-                  <Input label="CNAE Principal" 
-                  name="cnae_principal" 
-                  value={form.cnae_principal} 
-                  onChange={handleChange} 
-                  readOnly={!isEditing && !isPreenchimentoManual}
-                  className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                   />
-                </div>
-                <div className="md:col-span-2">
-                  <Input label="Data de Abertura" 
-                  name="data_abertura" type="date" 
-                  value={form.data_abertura} 
-                  onChange={handleChange} 
-                  readOnly={!isEditing && !isPreenchimentoManual} 
-                  className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                  />
-                </div>
-                <div className="md:col-span-6">
-                  <Input label="Situação Cadastral" 
-                  name="situacao_cadastral" 
-                  value={form.situacao_cadastral} 
-                  onChange={handleChange} 
-                  readOnly={!isEditing && !isPreenchimentoManual}
-                  className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                   />
-                </div>
-                
-                {/* Natureza Jurídica e Porte liberados sob demanda */}
-                <div className="md:col-span-4">
-                  <Input 
-                    label="Natureza Jurídica" 
-                    name="natureza_juridica" 
-                    value={form.natureza_juridica} 
-                    onChange={handleChange} 
-                    readOnly={!isEditing && !isPreenchimentoManual} 
-                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                  />
-                </div>
-                
-                <div className="md:col-span-2">
-                  <Input 
-                    label="Porte" 
-                    name="porte" 
-                    value={form.porte} 
-                    onChange={handleChange} 
-                    readOnly={!isEditing && !isPreenchimentoManual} 
-                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                  />
-                </div>
-                
-                {/* Capital Social e Telefone de Empresa liberados sob demanda */}
-                <div className="md:col-span-2">
-                  <Input 
-                    label="Capital Social" 
-                    name="capital_social" 
-                    type="text" 
-                    value={form.capital_social} 
-                    onChange={handleChange} 
-                    readOnly={!isEditing && !isPreenchimentoManual} 
-                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                  />
-                </div>
-                
-                <div className="md:col-span-4">
-                  <Input 
-                    label="Telefone da Empresa (API)" 
-                    name="ddd_telefone_1" 
-                    value={form.ddd_telefone_1} 
-                    onChange={handleChange} 
-                    readOnly={!isEditing && !isPreenchimentoManual} 
-                    className={!isEditing && !isPreenchimentoManual ? "bg-slate-50 dark:bg-zinc-800/50 text-slate-400" : ""}
-                  />
-                </div>
-                
-                {/* Enquadramento checkboxes passam a ser clicáveis se liberado */}
-                <div className="md:col-span-6 flex items-center gap-8 p-4 bg-slate-50 dark:bg-zinc-800/30 rounded-xl border border-dashed border-slate-200 dark:border-zinc-700">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enquadramento:</span>
-                  <Checkbox 
-                    label="Optante pelo MEI" 
-                    name="opcao_pelo_mei" 
-                    checked={form.opcao_pelo_mei}  
-                    onChange={handleChange}
-                    disabled={!isEditing && !isPreenchimentoManual} 
-                  />
-                  <Checkbox 
-                    label="Simples Nacional" 
-                    name="opcao_pelo_simples" 
-                    checked={form.opcao_pelo_simples} 
-                    onChange={handleChange}
-                    disabled={!isEditing && !isPreenchimentoManual} 
-                  />
-                </div>
-              </div>
-            ) : (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-            {/* PRIMEIRA LINHA: Nome, CPF, RG, Data de Emissão */}
-              <div className="md:col-span-1">
-                <Input label="Nome Completo" name="nome" value={form.nome} onChange={handleChange} />
-              </div>
-              
-              <div className="md:col-span-1">
-                <Input 
-                  label="CPF" 
-                  name="cpf" 
-                  value={form.cpf} 
-                  onChange={(e: any) => {
-                    if(cpfInvalido) setCpfInvalido(false);
-                    handleChange(e);
-                  }}
-                  className={cpfInvalido ? "border-red-500 ring-2 ring-red-500/20" : ""}
-                />
-              </div>
-
-              <div className="md:col-span-1">
-                <Input label="RG" name="rg" value={form.rg} onChange={handleChange} />
-              </div>
-
-              <div className="md:col-span-1">
-                <Input 
-                  label="Data de Emissão" 
-                  name="data_emissao" 
-                  type="date" 
-                  value={form.data_emissao} 
-                  onChange={handleChange} 
-                  icon={<Calendar size={14}/>} 
-                />
-              </div>
-
-              {/* SEGUNDA LINHA: Data de Nascimento, Sexo, Naturalidade, Ocupação */}
-              <div className="md:col-span-1">
-                <Input 
-                  label="Data de Nascimento" 
-                  name="data_nascimento" 
-                  type="date" 
-                  value={form.data_nascimento} 
-                  onChange={handleChange} 
-                  icon={<Calendar size={14}/>} 
-                />
-              </div>
-
-              <div className="md:col-span-1">
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1.5 ml-1">Sexo *</label>
-                <select 
-                  name="sexo"
-                  value={form.sexo}
-                  onChange={handleChange}
-                  required
-                  className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                >
-                  <option value="">Selecione...</option>
-                  <option value="Masculino">Masculino</option>
-                  <option value="Feminino">Feminino</option>
-                  <option value="Prefere não responder">Prefere não responder</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-1">
-                <Input label="Naturalidade" name="naturalidade" value={form.naturalidade} onChange={handleChange} />
-              </div>
-
-              <div className="md:col-span-1">
-                <Input label="Ocupação" name="ocupacao" value={form.ocupacao} onChange={handleChange} />
-              </div>
-            </div>
-            )}
-          </Section>
-
-          <Section icon={<MapPin className="text-orange-500" />} title={tipoCliente === "PJ" ? "Endereço da Empresa" : "Endereço Residencial"}>
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-5">
-              <div className="md:col-span-2"><ActionInput label="CEP" name={tipoCliente === "PJ" ? "cep" : "cep_pf"} value={tipoCliente === "PJ" ? form.cep : form.cep_pf} onChange={handleChange} onAction={() => handleBuscarCEP(tipoCliente)} loading={tipoCliente === "PJ" ? loadingCEP : loadingCEPPF} placeholder="00000-000" /></div>
-              <div className="md:col-span-3"><Input label="Logradouro" name={tipoCliente === "PJ" ? "logradouro" : "logradouro_pf"} value={tipoCliente === "PJ" ? form.logradouro : form.logradouro_pf} onChange={handleChange}  /></div>
-              <div className="md:col-span-1"><Input label="Número" name={tipoCliente === "PJ" ? "numero" : "numero_pf"} value={tipoCliente === "PJ" ? form.numero : form.numero_pf} onChange={handleChange} /></div>
-              <div className="md:col-span-2"><Input label="Bairro" name={tipoCliente === "PJ" ? "bairro" : "bairro_pf"} value={tipoCliente === "PJ" ? form.bairro : form.bairro_pf} onChange={handleChange} /></div>
-              <div className="md:col-span-3"><Input label="Cidade" name={tipoCliente === "PJ" ? "municipio" : "municipio_pf"} value={tipoCliente === "PJ" ? form.municipio : form.municipio_pf} onChange={handleChange} /></div>
-              <div className="md:col-span-1"><Input label="UF" name={tipoCliente === "PJ" ? "uf" : "uf_pf"} value={tipoCliente === "PJ" ? form.uf : form.uf_pf} onChange={handleChange} /></div>
-              <div className="md:col-span-6"><Input label="Complemento" name={tipoCliente === "PJ" ? "complemento" : "complemento_pf"} value={tipoCliente === "PJ" ? form.complemento : form.complemento_pf} onChange={handleChange} /></div>
-            </div>
-            
-          </Section>
-
-          {/* NOVA SEÇÃO: QUADRO DE SÓCIOS (QSA) */}
-          {tipoCliente === "PJ" && form.socios && form.socios.length > 0 && (
-            <Section icon={<Building2 className="text-violet-500" />} title="Quadro de Sócios e Administradores (QSA)">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 dark:border-zinc-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                      <th className="pb-3 pl-1">Nome do Sócio</th>
-                      <th className="pb-3 w-40">Faixa Etária</th>
-                      <th className="pb-3 w-48">CPF / CNPJ</th>
-                      <th className="pb-3 w-48">Telefone de Contato</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50 dark:divide-zinc-850 text-sm">
-                    {form.socios.map((socio, index) => (
-                      <tr key={index} className="group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10">
-                        <td className="py-3.5 pr-4 font-medium text-slate-700 dark:text-zinc-300 pl-1 uppercase">
-                          {socio.nome}
-                        </td>
-                        <td className="py-3.5 pr-4 text-xs text-slate-500 dark:text-zinc-400 italic">
-                          {socio.faixa_etaria}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <input
-                            type="text"
-                            value={socio.cpf_cnpj}
-                            onChange={(e) => handleSocioChange(index, "cpf_cnpj", e.target.value)}
-                            placeholder="000.000.000-00"
-                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-xs font-mono"
-                          />
-                        </td>
-                        <td className="py-2">
-                          <input
-                            type="text"
-                            value={socio.telefone}
-                            onChange={(e) => handleSocioChange(index, "telefone", e.target.value)}
-                            placeholder="(00) 00000-0000"
-                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-xs font-mono"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Section>
-          )}
-
-          {tipoCliente === "PJ" && (
-            <Section icon={<User className="text-indigo-500" />} title="Dados do contato principal da empresa">
-              <div className="space-y-6">
-                {/* LINHA 1 E 2: DADOS PESSOAIS */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-  
-                  {/* LINHA 1: Nome, CPF, RG, Data de Emissão */}
-                  <div className="md:col-span-1">
-                    <Input label="Nome Completo" name="nome" value={form.nome} onChange={handleChange} />
-                  </div>
-                  <div className="md:col-span-1">
-                    <Input 
-                      label="CPF" 
-                      name="cpf" 
-                      value={form.cpf} 
-                      onChange={(e: any) => {
-                        if(cpfInvalido) setCpfInvalido(false);
-                        handleChange(e);
-                      }} 
-                      className={cpfInvalido ? "border-red-500" : ""} 
-                    />
-                  </div>
-                  <div className="md:col-span-1">
-                    <Input label="RG" name="rg" value={form.rg} onChange={handleChange} />
-                  </div>
-                  <div className="md:col-span-1">
-                    <Input 
-                      label="Data de Emissão" 
-                      name="data_emissao" 
-                      type="date" 
-                      value={form.data_emissao} 
-                      onChange={handleChange} 
-                      icon={<Calendar size={14}/>} 
-                    />
-                  </div>
-
-                  {/* LINHA 2: Data de Nascimento, Sexo, Naturalidade, Ocupação */}
-                  <div className="md:col-span-1">
-                    <Input 
-                      label="Data de Nascimento" 
-                      name="data_nascimento" 
-                      type="date" 
-                      value={form.data_nascimento} 
-                      onChange={handleChange} 
-                      icon={<Calendar size={14}/>} 
-                    />
-                  </div>
-                  <div className="md:col-span-1">
-                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-1.5 ml-1">Sexo *</label>
-                    <select 
-                      name="sexo"
-                      value={form.sexo}
-                      onChange={handleChange}
-                      required
-                      className="w-full h-11 px-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="Masculino">Masculino</option>
-                      <option value="Feminino">Feminino</option>
-                      <option value="Prefere não responder">Prefere não responder</option>
-                    </select>
-                  </div>
-                  <div className="md:col-span-1">
-                    <Input label="Naturalidade" name="naturalidade" value={form.naturalidade} onChange={handleChange} />
-                  </div>
-                  <div className="md:col-span-1">
-                    <Input label="Ocupação" name="ocupacao" value={form.ocupacao} onChange={handleChange} />
-                  </div>
-
-                </div>
-
-                {/* DIVISOR E LOGICA DE ENDEREÇO */}
-                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Endereço do Sócio/Contato</h3>
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <input 
-                        type="checkbox" 
-                        checked={mesmoEndereco} 
-                        onChange={(e) => setMesmoEndereco(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-xs font-bold text-slate-500 group-hover:text-blue-600 transition-colors">
-                        Mesmo endereço da empresa
-                      </span>
-                    </label>
-                  </div>
-
-                  {!mesmoEndereco && (
-                    <div className="grid grid-cols-1 md:grid-cols-6 gap-5 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="md:col-span-2">
-                        <ActionInput 
-                          label="CEP Pessoal" 
-                          name="cep_pf" 
-                          value={form.cep_pf} 
-                          onChange={handleChange} 
-                          onAction={() => handleBuscarCEP("PF")} 
-                          loading={loadingCEPPF} 
-                          placeholder="00000-000" 
-                        />
-                      </div>
-                      <div className="md:col-span-3">
-                        <Input label="Logradouro" name="logradouro_pf" value={form.logradouro_pf} onChange={handleChange} />
-                      </div>
-                      <div className="md:col-span-1">
-                        <Input label="Número" name="numero_pf" value={form.numero_pf} onChange={handleChange} />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Input label="Bairro" name="bairro_pf" value={form.bairro_pf} onChange={handleChange} />
-                      </div>
-                      <div className="md:col-span-3">
-                        <Input label="Cidade" name="municipio_pf" value={form.municipio_pf} onChange={handleChange} />
-                      </div>
-                      <div className="md:col-span-1">
-                        <Input label="UF" name="uf_pf" value={form.uf_pf} onChange={handleChange} />
-                      </div>
-                      <div className="md:col-span-6">
-                        <Input label="Complemento" name="complemento_pf" value={form.complemento_pf} onChange={handleChange} />
-                      </div>
-                    </div>
-                  )}
-
-                  {mesmoEndereco && (
-                    <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 rounded-xl">
-                      <p className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                        <MapPin size={14} />
-                        O sistema utilizará o endereço empresarial cadastrado acima para este contato.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Section>
-          )}
-
-          <Section icon={<Mail className="text-emerald-500" />} title="Contato e CRM">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-              <div className="md:col-span-2"><Input label="E-mail" name="email" type="email" value={form.email} onChange={handleChange} icon={<Mail size={14}/>} /></div>
-              <Input label="WhatsApp" name="telefone_whats" value={form.telefone_whats} onChange={handleChange} icon={<Phone size={14}/>} />
-              <Input label="Telefone Adicional" name="telefone_adicional" value={form.telefone_adicional} onChange={handleChange} />
-              
-              <div className="flex flex-col">
-                <label className="text-xs font-semibold text-slate-500 mb-1.5 ml-1">Origem</label>
-                <select name="origem_cliente" value={form.origem_cliente} onChange={handleChange} className="h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 outline-none transition-all cursor-pointer">
-                  <option value="Google">Google</option>
-                  <option value="Facebook">Facebook</option>
-                  <option value="Instagram">Instagram</option>
-                  <option value="Linkedin">Linkedin</option>
-                  <option value="Prospecção Ativa">Prospecção Ativa</option>
-                  <option value="Parceiro de Negócio">Parceiro de Negócio</option>
-                  <option value="Reciprocidade">Reciprocidade</option>
-                  <option value="Cliente Procurou">Cliente Procurou</option>
-                  <option value="Outros On-line">Outros On-line</option>
-                  <option value="Outros Off-line">Outros Off-line</option>
-                </select>
-              </div>
-              
-              <div className="flex flex-col">
-                <label className="text-xs font-semibold text-slate-500 mb-1.5 ml-1">Fase do Funil</label>
-                <select 
-                  name="fase_kanban" 
-                  value={form.fase_kanban} 
-                  onChange={handleChange} 
-                  className="h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 outline-none transition-all cursor-pointer">
-                  <option value="lead">Lead</option>
-                  
-                  
-                </select>
-              </div>
-              
-              <div className="md:col-span-2">
-                <div className="flex flex-col">
-                  <label className="text-xs font-semibold text-slate-500 mb-1.5 ml-1">
-                    Responsável pelo Cliente
-                  </label>
-                  <select 
-                    name="corretor_id" 
-                    value={form.corretor_id || ""} 
-                    onChange={handleChange}
-                    className="h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 outline-none transition-all cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  >
-                    <option value="">Selecione um responsável...</option>
-                    
-                    {/* REMOVIDA A CONDIÇÃO IF: Agora aparece para Corretor e Corretora */}
-                    <option 
-                      value={perfilUsuarioLogado?.tipo_usuario === "CORRETORA" ? perfilUsuarioLogado.id : perfilUsuarioLogado?.corretora_id} 
-                      className="font-bold text-blue-600"
-                    >
-                      ATENDIMENTO DIRETO (CORRETORA)
-                    </option>
-
-                    {corretores.map(c => (
-                      <option key={c.id} value={c.id}>{c.nome}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </Section>
-
-          <div className="flex justify-end gap-4 py-8">
-            <button type="button" onClick={() => navigate(-1)} className="px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">Descartar</button>
-            <button type="submit" disabled={loading} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-2xl font-bold shadow-lg shadow-blue-500/25 transition-all active:scale-95 disabled:opacity-50">
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-              {isEditing ? "Salvar Alterações" : "Finalizar Cadastro"}
-            </button>
-          </div>
-        </form>
-      </main>
     </div>
-  );
-}
-
-// COMPONENTES AUXILIARES (Design mantido conforme seu original)
-function Section({ title, icon, children }: any) {
-  return (
-    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[24px] shadow-sm overflow-hidden">
-      <div className="px-6 py-4 bg-slate-50/50 dark:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 flex items-center gap-3">
-        {icon}
-        <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-zinc-400">{title}</h2>
-      </div>
-      <div className="p-6 md:p-8">{children}</div>
-    </div>
-  );
-}
-
-function Input({ label, icon, className = "", ...props }: any) {
-  return (
-    <div className="flex flex-col">
-      <label className="text-xs font-semibold text-slate-500 dark:text-zinc-500 mb-1.5 ml-1">{label}</label>
-      <div className="relative flex items-center">
-        {icon && <span className="absolute left-4 text-slate-400">{icon}</span>}
-        <input {...props} className={`w-full h-11 ${icon ? 'pl-11' : 'px-4'} rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all ${className}`} />
-      </div>
-    </div>
-  );
-}
-
-function ActionInput({ label, onAction, loading, ...props }: any) {
-  return (
-    <div className="flex flex-col">
-      <label className="text-xs font-semibold text-slate-500 mb-1.5 ml-1">{label}</label>
-      <div className="relative">
-        <input {...props} className="w-full h-11 px-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" />
-        <button 
-        type="button" 
-        onClick={onAction} 
-        disabled={loading} 
-        className="absolute right-1 top-1 bottom-1 px-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 flex items-center justify-center border border-blue-100 dark:border-blue-800">
-          {loading ? <Loader2 className="animate-spin w-4 h-4" /> : `Buscar ${label}`}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Checkbox({ label, ...props }: any) {
-  return (
-    <label className="flex items-center gap-2.5 cursor-pointer group">
-      <input type="checkbox" {...props} className="w-5 h-5 rounded-lg border-slate-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-500 bg-transparent" />
-      <span className="text-sm font-medium text-slate-600 dark:text-zinc-400 group-hover:text-blue-500 transition-colors">{label}</span>
-    </label>
-  );
-}
-
-function TabButton({ active, icon, label, onClick }: any) {
-  return (
-    <button type="button" onClick={onClick} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${active ? "bg-white dark:bg-zinc-800 shadow-sm text-blue-600 dark:text-white" : "text-slate-400 hover:text-slate-600 dark:text-zinc-500 disabled:opacity-30"}`}>{icon} {label}</button>
   );
 }

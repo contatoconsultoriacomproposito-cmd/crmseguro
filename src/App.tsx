@@ -39,8 +39,8 @@ import PlanoContas from "./pages/financeiro/PlanoContas"
 import Lancamentos from "./pages/financeiro/Lancamentos"
 
 
-import ClientesCadastroV2 from "./pages/clientes/ClientesCadastroV2"
-import ClientesListaV2 from "./pages/clientes/ClientesListaV2"
+import ClientesCadastroV2 from "./pages/clientes/ClientesCadastro"
+import ClientesListaV2 from "./pages/clientes/ClientesLista"
 
 // 🛡️ Módulo de Seguros de Vida
 import PropostasAvulsas from "./pages/propostas/PropostasAvulsas"
@@ -145,8 +145,8 @@ export default function App() {
             {/* <Route path="/clientes/editar/:id" element={<ClientesCadastro />} /> */}
 
             {/* ✨ SUA NOVA ROTA V2 AQUI */}
-            <Route path="/clientes/cadastro-v2" element={<ClientesCadastroV2 />} />
-            <Route path="/clientes/lista-v2" element={<ClientesListaV2 />} />
+            <Route path="/clientes/cadastro" element={<ClientesCadastroV2 />} />
+            <Route path="/clientes/lista" element={<ClientesListaV2 />} />
 
 
             <Route path="/clientes/acoes" element={<ClientesAcoes />} /> 

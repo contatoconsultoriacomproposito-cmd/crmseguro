@@ -180,8 +180,8 @@ export default function Sidebar({ collapsed, setCollapsed }: Props) {
             />
             {!isCollapsed && openMenus.clientes && (
               <div className="ml-9 flex flex-col gap-1 border-l border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-200">
-                <SubNavItem to="/clientes/cadastro-V2" label="Novo Cadastro" icon={<UserPlus size={16} />} />
-                <SubNavItem to="/clientes/lista-v2" label="Ver Listagem" icon={<List size={16} />} />
+                <SubNavItem to="/clientes/cadastro" label="Novo Cadastro" icon={<UserPlus size={16} />} />
+                <SubNavItem to="/clientes/lista" label="Ver Listagem" icon={<List size={16} />} />
                 <SubNavItem to="/clientes/acoes" label="Relatório de Ações" icon={<History size={16} className="text-orange-500" />} />
                 <SubNavItem to="/clientes/campanhas" label="Email-Marketing" icon={<Activity size={16} className="text-emerald-500" />} />
                 

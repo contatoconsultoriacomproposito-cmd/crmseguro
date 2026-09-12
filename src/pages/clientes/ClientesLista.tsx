@@ -1,972 +1,956 @@
-import { useEffect, useState } from "react";
-import { 
-  Search, Plus, Pencil, Trash2, Building2, User, Phone,
-  AlertTriangle, Loader2, FileSpreadsheet, Users2, ArrowLeftRight,
-  BarChart3, CalendarPlus, Calendar, X
-} from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "../../lib/supabaseClient";
-import * as XLSX from 'xlsx';
-import { toast, Toaster } from 'react-hot-toast';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  Search, RotateCcw, User, Building2, ChevronDown, ChevronUp,
+  Eye, Calendar, Trash2, Car, Heart, Home, Briefcase, Stethoscope, Smile, ShieldAlert,
+  ChevronRight, ChevronLeft, Loader2, Plus, Users, UserPlus
+} from 'lucide-react';
+import { buscarClientesV2, buscarListaCnaes, excluirClienteV2, buscarClienteCompletoPorId, criarClienteV2, atualizarClienteV2, converterClienteEmLead } from './clienteServiceV2';
+import type { FiltrosClientesV2, ClienteV2Formatado, CnaeOpcao  } from './clienteServiceV2';
+import { CnaeMultiSelect } from './CnaeMultiSelect';
+import { ModalCadastroCliente } from './ModalCadastroCliente';
+import { ModalAcoesComerciais } from './ModalAcoesComerciais';
+import { salvarAcaoComercialV2 } from './clienteServiceV2';
+import { toast } from "sonner";
+const ITENS_POR_PAGINA = 10;
 
-export default function ClientesLista() {
-  const navigate = useNavigate();
-  const [clientes, setClientes] = useState<any[]>([]);
-  const [corretores, setCorretores] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
-  const [busca, setBusca] = useState("");
-  const [filtroCorretor, setFiltroCorretor] = useState<string>("todos");
-  const [userProfile, setUserProfile] = useState<any>(null);
-  
-  const [excluindoId, setExcluindoId] = useState<string | null>(null);
-  const [confirmarExclusao, setConfirmarExclusao] = useState<any | null>(null);
-
-  // Estados para Gestor de Carteiras
-  const [showGestor, setShowGestor] = useState(false);
-  const [transferDe, setTransferDe] = useState("");
-  const [transferPara, setTransferPara] = useState("");
-  const [transferindo, setTransferindo] = useState(false);
-
-  // Estados do Modal de Agendamento
-  const [clienteAgendamento, setClienteAgendamento] = useState<any | null>(null);
-  const [dataRetornoInput, setDataRetornoInput] = useState<string>('');
-  const [horarioRetornoInput, setHorarioRetornoInput] = useState<string>('');
-  const [salvandoAgendamento, setSalvandoAgendamento] = useState<boolean>(false);
-
-  // Abrir Modal
-  const abrirModalAgendamento = (cliente: any) => {
-    setClienteAgendamento(cliente);
-    setDataRetornoInput(cliente.data_retorno || '');
-    setHorarioRetornoInput(cliente.horario_retorno ? cliente.horario_retorno.slice(0, 5) : '09:00');
+const FILTROS_INICIAIS: FiltrosClientesV2 = {
+    buscaGlobal: '',
+    uf: '',
+    municipio: '',
+    bairro: '',
+    cep: '',
+    situacao_cadastral: '',
+    tipo_cliente: '',
+    origem: '',
+    fase_atendimento: '',
+    temperatura: '',
+    status_kanban: '',
+    fase_kanban: '',
+    corretor_id: '',
+    porte: '',
+    matriz_filial: '',
+    opcao_pelo_mei: '',
+    opcao_pelo_simples: '',
+    cnae_principal: [],
+    busca_socio: '',
+    data_abertura_inicio: '',
+    data_abertura_fim: '',
+    data_retorno_inicio: '',
+    data_retorno_fim: '',
+    data_retorno_sinistro_inicio: '',
+    data_retorno_sinistro_fim: '',
+    tipo_acao: '',
+    proxima_acao_interacao: '',
+    data_venda_inicio: '',
+    data_venda_fim: '',
+    valor_proposta_min: '',
+    valor_proposta_max: '',
+    status_proposta: '',
+    seguradora_id: '',
+    produto_id: '',
+    data_cotacao_inicio: '',
+    data_cotacao_fim: '',
+    data_inicio_vigencia: '',
+    data_fim_vigencia: '',
+    periodicidade: '',
+    status_renovacao: ''
   };
 
-  // Salvar Agendamento
-  const handleSalvarAgendamento = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clienteAgendamento) return;
+const SEGURADORAS_OPTIONS = [
+    { id: "860331a9-8c3c-47a9-be10-6634b74917a7", nome: "AIG" },
+    { id: "c8cb9881-faf9-4a6d-bcc2-b7da7ebfb160", nome: "AKAD SEGUROS" },
+    { id: "ce38bc61-0cab-4dc6-a0ed-bc24622439ec", nome: "ALLIANZ" },
+    { id: "01cc3143-b016-42b9-9e7b-cd8b9a05f7d3", nome: "ALLSEG SEGURADORA" },
+    { id: "e44b4b4d-283f-4c6b-949a-9984980dceb8", nome: "AZUL SEGUROS" },
+    { id: "e17d59c9-d959-4ebd-bfe5-5da3f915a697", nome: "BRADESCO" },
+    { id: "5f5582cf-2baa-4aff-a863-a4946e3a8226", nome: "ESSOR" },
+    { id: "8cbcdf66-8a0a-4e97-b9b2-b413e0029745", nome: "EXCELSIOR SEGUROS" },
+    { id: "9d8f6b17-3709-4a46-aee1-56075c71daf0", nome: "HDI SEGUROS" },
+    { id: "2dbe9b84-4316-45e9-85e4-25d222745c7e", nome: "PORTO SEGURO" },
+    { id: "21736433-4c58-4f5c-9e41-a9456243cb8f", nome: "TOKIO MARINE" },
+    { id: "9cb10f4f-7488-4737-b9cb-528f3256f3c6", nome: "YELUM" }
+  ];
+const PRODUTOS_OPTIONS = [
+    { id: "846dc4bb-d3bc-4498-ae26-989486b16d7e", nome: "PREVIDENCIA JOVEM" },
+    { id: "701560ea-7fea-4c65-bc40-9442acbfc10c", nome: "SEGURO AUTO" },
+    { id: "91988815-fad3-47e9-965f-a6da847d51bc", nome: "SEGURO CONDOMÍNIO" },
+    { id: "8d1f7395-bede-4fb2-a0cb-9a778332f5eb", nome: "SEGURO DE SAÚDE" },
+    { id: "3343e787-428b-4336-8e28-c37a625a85e4", nome: "SEGURO DE VIDA" },
+    { id: "8b722f8c-d1b1-483f-a486-bc86f7e78f9d", nome: "SEGURO DENTAL" },
+    { id: "b3e9dc33-2943-485e-87a3-2150c7aa17ab", nome: "SEGURO EMPRESARIAL" },
+    { id: "3b31498c-8152-49c5-a970-df3f2af7dd6f", nome: "SEGURO EQUIPAMENTO AGRÍCOLA" },
+    { id: "07774156-e101-42d7-9883-4c10987e1922", nome: "SEGURO EQUIPAMENTOS" },
+    { id: "7a58af28-f962-4aca-840a-341b10f582d6", nome: "SEGURO PREVIDÊNCIA" },
+    { id: "a42bba27-dfa4-4369-84c3-d172909ac332", nome: "SEGURO RESIDENCIAL" },
+    { id: "b6fd4043-a996-446c-b565-02d5e0b190ab", nome: "SEGURO RESPONSABILIDADE CIVIL (RC)" },
+    { id: "220b9234-2ab3-4845-8a03-03a523976e4d", nome: "SEGURO TRANSPORTE DE CARGA" },
+    { id: "9cdf00fd-703d-454b-a9c1-d28a7458a3a1", nome: "SEGURO VIAGEM" }
+  ];
+const PERIODICIDADE_OPTIONS = [
+    "ÚNICO",
+    "MENSAL",
+    "ANUAL",
+    "PERSONALIZADO"
+  ];
+const STATUS_RENOVACAO_OPTIONS = [
+    { value: "NÃO SE APLICA", label: "NÃO SE APLICA" },
+    { value: "A RENOVAR", label: "A RENOVAR" },
+    { value: "RENOVAÇÃO AUTOMÁTICA", label: "RENOVAÇÃO AUTOMÁTICA" },
+    { value: "NAO_RENOVADO", label: "NÃO RENOVADO" },
+    { value: "RENOVADO", label: "RENOVADO" }
+  ];
 
-    try {
-      setSalvandoAgendamento(true);
+const PRODUTO_ICONES: Record<string, { icon: React.ReactNode; label: string; bgClass: string }> = {
+  auto: { icon: <Car size={16} />, label: 'Auto', bgClass: 'bg-sky-100 text-sky-800' },
+  vida: { icon: <Heart size={16} />, label: 'Vida', bgClass: 'bg-pink-100 text-pink-800' },
+  residencial: { icon: <Home size={16} />, label: 'Residencial', bgClass: 'bg-amber-100 text-amber-800' },
+  empresarial: { icon: <Briefcase size={16} />, label: 'Empresarial', bgClass: 'bg-indigo-100 text-indigo-800' },
+  saude: { icon: <Stethoscope size={16} />, label: 'Saúde', bgClass: 'bg-emerald-100 text-emerald-800' },
+  odontologico: { icon: <Smile size={16} />, label: 'Odontológico', bgClass: 'bg-purple-100 text-purple-800' },
+};
 
-      const { error } = await supabase
-        .from('tab_clientes')
-        .update({
-          data_retorno: dataRetornoInput || null,
-          horario_retorno: horarioRetornoInput ? `${horarioRetornoInput}:00` : null,
-          atualizado_em: new Date().toISOString(),
-        })
-        .eq('id', clienteAgendamento.id);
+const renderIconesProdutos = (produtos: string[]) => {
+  if (produtos.length === 0) {
+    return <span className="text-slate-400 text-xs">Nenhum</span>;
+  }
 
-      if (error) throw error;
+  const conhecidos: { key: string; label: string; icon: React.ReactNode; bgClass: string }[] = [];
+  const outros: string[] = [];
 
-      // Atualiza a lista local sem re-fetch
-      setClientes((prev) =>
-        prev.map((c) =>
-          c.id === clienteAgendamento.id
-            ? {
-                ...c,
-                data_retorno: dataRetornoInput || null,
-                horario_retorno: horarioRetornoInput ? `${horarioRetornoInput}:00` : null,
-              }
-            : c
-        )
-      );
+  produtos.forEach((prod) => {
+    const prodNorm = prod.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const chaveEncontrada = Object.keys(PRODUTO_ICONES).find((key) => prodNorm.includes(key));
 
-      setClienteAgendamento(null);
-      toast.success("Retorno agendado com sucesso!");
-    } catch (err) {
-      console.error('Erro ao agendar retorno:', err);
-      toast.error('Ocorreu um erro ao agendar o retorno.');
-    } finally {
-      setSalvandoAgendamento(false);
-    }
-  };
-
-  useEffect(() => {
-    async function getInitialData() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: perfil } = await supabase
-          .from('usuarios_perfis')
-          .select('id, corretora_id, tipo_usuario, nome')
-          .eq('id', user.id)
-          .single();
-        
-        setUserProfile(perfil);
+    if (chaveEncontrada) {
+      if (!conhecidos.some((item) => item.key === chaveEncontrada)) {
+        conhecidos.push({ key: chaveEncontrada, ...PRODUTO_ICONES[chaveEncontrada] });
       }
+    } else {
+      outros.push(prod);
     }
-    getInitialData();
-  }, []);
-
-  useEffect(() => {
-    if (userProfile?.corretora_id) {
-      carregarClientes();
-      carregarCorretores();
-    }
-  }, [userProfile]);
-
-  async function carregarCorretores() {
-    if (!userProfile?.corretora_id) return;
-    const { data } = await supabase
-      .from('usuarios_perfis')
-      .select('id, nome')
-      .eq('corretora_id', userProfile.corretora_id)
-      .eq('tipo_usuario', 'CORRETOR');
-    setCorretores(data || []);
-  }
-
-  // BUSCA CORRIGIDA: Resolve o erro PGRST200 com relacionamento desacoplado
-  // BUSCA TOTALMENTE DESACOPLADA: Resolve o PGRST200 sem mexer no banco
-async function carregarClientes() {
-  if (!userProfile?.corretora_id) return;
-  try {
-    setLoading(true);
-
-    // 1. Busca os clientes da corretora
-    let query = supabase
-      .from("tab_clientes")
-      .select("*")
-      .eq("corretora_id", userProfile.corretora_id)
-      .order("criado_em", { ascending: false });
-
-    if (userProfile.tipo_usuario === 'CORRETOR') {
-      query = query.eq('corretor_id', userProfile.id);
-    }
-
-    const { data: dadosClientes, error: errClientes } = await query;
-    if (errClientes) throw errClientes;
-
-    if (!dadosClientes || dadosClientes.length === 0) {
-      setClientes([]);
-      return;
-    }
-
-    const clienteIds = dadosClientes.map((c: any) => c.id);
-    const corretorIds = [...new Set(dadosClientes.map((c: any) => c.corretor_id).filter(Boolean))];
-
-    // 2. Busca corretores e propostas em paralelo sem joins relacionais do PostgREST
-    const [resCorretores, resPropostas] = await Promise.all([
-      corretorIds.length > 0
-        ? supabase.from('usuarios_perfis').select('id, nome').in('id', corretorIds)
-        : { data: [] },
-      clienteIds.length > 0
-        ? supabase
-            .from('tab_propostas')
-            .select('id, cliente_id, status')
-            .in('cliente_id', clienteIds)
-            .eq('status', 'Vendido')
-        : { data: [] }
-    ]);
-
-    const propostasBase = resPropostas.data || [];
-    const propostaIds = propostasBase.map((p: any) => p.id);
-
-    // 3. Busca as opções das propostas encontradas
-    let opcoesBase: any[] = [];
-    if (propostaIds.length > 0) {
-      const { data: resOpcoes } = await supabase
-        .from('tab_proposta_opcoes')
-        .select('id, proposta_id, seguradora_id')
-        .in('proposta_id', propostaIds);
-      opcoesBase = resOpcoes || [];
-    }
-
-    const opcaoIds = opcoesBase.map((o: any) => o.id);
-    const seguradoraIds = [...new Set(opcoesBase.map((o: any) => o.seguradora_id).filter(Boolean))];
-
-    // 4. Busca os itens das opções e as seguradoras
-    const [resItens, resSeguradoras] = await Promise.all([
-      opcaoIds.length > 0
-        ? supabase
-            .from('tab_proposta_itens')
-            .select('id, proposta_opcao_id, data_fim_vigencia, numero_apolice, status_renovacao, produto_id')
-            .in('proposta_opcao_id', opcaoIds)
-        : { data: [] },
-      seguradoraIds.length > 0
-        ? supabase.from('base_seguradoras').select('id, nome').in('id', seguradoraIds)
-        : { data: [] }
-    ]);
-
-    const itensBase = resItens.data || [];
-    const produtoIds = [...new Set(itensBase.map((i: any) => i.produto_id).filter(Boolean))];
-
-    // 5. Busca os produtos relacionados
-    const { data: resProdutos } = produtoIds.length > 0
-      ? await supabase.from('base_produtos').select('id, nome').in('id', produtoIds)
-      : { data: [] };
-
-    // 6. Mapeamentos para associação rápida em memória
-    const corretoresMap = new Map((resCorretores.data || []).map((c: any) => [c.id, c]));
-    const seguradorasMap = new Map((resSeguradoras.data || []).map((s: any) => [s.id, s]));
-    const produtosMap = new Map((resProdutos || []).map((p: any) => [p.id, p]));
-
-    // Agrupa itens por opção
-    const itensPorOpcaoMap = new Map<string, any[]>();
-    itensBase.forEach((item: any) => {
-      const lista = itensPorOpcaoMap.get(item.proposta_opcao_id) || [];
-      lista.push({
-        ...item,
-        base_produtos: produtosMap.get(item.produto_id) || null
-      });
-      itensPorOpcaoMap.set(item.proposta_opcao_id, lista);
-    });
-
-    // Agrupa opções por proposta
-    const opcoesPorPropostaMap = new Map<string, any[]>();
-    opcoesBase.forEach((opcao: any) => {
-      const lista = opcoesPorPropostaMap.get(opcao.proposta_id) || [];
-      lista.push({
-        ...opcao,
-        base_seguradoras: seguradorasMap.get(opcao.seguradora_id) || null,
-        tab_proposta_itens: itensPorOpcaoMap.get(opcao.id) || []
-      });
-      opcoesPorPropostaMap.set(opcao.proposta_id, lista);
-    });
-
-    // Agrupa propostas completas por cliente
-    const propostasPorClienteMap = new Map<string, any[]>();
-    propostasBase.forEach((proposta: any) => {
-      const lista = propostasPorClienteMap.get(proposta.cliente_id) || [];
-      lista.push({
-        ...proposta,
-        tab_proposta_opcoes: opcoesPorPropostaMap.get(proposta.id) || []
-      });
-      propostasPorClienteMap.set(proposta.cliente_id, lista);
-    });
-
-    // 7. Monta a estrutura final idêntica à que o componente espera
-    const clientesCompletos = dadosClientes.map((cli: any) => ({
-      ...cli,
-      usuarios_perfis: corretoresMap.get(cli.corretor_id) || null,
-      tab_propostas: propostasPorClienteMap.get(cli.id) || []
-    }));
-
-    setClientes(clientesCompletos);
-  } catch (error) {
-    console.error("Erro ao carregar clientes:", error);
-    toast.error("Falha ao carregar a lista de clientes.");
-  } finally {
-    setLoading(false);
-  }
-}
-
-  // Helper para extrair produtos ativos/vendidos do cliente
-  const extrairProdutosDoCliente = (cliente: any) => {
-    if (!cliente.tab_propostas || cliente.tab_propostas.length === 0) return [];
-
-    const produtosMap = new Map();
-
-    cliente.tab_propostas.forEach((proposta: any) => {
-      if (proposta.status === 'Cancelada' || proposta.status === 'Perdida') return;
-
-      proposta.tab_proposta_opcoes?.forEach((opcao: any) => {
-        const nomeSeguradora = opcao.base_seguradoras?.nome;
-
-        opcao.tab_proposta_itens?.forEach((item: any) => {
-          if (item.status_renovacao === 'CANCELADA') return;
-
-          const nomeProduto = item.base_produtos?.nome;
-
-          if (nomeProduto) {
-            const key = `${nomeProduto}-${nomeSeguradora || ''}`;
-            if (!produtosMap.has(key)) {
-              produtosMap.set(key, {
-                produto: nomeProduto,
-                seguradora: nomeSeguradora
-              });
-            }
-          }
-        });
-      });
-    });
-
-    return Array.from(produtosMap.values());
-  };
-
-  const extrairVigenciasDoCliente = (cliente: any) => {
-    if (!cliente?.tab_propostas) return [];
-
-    const listaVigencias: Array<{
-      produto: string;
-      seguradora?: string;
-      fimVigencia?: string;
-      numeroApolice?: string;
-    }> = [];
-
-    cliente.tab_propostas.forEach((proposta: any) => {
-      if (proposta.status !== 'Vendido') return;
-
-      proposta.tab_proposta_opcoes?.forEach((opcao: any) => {
-        const nomeSeguradora = opcao.base_seguradoras?.nome;
-
-        opcao.tab_proposta_itens?.forEach((item: any) => {
-          if (item.status_renovacao === 'CANCELADA') return;
-
-          listaVigencias.push({
-            produto: item.base_produtos?.nome || 'Produto Sem Nome',
-            seguradora: nomeSeguradora,
-            fimVigencia: item.data_fim_vigencia,
-            numeroApolice: item.numero_apolice,
-          });
-        });
-      });
-    });
-
-    return listaVigencias;
-  };
-
-  async function handleTransferenciaCarteira() {
-    if (!transferDe || !transferPara || transferDe === transferPara) return;
-    
-    setTransferindo(true);
-    try {
-      const { error } = await supabase
-        .from("tab_clientes")
-        .update({ 
-            corretor_id: transferPara,
-            atualizado_em: new Date().toISOString()
-        })
-        .eq("corretora_id", userProfile.corretora_id)
-        .eq("corretor_id", transferDe);
-
-      if (error) throw error;
-      
-      toast.success("Carteira transferida com sucesso!", {
-        style: {
-          borderRadius: '16px',
-          background: '#333',
-          color: '#fff',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          textTransform: 'uppercase'
-        },
-      });
-
-      setShowGestor(false);
-      setTransferDe("");
-      setTransferPara("");
-      carregarClientes();
-    } catch (error) {
-      console.error("Erro na transferência:", error);
-      toast.error("Falha ao transferir carteira.");
-    } finally {
-      setTransferindo(false);
-    }
-  }
-
-  const exportarExcel = () => {
-    setExporting(true);
-    try {
-      const camposOmitidos = ['google_event_id_sinistro', 'google_event_id_comercial', 'corretor_id', 'corretora_id', 'id', 'usuarios_perfis', 'tab_propostas'];
-      const dadosParaExportar = clientesFiltrados.map(cliente => {
-        const filtrado: any = {};
-        Object.keys(cliente).forEach(key => {
-          if (!camposOmitidos.includes(key)) {
-            const valor = cliente[key];
-            if (typeof valor === 'boolean') {
-              filtrado[key.toUpperCase()] = valor ? 'SIM' : 'NÃO';
-            } else if (typeof valor === 'object' && valor !== null) {
-              filtrado[key.toUpperCase()] = JSON.stringify(valor);
-            } else {
-              filtrado[key.toUpperCase()] = valor !== null && valor !== undefined ? String(valor) : '';
-            }
-          }
-        });
-        return filtrado;
-      });
-
-      const ws = XLSX.utils.json_to_sheet(dadosParaExportar);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Clientes");
-      XLSX.writeFile(wb, `Relatorio_Clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
-    } catch (error) {
-      console.error("Erro ao exportar:", error);
-      toast.error("Erro ao exportar para Excel.");
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  async function handleExcluir() {
-    if (!confirmarExclusao || !userProfile) return;
-    try {
-      setExcluindoId(confirmarExclusao.id);
-      let deleteQuery = supabase
-        .from("tab_clientes")
-        .delete()
-        .eq("id", confirmarExclusao.id)
-        .eq("corretora_id", userProfile.corretora_id);
-
-      if (userProfile.tipo_usuario === 'CORRETOR') {
-        deleteQuery = deleteQuery.eq('corretor_id', userProfile.id);
-      }
-
-      const { error } = await deleteQuery;
-      if (error) throw error;
-
-      setClientes(prev => prev.filter(c => c.id !== confirmarExclusao.id));
-      setConfirmarExclusao(null);
-      toast.success("Cliente removido com sucesso!");
-    } catch (error) {
-      console.error("Erro ao excluir:", error);
-      toast.error("Erro ao remover cliente.");
-    } finally {
-      setExcluindoId(null);
-    }
-  }
-
-  // BUSCA ATUALIZADA: Mapeia contatos em JSON e campos da tab_clientes
-  const clientesFiltrados = clientes.filter((c) => {
-    const atendeFiltroCorretor = filtroCorretor === "todos" || c.corretor_id === filtroCorretor;
-    if (!atendeFiltroCorretor) return false;
-
-    if (!busca) return true;
-    const termo = busca.toLowerCase().trim();
-    const termoApenasNumeros = termo.replace(/\D/g, "");
-
-    const nomeRazao = (c.nome_razao_social || "").toLowerCase();
-    const nomeFantasia = (c.nome_fantasia || "").toLowerCase();
-    const doc = (c.cpf_cnpj || "").replace(/\D/g, "");
-
-    // Extração segura dos telefones no JSON contatos
-    let contatosArray: any[] = [];
-    if (Array.isArray(c.contatos)) {
-      contatosArray = c.contatos;
-    } else if (typeof c.contatos === 'string') {
-      try { contatosArray = JSON.parse(c.contatos); } catch { contatosArray = []; }
-    }
-    const telefones = contatosArray.map((ct: any) => (ct.telefone || "").toLowerCase());
-    const telefonesLimpos = contatosArray.map((ct: any) => (ct.telefone || "").replace(/\D/g, ""));
-
-    if (termo.includes("(") || termo.includes(")")) {
-      return telefones.some((tel: string) => tel.includes(termo));
-    }
-
-    if (termoApenasNumeros && termo === termoApenasNumeros) {
-      return doc.includes(termoApenasNumeros) || telefonesLimpos.some((tel: string) => tel.includes(termoApenasNumeros));
-    }
-
-    return nomeRazao.includes(termo) || nomeFantasia.includes(termo);
   });
 
-  // 📊 INDICADORES EM TEMPO REAL COM BASE NA BASE FILTRADA/ATUAL
-  const totalGeral = clientesFiltrados.length;
-  const totalPJ = clientesFiltrados.filter(c => c.tipo_cliente === "PJ").length;
-  const totalPF = clientesFiltrados.filter(c => c.tipo_cliente === "PF").length;
-  const totalDireto = clientesFiltrados.filter(c => c.corretor_id === c.corretora_id).length;
-
   return (
-  <div className="p-6 min-h-screen bg-[#F8FAFC] dark:bg-[#09090B] transition-colors pb-20">
-    
-    {/* HEADER */}
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100 italic uppercase tracking-tighter">Clientes</h1>
-        <p className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-[0.2em]">Base de dados unificada</p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        {userProfile?.tipo_usuario === 'CORRETORA' && (
-          <button 
-            onClick={() => setShowGestor(true)}
-            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white p-3 rounded-2xl font-black uppercase text-[10px] shadow-sm transition-all active:scale-95"
-          >
-            <Users2 size={18} />
-            Gestor de Carteiras
-          </button>
-        )}
-
-        <button 
-          onClick={exportarExcel}
-          disabled={loading || exporting}
-          className="flex items-center gap-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-3 rounded-2xl text-emerald-600 font-black uppercase text-[10px] shadow-sm hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-all disabled:opacity-30 active:scale-95"
-        >
-          {exporting ? <Loader2 size={18} className="animate-spin" /> : <FileSpreadsheet size={18} />}
-          Exportar Excel
-        </button>
-
-        <button 
-          onClick={() => navigate("/clientes/cadastro")}
-          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl transition-all shadow-lg shadow-blue-500/25 font-black uppercase text-[11px] active:scale-95"
-        >
-          <Plus size={20} /> Novo Cadastro
-        </button>
-      </div>
-    </div>
-
-    {/* 📊 SEÇÃO DE CARDS DE INDICADORES (KPIs DETALHADOS) */}
-    <div className="max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-3xl shadow-sm flex items-center justify-between">
-        <div>
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Carteira</p>
-          <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100 italic tracking-tighter mt-1">{loading ? "---" : totalGeral}</h3>
-        </div>
-        <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center font-bold">
-          <BarChart3 size={20} />
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-3xl shadow-sm flex items-center justify-between">
-        <div>
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Empresas (PJ)</p>
-          <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 italic tracking-tighter mt-1">{loading ? "---" : totalPJ}</h3>
-        </div>
-        <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center font-bold">
-          <Building2 size={20} />
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-3xl shadow-sm flex items-center justify-between">
-        <div>
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pessoas (PF)</p>
-          <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400 italic tracking-tighter mt-1">{loading ? "---" : totalPF}</h3>
-        </div>
-        <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 rounded-2xl flex items-center justify-center font-bold">
-          <User size={20} />
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-3xl shadow-sm flex items-center justify-between">
-        <div>
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Atend. Direto</p>
-          <h3 className="text-2xl font-black text-amber-600 dark:text-amber-400 italic tracking-tighter mt-1">{loading ? "---" : totalDireto}</h3>
-        </div>
-        <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 text-amber-600 rounded-2xl flex items-center justify-center font-bold">
-          <Users2 size={20} />
-        </div>
-      </div>
-    </div>
-
-    {/* FILTROS E BUSCA */}
-    <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 mb-6">
-      <div className="relative flex-1">
-        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-          <Search size={20} className="text-slate-400" />
-        </div>
-        <input
-          type="text"
-          placeholder="Pesquisar por CPF/CNPJ, Nome, Telefone..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="w-full pl-12 pr-4 py-4 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-zinc-100 font-medium"
-        />
-      </div>
-
-      {userProfile?.tipo_usuario === 'CORRETORA' && (
-        <select
-          value={filtroCorretor}
-          onChange={(e) => setFiltroCorretor(e.target.value)}
-          className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl px-4 py-4 shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-black uppercase tracking-wider text-slate-600 dark:text-zinc-300 min-w-[200px]"
-        >
-          <option value="todos">Todos os Corretores</option>
-          <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
-          {corretores.map(cor => (
-            <option key={cor.id} value={cor.id}>{cor.nome}</option>
-          ))}
-        </select>
+    <div className="flex gap-1.5 items-center flex-wrap">
+      {conhecidos.map((item) => (
+        <span key={item.key} title={item.label} className={`${item.bgClass} p-1 rounded-md flex items-center`}>
+          {item.icon}
+        </span>
+      ))}
+      {outros.length > 0 && (
+        <span title={`Outros: ${outros.join(', ')}`} className="bg-slate-100 text-slate-700 px-1.5 py-1 rounded-md text-xs font-bold flex items-center gap-0.5">
+          <ShieldAlert size={14} /> +{outros.length}
+        </span>
       )}
     </div>
+  );
+};
 
-    {/* TABELA */}
-    <div className="max-w-7xl mx-auto bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-slate-50/50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-zinc-800">
-              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Tipo</th>
-              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Documento</th>
-              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
-              
-              {/* 🗓️ COLUNA RETORNO */}
-              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Retorno</th>
-              
-              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">WhatsApp</th>
-              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Gestão de Conta</th>
-              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
-            {loading ? (
-              <tr>
-                <td colSpan={7} className="p-20 text-center">
-                  <Loader2 className="animate-spin mx-auto text-blue-500" />
-                </td>
-              </tr>
-            ) : clientesFiltrados.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic tracking-widest">
-                  Nenhum cliente encontrado
-                </td>
-              </tr>
-            ) : (
-              clientesFiltrados.map((cliente) => (
-                <tr key={cliente.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/40 transition-all group">
-                  
-                  {/* 1. TIPO (PF/PJ) */}
-                  <td className="p-5 text-center">
-                    {cliente.tipo_cliente === "PJ" ? (
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto border border-blue-100/50">
-                        <Building2 size={18} />
+export const ClientesListaV2: React.FC = () => {
+  const [clientes, setClientes] = useState<ClienteV2Formatado[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [totalRegistros, setTotalRegistros] = useState<number>(0);
+  const [paginaAtual, setPaginaAtual] = useState<number>(1);
+  const [listaCnaes, setListaCnaes] = useState<CnaeOpcao[]>([]);
+  const [exibirAvancados, setExibirAvancados] = useState<boolean>(true);
+  const [sociosExpandidos, setSociosExpandidos] = useState<Record<string, boolean>>({});
+  const [clienteParaConverter, setClienteParaConverter] = useState<ClienteV2Formatado | null>(null);
+  const [gruposExpandidos, setGruposExpandidos] = useState({
+    localizacao: false,
+    perfilEmpresa: false,
+    propostas: false,
+    crm: false
+  });
+  type GrupoKey = keyof typeof gruposExpandidos;
+  const toggleGrupo = useCallback((grupo: GrupoKey) => {
+    setGruposExpandidos(prev => ({ ...prev, [grupo]: !prev[grupo] }));
+  }, []);
+  const [clienteSelecionado, setClienteSelecionado] = useState<any>(null);
+  const [modalCadastroAberto, setModalCadastroAberto] = useState(false);
+  const [modalAcaoAberto, setModalAcaoAberto] = useState(false);
+  const [filtros, setFiltros] = useState<FiltrosClientesV2>(FILTROS_INICIAIS);
+  useEffect(() => {
+    async function carregarCnaes() {
+      const cnaes = await buscarListaCnaes();
+      setListaCnaes(cnaes);
+    }
+    carregarCnaes();
+  }, []);
+  const carregarClientes = useCallback(async () => {
+    setLoading(true);
+    const resultado = await buscarClientesV2(filtros, paginaAtual, ITENS_POR_PAGINA);
+    setClientes(resultado.dados);
+    setTotalRegistros(resultado.total);
+    setLoading(false);
+  }, [filtros, paginaAtual]);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      carregarClientes();
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [carregarClientes]);
+  const handleFiltroChange = useCallback((campo: keyof FiltrosClientesV2, valor: any) => {
+    setFiltros(prev => ({ ...prev, [campo]: valor }));
+    setPaginaAtual(1);
+  }, []);
+  const handleLimparFiltros = useCallback(() => {
+    setFiltros(FILTROS_INICIAIS);
+    setPaginaAtual(1);
+  }, []);
+  const toggleExpandirSocios = useCallback((clienteId: string) => {
+    setSociosExpandidos(prev => ({ ...prev, [clienteId]: !prev[clienteId] }));
+  }, []);
+  const totalPaginas = useMemo(() => Math.ceil(totalRegistros / ITENS_POR_PAGINA), [totalRegistros]);
+
+  const handleEditarCliente = async (cliente: ClienteV2Formatado) => {
+    const dadosCompletos = await buscarClienteCompletoPorId(cliente.id);
+    setClienteSelecionado(dadosCompletos || cliente);
+    setModalCadastroAberto(true);
+  };
+  const handleNovaAcao = async (cliente: ClienteV2Formatado) => {
+    const dadosCompletos = await buscarClienteCompletoPorId(cliente.id);
+    setClienteSelecionado(dadosCompletos || cliente);
+    setModalAcaoAberto(true);
+  };
+  const handleSalvarCliente = async (payloadCliente: any, abrirOportunidade: boolean = false) => {
+    try {
+      let clienteSalvo = clienteSelecionado;
+      if (clienteSelecionado?.id) {
+        await atualizarClienteV2(clienteSelecionado.id, payloadCliente);
+        toast.success("Cliente atualizado com sucesso!");
+        clienteSalvo = { ...clienteSelecionado, ...payloadCliente };
+      } else {
+        const novoCliente = await criarClienteV2(payloadCliente);
+        toast.success("Cliente cadastrado com sucesso!");
+        clienteSalvo = novoCliente;
+      }
+      setModalCadastroAberto(false);
+      await carregarClientes();
+      if (abrirOportunidade) {
+        if (!clienteSalvo?.id) {
+          throw new Error("Cliente criado sem ID. Não foi possível abrir a ação comercial.");
+        }
+        setClienteSelecionado(clienteSalvo);
+        setModalAcaoAberto(true);
+      } else {
+        setClienteSelecionado(null);
+      }
+    } catch (error) {
+      console.error("Erro ao salvar cliente:", error);
+      toast.error("Ocorreu um erro ao salvar o cliente.");
+    }
+  };
+
+  const handleExcluirCliente = async (id: string) => {
+    const confirmar = window.confirm("Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.");
+    if (!confirmar) return;
+    const sucesso = await excluirClienteV2(id);
+    if (sucesso) {
+      toast.success("Cliente excluído com sucesso!");
+      await carregarClientes();
+    } else {
+      toast.error("Erro ao excluir o cliente. Tente novamente.");
+    }
+  };
+
+  // Apenas abre o nosso modal customizado
+  const handleConverterParaLead = (cliente: ClienteV2Formatado) => {
+    setClienteParaConverter(cliente);
+  };
+
+  // Executa a ação de fato quando o usuário confirmar no modal
+
+  const confirmarConversao = async () => {
+    if (!clienteParaConverter) return;
+
+    const sucesso = await converterClienteEmLead(clienteParaConverter.id);
+    if (sucesso) {
+      toast.success("Cliente convertido em Lead com sucesso!");
+      await carregarClientes();
+    } else {
+      toast.error("Falha ao converter o cliente em Lead.");
+    }
+    setClienteParaConverter(null);
+  };
+
+  
+  
+  return (
+    <div className="p-6 bg-slate-50 min-h-screen font-sans">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200">
+        <div>
+          <div className="flex items-center gap-2 text-slate-800">
+            <Users className="text-blue-600" size={24} />
+            <h1 className="text-xl font-bold tracking-tight">Consulta de Clientes</h1>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Filtre, pesquise e gerencie cadastros, propostas e histórico de interações do CRM.
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            setClienteSelecionado(null);
+            setModalCadastroAberto(true);
+          }}
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-xs shadow-sm transition-colors cursor-pointer self-start sm:self-auto"
+        >
+          <Plus size={16} />
+          Novo Cliente
+        </button>
+      </div>
+      <div className="bg-white rounded-xl p-5 shadow-sm mb-6">
+        <div className="flex gap-3 items-center mb-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Busque por Razão Social, Nome Fantasia, Nome, CPF ou CNPJ..."
+              value={filtros.buscaGlobal}
+              onChange={(e) => handleFiltroChange('buscaGlobal', e.target.value)}
+              className="w-full py-2.5 pl-10 pr-3 rounded-lg border border-slate-200 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+            />
+          </div>
+          <button
+            onClick={() => setExibirAvancados(!exibirAvancados)}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-indigo-100 bg-blue-50 text-blue-600 font-semibold text-xs cursor-pointer hover:bg-blue-100 transition-colors"
+          >
+            {exibirAvancados ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {exibirAvancados ? 'Ocultar Avançados' : 'Exibir Avançados'}
+          </button>
+          <button
+            onClick={handleLimparFiltros}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-500 font-medium text-xs cursor-pointer hover:bg-slate-50 transition-colors"
+          >
+            <RotateCcw size={15} /> Limpar
+          </button>
+        </div>
+        {exibirAvancados && (
+          <div className="flex flex-col gap-4 mt-4">
+              <div className="border border-slate-100 bg-slate-50/50 p-3 rounded-lg">
+                  <div
+                      onClick={() => toggleGrupo('localizacao')}
+                      className="flex justify-between items-center cursor-pointer select-none"
+                  >
+                      <span className="text-[11px] font-bold text-slate-500 uppercase block">1. LOCALIZAÇÃO E TIPO</span>
+                      <span className="text-xs text-slate-400">{gruposExpandidos.localizacao ? '▲' : '▼'}</span>
+                  </div>
+                  {gruposExpandidos.localizacao && (
+                      <div className="grid grid-cols-1 md:grid-cols-[160px_1fr] gap-2 mt-4">
+                          <select
+                              value={filtros.tipo_cliente}
+                              onChange={(e) => handleFiltroChange('tipo_cliente', e.target.value)}
+                              className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          >
+                              <option value="">Tipo (PF / PJ)</option>
+                              <option value="PF">Pessoa Física (PF)</option>
+                              <option value="PJ">Pessoa Jurídica (PJ)</option>
+                          </select>
+                          <div className="grid grid-cols-[80px_1fr_1fr_110px] gap-2">
+                              <input type="text" placeholder="UF" value={filtros.uf} onChange={(e) => handleFiltroChange('uf', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                              <input type="text" placeholder="Município" value={filtros.municipio} onChange={(e) => handleFiltroChange('municipio', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                              <input type="text" placeholder="Bairro" value={filtros.bairro} onChange={(e) => handleFiltroChange('bairro', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                              <input type="text" placeholder="CEP" value={filtros.cep} onChange={(e) => handleFiltroChange('cep', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                          </div>
                       </div>
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mx-auto border border-indigo-100/50">
-                        <User size={18} />
+                  )}
+              </div>
+              <div className="border border-slate-100 bg-slate-50/50 p-3 rounded-lg">
+                  <div
+                      onClick={() => toggleGrupo('perfilEmpresa')}
+                      className="flex justify-between items-center cursor-pointer select-none"
+                  >
+                      <span className="text-[11px] font-bold text-slate-500 uppercase block">2. PERFIL DA EMPRESA</span>
+                      <span className="text-xs text-slate-400">{gruposExpandidos.perfilEmpresa ? '▲' : '▼'}</span>
+                  </div>
+                  {gruposExpandidos.perfilEmpresa && (
+                      <div className="flex flex-col gap-4 mt-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Situação Cadastral</label>
+                                  <select
+                                      value={filtros.situacao_cadastral}
+                                      onChange={(e) => handleFiltroChange('situacao_cadastral', e.target.value)}
+                                      className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  >
+                                      <option value="">Situação (Todas)</option>
+                                      <option value="ATIVA">ATIVA</option>
+                                      <option value="BAIXADA">BAIXADA</option>
+                                      <option value="SUSPENSA">SUSPENSA</option>
+                                      <option value="INAPTA">INAPTA</option>
+                                      <option value="NULA">NULA</option>
+                                  </select>
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Abertura (Início)</label>
+                                  <input
+                                      type="date"
+                                      value={filtros.data_abertura_inicio}
+                                      onChange={(e) => handleFiltroChange('data_abertura_inicio', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                      className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Abertura (Fim)</label>
+                                  <input
+                                      type="date"
+                                      value={filtros.data_abertura_fim}
+                                      onChange={(e) => handleFiltroChange('data_abertura_fim', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                      className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                              <select value={filtros.porte} onChange={(e) => handleFiltroChange('porte', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Porte (Todos)</option>
+                                  <option value="MICRO EMPRESA">Microempresa (ME)</option>
+                                  <option value="EMPRESA DE PEQUENO PORTE">Empresa de Pequeno Porte (EPP)</option>
+                                  <option value="DEMAIS">Demais (Médio / Grande Porte)</option>
+                              </select>
+                              <select value={filtros.opcao_pelo_mei ?? ''} onChange={(e) => handleFiltroChange('opcao_pelo_mei', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">É MEI? (Todos)</option>
+                                  <option value="true">Sim</option>
+                                  <option value="false">Não</option>
+                              </select>
+                              <select value={filtros.opcao_pelo_simples ?? ''} onChange={(e) => handleFiltroChange('opcao_pelo_simples', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Simples? (Todos)</option>
+                                  <option value="true">Sim</option>
+                                  <option value="false">Não</option>
+                              </select>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr] gap-2.5">
+                              <CnaeMultiSelect
+                                  cnaesDisponiveis={listaCnaes}
+                                  selecionados={filtros.cnae_principal}
+                                  onChange={(novosCnaes) => handleFiltroChange('cnae_principal', novosCnaes)}
+                              />
+                              <select value={filtros.origem} onChange={(e) => handleFiltroChange('origem', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Origem (Todas)</option>
+                                  <option value="IMPORTAÇÃO">IMPORTAÇÃO</option>
+                                  <option value="CARTEIRA">CARTEIRA</option>
+                                  <option value="AGENDA">AGENDA</option>
+                                  <option value="MANUAL">MANUAL</option>
+                              </select>
+                          </div>
                       </div>
-                    )}
-                  </td>
-
-                  {/* 2. DOCUMENTO */}
-                  <td className="p-5 text-sm font-bold text-slate-600 dark:text-zinc-300">
-                    {cliente.tipo_cliente === "PJ" ? cliente.cnpj : cliente.cpf}
-                  </td>
-
-                  {/* 3. CLIENTE + PRODUTOS VENDIDOS */}
-                  <td className="p-5">
-                    <div className="flex flex-col gap-1.5">
-                      <span className="font-black text-slate-800 dark:text-zinc-100 uppercase italic tracking-tighter">
-                        {cliente.tipo_cliente === "PJ" ? cliente.razao_social : cliente.nome}
-                      </span>
-                      
-                      {cliente.nome_fantasia && (
-                        <span className="text-[9px] text-blue-500 font-black uppercase tracking-widest -mt-1">
-                          {cliente.nome_fantasia}
-                        </span>
-                      )}
-
-                      {/* 🏷️ BADGES DOS PRODUTOS / SEGURADORAS */}
-                      <div className="flex flex-wrap gap-1 mt-0.5">
-                        {(() => {
-                          const produtos = extrairProdutosDoCliente(cliente);
-                          
-                          if (produtos.length === 0) {
-                            return (
-                              <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 border border-red-200/60 dark:border-red-500/20 px-2 py-0.5 rounded-md shadow-sm">
-                                🚨 Sem produtos ativos
-                              </span>
-                            );
-                          }
-
-                          return produtos.map((item, idx) => (
-                            <span 
-                              key={idx}
-                              className="inline-flex items-center gap-1 text-[9px] font-black uppercase bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20 px-2 py-0.5 rounded-md"
-                              title={item.seguradora ? `Seguradora: ${item.seguradora}` : undefined}
-                            >
-                              🛡️ {item.produto}
-                              {item.seguradora && (
-                                <span className="text-slate-400 dark:text-zinc-500 font-normal">
-                                  ({item.seguradora})
-                                </span>
-                              )}
-                            </span>
-                          ));
-                        })()}
+                  )}
+              </div>
+              <div className="border border-slate-100 bg-slate-50/50 p-3 rounded-lg">
+                  <div
+                      onClick={() => toggleGrupo('propostas')}
+                      className="flex justify-between items-center cursor-pointer select-none"
+                  >
+                      <span className="text-[11px] font-bold text-slate-500 uppercase block">3. FILTROS DE PROPOSTAS COMERCIAIS</span>
+                      <span className="text-xs text-slate-400">{gruposExpandidos.propostas ? '▲' : '▼'}</span>
+                  </div>
+                  {gruposExpandidos.propostas && (
+                      <div className="flex flex-col gap-3 mt-4">
+                          <div className="grid grid-cols-5 gap-2">
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Status da Proposta</label>
+                                  <select
+                                    value={filtros.status_proposta}
+                                    onChange={(e) => handleFiltroChange('status_proposta', e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  >
+                                    <option value="">Status (Todos)</option>
+                                    <option value="Vendido">Vendido</option>
+                                    <option value="Em negociação">Em negociação</option>
+                                    <option value="Perdido">Perdido</option>
+                                  </select>
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Valor Mín (R$)</label>
+                                  <input
+                                    type="number"
+                                    placeholder="Valor Mín R$"
+                                    value={filtros.valor_proposta_min}
+                                    onChange={(e) => handleFiltroChange('valor_proposta_min', e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Valor Máx (R$)</label>
+                                  <input
+                                    type="number"
+                                    placeholder="Valor Máx R$"
+                                    value={filtros.valor_proposta_max}
+                                    onChange={(e) => handleFiltroChange('valor_proposta_max', e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Venda (De)</label>
+                                  <input
+                                    type="date"
+                                    value={filtros.data_venda_inicio}
+                                    onChange={(e) => handleFiltroChange('data_venda_inicio', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Venda (Até)</label>
+                                  <input
+                                    type="date"
+                                    value={filtros.data_venda_fim}
+                                    onChange={(e) => handleFiltroChange('data_venda_fim', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                          </div>
+                          <div className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr] gap-2">
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Seguradora</label>
+                                  <select
+                                    value={filtros.seguradora_id}
+                                    onChange={(e) => handleFiltroChange('seguradora_id', e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  >
+                                    <option value="">Todas as Seguradoras</option>
+                                    {SEGURADORAS_OPTIONS.map((seg) => (
+                                        <option key={seg.id} value={seg.id}>
+                                        {seg.nome}
+                                        </option>
+                                    ))}
+                                  </select>
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Produto</label>
+                                  <select
+                                    value={filtros.produto_id}
+                                    onChange={(e) => handleFiltroChange('produto_id', e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  >
+                                    <option value="">Todos os Produtos</option>
+                                    {PRODUTOS_OPTIONS.map((prod) => (
+                                        <option key={prod.id} value={prod.id}>
+                                        {prod.nome}
+                                        </option>
+                                    ))}
+                                  </select>
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Cotação (De)</label>
+                                  <input
+                                    type="date"
+                                    value={filtros.data_cotacao_inicio}
+                                    onChange={(e) => handleFiltroChange('data_cotacao_inicio', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Cotação (Até)</label>
+                                  <input
+                                    type="date"
+                                    value={filtros.data_cotacao_fim}
+                                    onChange={(e) => handleFiltroChange('data_cotacao_fim', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Início da Vigência</label>
+                                  <input
+                                    type="date"
+                                    value={filtros.data_inicio_vigencia}
+                                    onChange={(e) => handleFiltroChange('data_inicio_vigencia', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Fim da Vigência</label>
+                                  <input
+                                    type="date"
+                                    value={filtros.data_fim_vigencia}
+                                    onChange={(e) => handleFiltroChange('data_fim_vigencia', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                              </div>
+                              <div className="flex flex-col">
+                                  <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Periodicidade</label>
+                                  <select
+                                    value={filtros.periodicidade}
+                                    onChange={(e) => handleFiltroChange('periodicidade', e.target.value)}
+                                    className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  >
+                                    <option value="">Todas</option>
+                                    {PERIODICIDADE_OPTIONS.map((item) => (
+                                        <option key={item} value={item}>
+                                        {item}
+                                        </option>
+                                    ))}
+                                  </select>
+                              </div>
+                          </div>
+                          <div className="flex flex-col w-full">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Status Renovação</label>
+                              <select
+                                  value={filtros.status_renovacao}
+                                  onChange={(e) => handleFiltroChange('status_renovacao', e.target.value)}
+                                  className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              >
+                                  <option value="">Todos</option>
+                                  {STATUS_RENOVACAO_OPTIONS.map((item) => (
+                                  <option key={item.value} value={item.value}>
+                                      {item.label}
+                                  </option>
+                                  ))}
+                              </select>
+                          </div>
                       </div>
-                    </div>
-                  </td>
-
-                  {/* 4. RETORNO (DATA E HORÁRIO) */}
-                  <td className="p-5 text-center">
-                    {cliente.data_retorno ? (
-                      <div className="inline-flex flex-col items-center justify-center bg-amber-50 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/20 px-3 py-1.5 rounded-xl shadow-sm">
-                        <span className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-tight flex items-center gap-1">
-                          📅 {new Date(`${cliente.data_retorno}T00:00:00`).toLocaleDateString('pt-BR')}
-                        </span>
-                        {cliente.horario_retorno && (
-                          <span className="text-[9px] font-bold text-amber-600/80 dark:text-amber-400/80">
-                            ⏰ {cliente.horario_retorno.slice(0, 5)}
+                  )}
+              </div>
+              <div className="border border-slate-100 bg-slate-50/50 p-3 rounded-lg">
+                  <div
+                      onClick={() => toggleGrupo('crm')}
+                      className="flex justify-between items-center cursor-pointer select-none"
+                  >
+                      <span className="text-[11px] font-bold text-slate-500 uppercase block">4. RETORNO CRM & INTERAÇÕES</span>
+                      <span className="text-xs text-slate-400">{gruposExpandidos.crm ? '▲' : '▼'}</span>
+                  </div>
+                  {gruposExpandidos.crm && (
+                      <div className="grid grid-cols-4 gap-2 mt-4">
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Retorno (De)</label>
+                              <input
+                                  type="date"
+                                  value={filtros.data_retorno_inicio || ''}
+                                  onChange={(e) => handleFiltroChange('data_retorno_inicio', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                  className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              />
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Retorno (Até)</label>
+                              <input
+                                  type="date"
+                                  value={filtros.data_retorno_fim || ''}
+                                  onChange={(e) => handleFiltroChange('data_retorno_fim', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                  className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              />
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Retorno Sinistro (De)</label>
+                              <input
+                                  type="date"
+                                  value={filtros.data_retorno_sinistro_inicio || ''}
+                                  onChange={(e) => handleFiltroChange('data_retorno_sinistro_inicio', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                  className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              />
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Retorno Sinistro (Até)</label>
+                              <input
+                                  type="date"
+                                  value={filtros.data_retorno_sinistro_fim || ''}
+                                  onChange={(e) => handleFiltroChange('data_retorno_sinistro_fim', e.target.validity.badInput ? 'DATA_INVALIDA' : e.target.value)}
+                                  className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              />
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Tipo de Ação</label>
+                              <select value={filtros.tipo_acao || ''} onChange={(e) => handleFiltroChange('tipo_acao', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Todas</option>
+                                  <option value="ligacao">Ligação</option>
+                                  <option value="whatsapp">WhatsApp</option>
+                                  <option value="email">E-mail</option>
+                                  <option value="visita">Visita Presencial</option>
+                                  <option value="email_marketing">E-mail Marketing</option>
+                                  <option value="sms">SMS</option>
+                                  <option value="entrega_folders">Folders/Panfletos</option>
+                                  <option value="outros">Outros</option>
+                              </select>
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Próxima Ação</label>
+                              <select value={filtros.proxima_acao_interacao || ''} onChange={(e) => handleFiltroChange('proxima_acao_interacao', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Todas</option>
+                                  <option value="ligacao">📞 Ligar</option>
+                                  <option value="whatsapp">💬 WhatsApp</option>
+                                  <option value="email">📧 E-mail</option>
+                                  <option value="visita">🏢 Visitar</option>
+                                  <option value="email_marketing">📬 E-mail Mkt</option>
+                                  <option value="sms">📱 SMS</option>
+                                  <option value="entrega_folders">📄 Entregar Folders</option>
+                                  <option value="outros">📌 Outros</option>
+                              </select>
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Fase Atendimento</label>
+                              <select value={filtros.fase_atendimento || ''} onChange={(e) => handleFiltroChange('fase_atendimento', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Todas</option>
+                                  <option value="CLIENTE">Cliente</option>
+                                  <option value="LEAD">Lead</option>
+                                  <option value="NEGOCIACAO">Negociação</option>
+                                  <option value="PERDIDO">Perdido</option>
+                                  <option value="QUALIFICADO">Qualificado</option>
+                              </select>
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Temperatura</label>
+                              <select value={filtros.temperatura || ''} onChange={(e) => handleFiltroChange('temperatura', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Todas</option>
+                                  <option value="frio">Frio</option>
+                                  <option value="morno">Morno</option>
+                                  <option value="quente">Quente</option>
+                              </select>
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Status Kanban</label>
+                              <select value={filtros.status_kanban || ''} onChange={(e) => handleFiltroChange('status_kanban', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Todos</option>
+                                  <option value="novo">Novo</option>
+                                  <option value="lead">Lead</option>
+                                  <option value="vendido">Vendido</option>
+                                  <option value="perdido">Perdido</option>
+                              </select>
+                          </div>
+                          <div className="flex flex-col">
+                              <label className="text-[10px] text-slate-500 font-semibold mb-0.5">Fase Kanban</label>
+                              <select value={filtros.fase_kanban || ''} onChange={(e) => handleFiltroChange('fase_kanban', e.target.value)} className="w-full px-2 py-1.5 rounded-md border border-slate-300 text-xs outline-none bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                  <option value="">Todas</option>
+                                  <option value="novo">Novo</option>
+                                  <option value="nao_contatado">Não Contatado</option>
+                                  <option value="contato_realizado">Contato Realizado</option>
+                                  <option value="negociacao_lead">Negociação (Lead)</option>
+                                  <option value="pos_vendas">Pós-Vendas</option>
+                                  <option value="renovacao">Renovação</option>
+                                  <option value="negociacao_cliente">Negociação (Cliente)</option>
+                                  <option value="recuperacao">Recuperação</option>
+                                  <option value="contato_realizado_perdido">Contato Realizado (Perdido)</option>
+                                  <option value="negociacao_perdido">Negociação (Perdido)</option>
+                              </select>
+                          </div>
+                      </div>
+                  )}
+              </div>
+          </div>
+        )}
+      </div>
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="p-16 text-center text-slate-500">
+            <Loader2 className="animate-spin mx-auto mb-3 text-blue-600" size={32} />
+            <p className="m-0 text-sm">Carregando dados dos clientes...</p>
+          </div>
+        ) : clientes.length === 0 ? (
+          <div className="p-16 text-center text-slate-500">
+            <p className="m-0 text-sm font-medium">Nenhum cliente encontrado com os filtros selecionados.</p>
+          </div>
+        ) : (
+          <>
+            <table className="w-full border-collapse text-left text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                  <th className="p-3.5 w-12">Tipo</th>
+                  <th className="p-3.5">Nome / Razão Social & Fantasia</th>
+                  <th className="p-3.5">CPF / CNPJ</th>
+                  <th className="p-3.5">
+                    {filtros.tipo_cliente === 'PF' ? 'Tipo de Contato' : 'Sócios (PJ)'}
+                  </th>
+                  <th className="p-3.5">Localização</th>
+                  <th className="p-3.5">Produtos (Vendidos)</th>
+                  <th className="p-3.5">Retorno & Próx. Ação</th>
+                  <th className="p-3.5">Responsável</th>
+                  <th className="p-3.5 text-center w-28">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientes.map((cliente) => {
+                  const listaSocios = cliente.socios_texto ? cliente.socios_texto.split(',').map(s => s.trim()) : [];
+                  const sociosExibidos = listaSocios.slice(0, 2);
+                  const temMaisSocios = listaSocios.length > 2;
+                  const isExpandido = sociosExpandidos[cliente.id];
+                  return (
+                    <tr key={cliente.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                      <td className="p-3.5">
+                        {cliente.tipo_cliente === 'PJ' ? (
+                          <span title="Pessoa Jurídica" className="bg-indigo-100 text-indigo-700 p-1.5 rounded-lg inline-flex">
+                            <Building2 size={16} />
+                          </span>
+                        ) : (
+                          <span title="Pessoa Física" className="bg-amber-100 text-amber-700 p-1.5 rounded-lg inline-flex">
+                            <User size={16} />
                           </span>
                         )}
-                      </div>
-                    ) : (
-                      <span className="text-slate-300 dark:text-zinc-700 text-xs font-bold">---</span>
-                    )}
-                  </td>
+                      </td>
+                      <td className="p-3.5">
+                        <div className="font-semibold text-slate-800">{cliente.nome_razao_social}</div>
+                        {cliente.nome_fantasia && (
+                          <div className="text-xs text-slate-500">Fantasia: {cliente.nome_fantasia}</div>
+                        )}
+                      </td>
+                      <td className="p-3.5 text-slate-600 font-medium">
+                        {cliente.cpf_cnpj || '-'}
+                      </td>
+                      <td className="p-3.5">
+                        {cliente.tipo_cliente === 'PJ' ? (
+                          listaSocios.length > 0 ? (
+                            <div>
+                              <div className="text-xs text-slate-700">
+                                {(isExpandido ? listaSocios : sociosExibidos).join(', ')}
+                              </div>
+                              {temMaisSocios && (
+                                <button
+                                  onClick={() => toggleExpandirSocios(cliente.id)}
+                                  className="bg-transparent text-blue-600 text-[11px] font-semibold cursor-pointer p-0 mt-0.5 flex items-center gap-0.5 hover:underline"
+                                >
+                                  {isExpandido ? 'Ver menos' : `+${listaSocios.length - 2} sócio(s)`}
+                                  {isExpandido ? <ChevronUp size={12} /> : <ChevronRight size={12} />}
+                                </button>
+                              )}
+                            </div>
+                          ) : <span className="text-slate-300">-</span>
+                        ) : (
+                          <span className="text-xs text-slate-500 italic">Pessoa Física</span>
+                        )}
+                      </td>
+                      <td className="p-3.5 text-slate-600">
+                        {cliente.municipio ? `${cliente.municipio} / ${cliente.uf}` : '-'}
+                      </td>
+                      <td className="p-3.5">
+                        {renderIconesProdutos(cliente.produtos)}
+                      </td>
+                      <td className="p-3.5">
+                        <div className="text-xs font-semibold text-blue-600">
+                          {cliente.data_retorno || 'Sem data'}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {cliente.proxima_acao}
+                        </div>
+                      </td>
+                      <td className="p-3.5 text-slate-600 font-medium">
+                        {cliente.responsavel_nome}
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <div className="flex gap-1.5 justify-center">
+                          <button
+                              title="Visualizar / Editar"
+                              className="border border-slate-200 bg-white p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:bg-slate-100 text-slate-600 transition-colors"
+                              onClick={() => handleEditarCliente(cliente)}
+                          >
+                              <Eye size={15} />
+                          </button>
+                          <button
+                              title="Nova Ação Comercial"
+                              className="border border-slate-200 bg-white p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:bg-slate-100 text-blue-600 transition-colors"
+                              onClick={() => handleNovaAcao(cliente)}
+                          >
+                              <Calendar size={15} />
+                          </button>
+                          {/* Validação direta inline (sem precisar de função auxiliar) */}
+                          {(!cliente.status_kanban || cliente.status_kanban.toString().trim() === '' || cliente.status_kanban.toString().trim().toLowerCase() === 'novo') && (
+                            <button
+                              onClick={() => handleConverterParaLead(cliente)}
+                              title="Converter em Lead"
+                              className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center justify-center"
+                            >
+                              <UserPlus size={18} />
+                            </button>
+                          )}
 
-                  {/* 5. WHATSAPP */}
-                  <td className="p-5 text-center">
-                    {cliente.telefone_whats ? (
-                      <a 
-                        href={`https://wa.me/${cliente.telefone_whats.replace(/\D/g, "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-black border border-emerald-100/50 hover:bg-emerald-600 hover:text-white transition-all shadow-sm active:scale-95"
-                      >
-                        <Phone size={14} /> {cliente.telefone_whats}
-                      </a>
-                    ) : (
-                      <span className="text-slate-300 dark:text-zinc-700 text-xs font-bold">---</span>
-                    )}
-                  </td>
-
-                  {/* 6. GESTÃO DE CONTA */}
-                  <td className="p-5">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase max-w-fit">
-                        👤 {cliente.corretor_id === cliente.corretora_id ? "DIRETO CORRETORA" : (cliente.usuarios_perfis?.nome || "GERAL")}
-                      </span>
-                      {cliente.created_at && (
-                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider ml-1">
-                          📅 Entrada: {new Date(cliente.created_at).toLocaleDateString('pt-BR')}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* 7. AÇÕES */}
-                  <td className="p-5 text-right">
-                    <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
-                      
-                      {/* 📅 BOTÃO AGENDAR RETORNO */}
-                      <button 
-                        onClick={() => abrirModalAgendamento(cliente)} 
-                        title="Agendar Retorno Comercial"
-                        className="p-2.5 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl transition-all border border-amber-200/60 dark:border-amber-900/30 bg-amber-50/50 dark:bg-amber-500/10"
-                      >
-                        <CalendarPlus size={16} />
-                      </button>
-
-                      {/* ✏️ EDITAR */}
-                      <button 
-                        onClick={() => navigate(`/clientes/editar/${cliente.id}`)} 
-                        title="Editar Cliente"
-                        className="p-2.5 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-blue-100 dark:border-blue-900/30"
-                      >
-                        <Pencil size={16} />
-                      </button>
-
-                      {/* 🗑️ EXCLUIR */}
-                      <button 
-                        disabled={excluindoId === cliente.id}
-                        onClick={() => setConfirmarExclusao(cliente)} 
-                        title="Excluir Cliente"
-                        className="p-2.5 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all border border-red-100 dark:border-red-900/30"
-                      >
-                        {excluindoId === cliente.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                      </button>
-
-                    </div>
-                  </td>
-
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    {/* MODAL DE AGENDAMENTO DE RETORNO E VIGÊNCIAS */}
-    {clienteAgendamento && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 dark:border-zinc-800 space-y-5">
-          
-          {/* CABEÇALHO DO MODAL */}
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-4">
-            <div>
-              <h3 className="text-sm font-black text-slate-800 dark:text-zinc-100 uppercase tracking-tight flex items-center gap-2">
-                <Calendar className="text-amber-500" size={18} /> Agendar Retorno
-              </h3>
-              <p className="text-[11px] font-bold text-slate-400 dark:text-zinc-400 uppercase tracking-wider mt-0.5">
-                {clienteAgendamento.tipo_cliente === "PJ" ? clienteAgendamento.razao_social : clienteAgendamento.nome}
-              </p>
-            </div>
-            <button 
-              onClick={() => setClienteAgendamento(null)} 
-              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          {/* 🛡️ SEÇÃO: PRODUTOS CONTRATADOS & FIM DE VIGÊNCIA */}
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 dark:text-zinc-400 uppercase tracking-wider">
-              Vigência dos Produtos Adquiridos
-            </label>
-            
-            <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-3 border border-slate-100 dark:border-zinc-800/80 space-y-2 max-h-40 overflow-y-auto">
-              {(() => {
-                const vigencias = extrairVigenciasDoCliente(clienteAgendamento);
-                
-                if (vigencias.length === 0) {
-                  return (
-                    <div className="text-center py-2 text-[10px] font-bold text-red-500 uppercase tracking-wider">
-                      🚨 Cliente sem produtos ativos cadastrados
-                    </div>
+                          <button
+                              title="Excluir"
+                              className="border border-slate-200 bg-white p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:bg-slate-100 text-red-500 transition-colors"
+                              onClick={() => handleExcluirCliente(cliente.id)}
+                          >
+                              <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   );
-                }
-
-                return vigencias.map((v, i) => (
-                  <div key={i} className="flex items-center justify-between bg-white dark:bg-zinc-900 p-2.5 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm">
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-black text-slate-800 dark:text-zinc-200 uppercase">
-                        🛡️ {v.produto}
-                      </span>
-                      {v.seguradora && (
-                        <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase">
-                          {v.seguradora} {v.numeroApolice && `• Apólice: ${v.numeroApolice}`}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200/50 dark:border-amber-500/20 px-2 py-1 rounded-lg inline-block">
-                        Vence: {v.fimVigencia ? new Date(`${v.fimVigencia}T00:00:00`).toLocaleDateString('pt-BR') : 'Sem data'}
-                      </span>
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-
-          {/* FORMULÁRIO DE RETORNO */}
-          <form onSubmit={handleSalvarAgendamento} className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              
-              {/* CAMPO DATA */}
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
-                  Data de Retorno
-                </label>
-                <input 
-                  type="date"
-                  required
-                  value={dataRetornoInput}
-                  onChange={(e) => setDataRetornoInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                />
+                })}
+              </tbody>
+            </table>
+            <div className="px-5 py-3.5 border-t border-slate-200 flex justify-between items-center">
+              <span className="text-xs text-slate-500">
+                Exibindo <b>{clientes.length}</b> de <b>{totalRegistros}</b> registros
+              </span>
+              <div className="flex gap-2 items-center">
+                <button
+                  disabled={paginaAtual === 1}
+                  onClick={() => setPaginaAtual(p => p - 1)}
+                  className="flex items-center gap-1 px-3 py-1.5 border border-slate-300 bg-white rounded-md text-xs font-medium text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:enabled:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <ChevronLeft size={16} /> Anterior
+                </button>
+                <span className="text-xs font-semibold text-slate-700 px-2">
+                  Página {paginaAtual} de {totalPaginas || 1}
+                </span>
+                <button
+                  disabled={paginaAtual >= totalPaginas}
+                  onClick={() => setPaginaAtual(p => p + 1)}
+                  className="flex items-center gap-1 px-3 py-1.5 border border-slate-300 bg-white rounded-md text-xs font-medium text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:enabled:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Próxima <ChevronRight size={16} />
+                </button>
               </div>
-
-              {/* CAMPO HORÁRIO */}
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
-                  Horário
-                </label>
-                <input 
-                  type="time"
-                  required
-                  value={horarioRetornoInput}
-                  onChange={(e) => setHorarioRetornoInput(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                />
-              </div>
-
             </div>
-
-            {/* BOTÕES DE AÇÃO DO MODAL DE AGENDAMENTO */}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-zinc-800">
-              <button
-                type="button"
-                onClick={() => setClienteAgendamento(null)}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all uppercase tracking-wider"
-              >
-                Cancelar
-              </button>
-              
-              <button
-                type="submit"
-                disabled={salvandoAgendamento}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black text-white bg-amber-500 hover:bg-amber-600 transition-all shadow-md shadow-amber-500/20 active:scale-95 disabled:opacity-50 uppercase tracking-wider"
-              >
-                {salvandoAgendamento ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />}
-                Confirmar
-              </button>
-            </div>
-          </form>
-
-        </div>
+          </>
+        )}
       </div>
+    {modalCadastroAberto && (
+    <ModalCadastroCliente
+        isOpen={modalCadastroAberto}
+        onClose={() => {
+        setModalCadastroAberto(false);
+        setClienteSelecionado(null);
+        }}
+        cliente={clienteSelecionado}
+        handleSubmit={handleSalvarCliente}
+    />
     )}
+    {modalAcaoAberto && clienteSelecionado && (
+      <ModalAcoesComerciais
+          isOpen={modalAcaoAberto}
+          lead={clienteSelecionado}
+          clienteContexto={clienteSelecionado}
+          onClose={() => {
+          setModalAcaoAberto(false);
+          setClienteSelecionado(null);
+          }}
+          onSave={async (dadosAcao) => {
+          try {
+              await salvarAcaoComercialV2(dadosAcao);
+              await carregarClientes();
+              setModalAcaoAberto(false);
+              setClienteSelecionado(null);
+          } catch (err) {
+              console.error('Erro ao salvar no ClientesListaV2:', err);
+              toast.error("Ocorreu um erro ao registrar a interação. Verifique os dados e tente novamente.");
+          }
+          }}
+      />
+      )}
 
-    {/* MODAL GESTOR DE CARTEIRAS */}
-    {showGestor && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-zinc-900 rounded-[40px] p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-zinc-800 transform animate-in zoom-in-95 duration-200">
-          <div className="w-20 h-20 bg-amber-50 dark:bg-amber-500/10 rounded-3xl flex items-center justify-center text-amber-600 dark:text-amber-400 mx-auto mb-6 border border-amber-100/50">
-            <ArrowLeftRight size={40} />
-          </div>
-          <h2 className="text-xl font-black text-center text-slate-800 dark:text-zinc-100 mb-2 uppercase italic">Gestor de Carteiras</h2>
-          <p className="text-center text-slate-500 dark:text-zinc-400 text-[10px] mb-8 font-black uppercase tracking-widest">Transferir clientes entre corretores</p>
-          
-          <div className="space-y-4 mb-8">
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Retirar De:</label>
-              <select 
-                value={transferDe} 
-                onChange={(e) => setTransferDe(e.target.value)}
-                className="w-full p-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold uppercase"
-              >
-                <option value="">Selecione a origem</option>
-                <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
-                {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </select>
-            </div>
-
-            <div className="flex justify-center text-slate-300">
-              <ArrowLeftRight size={20} className="rotate-90" />
-            </div>
-
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Transferir Para:</label>
-              <select 
-                value={transferPara} 
-                onChange={(e) => setTransferPara(e.target.value)}
-                className="w-full p-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl text-xs font-bold uppercase"
-              >
-                <option value="">Selecione o destino</option>
-                <option value={userProfile.corretora_id}>Atendimento Direto (Corretora)</option>
-                {corretores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <button 
-              disabled={transferindo || !transferDe || !transferPara || transferDe === transferPara}
-              onClick={handleTransferenciaCarteira} 
-              className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-30 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+    {/* Modal de Confirmação Customizado */}
+    {clienteParaConverter && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+          <h3 className="text-lg font-bold text-slate-800 mb-2">Converter em Lead?</h3>
+          <p className="text-slate-600 mb-6">
+            Deseja realmente enviar <strong>{clienteParaConverter.nome_razao_social}</strong> para o Funil de Vendas?
+          </p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setClienteParaConverter(null)}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
             >
-              {transferindo ? "Transferindo..." : "Executar Transferência"}
-            </button>
-            <button onClick={() => setShowGestor(false)} className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">
               Cancelar
             </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {/* MODAL DE EXCLUSÃO */}
-    {confirmarExclusao && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-zinc-900 rounded-[40px] p-8 max-w-sm w-full shadow-2xl border border-slate-200 dark:border-zinc-800 transform animate-in zoom-in-95 duration-200">
-          <div className="w-20 h-20 bg-red-50 dark:bg-red-500/10 rounded-3xl flex items-center justify-center text-red-600 dark:text-red-400 mx-auto mb-6 border border-red-100/50">
-            <AlertTriangle size={40} />
-          </div>
-          <h2 className="text-xl font-black text-center text-slate-800 dark:text-zinc-100 mb-2 uppercase italic">Excluir Registro?</h2>
-          <p className="text-center text-slate-500 dark:text-zinc-400 text-xs mb-8 font-bold uppercase tracking-tight">
-            Deseja remover <strong>{confirmarExclusao.nome || confirmarExclusao.razao_social}</strong> definitivamente?
-          </p>
-          <div className="flex flex-col gap-3">
-            <button 
-              disabled={excluindoId !== null}
-              onClick={handleExcluir} 
-              className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 shadow-lg shadow-red-500/20"
+            <button
+              onClick={confirmarConversao}
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
             >
-              {excluindoId ? "Processando..." : "Confirmar Exclusão"}
-            </button>
-            <button onClick={() => setConfirmarExclusao(null)} className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">
-              Manter Cliente
+              Sim, converter
             </button>
           </div>
         </div>
       </div>
     )}
 
-    <Toaster position="bottom-right" reverseOrder={false} />
-  </div>
-);
-}
+    </div>
+  );
+};
+
+export default ClientesListaV2;
