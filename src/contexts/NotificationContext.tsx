@@ -1,8 +1,14 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback
+} from 'react';
+
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../auth/AuthContext';
 
-// Importação dos modais oficiais corretos
 import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
 import { ModalAcoesComerciais } from '../pages/clientes/ModalAcoesComerciais';
 import { ModalGerenciamentoSinistro } from './ModalGerenciamentoSinistro';
@@ -10,7 +16,12 @@ import { salvarAcaoComercialV2 } from '../pages/clientes/clienteServiceV2';
 
 export interface Notificacao {
   id: string;
-  tipo: 'COMERCIAL' | 'SINISTRO' | 'INDICACAO' | 'RENOVACAO' | 'ANIVERSARIO' | 'PROSPECCAO' | 'AGENDA';
+  tipo:
+    | 'COMERCIAL'
+    | 'SINISTRO'
+    | 'INDICACAO'
+    | 'RENOVACAO'
+    | 'ANIVERSARIO';
   prioridade: 'NORMAL' | 'ALTA' | 'CRITICA';
   titulo: string;
   subtitulo?: string;
@@ -27,12 +38,14 @@ interface NotificationContextData {
   markAsReadByIndicacao: (indicacaoId: string) => Promise<void>;
 }
 
-const NotificationContext = createContext<NotificationContextData>({} as NotificationContextData);
+const NotificationContext = createContext<NotificationContextData>(
+  {} as NotificationContextData
+);
 
-/**
- * Função para higienizar o nome e evitar textos como "NULL", "undefined" ou strings vazias.
- */
-const obterNomeExibicao = (item: any, fallbackDefault = 'Cliente sem nome'): string => {
+const obterNomeExibicao = (
+  item: any,
+  fallbackDefault = 'Cliente sem nome'
+): string => {
   if (!item) return fallbackDefault;
 
   const possiveisNomes = [
@@ -46,23 +59,42 @@ const obterNomeExibicao = (item: any, fallbackDefault = 'Cliente sem nome'): str
   ];
 
   const nomeValido = possiveisNomes.find(
-    (n) => n && String(n).trim() !== '' && String(n).trim().toUpperCase() !== 'NULL'
+    (nome) =>
+      nome &&
+      String(nome).trim() !== '' &&
+      String(nome).trim().toUpperCase() !== 'NULL'
   );
 
   return (nomeValido as string) || fallbackDefault;
 };
 
-export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const optionDeepSafe = (val: any) =>
+  Array.isArray(val) ? val[0] : val;
+
+export const NotificationProvider: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => {
   const { user } = useAuth();
+
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
-  const [modalAtivo, setModalAtivo] = useState<{ tipo: string; id: string } | null>(null);
+  const [modalAtivo, setModalAtivo] = useState<{
+    tipo: string;
+    id: string;
+  } | null>(null);
+
   const [clienteParaModal, setClienteParaModal] = useState<any>(null);
 
   const carregarNotificacoes = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setNotificacoes([]);
+      return;
+    }
 
     try {
-      const dataBrasilia = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      const dataBrasilia = new Date().toLocaleDateString('pt-BR', {
+        timeZone: 'America/Sao_Paulo'
+      });
+
       const [diaBr, mesBr, anoBr] = dataBrasilia.split('/');
 
       const hojeLocalStr = `${anoBr}-${mesBr}-${diaBr}`;
@@ -70,12 +102,19 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       const dataFutura = new Date();
       dataFutura.setDate(dataFutura.getDate() + 30);
-      const [diaFut, mesFut, anoFut] = dataFutura.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).split('/');
-      const dataLimiteRenovacaoStr = `${anoFut}-${mesFut}-${diaFut}`;
+
+      const [diaFut, mesFut, anoFut] =
+        dataFutura
+          .toLocaleDateString('pt-BR', {
+            timeZone: 'America/Sao_Paulo'
+          })
+          .split('/');
+
+      const dataLimiteRenovacaoStr =
+        `${anoFut}-${mesFut}-${diaFut}`;
 
       const listaGeral: Notificacao[] = [];
 
-      // 1. PERFIL DO USUÁRIO
       const { data: perfil } = await supabase
         .from('usuarios_perfis')
         .select('tipo_usuario, corretora_id')
@@ -85,23 +124,43 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const isAdmin = perfil?.tipo_usuario === 'CORRETORA';
       const corretoraDonaId = perfil?.corretora_id || user.id;
 
-      // 2. PREPARAÇÃO DAS QUERIES OTIMIZADAS (Com colunas validadas na DDL)
-      let queryInd = supabase
+      const queryInd = supabase
         .from('tab_indicacoes')
-        .select(`id, nome_cliente, created_at, status_indicacao, corretor_id, tab_parceiros(nome_parceiro)`)
+        .select(`
+          id,
+          nome_cliente,
+          created_at,
+          status_indicacao,
+          corretor_id,
+          tab_parceiros(nome_parceiro)
+        `)
         .eq('status_indicacao', 'NOVO')
         .eq('corretora_id', corretoraDonaId);
 
-      let queryClientes = supabase
+      const queryClientes = supabase
         .from('tab_clientes')
-        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, data_retorno_sinistro, horario_retorno_sinistro, fase_atendimento, dados_complementares_pf, corretor_id')
-        .eq('corretora_id', corretoraDonaId);
+        .select(`
+          id,
+          nome_razao_social,
+          nome_fantasia,
+          data_retorno,
+          horario_retorno,
+          data_retorno_sinistro,
+          horario_retorno_sinistro,
+          fase_atendimento,
+          dados_complementares_pf,
+          corretor_id
+        `)
+        .eq('corretora_id', corretoraDonaId)
+        .or(
+          `data_retorno.lte.${hojeLocalStr},data_retorno_sinistro.lte.${hojeLocalStr}`
+        );
 
-      let queryRenovacoes = supabase
+      const queryRenovacoes = supabase
         .from('tab_proposta_itens')
         .select(`
-          id, 
-          data_renovacao, 
+          id,
+          data_renovacao,
           horario_renovacao,
           notificacao_ativa,
           status_renovacao,
@@ -110,7 +169,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           tab_proposta_opcoes(
             tab_propostas(
               corretor_id,
-              tab_clientes(id, nome_razao_social, nome_fantasia)
+              tab_clientes(
+                id,
+                nome_razao_social,
+                nome_fantasia
+              )
             )
           )
         `)
@@ -118,233 +181,347 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         .eq('status_renovacao', 'A RENOVAR')
         .lte('data_renovacao', dataLimiteRenovacaoStr);
 
-      let queryFrios = supabase
-        .from('tab_clientes')
-        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, corretor_id')
-        .lte('data_retorno', hojeLocalStr)
-        .neq('fase_atendimento', 'vendido')
-        .eq('corretora_id', corretoraDonaId);
-
-      let queryAgenda = supabase
-        .from('tab_clientes')
-        .select('id, nome_razao_social, nome_fantasia, data_retorno, horario_retorno, fase_atendimento, corretor_id')
-        .not('data_retorno', 'is', null)
-        .lte('data_retorno', hojeLocalStr)
-        .eq('corretora_id', corretoraDonaId);
-
-      // 3. EXECUÇÃO RESISTENTE A ERROS (Promise.allSettled)
       const resultados = await Promise.allSettled([
         queryInd,
         queryClientes,
-        queryRenovacoes,
-        queryFrios,
-        queryAgenda
+        queryRenovacoes
       ]);
 
-      const rawIndicacoes = resultados[0].status === 'fulfilled' ? (resultados[0].value.data ?? []) : [];
-      const rawClientes   = resultados[1].status === 'fulfilled' ? (resultados[1].value.data ?? []) : [];
-      const rawRenovacoes = resultados[2].status === 'fulfilled' ? (resultados[2].value.data ?? []) : [];
-      const rawFrios      = resultados[3].status === 'fulfilled' ? (resultados[3].value.data ?? []) : [];
-      const rawAgenda     = resultados[4].status === 'fulfilled' ? (resultados[4].value.data ?? []) : [];
+      const rawIndicacoes =
+        resultados[0].status === 'fulfilled'
+          ? resultados[0].value.data ?? []
+          : [];
+
+      const rawClientes =
+        resultados[1].status === 'fulfilled'
+          ? resultados[1].value.data ?? []
+          : [];
+
+      const rawRenovacoes =
+        resultados[2].status === 'fulfilled'
+          ? resultados[2].value.data ?? []
+          : [];
 
       let finalIndicacoes = rawIndicacoes;
       let finalClientes = rawClientes;
       let finalRenovacoes = rawRenovacoes;
-      let finalFrios = rawFrios;
-      let finalAgenda = rawAgenda;
 
       if (!isAdmin) {
-        finalIndicacoes = rawIndicacoes.filter((i: any) => !i.corretor_id || i.corretor_id === user.id);
-        finalClientes = rawClientes.filter((c: any) => !c.corretor_id || c.corretor_id === user.id);
-        finalRenovacoes = rawRenovacoes.filter((r: any) => {
-          const prop = Array.isArray(r.tab_proposta_opcoes) 
-            ? r.tab_proposta_opcoes[0]?.tab_propostas 
-            : r.tab_proposta_opcoes?.tab_propostas;
-          return (!r.corretor_id || r.corretor_id === user.id) && (!prop?.corretor_id || prop.corretor_id === user.id);
-        });
-        finalFrios = rawFrios.filter((f: any) => !f.corretor_id || f.corretor_id === user.id);
-        finalAgenda = rawAgenda.filter((a: any) => !a.corretor_id || a.corretor_id === user.id);
+        finalIndicacoes = rawIndicacoes.filter(
+          (indicacao: any) =>
+            !indicacao.corretor_id ||
+            indicacao.corretor_id === user.id
+        );
+
+        finalClientes = rawClientes.filter(
+          (cliente: any) =>
+            !cliente.corretor_id ||
+            cliente.corretor_id === user.id
+        );
+
+        finalRenovacoes = rawRenovacoes.filter(
+          (renovacao: any) => {
+            const opcao = Array.isArray(
+              renovacao.tab_proposta_opcoes
+            )
+              ? renovacao.tab_proposta_opcoes[0]
+              : renovacao.tab_proposta_opcoes;
+
+            const proposta = optionDeepSafe(
+              opcao?.tab_propostas
+            );
+
+            return (
+              (!renovacao.corretor_id ||
+                renovacao.corretor_id === user.id) &&
+              (!proposta?.corretor_id ||
+                proposta.corretor_id === user.id)
+            );
+          }
+        );
       }
 
-      // 4. PROCESSAMENTO DOS RESULTADOS
+      finalIndicacoes.forEach((indicacao: any) => {
+        const parceiro = Array.isArray(
+          indicacao.tab_parceiros
+        )
+          ? indicacao.tab_parceiros[0]
+          : indicacao.tab_parceiros;
 
-      finalIndicacoes.forEach((ind: any) => {
-        const parceiro = Array.isArray(ind.tab_parceiros) ? ind.tab_parceiros[0] : ind.tab_parceiros;
-        const nomeCliente = obterNomeExibicao(ind, 'Indicação sem nome');
+        const nomeCliente = obterNomeExibicao(
+          indicacao,
+          'Indicação sem nome'
+        );
 
         listaGeral.push({
-          id: `ind-${ind.id}`,
+          id: `ind-${indicacao.id}`,
           tipo: 'INDICACAO',
           prioridade: 'ALTA',
           titulo: `INDICAÇÃO: ${nomeCliente}`,
-          subtitulo: parceiro?.nome_parceiro || 'Link Direto',
-          data: ind.created_at,
+          subtitulo:
+            parceiro?.nome_parceiro || 'Link Direto',
+          data: indicacao.created_at,
           atrasado: false,
-          ref_id: ind.id
+          ref_id: indicacao.id
         });
       });
 
-      finalClientes.forEach((c: any) => {
-        const nomeExibicao = obterNomeExibicao(c, 'Cliente sem nome');
+      finalClientes.forEach((cliente: any) => {
+        const nomeExibicao = obterNomeExibicao(
+          cliente,
+          'Cliente sem nome'
+        );
 
-        if (c.data_retorno && c.data_retorno <= hojeLocalStr) {
+        if (
+          cliente.data_retorno &&
+          cliente.data_retorno <= hojeLocalStr
+        ) {
           listaGeral.push({
-            id: `com-${c.id}`,
+            id: `com-${cliente.id}`,
             tipo: 'COMERCIAL',
             prioridade: 'NORMAL',
             titulo: `RETORNO COMERCIAL: ${nomeExibicao}`,
-            data: c.data_retorno,
-            horario: c.horario_retorno,
-            atrasado: c.data_retorno < hojeLocalStr,
-            ref_id: c.id
+            data: cliente.data_retorno,
+            horario: cliente.horario_retorno,
+            atrasado:
+              cliente.data_retorno < hojeLocalStr,
+            ref_id: cliente.id
           });
         }
 
-        if (c.data_retorno_sinistro && c.data_retorno_sinistro <= hojeLocalStr) {
+        if (
+          cliente.data_retorno_sinistro &&
+          cliente.data_retorno_sinistro <= hojeLocalStr
+        ) {
           listaGeral.push({
-            id: `sin-${c.id}`,
+            id: `sin-${cliente.id}`,
             tipo: 'SINISTRO',
             prioridade: 'ALTA',
             titulo: `SINISTRO (RETORNO): ${nomeExibicao}`,
-            data: c.data_retorno_sinistro,
-            horario: c.horario_retorno_sinistro,
-            atrasado: c.data_retorno_sinistro < hojeLocalStr,
-            ref_id: c.id
+            data: cliente.data_retorno_sinistro,
+            horario: cliente.horario_retorno_sinistro,
+            atrasado:
+              cliente.data_retorno_sinistro < hojeLocalStr,
+            ref_id: cliente.id
           });
         }
 
-        // Lê a data de nascimento de dentro do JSONB dados_complementares_pf se existir
-        const dataNascimentoPf = c.dados_complementares_pf?.data_nascimento;
+        const dataNascimentoPf =
+          cliente.dados_complementares_pf?.data_nascimento;
+
         if (dataNascimentoPf) {
           const partes = dataNascimentoPf.split('-');
-          if (partes.length === 3 && `${partes[1]}-${partes[2]}` === mesDiaHoje) {
+
+          if (
+            partes.length === 3 &&
+            `${partes[1]}-${partes[2]}` === mesDiaHoje
+          ) {
             listaGeral.push({
-              id: `aniv-${c.id}`,
+              id: `aniv-${cliente.id}`,
               tipo: 'ANIVERSARIO',
               prioridade: 'NORMAL',
               titulo: `🎈 ANIVERSÁRIO HOJE: ${nomeExibicao}`,
               subtitulo: 'Parabenize seu cliente!',
               data: hojeLocalStr,
               atrasado: false,
-              ref_id: c.id
+              ref_id: cliente.id
             });
           }
         }
       });
 
-      finalRenovacoes.forEach((ren: any) => {
-        const opcao = Array.isArray(ren.tab_proposta_opcoes) ? ren.tab_proposta_opcoes[0] : ren.tab_proposta_opcoes;
-        const proposta = optionDeepSafe(opcao?.tab_propostas);
+      finalRenovacoes.forEach((renovacao: any) => {
+        const opcao = Array.isArray(
+          renovacao.tab_proposta_opcoes
+        )
+          ? renovacao.tab_proposta_opcoes[0]
+          : renovacao.tab_proposta_opcoes;
+
+        const proposta = optionDeepSafe(
+          opcao?.tab_propostas
+        );
+
         const clienteObj = proposta?.tab_clientes;
-        const cliente = Array.isArray(clienteObj) ? clienteObj[0] : clienteObj;
 
-        const nomeCli = obterNomeExibicao(cliente, 'Cliente sem nome');
+        const cliente = Array.isArray(clienteObj)
+          ? clienteObj[0]
+          : clienteObj;
 
-        const dataRenova = new Date(ren.data_renovacao + 'T00:00:00');
-        const dataHoje = new Date(hojeLocalStr + 'T00:00:00');
-        const diferencaTempo = dataRenova.getTime() - dataHoje.getTime();
-        const diasRestantes = Math.ceil(diferencaTempo / (1000 * 60 * 60 * 24));
+        const nomeCli = obterNomeExibicao(
+          cliente,
+          'Cliente sem nome'
+        );
 
-        let avisoVencimento = `Vence em ${diasRestantes} dias!`;
-        if (diasRestantes === 0) avisoVencimento = 'Vence HOJE!';
-        if (diasRestantes < 0) avisoVencimento = `Vencida há ${Math.abs(diasRestantes)} dias!`;
+        const dataRenova = new Date(
+          renovacao.data_renovacao + 'T00:00:00'
+        );
+
+        const dataHoje = new Date(
+          hojeLocalStr + 'T00:00:00'
+        );
+
+        const diferencaTempo =
+          dataRenova.getTime() - dataHoje.getTime();
+
+        const diasRestantes = Math.ceil(
+          diferencaTempo /
+            (1000 * 60 * 60 * 24)
+        );
+
+        let avisoVencimento =
+          `Vence em ${diasRestantes} dias!`;
+
+        if (diasRestantes === 0) {
+          avisoVencimento = 'Vence HOJE!';
+        }
+
+        if (diasRestantes < 0) {
+          avisoVencimento =
+            `Vencida há ${Math.abs(
+              diasRestantes
+            )} dias!`;
+        }
 
         listaGeral.push({
-          id: `ren-${ren.id}`,
+          id: `ren-${renovacao.id}`,
           tipo: 'RENOVACAO',
           prioridade: 'CRITICA',
           titulo: `🚨 RENOVAÇÃO: ${nomeCli}`,
           subtitulo: avisoVencimento,
-          data: ren.data_renovacao,
-          horario: ren.horario_renovacao,
-          atrasado: ren.data_renovacao < hojeLocalStr,
-          ref_id: ren.id
+          data: renovacao.data_renovacao,
+          horario: renovacao.horario_renovacao,
+          atrasado:
+            renovacao.data_renovacao < hojeLocalStr,
+          ref_id: renovacao.id
         });
       });
 
-      finalFrios.forEach((lead: any) => {
-        const nomeExibicao = obterNomeExibicao(lead, 'Prospect Frio');
+      const notificacoesUnicas = Array.from(
+        new Map(
+          listaGeral.map((notificacao) => [
+            notificacao.id,
+            notificacao
+          ])
+        ).values()
+      );
 
-        listaGeral.push({
-          id: `frio-${lead.id}`,
-          tipo: 'PROSPECCAO',
-          prioridade: 'NORMAL',
-          titulo: `PROSPECÇÃO: ${nomeExibicao}`,
-          subtitulo: 'Retorno agendado',
-          data: lead.data_retorno,
-          horario: lead.horario_retorno,
-          atrasado: lead.data_retorno < hojeLocalStr,
-          ref_id: lead.id
-        });
-      });
-
-      finalAgenda.forEach((item: any) => {
-        const nomeExibicao = obterNomeExibicao(item, 'Cliente Agenda');
-
-        listaGeral.push({
-          id: `ag-${item.id}`,
-          tipo: 'AGENDA',
-          prioridade: 'NORMAL',
-          titulo: `AGENDA: ${nomeExibicao}`,
-          subtitulo: 'Retorno de agenda',
-          data: item.data_retorno,
-          horario: item.horario_retorno,
-          atrasado: item.data_retorno < hojeLocalStr,
-          ref_id: item.id
-        });
-      });
-
-      setNotificacoes(listaGeral.sort((a, b) => (a.data || '').localeCompare(b.data || '')));
+      setNotificacoes(
+        notificacoesUnicas.sort((a, b) =>
+          (a.data || '').localeCompare(
+            b.data || ''
+          )
+        )
+      );
     } catch (error) {
-      console.error('Erro ao carregar notificações:', error);
+      console.error(
+        'Erro ao carregar notificações:',
+        error
+      );
     }
   }, [user]);
 
-  const abrirNotificacao = async (n: Notificacao) => {
-    if (n.tipo === 'INDICACAO') {
-      window.location.href = `/parceiros/triagem?id=${n.ref_id}`;
+  const abrirNotificacao = async (
+    notificacao: Notificacao
+  ) => {
+    if (notificacao.tipo === 'INDICACAO') {
+      window.location.href =
+        `/parceiros/triagem?id=${notificacao.ref_id}`;
       return;
     }
 
-    if (n.tipo === 'RENOVACAO') {
-      setModalAtivo({ tipo: 'RENOVACAO', id: n.ref_id });
+    if (notificacao.tipo === 'RENOVACAO') {
+      setModalAtivo({
+        tipo: 'RENOVACAO',
+        id: notificacao.ref_id
+      });
       return;
     }
 
-    if (n.tipo === 'SINISTRO') {
-      setModalAtivo({ tipo: 'SINISTRO_GERAL', id: n.ref_id });
+    if (notificacao.tipo === 'SINISTRO') {
+      setModalAtivo({
+        tipo: 'SINISTRO_GERAL',
+        id: notificacao.ref_id
+      });
       return;
     }
 
-    if (n.tipo === 'COMERCIAL' || n.tipo === 'ANIVERSARIO' || n.tipo === 'PROSPECCAO' || n.tipo === 'AGENDA') {
+    if (
+      notificacao.tipo === 'COMERCIAL' ||
+      notificacao.tipo === 'ANIVERSARIO'
+    ) {
       const { data: cliente } = await supabase
         .from('tab_clientes')
         .select('*')
-        .eq('id', n.ref_id)
+        .eq('id', notificacao.ref_id)
         .single();
 
       if (cliente) {
         setClienteParaModal(cliente);
-        setModalAtivo({ tipo: 'CONTATO_GERAL', id: n.ref_id });
+
+        setModalAtivo({
+          tipo: 'CONTATO_GERAL',
+          id: notificacao.ref_id
+        });
       } else {
-        console.error('Cliente não encontrado para a notificação.');
+        console.error(
+          'Cliente não encontrado para a notificação.'
+        );
       }
-      return;
     }
   };
 
-  const markAsReadByIndicacao = async (indicacaoId: string) => {
-    setNotificacoes((prev) => prev.filter((n) => n.ref_id !== indicacaoId));
+  const markAsReadByIndicacao = async (
+    indicacaoId: string
+  ) => {
+    setNotificacoes((prev) =>
+      prev.filter(
+        (notificacao) =>
+          notificacao.ref_id !== indicacaoId
+      )
+    );
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setNotificacoes([]);
+      return;
+    }
 
     const channel = supabase
       .channel('notificacoes-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_clientes' }, () => carregarNotificacoes())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_indicacoes' }, () => carregarNotificacoes())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tab_proposta_itens' }, () => carregarNotificacoes())
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tab_clientes'
+        },
+        () => {
+          carregarNotificacoes();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tab_indicacoes'
+        },
+        () => {
+          carregarNotificacoes();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tab_proposta_itens'
+        },
+        () => {
+          carregarNotificacoes();
+        }
+      )
       .subscribe();
 
     carregarNotificacoes();
@@ -377,27 +554,33 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         />
       )}
 
-      {modalAtivo?.tipo === 'CONTATO_GERAL' && clienteParaModal && (
-        <ModalAcoesComerciais
-          isOpen={true}
-          lead={clienteParaModal}
-          onClose={() => {
-            setModalAtivo(null);
-            setClienteParaModal(null);
-          }}
-          onSave={async (dadosAcao) => {
-            try {
-              await salvarAcaoComercialV2(dadosAcao);
-            } catch (error) {
-              console.error('Erro ao salvar pelo service v2:', error);
-            } finally {
-              carregarNotificacoes();
+      {modalAtivo?.tipo === 'CONTATO_GERAL' &&
+        clienteParaModal && (
+          <ModalAcoesComerciais
+            isOpen={true}
+            lead={clienteParaModal}
+            onClose={() => {
               setModalAtivo(null);
               setClienteParaModal(null);
-            }
-          }}
-        />
-      )}
+            }}
+            onSave={async (dadosAcao) => {
+              try {
+                await salvarAcaoComercialV2(
+                  dadosAcao
+                );
+              } catch (error) {
+                console.error(
+                  'Erro ao salvar pelo service v2:',
+                  error
+                );
+              } finally {
+                carregarNotificacoes();
+                setModalAtivo(null);
+                setClienteParaModal(null);
+              }
+            }}
+          />
+        )}
 
       {modalAtivo?.tipo === 'SINISTRO_GERAL' && (
         <ModalGerenciamentoSinistro
@@ -413,6 +596,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   );
 };
 
-const optionDeepSafe = (val: any) => (Array.isArray(val) ? val[0] : val);
+export const useNotifications =
+  () => useContext(NotificationContext);
 
-export const useNotifications = () => useContext(NotificationContext);
+
