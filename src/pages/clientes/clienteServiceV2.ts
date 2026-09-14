@@ -311,8 +311,15 @@ export async function criarClienteV2(payload: any) {
 
     const dadosPF = isPF ? {
       modo_cadastro: payload.modoCadastro || payload.modo_cadastro || 'COMPLETO',
-      naturalidade: payload.naturalidade || null,
-      pep: payload.pep || false
+      naturalidade: payload.naturalidade ?? null,
+      pep: payload.pep ?? false,
+      data_nascimento: payload.data_nascimento ?? null,
+      sexo: payload.sexo ?? null,
+      ocupacao: payload.ocupacao ?? null,
+      rg_numero: payload.rg_numero ?? null,
+      rg_orgao: payload.rg_orgao ?? null,
+      data_emissao_rg: payload.data_emissao_rg ?? null,
+      estado_civil: payload.estado_civil ?? null
     } : {};
 
     const dadosReceitaObj = parseRealJson(payload.dadosReceita || payload.dados_pj, {});
@@ -375,60 +382,252 @@ export async function criarClienteV2(payload: any) {
 // ==========================================
 export async function atualizarClienteV2(id: string, payload: any) {
   try {
+    
+
+    if (!id) {
+      throw new Error('ID do cliente não informado.');
+    }
+
     const clienteAtual = await buscarClienteCompletoPorId(id);
-    const isPF = payload.tipoCliente === 'PF';
 
-    const pfAtuais = parseRealJson(clienteAtual?.dados_complementares_pf, {});
-    const pjAtuais = parseRealJson(clienteAtual?.dados_complementares_pj, {});
-    const dadosReceitaTratados = parseRealJson(payload.dadosReceita, {});
+    if (!clienteAtual) {
+      throw new Error(`Cliente ${id} não encontrado.`);
+    }
 
-    const dadosPF = isPF ? {
-      ...pfAtuais,
-      modo_cadastro: payload.modoCadastro || pfAtuais.modo_cadastro || 'COMPLETO',
-      naturalidade: payload.naturalidade !== undefined ? payload.naturalidade : (pfAtuais.naturalidade || null),
-      pep: payload.pep !== undefined ? payload.pep : (pfAtuais.pep || false)
-    } : {};
+    const tipoCliente = payload.tipo_cliente || payload.tipoCliente;
+    const isPF = tipoCliente === 'PF';
 
-    const dadosPJ = !isPF ? {
-      ...pjAtuais,
-      ...dadosReceitaTratados,
-      porte: payload.porte || dadosReceitaTratados.porte || pjAtuais.porte || null,
-      data_abertura: payload.dataAbertura || dadosReceitaTratados.data_abertura || pjAtuais.data_abertura || null,
-      matriz_filial: payload.matrizFilial || dadosReceitaTratados.matriz_filial || pjAtuais.matriz_filial || null,
-      modo_cadastro: payload.modoCadastro || pjAtuais.modo_cadastro || 'RAPIDO',
-      capital_social: payload.capitalSocial || dadosReceitaTratados.capital_social || pjAtuais.capital_social || null,
-      cnae_principal: payload.cnaePrincipal || dadosReceitaTratados.cnae_principal || pjAtuais.cnae_principal || null,
-      opcao_pelo_mei: payload.opcaoPeloMei ?? dadosReceitaTratados.opcao_pelo_mei ?? pjAtuais.opcao_pelo_mei ?? false,
-      natureza_juridica: payload.naturezaJuridica || dadosReceitaTratados.natureza_juridica || pjAtuais.natureza_juridica || null,
-      opcao_pelo_simples: payload.opcaoPeloSimples ?? dadosReceitaTratados.opcao_pelo_simples ?? pjAtuais.opcao_pelo_simples ?? false,
-      situacao_cadastral: payload.situacaoCadastral || dadosReceitaTratados.situacao_cadastral || pjAtuais.situacao_cadastral || 'ATIVA'
-    } : {};
+    const cpfCnpj = payload.cpf_cnpj ?? payload.cpfCnpj;
+    const nomeRazaoSocial =
+      payload.nome_razao_social ??
+      payload.nomeRazaoSocial ??
+      clienteAtual.nome_razao_social;
+
+    const nomeFantasia =
+      payload.nome_fantasia ??
+      payload.nomeFantasia ??
+      clienteAtual.nome_fantasia;
+
+    const corretorId =
+      payload.corretor_id ||
+      payload.corretorId ||
+      payload.dono_id ||
+      payload.donoId ||
+      clienteAtual.corretor_id ||
+      null;
+
+    const pfAtuais = parseRealJson(
+      clienteAtual.dados_complementares_pf,
+      {}
+    );
+
+    const pjAtuais = parseRealJson(
+      clienteAtual.dados_complementares_pj,
+      {}
+    );
+
+    const dadosPJRecebidos = parseRealJson(
+      payload.dados_pj || payload.dadosReceita,
+      {}
+    );
+
+    const dadosPF = isPF
+    ? {
+        ...pfAtuais,
+
+        modo_cadastro:
+          payload.modoCadastro ||
+          payload.modo_cadastro ||
+          pfAtuais.modo_cadastro ||
+          'COMPLETO',
+
+        naturalidade:
+          payload.naturalidade !== undefined
+            ? payload.naturalidade
+            : pfAtuais.naturalidade ?? null,
+
+        pep:
+          payload.pep !== undefined
+            ? payload.pep
+            : pfAtuais.pep ?? false,
+
+        data_nascimento:
+          payload.data_nascimento !== undefined
+            ? payload.data_nascimento
+            : pfAtuais.data_nascimento ?? null,
+
+        sexo:
+          payload.sexo !== undefined
+            ? payload.sexo
+            : pfAtuais.sexo ?? null,
+
+        ocupacao:
+          payload.ocupacao !== undefined
+            ? payload.ocupacao
+            : pfAtuais.ocupacao ?? null,
+
+        rg_numero:
+          payload.rg_numero !== undefined
+            ? payload.rg_numero
+            : pfAtuais.rg_numero ?? null,
+
+        rg_orgao:
+          payload.rg_orgao !== undefined
+            ? payload.rg_orgao
+            : pfAtuais.rg_orgao ?? null,
+
+        data_emissao_rg:
+          payload.data_emissao_rg !== undefined
+            ? payload.data_emissao_rg
+            : pfAtuais.data_emissao_rg ?? null,
+
+        estado_civil:
+          payload.estado_civil !== undefined
+            ? payload.estado_civil
+            : pfAtuais.estado_civil ?? null
+      }
+    : pfAtuais;
+
+    const dadosPJ = !isPF
+      ? {
+          ...pjAtuais,
+          ...dadosPJRecebidos,
+
+          porte:
+            dadosPJRecebidos.porte ??
+            pjAtuais.porte ??
+            null,
+
+          data_abertura:
+            dadosPJRecebidos.data_abertura ??
+            pjAtuais.data_abertura ??
+            null,
+
+          matriz_filial:
+            dadosPJRecebidos.matriz_filial ??
+            pjAtuais.matriz_filial ??
+            null,
+
+          modo_cadastro:
+            payload.modoCadastro ||
+            payload.modo_cadastro ||
+            dadosPJRecebidos.modo_cadastro ||
+            pjAtuais.modo_cadastro ||
+            'RAPIDO',
+
+          capital_social:
+            dadosPJRecebidos.capital_social ??
+            pjAtuais.capital_social ??
+            null,
+
+          cnae_principal:
+            dadosPJRecebidos.cnae_principal ??
+            payload.cnae_principal ??
+            payload.cnaePrincipal ??
+            pjAtuais.cnae_principal ??
+            null,
+
+          opcao_pelo_mei:
+            dadosPJRecebidos.opcao_pelo_mei ??
+            pjAtuais.opcao_pelo_mei ??
+            false,
+
+          natureza_juridica:
+            dadosPJRecebidos.natureza_juridica ??
+            pjAtuais.natureza_juridica ??
+            null,
+
+          opcao_pelo_simples:
+            dadosPJRecebidos.opcao_pelo_simples ??
+            pjAtuais.opcao_pelo_simples ??
+            false,
+
+          situacao_cadastral:
+            dadosPJRecebidos.situacao_cadastral ??
+            payload.situacao_cadastral ??
+            payload.situacaoCadastral ??
+            pjAtuais.situacao_cadastral ??
+            'ATIVA'
+        }
+      : pjAtuais;
 
     const dadosParaAtualizar = {
-      tipo_cliente: payload.tipoCliente,
-      cpf_cnpj: payload.cpfCnpj ? payload.cpfCnpj.replace(/\D/g, '') : null,
-      nome_razao_social: payload.nomeRazaoSocial,
-      nome_fantasia: payload.nomeFantasia || null,
-      corretor_id: payload.corretor_id || payload.dono_id || null,
-      cnae_principal: payload.cnaePrincipal || null,
-      situacao_cadastral: payload.situacaoCadastral || 'ATIVA',
-      
-      // Endereço Principal (Fiscal/Matriz)
-      cep: payload.cep || null,
-      logradouro: payload.logradouro || null,
-      numero: payload.numero || null,
-      bairro: payload.bairro || null,
-      municipio: payload.municipio || null,
-      uf: payload.uf || null,
-      complemento: payload.complemento || null,
+      tipo_cliente: tipoCliente,
+      cpf_cnpj: cpfCnpj
+        ? String(cpfCnpj).replace(/\D/g, '')
+        : clienteAtual.cpf_cnpj || null,
 
-      // Colunas JSONB padronizadas sem JSON.stringify
-      contatos: padronizarContatos(payload.contatos),
-      socios: padronizarSocios(payload.socios),
+      nome_razao_social: nomeRazaoSocial,
+      nome_fantasia: nomeFantasia || null,
+
+      corretor_id: corretorId,
+
+      cnae_principal:
+        payload.cnae_principal ??
+        payload.cnaePrincipal ??
+        dadosPJ.cnae_principal ??
+        clienteAtual.cnae_principal ??
+        null,
+
+      situacao_cadastral:
+        payload.situacao_cadastral ??
+        payload.situacaoCadastral ??
+        dadosPJ.situacao_cadastral ??
+        clienteAtual.situacao_cadastral ??
+        null,
+
+      cep:
+        payload.cep ??
+        clienteAtual.cep ??
+        null,
+
+      logradouro:
+        payload.logradouro ??
+        clienteAtual.logradouro ??
+        null,
+
+      numero:
+        payload.numero ??
+        clienteAtual.numero ??
+        null,
+
+      bairro:
+        payload.bairro ??
+        clienteAtual.bairro ??
+        null,
+
+      municipio:
+        payload.municipio ??
+        clienteAtual.municipio ??
+        null,
+
+      uf:
+        payload.uf ??
+        clienteAtual.uf ??
+        null,
+
+      complemento:
+        payload.complemento ??
+        clienteAtual.complemento ??
+        null,
+
+      contatos:
+        payload.contatos !== undefined
+          ? padronizarContatos(payload.contatos)
+          : parseRealJson(clienteAtual.contatos, []),
+
+      socios:
+        payload.socios !== undefined
+          ? padronizarSocios(payload.socios)
+          : parseRealJson(clienteAtual.socios, []),
+
       dados_complementares_pf: dadosPF,
       dados_complementares_pj: dadosPJ,
+
       atualizado_em: new Date().toISOString()
     };
+
+    
 
     const { data, error } = await supabase
       .from('tab_clientes')
@@ -437,10 +636,21 @@ export async function atualizarClienteV2(id: string, payload: any) {
       .select()
       .single();
 
-    if (error) throw error;
+    
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      throw new Error('O Supabase não retornou o cliente atualizado.');
+    }
+
+    
+
     return data;
   } catch (error) {
-    console.error("Erro ao atualizar cliente no service:", error);
+    
     throw error;
   }
 }

@@ -205,6 +205,24 @@ export const ModalCadastroCliente = ({
 
       // 5. Contatos e Sócios
       const contatosBanco = parseSeguro(cliente.contatos, []);
+
+      if (cliente.tipo_cliente === 'PF') {
+        const complPF = parseSeguro(
+          cliente.dados_complementares_pf,
+          {}
+        );
+
+        setDataNascimento(complPF.data_nascimento || '');
+        setSexo(complPF.sexo || '');
+        setNaturalidade(complPF.naturalidade || '');
+        setOcupacao(complPF.ocupacao || '');
+        setRgNumero(complPF.rg_numero || '');
+        setRgOrgao(complPF.rg_orgao || '');
+        setDataEmissaoRG(complPF.data_emissao_rg || '');
+      }
+
+
+
       if (contatosBanco.length > 0) setContatos(contatosBanco);
 
       const sociosBanco = parseSeguro(cliente.socios, []);
@@ -624,6 +642,13 @@ export const ModalCadastroCliente = ({
       cpf_cnpj: cpfCnpj,
       nome_razao_social: nomeRazaoSocial,
       nome_fantasia: nomeFantasia,
+      data_nascimento: tipoCliente === 'PF' ? dataNascimento : null,
+      sexo: tipoCliente === 'PF' ? sexo : null,
+      naturalidade: tipoCliente === 'PF' ? naturalidade : null,
+      ocupacao: tipoCliente === 'PF' ? ocupacao : null,
+      rg_numero: tipoCliente === 'PF' ? rgNumero : null,
+      rg_orgao: tipoCliente === 'PF' ? rgOrgao : null,
+      data_emissao_rg: tipoCliente === 'PF' ? dataEmissaoRG : null,
       dados_pj: tipoCliente === 'PJ' ? dadosReceita : null,
       dono_id: donoFinal,
       corretor_id: donoFinal,
@@ -631,6 +656,10 @@ export const ModalCadastroCliente = ({
       socios,
       contatos,
     };
+
+    console.log('=== DEBUG DATA EMISSÃO RG ===');
+    console.log('dataEmissaoRG:', dataEmissaoRG);
+    console.log('payload.data_emissao_rg:', payloadCliente.data_emissao_rg);
 
     handleSubmit(payloadCliente);
   };
@@ -757,7 +786,11 @@ export const ModalCadastroCliente = ({
           </div>
         </div>
 
-        <form onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+        <form
+          id="form-cadastro-cliente"
+          onSubmit={handleFormSubmit}
+          className="flex-1 overflow-y-auto p-6 space-y-6"
+        >
 
           {/* ================================================= */}
           {/* RESPONSÁVEL (DONO DO CADASTRO)                    */}
@@ -1745,7 +1778,7 @@ export const ModalCadastroCliente = ({
 
             <button
               type="submit"
-              onClick={handleFormSubmit}
+              form="form-cadastro-cliente"
               disabled={saving || isLoading}
               className="px-8 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition disabled:opacity-50"
             >
