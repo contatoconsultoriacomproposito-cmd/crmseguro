@@ -1011,28 +1011,49 @@ export async function salvarAcaoComercialV2(payload: any) {
   try {
     const sessao = await obterDadosSessao();
 
-    // Separa os contatos (que vão para tab_clientes) do restante do payload
+    if (!payload.cliente_id) {
+      throw new Error('Cliente não informado.');
+    }
+
+    if (payload.tipo_acao === 'reagendamento' && !payload.data_retorno) {
+      throw new Error('A data do reagendamento é obrigatória.');
+    }
+
     const { contatos, ...dadosInteracao } = payload;
 
-    // Garante os campos obrigatórios e auditoria da interação
+    const ehReagendamento = dadosInteracao.tipo_acao === 'reagendamento';
+
     const interacaoParaInserir = {
       cliente_id: dadosInteracao.cliente_id,
       corretora_id: sessao?.corretora_id || null,
       corretor_id: dadosInteracao.corretor_id || sessao?.id || null,
       tipo_acao: dadosInteracao.tipo_acao,
-      relato: dadosInteracao.relato || dadosInteracao.descricao || '',
-      resultado_acao: dadosInteracao.resultado_acao || null,
-      objetivo_acao: dadosInteracao.objetivo_acao || null,
-      proxima_acao: dadosInteracao.proxima_acao || null,
-      relato_proxima_acao: dadosInteracao.relato_proxima_acao || null,
-      produtos_interesse: dadosInteracao.produtos_interesse || null,
+      relato: ehReagendamento
+        ? 'Retorno reagendado'
+        : dadosInteracao.relato || dadosInteracao.descricao || '',
+      resultado_acao: ehReagendamento
+        ? null
+        : dadosInteracao.resultado_acao || null,
+      objetivo_acao: ehReagendamento
+        ? null
+        : dadosInteracao.objetivo_acao || null,
+      proxima_acao: ehReagendamento
+        ? null
+        : dadosInteracao.proxima_acao || null,
+      relato_proxima_acao: ehReagendamento
+        ? null
+        : dadosInteracao.relato_proxima_acao || null,
+      produtos_interesse: ehReagendamento
+        ? null
+        : dadosInteracao.produtos_interesse || null,
       data_retorno: dadosInteracao.data_retorno || null,
       horario_retorno: dadosInteracao.horario_retorno || null,
-      status_agendamento: dadosInteracao.data_retorno ? (dadosInteracao.status_agendamento || 'PENDENTE') : null,
+      status_agendamento: dadosInteracao.data_retorno
+        ? 'PENDENTE'
+        : null,
       criado_em: new Date().toISOString()
     };
 
-    // 1. Insere a interação na tabela tab_interacoes
     const { data: interacaoSalva, error: erroInteracao } = await supabase
       .from('tab_interacoes')
       .insert([interacaoParaInserir])
@@ -1040,41 +1061,46 @@ export async function salvarAcaoComercialV2(payload: any) {
       .single();
 
     if (erroInteracao) {
-      console.error('Erro ao inserir interação na tab_interacoes:', erroInteracao);
       throw erroInteracao;
     }
 
-    // 2. Atualiza os dados na tab_clientes
-    if (payload.cliente_id) {
-      const dadosUpdateCliente: Record<string, any> = {
-        atualizado_em: new Date().toISOString()
-      };
+    const dadosUpdateCliente: Record<string, any> = {
+      atualizado_em: new Date().toISOString()
+    };
 
-      // Atualiza contatos padronizados se fornecidos
-      if (contatos && Array.isArray(parseRealJson(contatos))) {
-        dadosUpdateCliente.contatos = padronizarContatos(contatos);
-      }
+    if (contatos && Array.isArray(parseRealJson(contatos))) {
+      dadosUpdateCliente.contatos = padronizarContatos(contatos);
+    }
 
-      // Se houver uma nova data de retorno no agendamento, atualiza na tabela do cliente
-      if (payload.data_retorno) {
-        dadosUpdateCliente.data_retorno = payload.data_retorno;
-        dadosUpdateCliente.horario_retorno = payload.horario_retorno || '09:00:00';
-      }
+    if (dadosInteracao.data_retorno) {
+      dadosUpdateCliente.data_retorno = dadosInteracao.data_retorno;
+      dadosUpdateCliente.horario_retorno =
+        dadosInteracao.horario_retorno || '09:00:00';
+    }
 
-      // Atualiza fases e Kanban no cliente caso tenham mudado na ação
-      if (payload.fase_atendimento) dadosUpdateCliente.fase_atendimento = payload.fase_atendimento;
-      if (payload.temperatura) dadosUpdateCliente.temperatura = payload.temperatura;
-      if (payload.fase_kanban) dadosUpdateCliente.fase_kanban = payload.fase_kanban;
-      if (payload.status_kanban) dadosUpdateCliente.status_kanban = payload.status_kanban;
+    if (dadosInteracao.fase_atendimento) {
+      dadosUpdateCliente.fase_atendimento = dadosInteracao.fase_atendimento;
+    }
 
-      const { error: erroUpdateCliente } = await supabase
-        .from('tab_clientes')
-        .update(dadosUpdateCliente)
-        .eq('id', payload.cliente_id);
+    if (dadosInteracao.temperatura) {
+      dadosUpdateCliente.temperatura = dadosInteracao.temperatura;
+    }
 
-      if (erroUpdateCliente) {
-        console.error('Erro ao atualizar tab_clientes ao salvar interação:', erroUpdateCliente);
-      }
+    if (dadosInteracao.fase_kanban) {
+      dadosUpdateCliente.fase_kanban = dadosInteracao.fase_kanban;
+    }
+
+    if (dadosInteracao.status_kanban) {
+      dadosUpdateCliente.status_kanban = dadosInteracao.status_kanban;
+    }
+
+    const { error: erroUpdateCliente } = await supabase
+      .from('tab_clientes')
+      .update(dadosUpdateCliente)
+      .eq('id', dadosInteracao.cliente_id);
+
+    if (erroUpdateCliente) {
+      throw erroUpdateCliente;
     }
 
     return interacaoSalva;

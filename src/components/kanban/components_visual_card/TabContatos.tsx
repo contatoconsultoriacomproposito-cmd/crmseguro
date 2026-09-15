@@ -13,7 +13,7 @@ import {
   AlertCircle,
   FileText
 } from 'lucide-react';
-import { ModalAcoesComerciais } from '../../../pages/clientes/ModalAcoesComerciais';
+import ModalAcoesComerciais from '../../../pages/clientes/ModalAcoesComerciais';
 import { salvarAcaoComercialV2 } from '../../../pages/clientes/clienteServiceV2';
 
 interface TabContatosProps {

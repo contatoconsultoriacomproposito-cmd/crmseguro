@@ -8,7 +8,7 @@ import { buscarClientesV2, buscarListaCnaes, excluirClienteV2, buscarClienteComp
 import type { FiltrosClientesV2, ClienteV2Formatado, CnaeOpcao  } from './clienteServiceV2';
 import { CnaeMultiSelect } from './CnaeMultiSelect';
 import { ModalCadastroCliente } from './ModalCadastroCliente';
-import { ModalAcoesComerciais } from './ModalAcoesComerciais';
+import ModalAcoesComerciais from './ModalAcoesComerciais';
 import { salvarAcaoComercialV2 } from './clienteServiceV2';
 import { toast } from "sonner";
 const ITENS_POR_PAGINA = 10;

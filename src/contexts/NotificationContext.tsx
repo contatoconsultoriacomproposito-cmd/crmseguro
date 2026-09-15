@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../auth/AuthContext';
 
 import { ModalGerenciamentoRenovacao } from './ModalGerenciamentoRenovacao';
-import { ModalAcoesComerciais } from '../pages/clientes/ModalAcoesComerciais';
+import ModalAcoesComerciais from '../pages/clientes/ModalAcoesComerciais';
 import { ModalGerenciamentoSinistro } from './ModalGerenciamentoSinistro';
 import { salvarAcaoComercialV2 } from '../pages/clientes/clienteServiceV2';
 

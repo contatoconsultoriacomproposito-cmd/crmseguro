@@ -26,7 +26,7 @@ X,
 Check,
 ChevronDown
 } from 'lucide-react';
-import { ModalAcoesComerciais } from '../clientes/ModalAcoesComerciais';
+import ModalAcoesComerciais from '../clientes/ModalAcoesComerciais';
 import { ModalCadastroCliente } from '../clientes/ModalCadastroCliente';
 import {
 salvarAcaoComercialV2,

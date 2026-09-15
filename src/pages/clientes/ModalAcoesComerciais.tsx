@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Clock,
   X,
@@ -26,10 +26,6 @@ import {
 import { maskPhone } from '../../utils/masks';
 import { buscarHistoricoInteracoesPorCliente } from './clienteServiceV2';
 
-// ============================================================
-// INTERFACES & TIPAGENS
-// ============================================================
-
 export interface Contato {
   id?: string;
   nome: string;
@@ -56,6 +52,8 @@ export interface LeadData {
   nome_fantasia?: string;
   razao_social?: string;
   nomes_socios?: any;
+  data_retorno?: string | null;
+  horario_retorno?: string | null;
   contatos_existentes?: Contato[];
   historico_acoes?: AcaoHistorico[];
 }
@@ -74,85 +72,115 @@ export interface AgendamentoItem {
   data_retorno: string;
   horario_retorno: string;
   relato_proxima_acao: string;
-  produto_retorno?: string; // Produto/Assunto específico do retorno (ex: AUTO, VIDA)
+  produto_retorno?: string;
 }
 
-// ============================================================
-// CONFIGURAÇÕES
-// ============================================================
-
 const TIPOS_ACAO = [
-  { id: 'ligacao', label: 'Ligação', icon: Phone },
-  { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
-  { id: 'email', label: 'E-mail', icon: Mail },
-  { id: 'visita', label: 'Visita Presencial', icon: MapPin },
-  { id: 'email_marketing', label: 'E-mail Marketing', icon: Send },
-  { id: 'sms', label: 'SMS', icon: MessageCircle },
-  { id: 'entrega_folders', label: 'Folders/Panfletos', icon: FileText },
-  { id: 'outros', label: 'Outros', icon: HelpCircle },
+  {
+    value: 'ligacao',
+    label: 'Ligação',
+    icon: Phone,
+  },
+  {
+    value: 'whatsapp',
+    label: 'WhatsApp',
+    icon: MessageCircle,
+  },
+  {
+    value: 'email',
+    label: 'E-mail',
+    icon: Mail,
+  },
+  {
+    value: 'visita',
+    label: 'Visita',
+    icon: MapPin,
+  },
+  {
+    value: 'email_marketing',
+    label: 'E-mail Marketing',
+    icon: Send,
+  },
+  {
+    value: 'sms',
+    label: 'SMS',
+    icon: MessageSquare,
+  },
+  {
+    value: 'entrega_folders',
+    label: 'Entrega de Folders',
+    icon: FileText,
+  },
+  {
+    value: 'outros',
+    label: 'Outros',
+    icon: HelpCircle,
+  },
 ];
 
-const RESULTADOS_POR_ACAO: Record<string, { id: string; label: string }[]> = {
+const RESULTADOS_POR_ACAO: Record<string, { value: string; label: string }[]> = {
   ligacao: [
-    { id: 'atendeu', label: '✅ Atendeu' },
-    { id: 'nao_atendeu', label: '❌ Não atendeu' },
-    { id: 'caixa_postal', label: '📭 Caixa postal' },
-    { id: 'numero_invalido', label: '🚫 Número inválido/bloqueado' },
-    { id: 'ocupado', label: '⏳ Ocupado' },
-    { id: 'outros', label: '📌 Outros' },
+    { value: 'contato_realizado', label: 'Contato realizado' },
+    { value: 'nao_atendeu', label: 'Não atendeu' },
+    { value: 'numero_invalido', label: 'Número inválido' },
+    { value: 'retornar_depois', label: 'Solicitou retorno' },
+    { value: 'sem_interesse', label: 'Sem interesse' },
+    { value: 'outros', label: 'Outros' },
   ],
-
   whatsapp: [
-    { id: 'aguardando_responder', label: '⏳ Aguardando responder' },
-    { id: 'respondido', label: '💬 Respondido' },
-    { id: 'nao_recebido', label: '⚠️ Não recebido' },
-    { id: 'bloqueou', label: '🚫 Bloqueou' },
-    { id: 'outros', label: '📌 Outros' },
+    { value: 'mensagem_enviada', label: 'Mensagem enviada' },
+    { value: 'respondeu', label: 'Respondeu' },
+    { value: 'nao_respondeu', label: 'Não respondeu' },
+    { value: 'sem_interesse', label: 'Sem interesse' },
+    { value: 'outros', label: 'Outros' },
   ],
-
   email: [
-    { id: 'aguardando_responder', label: '⏳ Aguardando responder' },
-    { id: 'respondido', label: '📬 Respondido' },
-    { id: 'nao_recebido', label: '⚠️ Não recebido' },
-    { id: 'outros', label: '📌 Outros' },
+    { value: 'email_enviado', label: 'E-mail enviado' },
+    { value: 'respondeu', label: 'Respondeu' },
+    { value: 'nao_respondeu', label: 'Não respondeu' },
+    { value: 'sem_interesse', label: 'Sem interesse' },
+    { value: 'outros', label: 'Outros' },
   ],
-
   visita: [
-    { id: 'demonstrou_interesse', label: '🎯 Demonstrou interesse' },
-    { id: 'nao_demonstrou_interesse', label: '❌ Não demonstrou interesse' },
-    { id: 'decisor_ausente', label: '👤 O decisor não estava' },
-    { id: 'outros', label: '📌 Outros' },
+    { value: 'visita_realizada', label: 'Visita realizada' },
+    { value: 'visita_agendada', label: 'Visita agendada' },
+    { value: 'nao_compareceu', label: 'Não compareceu' },
+    { value: 'sem_interesse', label: 'Sem interesse' },
+    { value: 'outros', label: 'Outros' },
   ],
-
   email_marketing: [
-    { id: 'aguardando_responder', label: '⏳ Aguardando responder' },
-    { id: 'respondido', label: '📬 Respondido' },
-    { id: 'nao_recebido', label: '⚠️ Não recebido' },
-    { id: 'outros', label: '📌 Outros' },
+    { value: 'enviado', label: 'Enviado' },
+    { value: 'respondeu', label: 'Respondeu' },
+    { value: 'nao_respondeu', label: 'Não respondeu' },
+    { value: 'outros', label: 'Outros' },
   ],
-
-  entrega_folders: [
-    { id: 'aguardar_contato', label: '⏳ Aguardar contato' },
-  ],
-
   sms: [
-    { id: 'enviado', label: '📤 Enviado com Sucesso' },
-    { id: 'nao_entregue', label: '⚠️ Não entregue' },
-    { id: 'outros', label: '📌 Outros' },
+    { value: 'enviado', label: 'Enviado' },
+    { value: 'respondeu', label: 'Respondeu' },
+    { value: 'nao_respondeu', label: 'Não respondeu' },
+    { value: 'outros', label: 'Outros' },
   ],
-
-  outros: [],
+  entrega_folders: [
+    { value: 'entregue', label: 'Entregue' },
+    { value: 'nao_entregue', label: 'Não entregue' },
+    { value: 'outros', label: 'Outros' },
+  ],
+  outros: [
+    { value: 'realizado', label: 'Realizado' },
+    { value: 'pendente', label: 'Pendente' },
+    { value: 'outros', label: 'Outros' },
+  ],
 };
 
 const PROXIMAS_ACOES_OPCOES = [
-  { id: 'ligacao', label: '📞 Ligar' },
-  { id: 'whatsapp', label: '💬 WhatsApp' },
-  { id: 'email', label: '📧 E-mail' },
-  { id: 'visita', label: '🏢 Visitar' },
-  { id: 'email_marketing', label: '📬 E-mail Mkt' },
-  { id: 'sms', label: '📱 SMS' },
-  { id: 'entrega_folders', label: '📄 Entregar Folders' },
-  { id: 'outros', label: '📌 Outros' },
+  { value: 'ligacao', label: 'Ligação' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'email', label: 'E-mail' },
+  { value: 'visita', label: 'Visita' },
+  { value: 'email_marketing', label: 'E-mail Marketing' },
+  { value: 'sms', label: 'SMS' },
+  { value: 'entrega_folders', label: 'Entrega de Folders' },
+  { value: 'outros', label: 'Outros' },
 ];
 
 const PRODUTOS_INTERESSE_OPCOES = [
@@ -171,499 +199,380 @@ const PRODUTOS_INTERESSE_OPCOES = [
   'OUTROS',
 ];
 
+const parseArrayData = <T,>(valor: any, padrao: T[] = []): T[] => {
+  if (!valor) return padrao;
 
-const parseArrayData = (data: any): any[] => {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (typeof data === 'string') {
+  let atual = valor;
+
+  while (typeof atual === 'string') {
     try {
-      let parsed = JSON.parse(data);
-      // Caso venha duplamente serializado do banco
-      if (typeof parsed === 'string') {
-        parsed = JSON.parse(parsed);
-      }
-      return Array.isArray(parsed) ? parsed : [];
+      atual = JSON.parse(atual);
     } catch {
-      return [];
+      break;
     }
   }
-  return [];
+
+  return Array.isArray(atual) ? atual : padrao;
 };
 
-// ============================================================
-// COMPONENTE
-// ============================================================
+const formatarHora = (hora?: string | null) => {
+  if (!hora) return '';
 
-export const ModalAcoesComerciais: React.FC<
-  ModalAcoesComerciaisProps
-> = ({
+  return hora.length >= 5 ? hora.substring(0, 5) : hora;
+};
+
+const formatarData = (data?: string | null) => {
+  if (!data) return '';
+
+  const partes = data.split('-');
+
+  if (partes.length !== 3) return data;
+
+  return `${partes[2]}/${partes[1]}/${partes[0]}`;
+};
+
+const obterDataHoje = () => {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+
+  return `${ano}-${mes}-${dia}`;
+};
+
+export default function ModalAcoesComerciais({
   isOpen,
   lead,
   clienteContexto,
   onClose,
   onSave,
-}) => {
-  // ==========================================================
-  // LEAD ATIVO
-  // ==========================================================
+}: ModalAcoesComerciaisProps) {
+  const activeLead = useMemo(() => {
+    const origem = lead || clienteContexto;
 
-  const activeLead: LeadData | null = lead
-  ? {
-      id: lead.id,
-      razao_social:
-        lead.razao_social ||
-        (lead as any).nome_razao_social ||
-        (lead as any).nome ||
-        (lead as any).razaoSocial ||
-        'CLIENTE SEM NOME',
-      nome_fantasia: lead.nome_fantasia,
-      nomes_socios: lead.nomes_socios,
-      contatos_existentes: parseArrayData(
-        lead.contatos_existentes || (lead as any).contatos
-      ),
-      historico_acoes: parseArrayData(
-        lead.historico_acoes || (lead as any).historico_acoes
-      ),
-    }
-  : clienteContexto
-  ? {
-      id: clienteContexto.id || 'temp-id',
-      razao_social:
-        clienteContexto.nome_razao_social ||
-        clienteContexto.razao_social ||
-        clienteContexto.nome ||
-        clienteContexto.razaoSocial ||
-        'CLIENTE SEM NOME',
-      nome_fantasia: clienteContexto.nome_fantasia,
-      nomes_socios:
-        clienteContexto.nomes_socios ||
-        clienteContexto.socios,
-      contatos_existentes: parseArrayData(
-        clienteContexto.contatos_existentes || clienteContexto.contatos
-      ),
-      historico_acoes: parseArrayData(
-        clienteContexto.historico_acoes
-      ),
-    }
-  : null;
+    if (!origem) return null;
 
-  // ==========================================================
-  // ESTADOS
-  // ==========================================================
+    return {
+      id: origem.id,
+      nome_fantasia: origem.nome_fantasia,
+      razao_social: origem.razao_social || origem.nome_razao_social,
+      nomes_socios: origem.nomes_socios || origem.socios,
+      contatos_existentes:
+        origem.contatos_existentes ||
+        origem.contatos ||
+        [],
+      historico_acoes:
+        origem.historico_acoes ||
+        origem.historico ||
+        [],
+      data_retorno: origem.data_retorno || null,
+      horario_retorno: origem.horario_retorno || null,
+    };
+  }, [lead, clienteContexto]);
 
-  const [tipoAcao, setTipoAcao] =
-    useState<string>('ligacao');
+  const [modoReagendamento, setModoReagendamento] = useState(false);
+  const [dataReagendamento, setDataReagendamento] = useState('');
+  const [horarioReagendamento, setHorarioReagendamento] = useState('');
 
-  const [resultadoAcao, setResultadoAcao] =
-    useState<string>('');
+  const [tipoAcao, setTipoAcao] = useState('ligacao');
+  const [resultadoAcao, setResultadoAcao] = useState('');
+  const [resultadoAcaoOutros, setResultadoAcaoOutros] = useState('');
+  const [objetivoAcao, setObjetivoAcao] = useState('Atendimento Comercial');
+  const [objetivoAcaoOutros, setObjetivoAcaoOutros] = useState('');
 
-  const [resultadoAcaoOutros, setResultadoAcaoOutros] =
-    useState<string>('');
-
-  const [objetivoAcao, setObjetivoAcao] =
-    useState<string>('Atendimento Comercial');
-
-  const [objetivoAcaoOutros, setObjetivoAcaoOutros] =
-    useState<string>('');
-
-  const [agendamentos, setAgendamentos] = 
-    useState<AgendamentoItem[]>([]);
-
-  const [produtosInteresse, setProdutosInteresse] =
-    useState<string[]>([]);
-
-  const [contatos, setContatos] =
-    useState<Contato[]>([]);
-
-  const [loading, setLoading] =
-    useState<boolean>(false);
-
-  const [erroValidacao, setErroValidacao] =
-    useState<string>('');
-
+  const [agendamentos, setAgendamentos] = useState<AgendamentoItem[]>([]);
+  const [produtosInteresse, setProdutosInteresse] = useState<string[]>([]);
+  const [contatos, setContatos] = useState<Contato[]>([]);
   const [historicoAcoes, setHistoricoAcoes] = useState<any[]>([]);
-  const [carregandoHistorico, setCarregandoHistorico] = useState<boolean>(false);
-  const temHistorico = historicoAcoes.length > 0;
 
-  const [mostrarTodosProdutos, setMostrarTodosProdutos] =
-    useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [erroValidacao, setErroValidacao] = useState('');
+  const [carregandoHistorico, setCarregandoHistorico] = useState(false);
+  const [mostrarTodosProdutos, setMostrarTodosProdutos] = useState(false);
 
+  const dataHoje = obterDataHoje();
 
-
-  // ==========================================================
-  // RESET AO ABRIR
-  // ==========================================================
-
-  const handleAdicionarAgendamento = () => {
-    setAgendamentos((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        proxima_acao: 'ligacao',
-        data_retorno: '',
-        horario_retorno: '',
-        relato_proxima_acao: '',
-        produto_retorno: produtosInteresse[0] || '',
-      },
-    ]);
-    setErroValidacao('');
-  };
-
-  const handleRemoverAgendamento = (id: string) => {
-    setAgendamentos((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const handleAtualizarAgendamento = (id: string, campo: keyof AgendamentoItem, valor: string) => {
-    setAgendamentos((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [campo]: valor } : item))
-    );
-    setErroValidacao('');
-  };
-
-  useEffect(() => {
-  if (!isOpen || !activeLead?.id) return;
-
-  const carregarDadosEHistorico = async () => {
-    setCarregandoHistorico(true);
-
-    // 1. Preenche contatos e formulário
-    const listaContatos = parseArrayData(
-      activeLead.contatos_existentes || (activeLead as any).contatos
-    );
-    setContatos(listaContatos);
-
-    setTipoAcao('ligacao');
-    setResultadoAcao('');
-    setResultadoAcaoOutros('');
-    setObjetivoAcao('Atendimento Comercial');
-    setObjetivoAcaoOutros('');
-    setAgendamentos([]);
-    setProdutosInteresse([]);
-    setErroValidacao('');
-    setMostrarTodosProdutos(false);
-
-    // 2. Busca o histórico de interações direto da tabela tab_interacoes
-    try {
-      const historicoBanco = await buscarHistoricoInteracoesPorCliente(activeLead.id);
-      
-      // Se não encontrar no banco, usa o que veio no activeLead como fallback
-      if (historicoBanco && historicoBanco.length > 0) {
-        setHistoricoAcoes(historicoBanco);
-      } else {
-        setHistoricoAcoes(parseArrayData(activeLead.historico_acoes));
-      }
-    } catch (err) {
-      console.error('Erro ao carregar histórico:', err);
-      setHistoricoAcoes(parseArrayData(activeLead.historico_acoes));
-    } finally {
-      setCarregandoHistorico(false);
-      setLoading(false);
-    }
-  };
-
-  carregarDadosEHistorico();
-}, [isOpen, lead, clienteContexto]);
-
-  // ==========================================================
-  // DADOS DERIVADOS
-  // ==========================================================
-
-  const nomeCliente = useMemo(() => {
-    if (!activeLead) return 'Cliente sem nome';
-
-    const fantasia =
-      activeLead.nome_fantasia &&
-      String(activeLead.nome_fantasia).trim() !== '******' &&
-      String(activeLead.nome_fantasia).toUpperCase() !== 'NULL'
-        ? String(activeLead.nome_fantasia).trim()
-        : '';
-
-    const razao =
-      activeLead.razao_social &&
-      String(activeLead.razao_social).trim() !== '******' &&
-      String(activeLead.razao_social).toUpperCase() !== 'NULL'
-        ? String(activeLead.razao_social).trim()
-        : '';
-
-    return fantasia || razao || 'Cliente sem nome';
-  }, [activeLead]);
+  const nomeCliente =
+    activeLead?.nome_fantasia ||
+    activeLead?.razao_social ||
+    'Cliente';
 
   const resultadosDisponiveis =
-    RESULTADOS_POR_ACAO[tipoAcao] || [];
-
-  const ultimaAcao =
-    activeLead?.historico_acoes &&
-    activeLead.historico_acoes.length > 0
-      ? activeLead.historico_acoes[0]
-      : null;
+    RESULTADOS_POR_ACAO[tipoAcao] || RESULTADOS_POR_ACAO.outros;
 
   const produtosVisiveis = mostrarTodosProdutos
     ? PRODUTOS_INTERESSE_OPCOES
-    : PRODUTOS_INTERESSE_OPCOES.slice(0, 7);
+    : PRODUTOS_INTERESSE_OPCOES.slice(0, 6);
 
-  const dataHoje = new Date()
-    .toISOString()
-    .split('T')[0];
+  const ultimaAcao = useMemo(() => {
+    if (!historicoAcoes.length) return null;
 
-  // ==========================================================
-  // SUGESTÃO INTELIGENTE DE PRÓXIMA AÇÃO
-  // ==========================================================
+    return historicoAcoes[0];
+  }, [historicoAcoes]);
 
   const sugestaoProximaAcao = useMemo(() => {
-    if (!resultadoAcao) return null;
+    if (!ultimaAcao?.tipo_acao) return null;
 
-    if (
-      tipoAcao === 'ligacao' &&
-      resultadoAcao === 'nao_atendeu'
-    ) {
-      return {
-        texto: 'O cliente não atendeu. Recomendo agendar uma nova ligação.',
-        acao: 'ligacao',
-      };
-    }
+    const mapa: Record<string, string> = {
+      ligacao: 'whatsapp',
+      whatsapp: 'ligacao',
+      email: 'ligacao',
+      visita: 'ligacao',
+      email_marketing: 'ligacao',
+      sms: 'ligacao',
+      entrega_folders: 'ligacao',
+      outros: 'ligacao',
+    };
 
-    if (
-      tipoAcao === 'ligacao' &&
-      resultadoAcao === 'caixa_postal'
-    ) {
-      return {
-        texto: 'Caixa postal. Uma nova tentativa de contato pode ser agendada.',
-        acao: 'ligacao',
-      };
-    }
+    return mapa[ultimaAcao.tipo_acao] || 'ligacao';
+  }, [ultimaAcao]);
 
-    if (
-      tipoAcao === 'whatsapp' &&
-      resultadoAcao === 'aguardando_responder'
-    ) {
-      return {
-        texto: 'Cliente ainda não respondeu. Você pode programar um novo contato.',
-        acao: 'whatsapp',
-      };
-    }
+  useEffect(() => {
+    if (!isOpen || !activeLead?.id) return;
 
-    if (
-      tipoAcao === 'email' &&
-      resultadoAcao === 'aguardando_responder'
-    ) {
-      return {
-        texto: 'E-mail enviado e aguardando resposta.',
-        acao: 'email',
-      };
-    }
+    let ativo = true;
 
-    if (
-      resultadoAcao === 'demonstrou_interesse'
-    ) {
-      return {
-        texto: 'Cliente demonstrou interesse. Recomendo programar um próximo contato.',
-        acao: 'ligacao',
-      };
-    }
+    const carregar = async () => {
+      setLoading(false);
+      setErroValidacao('');
+      setModoReagendamento(false);
+      setDataReagendamento('');
+      setHorarioReagendamento('');
 
-    return null;
-  }, [tipoAcao, resultadoAcao]);
-
-  // ==========================================================
-  // HANDLERS
-  // ==========================================================
-
-  const handleSelectTipoAcao = (
-    tipoId: string
-  ) => {
-    setTipoAcao(tipoId);
-    setResultadoAcao('');
-    setResultadoAcaoOutros('');
-    setErroValidacao('');
-  };
-
-  const handleSelectResultado = (
-    resultadoId: string
-  ) => {
-    setResultadoAcao(resultadoId);
-    setResultadoAcaoOutros('');
-    setErroValidacao('');
-  };
-
-  const handleSelectObjetivo = (
-    objetivo: string
-  ) => {
-    setObjetivoAcao(objetivo);
-
-    if (objetivo !== 'Outros') {
+      setTipoAcao('ligacao');
+      setResultadoAcao('');
+      setResultadoAcaoOutros('');
+      setObjetivoAcao('Atendimento Comercial');
       setObjetivoAcaoOutros('');
-    }
+      setAgendamentos([]);
+      setProdutosInteresse([]);
+      setMostrarTodosProdutos(false);
 
-    setErroValidacao('');
+      const contatosAtuais = parseArrayData<Contato>(
+        activeLead.contatos_existentes,
+        []
+      );
+
+      setContatos(contatosAtuais);
+
+      setCarregandoHistorico(true);
+
+      try {
+        const historico = await buscarHistoricoInteracoesPorCliente(
+          activeLead.id
+        );
+
+        if (!ativo) return;
+
+        setHistoricoAcoes(
+          historico.length > 0
+            ? historico
+            : parseArrayData(activeLead.historico_acoes, [])
+        );
+      } catch {
+        if (ativo) {
+          setHistoricoAcoes(
+            parseArrayData(activeLead.historico_acoes, [])
+          );
+        }
+      } finally {
+        if (ativo) {
+          setCarregandoHistorico(false);
+        }
+      }
+    };
+
+    carregar();
+
+    return () => {
+      ativo = false;
+    };
+  }, [isOpen, activeLead?.id]);
+
+  if (!isOpen || !activeLead) return null;
+
+  const adicionarAgendamento = () => {
+    setAgendamentos((atual) => [
+      ...atual,
+      {
+        id:
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`,
+        proxima_acao: '',
+        data_retorno: '',
+        horario_retorno: '',
+        relato_proxima_acao: '',
+        produto_retorno: '',
+      },
+    ]);
   };
 
-  const handleToggleProduto = (
-    produto: string
-  ) => {
-    setProdutosInteresse((prev) =>
-      prev.includes(produto)
-        ? prev.filter((p) => p !== produto)
-        : [...prev, produto]
+  const removerAgendamento = (id: string) => {
+    setAgendamentos((atual) =>
+      atual.filter((item) => item.id !== id)
     );
   };
 
-  const handleAdicionarContato = () => {
-    setContatos((prev) => [
-      ...prev,
+  const atualizarAgendamento = (
+    id: string,
+    campo: keyof AgendamentoItem,
+    valor: string
+  ) => {
+    setAgendamentos((atual) =>
+      atual.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              [campo]: valor,
+            }
+          : item
+      )
+    );
+  };
+
+  const alternarProduto = (produto: string) => {
+    setProdutosInteresse((atual) =>
+      atual.includes(produto)
+        ? atual.filter((item) => item !== produto)
+        : [...atual, produto]
+    );
+  };
+
+  const adicionarContato = () => {
+    setContatos((atual) => [
+      ...atual,
       {
-        id: crypto.randomUUID(),
+        id:
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`,
         nome: '',
         cargo_parentesco: '',
         telefone: '',
         email: '',
-        principal: false,
+        principal: atual.length === 0,
       },
     ]);
   };
 
-  const handleAtualizarContato = (
+  const atualizarContato = (
     index: number,
     campo: keyof Contato,
-    valor: string
+    valor: string | boolean
   ) => {
-    const valorFinal =
-      campo === 'telefone' ? maskPhone(valor) : valor;
-
-    setContatos((prev) =>
-      prev.map((contato, i) =>
+    setContatos((atual) =>
+      atual.map((contato, i) =>
         i === index
           ? {
               ...contato,
-              [campo]: valorFinal,
+              [campo]:
+                campo === 'telefone' && typeof valor === 'string'
+                  ? maskPhone(valor)
+                  : valor,
             }
           : contato
       )
     );
   };
 
-  const handleRemoverContato = (index: number) => {
-    setContatos((prev) => prev.filter((_, i) => i !== index));
+  const removerContato = (index: number) => {
+    setContatos((atual) =>
+      atual.filter((_, i) => i !== index)
+    );
+  };
+
+  const definirContatoPrincipal = (index: number) => {
+    setContatos((atual) =>
+      atual.map((contato, i) => ({
+        ...contato,
+        principal: i === index,
+      }))
+    );
   };
 
   const aplicarSugestao = () => {
     if (!sugestaoProximaAcao) return;
 
-    setAgendamentos((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        proxima_acao: sugestaoProximaAcao.acao,
-        data_retorno: '',
-        horario_retorno: '',
-        relato_proxima_acao: sugestaoProximaAcao.texto || '',
-        produto_retorno: produtosInteresse[0] || '',
-      },
-    ]);
+    setAgendamentos((atual) => {
+      if (atual.length === 0) {
+        return [
+          {
+            id:
+              typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random()}`,
+            proxima_acao: sugestaoProximaAcao,
+            data_retorno: '',
+            horario_retorno: '',
+            relato_proxima_acao: '',
+            produto_retorno: '',
+          },
+        ];
+      }
 
-    setErroValidacao('');
+      return atual.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              proxima_acao: sugestaoProximaAcao,
+            }
+          : item
+      );
+    });
   };
 
-  // ==========================================================
-  // RENDERIZAÇÃO DOS SÓCIOS
-  // ==========================================================
+  const entrarModoReagendamento = () => {
+    setModoReagendamento(true);
+    setErroValidacao('');
 
-  const renderizarSocios = () => {
-    if (!activeLead) return null;
+    setDataReagendamento(
+      clienteContexto?.data_retorno ||
+      activeLead?.data_retorno ||
+      ''
+    );
 
-    const sociosRaw =
-      activeLead.nomes_socios;
-
-    if (
-      !sociosRaw ||
-      String(sociosRaw).toUpperCase() === 'NULL' ||
-      String(sociosRaw).trim() === '******'
-    ) {
-      return null;
-    }
-
-    let listaNomes: string[] = [];
-
-    if (Array.isArray(sociosRaw)) {
-      listaNomes = sociosRaw
-        .map((socio) => {
-          if (typeof socio === 'string') {
-            return socio;
-          }
-
-          if (
-            socio &&
-            typeof socio === 'object'
-          ) {
-            return (
-              socio.nome ||
-              socio.razao_social ||
-              socio.socio ||
-              ''
-            );
-          }
-
-          return String(socio);
-        })
-        .filter(Boolean);
-    } else if (
-      typeof sociosRaw === 'object'
-    ) {
-      listaNomes = [
-        sociosRaw.nome ||
-          sociosRaw.razao_social ||
-          '',
-      ].filter(Boolean);
-    } else {
-      listaNomes = String(
-        sociosRaw
-      ).split(/,|\n/);
-    }
-
-    if (listaNomes.length === 0) {
-      return null;
-    }
-
-    return (
-      <div className="text-xs font-normal text-purple-100 flex flex-col mt-2 space-y-0.5 border-t border-purple-500/40 pt-2">
-        <span className="text-[10px] font-bold uppercase text-purple-300">
-          Sócios / Sócias
-        </span>
-
-        {listaNomes.map(
-          (socio, idx) => {
-            const nomeSocio =
-              String(socio).trim();
-
-            if (
-              !nomeSocio ||
-              nomeSocio ===
-                '[object Object]'
-            ) {
-              return null;
-            }
-
-            return (
-              <span
-                key={`${nomeSocio}-${idx}`}
-                className="flex items-center gap-1.5 text-purple-100 font-medium"
-              >
-                <span className="w-1.5 h-1.5 bg-purple-300 rounded-full inline-block" />
-                {nomeSocio}
-              </span>
-            );
-          }
-        )}
-      </div>
+    setHorarioReagendamento(
+      formatarHora(
+        clienteContexto?.horario_retorno ||
+        activeLead?.horario_retorno ||
+        ''
+      )
     );
   };
 
-  // ==========================================================
-  // VALIDAÇÃO
-  // ==========================================================
+  const voltarParaAcaoComercial = () => {
+    setModoReagendamento(false);
+    setDataReagendamento('');
+    setHorarioReagendamento('');
+    setErroValidacao('');
+  };
 
-  const validarFormulario = (): boolean => {
+  const validarReagendamento = () => {
+    if (!dataReagendamento) {
+      setErroValidacao('Informe a nova data do retorno.');
+      return false;
+    }
+
+    if (dataReagendamento < dataHoje) {
+      setErroValidacao(
+        'A nova data do retorno não pode ser anterior a hoje.'
+      );
+      return false;
+    }
+
+    if (!horarioReagendamento) {
+      setErroValidacao('Informe o novo horário do retorno.');
+      return false;
+    }
+
+    setErroValidacao('');
+    return true;
+  };
+
+  const validarFormulario = () => {
     if (!resultadoAcao) {
-      setErroValidacao('Informe o resultado da ação realizada.');
+      setErroValidacao('Informe o resultado da ação.');
       return false;
     }
 
@@ -671,7 +580,7 @@ export const ModalAcoesComerciais: React.FC<
       (resultadoAcao === 'outros' || tipoAcao === 'outros') &&
       !resultadoAcaoOutros.trim()
     ) {
-      setErroValidacao('Descreva o resultado da ação.');
+      setErroValidacao('Informe o resultado da ação.');
       return false;
     }
 
@@ -679,37 +588,43 @@ export const ModalAcoesComerciais: React.FC<
       objetivoAcao === 'Outros' &&
       !objetivoAcaoOutros.trim()
     ) {
-      setErroValidacao('Descreva o objetivo da ação.');
+      setErroValidacao('Informe o objetivo da ação.');
       return false;
     }
 
-    // VALIDAÇÃO DOS MÚLTIPLOS AGENDAMENTOS
-    for (let i = 0; i < agendamentos.length; i++) {
-      const ag = agendamentos[i];
-      const num = agendamentos.length > 1 ? ` (${i + 1}º agendamento)` : '';
-
-      if (!ag.proxima_acao) {
-        setErroValidacao(`Informe o tipo de ação para o próximo contato${num}.`);
+    for (const agendamento of agendamentos) {
+      if (!agendamento.proxima_acao) {
+        setErroValidacao(
+          'Informe a próxima ação de todos os retornos.'
+        );
         return false;
       }
 
-      if (!ag.data_retorno) {
-        setErroValidacao(`Informe a data do retorno${num}.`);
+      if (!agendamento.data_retorno) {
+        setErroValidacao(
+          'Informe a data de todos os retornos.'
+        );
         return false;
       }
 
-      if (ag.data_retorno < dataHoje) {
-        setErroValidacao(`A data do retorno não pode ser anterior a hoje${num}.`);
+      if (agendamento.data_retorno < dataHoje) {
+        setErroValidacao(
+          'A data do retorno não pode ser anterior a hoje.'
+        );
         return false;
       }
 
-      if (!ag.horario_retorno) {
-        setErroValidacao(`Informe o horário do retorno${num}.`);
+      if (!agendamento.horario_retorno) {
+        setErroValidacao(
+          'Informe o horário de todos os retornos.'
+        );
         return false;
       }
 
-      if (!ag.relato_proxima_acao.trim()) {
-        setErroValidacao(`Informe o que deverá ser tratado na próxima ação${num}.`);
+      if (!agendamento.relato_proxima_acao.trim()) {
+        setErroValidacao(
+          'Informe o relato de todos os retornos.'
+        );
         return false;
       }
     }
@@ -718,1009 +633,895 @@ export const ModalAcoesComerciais: React.FC<
     return true;
   };
 
-  // ==========================================================
-  // SUBMIT
-  // ==========================================================
-
   const handleSubmeter = async () => {
-  if (loading) return;
+    if (loading) return;
 
-  if (!validarFormulario()) {
-    return;
-  }
+    if (modoReagendamento) {
+      if (!validarReagendamento()) return;
 
-  setLoading(true);
+      setLoading(true);
 
-  try {
-    const resultadoFinal =
-      resultadoAcao === 'outros' || tipoAcao === 'outros'
-        ? resultadoAcaoOutros
-        : resultadoAcao;
+      try {
+        await onSave({
+          cliente_id: activeLead.id,
+          tipo_acao: 'reagendamento',
+          data_retorno: dataReagendamento,
+          horario_retorno: `${horarioReagendamento}:00`,
+        });
 
-    const objetivoFinal =
-      objetivoAcao === 'Outros'
-        ? objetivoAcaoOutros
-        : objetivoAcao;
+        const historicoAtualizado =
+          await buscarHistoricoInteracoesPorCliente(
+            activeLead.id
+          );
 
-    // Primeiro agendamento para extrair os dados da próxima ação
-    const primeiroAgendamento = agendamentos[0] || null;
+        setHistoricoAcoes(historicoAtualizado);
+        onClose();
+      } catch (error) {
+        console.error('Erro ao reagendar retorno:', error);
+        setErroValidacao(
+          'Não foi possível reagendar o retorno. Tente novamente.'
+        );
+      } finally {
+        setLoading(false);
+      }
 
-    // Payload formatado de acordo com a tabela tab_interacoes
-    const payload = {
-      cliente_id: activeLead?.id,
-      tipo_acao: tipoAcao,
-      relato: primeiroAgendamento?.relato_proxima_acao || '', // Campo texto obrigatório da tabela
-      resultado_acao: resultadoFinal || null,
-      objetivo_acao: objetivoFinal || null,
-      proxima_acao: primeiroAgendamento?.proxima_acao || null, // Deve ser string (text), ex: 'LIGACAO'
-      relato_proxima_acao: primeiroAgendamento?.relato_proxima_acao || null,
-      produtos_interesse: produtosInteresse.length > 0 ? produtosInteresse : null,
-      data_retorno: primeiroAgendamento?.data_retorno || null,
-      horario_retorno:
-        primeiroAgendamento?.horario_retorno && primeiroAgendamento.horario_retorno.length === 5
-          ? `${primeiroAgendamento.horario_retorno}:00`
-          : primeiroAgendamento?.horario_retorno || null,
-      status_agendamento: primeiroAgendamento ? 'PENDENTE' : null,
-      
-      // Contatos para atualização se necessário no componente pai
-      contatos,
-    };
-
-    console.log('Enviando payload para salvar:', payload); // Utilize para depuração no console do navegador
-
-    await onSave(payload);
-
-    // Recarrega o histórico no próprio modal após salvar
-    if (activeLead?.id) {
-      const historicoAtualizado = await buscarHistoricoInteracoesPorCliente(activeLead.id);
-      setHistoricoAcoes(historicoAtualizado);
+      return;
     }
 
-    onClose();
-  } catch (error) {
-    console.error('Erro ao registrar ação comercial:', error);
-    setErroValidacao('Não foi possível registrar a ação. Tente novamente.');
-  } finally {
-    setLoading(false);
-  }
-};
+    if (!validarFormulario()) return;
 
-  // ==========================================================
-  // RENDER
-  // ==========================================================
+    setLoading(true);
 
-  if (!isOpen || !activeLead) {
-    return null;
-  }
+    try {
+      const resultadoFinal =
+        resultadoAcao === 'outros' || tipoAcao === 'outros'
+          ? resultadoAcaoOutros
+          : resultadoAcao;
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 animate-fadeIn">
+      const objetivoFinal =
+        objetivoAcao === 'Outros'
+          ? objetivoAcaoOutros
+          : objetivoAcao;
 
-      <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl max-h-[95vh] flex flex-col overflow-hidden border border-purple-100">
+      const primeiroAgendamento =
+        agendamentos[0] || null;
 
-        {/* ====================================================
-            CABEÇALHO
-        ==================================================== */}
+      const payload = {
+        cliente_id: activeLead.id,
+        tipo_acao: tipoAcao,
+        relato:
+          primeiroAgendamento?.relato_proxima_acao || '',
+        resultado_acao: resultadoFinal || null,
+        objetivo_acao: objetivoFinal || null,
+        proxima_acao:
+          primeiroAgendamento?.proxima_acao || null,
+        relato_proxima_acao:
+          primeiroAgendamento?.relato_proxima_acao || null,
+        produtos_interesse:
+          produtosInteresse.length > 0
+            ? produtosInteresse
+            : null,
+        data_retorno:
+          primeiroAgendamento?.data_retorno || null,
+        horario_retorno:
+          primeiroAgendamento?.horario_retorno
+            ? `${primeiroAgendamento.horario_retorno}:00`
+            : null,
+        status_agendamento:
+          primeiroAgendamento
+            ? 'PENDENTE'
+            : null,
+        contatos,
+      };
 
-        <div className="p-4 border-b flex justify-between items-start gap-3 bg-gradient-to-r from-purple-700 via-purple-600 to-indigo-600 text-white shadow-md">
+      await onSave(payload);
 
-          <div className="flex items-start gap-3 flex-1 min-w-0">
+      const historicoAtualizado =
+        await buscarHistoricoInteracoesPorCliente(
+          activeLead.id
+        );
 
-            <div className="p-2 bg-white/10 rounded-xl backdrop-blur-md shrink-0">
-              <Clock className="w-6 h-6 text-purple-200" />
-            </div>
+      setHistoricoAcoes(historicoAtualizado);
+      onClose();
+    } catch (error) {
+      console.error(
+        'Erro ao registrar ação comercial:',
+        error
+      );
 
-            <div className="min-w-0 flex-1">
+      setErroValidacao(
+        'Não foi possível registrar a ação. Tente novamente.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
-              <span className="text-[10px] uppercase font-bold tracking-widest text-purple-200 bg-purple-800/40 px-2 py-0.5 rounded-full inline-block mb-1 border border-purple-400/30">
-                Ações Comerciais & Timeline
+  const renderReagendamento = () => (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-purple-100 p-2">
+            <Calendar className="h-5 w-5 text-purple-700" />
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-gray-900">
+              Reagendar retorno
+            </h3>
+
+            <p className="mt-1 text-sm text-gray-600">
+              Altere somente a data e o horário do próximo
+              retorno de {nomeCliente}.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700">
+            Nova data
+          </label>
+
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+            <input
+              type="date"
+              min={dataHoje}
+              value={dataReagendamento}
+              onChange={(e) =>
+                setDataReagendamento(e.target.value)
+              }
+              className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700">
+            Novo horário
+          </label>
+
+          <div className="relative">
+            <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+            <input
+              type="time"
+              value={horarioReagendamento}
+              onChange={(e) =>
+                setHorarioReagendamento(e.target.value)
+              }
+              className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+            />
+          </div>
+        </div>
+      </div>
+
+      {dataReagendamento && horarioReagendamento && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-gray-700">
+            <Check className="h-4 w-4 text-green-600" />
+
+            <span>
+              Novo retorno:{' '}
+              <strong>
+                {formatarData(dataReagendamento)}
+              </strong>{' '}
+              às{' '}
+              <strong>
+                {horarioReagendamento}
+              </strong>
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderAcaoComercial = () => (
+    <div className="space-y-6">
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Última interação
+          </h3>
+
+          {carregandoHistorico && (
+            <span className="text-xs text-gray-400">
+              Carregando...
+            </span>
+          )}
+        </div>
+
+        {ultimaAcao ? (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
+                {ultimaAcao.tipo_acao || 'Interação'}
               </span>
 
-              <h3 className="font-black text-lg leading-tight uppercase tracking-tight text-white drop-shadow-sm truncate">
-                {nomeCliente}
-              </h3>
-
-              {renderizarSocios()}
-
+              {ultimaAcao.resultado_acao && (
+                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
+                  {ultimaAcao.resultado_acao}
+                </span>
+              )}
             </div>
+
+            {ultimaAcao.relato && (
+              <p className="mt-3 text-sm text-gray-600">
+                {ultimaAcao.relato}
+              </p>
+            )}
+
+            {ultimaAcao.data_retorno && (
+              <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                <Calendar className="h-4 w-4" />
+                {formatarData(ultimaAcao.data_retorno)}
+                {ultimaAcao.horario_retorno &&
+                  ` às ${formatarHora(
+                    ultimaAcao.horario_retorno
+                  )}`}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
+            Nenhuma interação registrada.
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-4 flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-purple-600" />
+
+          <h3 className="text-sm font-semibold text-gray-900">
+            Registrar nova ação
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {TIPOS_ACAO.map((tipo) => {
+            const Icon = tipo.icon;
+            const selecionado = tipoAcao === tipo.value;
+
+            return (
+              <button
+                key={tipo.value}
+                type="button"
+                onClick={() => {
+                  setTipoAcao(tipo.value);
+                  setResultadoAcao('');
+                  setResultadoAcaoOutros('');
+                }}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition ${
+                  selecionado
+                    ? 'border-purple-600 bg-purple-600 text-white'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {tipo.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Resultado da ação
+            </label>
+
+            <select
+              value={resultadoAcao}
+              onChange={(e) =>
+                setResultadoAcao(e.target.value)
+              }
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+            >
+              <option value="">
+                Selecione o resultado
+              </option>
+
+              {resultadosDisponiveis.map((resultado) => (
+                <option
+                  key={resultado.value}
+                  value={resultado.value}
+                >
+                  {resultado.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Objetivo da ação
+            </label>
+
+            <select
+              value={objetivoAcao}
+              onChange={(e) =>
+                setObjetivoAcao(e.target.value)
+              }
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+            >
+              <option value="Atendimento Comercial">
+                Atendimento Comercial
+              </option>
+              <option value="Prospecção">
+                Prospecção
+              </option>
+              <option value="Follow-up">
+                Follow-up
+              </option>
+              <option value="Pós-venda">
+                Pós-venda
+              </option>
+              <option value="Renovação">
+                Renovação
+              </option>
+              <option value="Outros">
+                Outros
+              </option>
+            </select>
+          </div>
+        </div>
+
+        {(resultadoAcao === 'outros' ||
+          tipoAcao === 'outros') && (
+          <input
+            value={resultadoAcaoOutros}
+            onChange={(e) =>
+              setResultadoAcaoOutros(e.target.value)
+            }
+            placeholder="Descreva o resultado"
+            className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+          />
+        )}
+
+        {objetivoAcao === 'Outros' && (
+          <input
+            value={objetivoAcaoOutros}
+            onChange={(e) =>
+              setObjetivoAcaoOutros(e.target.value)
+            }
+            placeholder="Descreva o objetivo"
+            className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+          />
+        )}
+      </section>
+
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Próximos passos / Retornos
+            </h3>
+
+            <p className="mt-1 text-xs text-gray-500">
+              Agende os próximos contatos necessários.
+            </p>
           </div>
 
           <button
             type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all duration-200 hover:rotate-90 shrink-0 disabled:opacity-50"
-            title="Fechar"
+            onClick={adicionarAgendamento}
+            className="flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700"
           >
-            <X className="w-5 h-5" />
+            <Plus className="h-4 w-4" />
+            Adicionar
           </button>
         </div>
 
-        {/* ====================================================
-            CORPO
-        ==================================================== */}
+        {sugestaoProximaAcao && (
+          <button
+            type="button"
+            onClick={aplicarSugestao}
+            className="mb-4 flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100"
+          >
+            <Sparkles className="h-4 w-4" />
+            Aplicar sugestão de próxima ação
+          </button>
+        )}
 
-        <div className="p-3 sm:p-5 overflow-y-auto flex-1 space-y-5 bg-slate-50/50">
-
-          {/* ==================================================
-              ÚLTIMA INTERAÇÃO
-          ================================================== */}
-
-          {ultimaAcao && (
-            <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
-
-              <div className="flex items-center justify-between gap-2 mb-2">
-
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-purple-600" />
-
-                  <span className="text-[11px] font-black uppercase tracking-wide text-purple-800">
-                    Última interação
+        {agendamentos.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
+            Nenhum retorno agendado.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {agendamentos.map((agendamento, index) => (
+              <div
+                key={agendamento.id}
+                className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+              >
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-800">
+                    Retorno {index + 1}
                   </span>
-                </div>
 
-                <span className="text-[10px] text-purple-600 font-semibold">
-                  {new Date(
-                    ultimaAcao.criado_em
-                  ).toLocaleString('pt-BR')}
-                </span>
-
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-
-                {ultimaAcao.tipo_acao && (
-                  <span className="bg-white border border-purple-200 text-purple-800 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase">
-                    {ultimaAcao.tipo_acao.replace(
-                      /_/g,
-                      ' '
-                    )}
-                  </span>
-                )}
-
-                {ultimaAcao.resultado_acao && (
-                  <span className="bg-white border border-slate-200 text-slate-700 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase">
-                    {ultimaAcao.resultado_acao.replace(
-                      /_/g,
-                      ' '
-                    )}
-                  </span>
-                )}
-
-              </div>
-
-              {ultimaAcao.objetivo_acao && (
-                <p className="text-[11px] text-slate-600 mt-2">
-                  <strong>Objetivo:</strong>{' '}
-                  {ultimaAcao.objetivo_acao}
-                </p>
-              )}
-
-              {ultimaAcao.relato_proxima_acao && (
-                <p className="text-[11px] text-purple-800 mt-1 italic">
-                  "{ultimaAcao.relato_proxima_acao}"
-                </p>
-              )}
-
-            </div>
-          )}
-
-          {/* ==================================================
-              1. AÇÃO REALIZADA
-          ================================================== */}
-
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-5">
-
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <span className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 font-black text-xs flex items-center justify-center">
-                1
-              </span>
-
-              <div>
-                <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
-                  Registrar nova ação
-                </h4>
-
-                <p className="text-[10px] text-slate-400">
-                  Informe o que aconteceu agora
-                </p>
-              </div>
-            </div>
-
-            {/* TIPO DA AÇÃO */}
-
-            <div>
-
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-2">
-                O que você fez?
-              </label>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-
-                {TIPOS_ACAO.map((item) => {
-
-                  const Icone = item.icon;
-
-                  const isSelected =
-                    tipoAcao === item.id;
-
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() =>
-                        handleSelectTipoAcao(
-                          item.id
-                        )
-                      }
-                      className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-semibold transition-all border text-left ${
-                        isSelected
-                          ? 'bg-purple-50 text-purple-800 border-purple-500 shadow-sm ring-2 ring-purple-500/20'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-                      }`}
-                    >
-                      <Icone
-                        className={`w-4 h-4 shrink-0 ${
-                          isSelected
-                            ? 'text-purple-600'
-                            : 'text-slate-400'
-                        }`}
-                      />
-
-                      <span className="truncate">
-                        {item.label}
-                      </span>
-
-                      {isSelected && (
-                        <Check className="w-3.5 h-3.5 ml-auto shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
-
-              </div>
-            </div>
-
-            {/* RESULTADO */}
-
-            <div className="pt-2">
-
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-2">
-                Qual foi o resultado?
-                <span className="text-red-500 ml-1">*</span>
-              </label>
-
-              {tipoAcao === 'outros' ? (
-                <textarea
-                  rows={3}
-                  value={resultadoAcaoOutros}
-                  onChange={(e) => {
-                    setResultadoAcaoOutros(
-                      e.target.value
-                    );
-                    setErroValidacao('');
-                  }}
-                  placeholder="Descreva o resultado do contato..."
-                  className={`w-full p-3 border rounded-xl text-xs outline-none focus:border-purple-500 bg-white resize-none ${
-                    erroValidacao
-                      ? 'border-red-300'
-                      : 'border-slate-200'
-                  }`}
-                />
-              ) : (
-                <div className="space-y-3">
-
-                  <div className="flex flex-wrap gap-2">
-
-                    {resultadosDisponiveis.map(
-                      (res) => {
-
-                        const isSelected =
-                          resultadoAcao ===
-                          res.id;
-
-                        return (
-                          <button
-                            key={res.id}
-                            type="button"
-                            onClick={() =>
-                              handleSelectResultado(
-                                res.id
-                              )
-                            }
-                            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border ${
-                              isSelected
-                                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            {res.label}
-                          </button>
-                        );
-                      }
-                    )}
-
-                  </div>
-
-                  {resultadoAcao ===
-                    'outros' && (
-                    <input
-                      type="text"
-                      value={
-                        resultadoAcaoOutros
-                      }
-                      onChange={(e) => {
-                        setResultadoAcaoOutros(
-                          e.target.value
-                        );
-                        setErroValidacao('');
-                      }}
-                      placeholder="Especifique o resultado ocorrido..."
-                      className="w-full p-3 border border-purple-200 rounded-xl text-xs outline-none focus:border-purple-500 bg-purple-50/30"
-                    />
-                  )}
-
-                </div>
-              )}
-
-            </div>
-
-            {/* SUGESTÃO */}
-
-            {sugestaoProximaAcao && (
-              <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
-                <Sparkles className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-
-                <div className="flex-1">
-                  <p className="text-[11px] font-bold text-amber-800">
-                    Sugestão do CRM
-                  </p>
-                  <p className="text-[11px] text-amber-700 mt-0.5">
-                    {sugestaoProximaAcao.texto}
-                  </p>
-                </div>
-
-                {agendamentos.length === 0 && (
                   <button
                     type="button"
-                    onClick={aplicarSugestao}
-                    className="text-[10px] font-black text-amber-700 bg-white border border-amber-300 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 transition"
+                    onClick={() =>
+                      removerAgendamento(agendamento.id)
+                    }
+                    className="rounded-lg p-2 text-red-500 hover:bg-red-50"
                   >
-                    Aplicar
+                    <Trash2 className="h-4 w-4" />
                   </button>
-                )}
-              </div>
-            )}
-
-            {/* OBJETIVO */}
-
-            <div className="pt-2 border-t border-slate-100">
-
-              <label className="block text-xs font-bold text-slate-600 uppercase mb-2">
-                Qual era o objetivo?
-              </label>
-
-              <div className="flex flex-wrap gap-2 mb-2">
-
-                {[
-                  'Atendimento Comercial',
-                  'Acompanhamento de Solicitações (Sinistros/Assistências)',
-                  'Outros',
-                ].map((obj) => {
-
-                  const isSelected =
-                    objetivoAcao === obj;
-
-                  return (
-                    <button
-                      key={obj}
-                      type="button"
-                      onClick={() =>
-                        handleSelectObjetivo(
-                          obj
-                        )
-                      }
-                      className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
-                        isSelected
-                          ? 'bg-slate-800 text-white border-slate-800'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      {obj}
-                    </button>
-                  );
-                })}
-
-              </div>
-
-              {objetivoAcao ===
-                'Outros' && (
-                <input
-                  type="text"
-                  value={
-                    objetivoAcaoOutros
-                  }
-                  onChange={(e) => {
-                    setObjetivoAcaoOutros(
-                      e.target.value
-                    );
-                    setErroValidacao('');
-                  }}
-                  placeholder="Descreva qual era o objetivo..."
-                  className="w-full p-3 border border-slate-300 rounded-xl text-xs outline-none focus:border-purple-500"
-                />
-              )}
-
-            </div>
-
-          </div>
-
-          {/* ==================================================
-              2. PRÓXIMO PASSO (MÚLTIPLOS AGENDAMENTOS)
-            ================================================== */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 font-black text-xs flex items-center justify-center">
-                  2
-                </span>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
-                    Próximos passos / Retornos
-                  </h4>
-                  <p className="text-[10px] text-slate-400">
-                    Opcional — programe um ou mais retornos futuros
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAdicionarAgendamento}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 hover:bg-purple-100 text-xs font-bold transition border border-purple-200/60"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Adicionar agendamento
-              </button>
-            </div>
-
-            {/* LISTA DE AGENDAMENTOS */}
-            {agendamentos.length === 0 ? (
-              <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-xl bg-slate-50/50">
-                <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-xs font-medium text-slate-500">
-                  Nenhum retorno agendado para esta ação.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleAdicionarAgendamento}
-                  className="mt-2 text-xs text-purple-600 hover:text-purple-700 font-bold underline"
-                >
-                  Clique para agendar um retorno
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {agendamentos.map((ag, index) => (
-                  <div
-                    key={ag.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition space-y-3 relative group"
-                  >
-                    {/* CABEÇALHO DO CARD DE AGENDAMENTO */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/70 px-2.5 py-0.5 rounded-md">
-                        Agendamento #{index + 1}
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoverAgendamento(ag.id)}
-                        className="text-slate-400 hover:text-red-500 p-1 rounded-lg transition"
-                        title="Remover agendamento"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {/* TIPO DE AÇÃO */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">
-                        Tipo de Ação *
-                      </label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {PROXIMAS_ACOES_OPCOES.map((act) => {
-                          const isSelected = ag.proxima_acao === act.id;
-                          return (
-                            <button
-                              key={act.id}
-                              type="button"
-                              onClick={() =>
-                                handleAtualizarAgendamento(ag.id, 'proxima_acao', act.id)
-                              }
-                              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                                isSelected
-                                  ? 'bg-purple-600 text-white border-purple-600'
-                                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                              }`}
-                            >
-                              {act.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* CAMPOS DE DATA, HORÁRIO E PRODUTO */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-                      <div className="grid grid-cols-2 gap-2 md:col-span-2">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">
-                            Data *
-                          </label>
-                          <div className="relative">
-                            <Calendar className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
-                            <input
-                              type="date"
-                              min={dataHoje}
-                              value={ag.data_retorno}
-                              onChange={(e) =>
-                                handleAtualizarAgendamento(ag.id, 'data_retorno', e.target.value)
-                              }
-                              className="w-full pl-9 pr-2 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:border-purple-500 font-semibold"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">
-                            Horário *
-                          </label>
-                          <div className="relative">
-                            <Clock className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
-                            <input
-                              type="time"
-                              value={ag.horario_retorno}
-                              onChange={(e) =>
-                                handleAtualizarAgendamento(ag.id, 'horario_retorno', e.target.value)
-                              }
-                              className="w-full pl-9 pr-2 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:border-purple-500 font-semibold"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* SELEÇÃO DO PRODUTO DO RETORNO */}
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">
-                          Produto do Retorno
-                        </label>
-                        <select
-                          value={ag.produto_retorno || ''}
-                          onChange={(e) =>
-                            handleAtualizarAgendamento(ag.id, 'produto_retorno', e.target.value)
-                          }
-                          className="w-full p-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:border-purple-500 font-semibold h-[38px]"
-                        >
-                          <option value="">Selecione o produto</option>
-                          {produtosVisiveis.map((prod) => (
-                            <option key={prod} value={prod}>
-                              {prod}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* DETALHES / MENSAGEM */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">
-                        O que tratar neste retorno? *
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={ag.relato_proxima_acao}
-                        onChange={(e) =>
-                          handleAtualizarAgendamento(ag.id, 'relato_proxima_acao', e.target.value)
-                        }
-                        placeholder="Ex.: Apresentar cotação do seguro empresarial..."
-                        className="w-full p-2 border border-slate-200 rounded-xl text-xs resize-none outline-none focus:border-purple-500 bg-white"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ==================================================
-              3. PRODUTOS
-          ================================================== */}
-
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
-
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-
-              <div className="flex items-center gap-2">
-
-                <span className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 font-black text-xs flex items-center justify-center">
-                  3
-                </span>
-
-                <div>
-
-                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
-                    Produtos de interesse
-                  </h4>
-
-                  <p className="text-[10px] text-slate-400">
-                    Opcional
-                  </p>
-
                 </div>
 
-              </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-gray-600">
+                      Próxima ação
+                    </label>
 
-              {produtosInteresse.length > 0 && (
-                <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-bold">
-                  {produtosInteresse.length}{' '}
-                  selecionado
-                  {produtosInteresse.length !==
-                  1
-                    ? 's'
-                    : ''}
-                </span>
-              )}
-
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-
-              {produtosVisiveis.map(
-                (prod) => {
-
-                  const isSelected =
-                    produtosInteresse.includes(
-                      prod
-                    );
-
-                  return (
-                    <button
-                      key={prod}
-                      type="button"
-                      onClick={() =>
-                        handleToggleProduto(
-                          prod
+                    <select
+                      value={agendamento.proxima_acao}
+                      onChange={(e) =>
+                        atualizarAgendamento(
+                          agendamento.id,
+                          'proxima_acao',
+                          e.target.value
                         )
                       }
-                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
                     >
-                      {isSelected && (
-                        <Check className="w-3.5 h-3.5" />
+                      <option value="">
+                        Selecione
+                      </option>
+
+                      {PROXIMAS_ACOES_OPCOES.map(
+                        (opcao) => (
+                          <option
+                            key={opcao.value}
+                            value={opcao.value}
+                          >
+                            {opcao.label}
+                          </option>
+                        )
                       )}
+                    </select>
+                  </div>
 
-                      {prod}
-                    </button>
-                  );
-                }
-              )}
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-gray-600">
+                      Data
+                    </label>
 
-            </div>
+                    <input
+                      type="date"
+                      min={dataHoje}
+                      value={agendamento.data_retorno}
+                      onChange={(e) =>
+                        atualizarAgendamento(
+                          agendamento.id,
+                          'data_retorno',
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                    />
+                  </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                setMostrarTodosProdutos(
-                  (prev) => !prev
-                )
-              }
-              className="text-[10px] font-bold text-purple-600 hover:text-purple-800 flex items-center gap-1"
-            >
-              {mostrarTodosProdutos ? (
-                <>
-                  Mostrar menos
-                  <ChevronUp className="w-3 h-3" />
-                </>
-              ) : (
-                <>
-                  Mostrar todos os produtos
-                  <ChevronDown className="w-3 h-3" />
-                </>
-              )}
-            </button>
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-gray-600">
+                      Horário
+                    </label>
 
+                    <input
+                      type="time"
+                      value={agendamento.horario_retorno}
+                      onChange={(e) =>
+                        atualizarAgendamento(
+                          agendamento.id,
+                          'horario_retorno',
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <textarea
+                  value={agendamento.relato_proxima_acao}
+                  onChange={(e) =>
+                    atualizarAgendamento(
+                      agendamento.id,
+                      'relato_proxima_acao',
+                      e.target.value
+                    )
+                  }
+                  placeholder="Descreva o que deverá ser feito no próximo contato..."
+                  rows={2}
+                  className="mt-4 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Produtos de interesse
+          </h3>
+
+          <p className="mt-1 text-xs text-gray-500">
+            Selecione os produtos relacionados ao cliente.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {produtosVisiveis.map((produto) => {
+            const selecionado =
+              produtosInteresse.includes(produto);
+
+            return (
+              <button
+                key={produto}
+                type="button"
+                onClick={() => alternarProduto(produto)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                  selecionado
+                    ? 'border-purple-600 bg-purple-600 text-white'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-purple-300'
+                }`}
+              >
+                {selecionado && (
+                  <Check className="mr-1 inline h-3 w-3" />
+                )}
+
+                {produto}
+              </button>
+            );
+          })}
+        </div>
+
+        {PRODUTOS_INTERESSE_OPCOES.length > 6 && (
+          <button
+            type="button"
+            onClick={() =>
+              setMostrarTodosProdutos(
+                (atual) => !atual
+              )
+            }
+            className="mt-3 flex items-center gap-1 text-xs font-medium text-purple-600"
+          >
+            {mostrarTodosProdutos ? (
+              <>
+                Mostrar menos
+                <ChevronUp className="h-4 w-4" />
+              </>
+            ) : (
+              <>
+                Mostrar todos
+                <ChevronDown className="h-4 w-4" />
+              </>
+            )}
+          </button>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Contatos
+            </h3>
+
+            <p className="mt-1 text-xs text-gray-500">
+              Pessoas relacionadas ao cliente.
+            </p>
           </div>
 
-          {/* ==================================================
-              4. CONTATOS
-            ================================================== */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3 gap-2">
-              <div className="flex items-center gap-2">
-                <span className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 font-black text-xs flex items-center justify-center">
-                  4
-                </span>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
-                    Contatos
-                  </h4>
-                  <p className="text-[10px] text-slate-400">
-                    Contatos e indicações do cliente
-                  </p>
+          <button
+            type="button"
+            onClick={adicionarContato}
+            className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100"
+          >
+            <UserPlus className="h-4 w-4" />
+            Adicionar
+          </button>
+        </div>
+
+        {contatos.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
+            Nenhum contato adicional cadastrado.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {contatos.map((contato, index) => (
+              <div
+                key={contato.id || index}
+                className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-purple-600" />
+
+                    <span className="text-sm font-medium text-gray-800">
+                      Contato {index + 1}
+                    </span>
+
+                    {contato.principal && (
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                        Principal
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      removerContato(index)
+                    }
+                    className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                  <input
+                    value={contato.nome}
+                    onChange={(e) =>
+                      atualizarContato(
+                        index,
+                        'nome',
+                        e.target.value
+                      )
+                    }
+                    placeholder="Nome"
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                  />
+
+                  <input
+                    value={contato.cargo_parentesco}
+                    onChange={(e) =>
+                      atualizarContato(
+                        index,
+                        'cargo_parentesco',
+                        e.target.value
+                      )
+                    }
+                    placeholder="Cargo / Parentesco"
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                  />
+
+                  <input
+                    value={contato.telefone}
+                    onChange={(e) =>
+                      atualizarContato(
+                        index,
+                        'telefone',
+                        e.target.value
+                      )
+                    }
+                    placeholder="Telefone"
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                  />
+
+                  <input
+                    value={contato.email}
+                    onChange={(e) =>
+                      atualizarContato(
+                        index,
+                        'email',
+                        e.target.value
+                      )
+                    }
+                    placeholder="E-mail"
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(contato.principal)}
+                    onChange={() =>
+                      definirContatoPrincipal(index)
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+
+                  Definir como contato principal
+                </label>
               </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="shrink-0 bg-gradient-to-r from-purple-800 to-purple-600 px-6 py-5 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-white/10 p-2">
+                <Clock className="h-6 w-6" />
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold">
+                  Ações Comerciais & Timeline
+                </h2>
+
+                <p className="mt-1 text-sm text-purple-100">
+                  {nomeCliente}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={
+                  modoReagendamento
+                    ? voltarParaAcaoComercial
+                    : entrarModoReagendamento
+                }
+                disabled={loading}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  modoReagendamento
+                    ? 'bg-white text-purple-700 hover:bg-purple-50'
+                    : 'bg-white/15 text-white hover:bg-white/25'
+                }`}
+              >
+                <Calendar className="h-4 w-4" />
+
+                {modoReagendamento
+                  ? 'Ação Comercial'
+                  : 'Reagendamento'}
+              </button>
 
               <button
                 type="button"
-                onClick={handleAdicionarContato}
-                className="text-xs bg-purple-50 text-purple-700 hover:bg-purple-100 px-3 py-2 rounded-xl font-bold flex items-center gap-1 transition shrink-0"
+                onClick={onClose}
+                disabled={loading}
+                className="rounded-lg p-2 text-white/80 hover:bg-white/10 hover:text-white"
               >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Adicionar</span>
-                <span className="sm:hidden">+</span>
+                <X className="h-5 w-5" />
               </button>
             </div>
-
-            {contatos.length === 0 ? (
-              <div className="text-center py-5">
-                <User className="w-7 h-7 text-slate-300 mx-auto mb-2" />
-                <p className="text-xs text-slate-400">
-                  Nenhum contato cadastrado.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleAdicionarContato}
-                  className="text-[11px] text-purple-600 font-bold mt-1 hover:underline"
-                >
-                  + Adicionar primeiro contato
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {Array.isArray(contatos) && contatos.map((contato, index) => (
-                  <div
-                    key={contato.id || `contato-${index}`}
-                    className="bg-slate-50 p-3 rounded-xl border border-slate-200"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
-                          <User className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="text-[10px] font-black uppercase text-slate-500">
-                          Contato #{index + 1}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoverContato(index)}
-                        className="text-slate-400 hover:text-red-600 p-1.5 transition"
-                        title="Remover contato"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">
-                          Nome
-                        </label>
-                        <input
-                          type="text"
-                          autoComplete="off"
-                          placeholder="Nome"
-                          value={contato.nome || ''}
-                          onChange={(e) =>
-                            handleAtualizarContato(index, 'nome', e.target.value)
-                          }
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:border-purple-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">
-                          Cargo / Qualificação
-                        </label>
-                        <input
-                          type="text"
-                          autoComplete="off"
-                          placeholder="Ex.: Sócio / Diretor"
-                          value={contato.cargo_parentesco || ''}
-                          onChange={(e) =>
-                            handleAtualizarContato(
-                              index,
-                              'cargo_parentesco',
-                              e.target.value
-                            )
-                          }
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:border-purple-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">
-                          Telefone / WhatsApp
-                        </label>
-                        <input
-                          type="text"
-                          autoComplete="off"
-                          inputMode="tel"
-                          placeholder="(00) 00000-0000"
-                          value={contato.telefone || ''}
-                          onChange={(e) =>
-                            handleAtualizarContato(index, 'telefone', e.target.value)
-                          }
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:border-purple-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">
-                          E-mail
-                        </label>
-                        <input
-                          type="email"
-                          autoComplete="off"
-                          placeholder="email@exemplo.com"
-                          value={contato.email || ''}
-                          onChange={(e) =>
-                            handleAtualizarContato(index, 'email', e.target.value)
-                          }
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:border-purple-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
+        </div>
 
-          {/* ==================================================
-              ERRO DE VALIDAÇÃO
-            ================================================== */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {modoReagendamento
+            ? renderReagendamento()
+            : renderAcaoComercial()}
+
           {erroValidacao && (
-            <div className="sticky bottom-0 flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 shadow-sm z-10">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span className="text-xs font-semibold">{erroValidacao}</span>
+            <div className="mt-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
+              <span>{erroValidacao}</span>
             </div>
           )}
 
-          {/* ==================================================
-              BOTÃO PRINCIPAL
-            ================================================== */}
-          <div className="flex justify-end pt-1">
-            <button
-              type="button"
-              onClick={handleSubmeter}
-              disabled={loading}
-              className="w-full px-6 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg hover:shadow-purple-200 transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <Clock className="w-4 h-4 animate-spin" />
-                  Registrando...
-                </>
-              ) : (
-                <>
-                  <SendHorizontal className="w-4 h-4" />
-                  {agendamentos.length > 0
-                    ? 'Registrar e agendar retorno'
-                    : 'Registrar interação'}
-                </>
-              )}
-            </button>
-          </div>
+          {!modoReagendamento &&
+            historicoAcoes.length > 0 && (
+              <section className="mt-8">
+                <div className="mb-4 flex items-center gap-2">
+                  <SendHorizontal className="h-5 w-5 text-purple-600" />
 
-          {/* ==================================================
-              HISTÓRICO COMPLETO
-          ================================================== */}
-          <div className="pt-4 border-t border-slate-200 space-y-3">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              Histórico de ações anteriores
-            </h4>
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    Histórico completo
+                  </h3>
+                </div>
 
-            {carregandoHistorico ? (
-              <div className="text-center py-6 text-xs text-slate-400">
-                Carregando histórico...
-              </div>
-            ) : !temHistorico ? (
-              <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-slate-200">
-                <Clock className="w-6 h-6 text-slate-300 mx-auto mb-2" />
-                <p className="text-xs text-slate-400">
-                  Nenhum histórico registrado para este cliente.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3 pl-2">
-                {historicoAcoes.map((item, index) => {
-                  const dataFormatada = item.criado_em
-                    ? new Date(item.criado_em).toLocaleString('pt-BR')
-                    : item.data_historico
-                    ? `${item.data_historico.split('-').reverse().join('/')} ${item.horario_historico || ''}`
-                    : 'Data não informada';
+                <div className="space-y-3">
+                  {historicoAcoes.map(
+                    (acao, index) => (
+                      <div
+                        key={acao.id || index}
+                        className="relative rounded-xl border border-gray-200 bg-white p-4"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-700">
+                            {acao.tipo_acao}
+                          </span>
 
-                  return (
-                    <div
-                      key={item.id || `hist-${index}`}
-                      className="relative pl-6 border-l-2 border-purple-200 space-y-1.5 pb-3"
-                    >
-                      <div className="absolute -left-[5px] top-1 w-2 h-2 bg-purple-600 rounded-full ring-4 ring-purple-100" />
-
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
-                        <span className="font-bold text-slate-700 text-[10px]">
-                          📅 {dataFormatada}
-                        </span>
-
-                        <div className="flex gap-1.5 flex-wrap">
-                          {item.tipo_acao && (
-                            <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md font-bold text-[9px] uppercase">
-                              {item.tipo_acao.replace(/_/g, ' ')}
+                          {acao.resultado_acao && (
+                            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs text-blue-700">
+                              {acao.resultado_acao}
                             </span>
                           )}
 
-                          {item.resultado_acao && (
-                            <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold text-[9px] uppercase border border-slate-200">
-                              {item.resultado_acao.replace(/_/g, ' ')}
+                          {acao.tipo_acao ===
+                            'reagendamento' && (
+                            <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
+                              Reagendamento
                             </span>
                           )}
                         </div>
-                      </div>
 
-                      {item.objetivo_acao && (
-                        <p className="text-[11px] text-slate-500 font-medium">
-                          <strong className="text-slate-600">Objetivo:</strong>{' '}
-                          {item.objetivo_acao}
-                        </p>
-                      )}
-
-                      {/* Exibe o Relato se existir no registro */}
-                      {item.relato && (
-                        <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                          {item.relato}
-                        </p>
-                      )}
-
-                      {item.proxima_acao && (
-                        <div className="text-[11px] bg-purple-50/60 border border-purple-100 p-2 rounded-xl text-purple-900 space-y-0.5">
-                          <p className="font-bold">
-                            Próxima ação:{' '}
-                            <span className="uppercase">
-                              {item.proxima_acao.replace(/_/g, ' ')}
-                            </span>
-                            {(item.data_retorno || item.horario_retorno) && (
-                              <span className="font-normal text-purple-700 ml-1">
-                                (
-                                {item.data_retorno &&
-                                  item.data_retorno.split('-').reverse().join('/')}
-                                {item.horario_retorno && ` às ${item.horario_retorno}`}
-                                )
-                              </span>
-                            )}
+                        {acao.relato && (
+                          <p className="mt-3 text-sm text-gray-600">
+                            {acao.relato}
                           </p>
+                        )}
 
-                          {item.relato_proxima_acao && (
-                            <p className="text-slate-600 italic">
-                              "{item.relato_proxima_acao}"
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        {acao.proxima_acao && (
+                          <p className="mt-2 text-xs text-gray-500">
+                            Próxima ação:{' '}
+                            <strong>
+                              {acao.proxima_acao}
+                            </strong>
+                          </p>
+                        )}
+
+                        {acao.data_retorno && (
+                          <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                            <Calendar className="h-4 w-4" />
+
+                            {formatarData(
+                              acao.data_retorno
+                            )}
+
+                            {acao.horario_retorno &&
+                              ` às ${formatarHora(
+                                acao.horario_retorno
+                              )}`}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  )}
+                </div>
+              </section>
             )}
-          </div>
+        </div>
 
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSubmeter}
+            disabled={loading}
+            className="flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Salvando...
+              </>
+            ) : modoReagendamento ? (
+              <>
+                <Calendar className="h-4 w-4" />
+                Confirmar Reagendamento
+              </>
+            ) : (
+              <>
+                <Check className="h-4 w-4" />
+                {agendamentos.length > 0
+                  ? 'Registrar e agendar retorno'
+                  : 'Registrar interação'}
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>
   );
-};
+}

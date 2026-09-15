@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import { ModalCadastroCliente } from './ModalCadastroCliente';
-import { ModalAcoesComerciais } from './ModalAcoesComerciais';
+import ModalAcoesComerciais from './ModalAcoesComerciais';
 import { toast } from 'react-hot-toast';
 
 export default function ClientesCadastroV2() {
