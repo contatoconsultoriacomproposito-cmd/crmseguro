@@ -2,28 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Clock,
   X,
-  Trash2,
   Phone,
-  MessageSquare,
+  MessageCircle,
   Mail,
   MapPin,
   Send,
-  Plus,
-  MessageCircle,
+  MessageSquare,
   FileText,
   HelpCircle,
-  UserPlus,
-  SendHorizontal,
   Check,
   Calendar,
-  ChevronDown,
-  ChevronUp,
   AlertCircle,
   Sparkles,
-  User,
 } from 'lucide-react';
 
-import { maskPhone } from '../../utils/masks';
 import { buscarHistoricoInteracoesPorCliente } from './clienteServiceV2';
 
 export interface Contato {
@@ -45,6 +37,7 @@ export interface AcaoHistorico {
   data_retorno?: string;
   horario_retorno?: string;
   relato_proxima_acao?: string;
+  relato?: string;
 }
 
 export interface LeadData {
@@ -66,124 +59,72 @@ interface ModalAcoesComerciaisProps {
   onSave: (dadosAcao: any) => Promise<void>;
 }
 
-export interface AgendamentoItem {
-  id: string;
-  proxima_acao: string;
-  data_retorno: string;
-  horario_retorno: string;
-  relato_proxima_acao: string;
-  produto_retorno?: string;
-}
-
 const TIPOS_ACAO = [
-  {
-    value: 'ligacao',
-    label: 'Ligação',
-    icon: Phone,
-  },
-  {
-    value: 'whatsapp',
-    label: 'WhatsApp',
-    icon: MessageCircle,
-  },
-  {
-    value: 'email',
-    label: 'E-mail',
-    icon: Mail,
-  },
-  {
-    value: 'visita',
-    label: 'Visita',
-    icon: MapPin,
-  },
-  {
-    value: 'email_marketing',
-    label: 'E-mail Marketing',
-    icon: Send,
-  },
-  {
-    value: 'sms',
-    label: 'SMS',
-    icon: MessageSquare,
-  },
-  {
-    value: 'entrega_folders',
-    label: 'Entrega de Folders',
-    icon: FileText,
-  },
-  {
-    value: 'outros',
-    label: 'Outros',
-    icon: HelpCircle,
-  },
-];
+  ['ligacao', 'Ligação', Phone],
+  ['whatsapp', 'WhatsApp', MessageCircle],
+  ['email', 'E-mail', Mail],
+  ['visita', 'Visita', MapPin],
+  ['email_marketing', 'E-mail Marketing', Send],
+  ['sms', 'SMS', MessageSquare],
+  ['entrega_folders', 'Entrega de Folders', FileText],
+  ['outros', 'Outros', HelpCircle],
+] as const;
 
-const RESULTADOS_POR_ACAO: Record<string, { value: string; label: string }[]> = {
+const RESULTADOS: Record<string, { value: string; label: string }[]> = {
   ligacao: [
-    { value: 'contato_realizado', label: 'Contato realizado' },
-    { value: 'nao_atendeu', label: 'Não atendeu' },
-    { value: 'numero_invalido', label: 'Número inválido' },
-    { value: 'retornar_depois', label: 'Solicitou retorno' },
-    { value: 'sem_interesse', label: 'Sem interesse' },
-    { value: 'outros', label: 'Outros' },
-  ],
+    ['contato_realizado', 'Contato realizado'],
+    ['nao_atendeu', 'Não atendeu'],
+    ['numero_invalido', 'Número inválido'],
+    ['retornar_depois', 'Solicitou retorno'],
+    ['sem_interesse', 'Sem interesse'],
+    ['outros', 'Outros'],
+  ].map(([value, label]) => ({ value, label })),
   whatsapp: [
-    { value: 'mensagem_enviada', label: 'Mensagem enviada' },
-    { value: 'respondeu', label: 'Respondeu' },
-    { value: 'nao_respondeu', label: 'Não respondeu' },
-    { value: 'sem_interesse', label: 'Sem interesse' },
-    { value: 'outros', label: 'Outros' },
-  ],
+    ['mensagem_enviada', 'Mensagem enviada'],
+    ['respondeu', 'Respondeu'],
+    ['nao_respondeu', 'Não respondeu'],
+    ['sem_interesse', 'Sem interesse'],
+    ['outros', 'Outros'],
+  ].map(([value, label]) => ({ value, label })),
   email: [
-    { value: 'email_enviado', label: 'E-mail enviado' },
-    { value: 'respondeu', label: 'Respondeu' },
-    { value: 'nao_respondeu', label: 'Não respondeu' },
-    { value: 'sem_interesse', label: 'Sem interesse' },
-    { value: 'outros', label: 'Outros' },
-  ],
+    ['email_enviado', 'E-mail enviado'],
+    ['respondeu', 'Respondeu'],
+    ['nao_respondeu', 'Não respondeu'],
+    ['sem_interesse', 'Sem interesse'],
+    ['outros', 'Outros'],
+  ].map(([value, label]) => ({ value, label })),
   visita: [
-    { value: 'visita_realizada', label: 'Visita realizada' },
-    { value: 'visita_agendada', label: 'Visita agendada' },
-    { value: 'nao_compareceu', label: 'Não compareceu' },
-    { value: 'sem_interesse', label: 'Sem interesse' },
-    { value: 'outros', label: 'Outros' },
-  ],
+    ['visita_realizada', 'Visita realizada'],
+    ['visita_agendada', 'Visita agendada'],
+    ['nao_compareceu', 'Não compareceu'],
+    ['sem_interesse', 'Sem interesse'],
+    ['outros', 'Outros'],
+  ].map(([value, label]) => ({ value, label })),
   email_marketing: [
-    { value: 'enviado', label: 'Enviado' },
-    { value: 'respondeu', label: 'Respondeu' },
-    { value: 'nao_respondeu', label: 'Não respondeu' },
-    { value: 'outros', label: 'Outros' },
-  ],
+    ['enviado', 'Enviado'],
+    ['respondeu', 'Respondeu'],
+    ['nao_respondeu', 'Não respondeu'],
+    ['outros', 'Outros'],
+  ].map(([value, label]) => ({ value, label })),
   sms: [
-    { value: 'enviado', label: 'Enviado' },
-    { value: 'respondeu', label: 'Respondeu' },
-    { value: 'nao_respondeu', label: 'Não respondeu' },
-    { value: 'outros', label: 'Outros' },
-  ],
+    ['enviado', 'Enviado'],
+    ['respondeu', 'Respondeu'],
+    ['nao_respondeu', 'Não respondeu'],
+    ['outros', 'Outros'],
+  ].map(([value, label]) => ({ value, label })),
   entrega_folders: [
-    { value: 'entregue', label: 'Entregue' },
-    { value: 'nao_entregue', label: 'Não entregue' },
-    { value: 'outros', label: 'Outros' },
-  ],
+    ['entregue', 'Entregue'],
+    ['nao_entregue', 'Não entregue'],
+    ['outros', 'Outros'],
+  ].map(([value, label]) => ({ value, label })),
   outros: [
-    { value: 'realizado', label: 'Realizado' },
-    { value: 'pendente', label: 'Pendente' },
-    { value: 'outros', label: 'Outros' },
-  ],
+    ['realizado', 'Realizado'],
+    ['pendente', 'Pendente'],
+    ['outros', 'Outros'],
+  ].map(([value, label]) => ({ value, label })),
 };
 
-const PROXIMAS_ACOES_OPCOES = [
-  { value: 'ligacao', label: 'Ligação' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'email', label: 'E-mail' },
-  { value: 'visita', label: 'Visita' },
-  { value: 'email_marketing', label: 'E-mail Marketing' },
-  { value: 'sms', label: 'SMS' },
-  { value: 'entrega_folders', label: 'Entrega de Folders' },
-  { value: 'outros', label: 'Outros' },
-];
-
-const PRODUTOS_INTERESSE_OPCOES = [
+const PRODUTOS = [
   'AUTO',
   'RESIDENCIAL',
   'EMPRESARIAL',
@@ -199,45 +140,29 @@ const PRODUTOS_INTERESSE_OPCOES = [
   'OUTROS',
 ];
 
-const parseArrayData = <T,>(valor: any, padrao: T[] = []): T[] => {
-  if (!valor) return padrao;
-
-  let atual = valor;
-
-  while (typeof atual === 'string') {
-    try {
-      atual = JSON.parse(atual);
-    } catch {
-      break;
-    }
-  }
-
-  return Array.isArray(atual) ? atual : padrao;
+const hoje = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const formatarHora = (hora?: string | null) => {
-  if (!hora) return '';
-
-  return hora.length >= 5 ? hora.substring(0, 5) : hora;
-};
-
-const formatarData = (data?: string | null) => {
+const dataBR = (data?: string | null) => {
   if (!data) return '';
-
-  const partes = data.split('-');
-
-  if (partes.length !== 3) return data;
-
-  return `${partes[2]}/${partes[1]}/${partes[0]}`;
+  const [ano, mes, dia] = data.split('-');
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : data;
 };
 
-const obterDataHoje = () => {
-  const agora = new Date();
-  const ano = agora.getFullYear();
-  const mes = String(agora.getMonth() + 1).padStart(2, '0');
-  const dia = String(agora.getDate()).padStart(2, '0');
+const horaBR = (hora?: string | null) =>
+  hora ? hora.substring(0, 5) : '';
 
-  return `${ano}-${mes}-${dia}`;
+const dataHora = (valor?: string | null) => {
+  if (!valor) return '';
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return valor;
+
+  return `${data.toLocaleDateString('pt-BR')} às ${data.toLocaleTimeString(
+    'pt-BR',
+    { hour: '2-digit', minute: '2-digit' }
+  )}`;
 };
 
 export default function ModalAcoesComerciais({
@@ -249,70 +174,50 @@ export default function ModalAcoesComerciais({
 }: ModalAcoesComerciaisProps) {
   const activeLead = useMemo(() => {
     const origem = lead || clienteContexto;
-
     if (!origem) return null;
 
     return {
       id: origem.id,
       nome_fantasia: origem.nome_fantasia,
       razao_social: origem.razao_social || origem.nome_razao_social,
-      nomes_socios: origem.nomes_socios || origem.socios,
-      contatos_existentes:
-        origem.contatos_existentes ||
-        origem.contatos ||
-        [],
-      historico_acoes:
-        origem.historico_acoes ||
-        origem.historico ||
-        [],
       data_retorno: origem.data_retorno || null,
       horario_retorno: origem.horario_retorno || null,
+      historico_acoes: origem.historico_acoes || origem.historico || [],
     };
   }, [lead, clienteContexto]);
-
-  const [modoReagendamento, setModoReagendamento] = useState(false);
-  const [dataReagendamento, setDataReagendamento] = useState('');
-  const [horarioReagendamento, setHorarioReagendamento] = useState('');
-
-  const [tipoAcao, setTipoAcao] = useState('ligacao');
-  const [resultadoAcao, setResultadoAcao] = useState('');
-  const [resultadoAcaoOutros, setResultadoAcaoOutros] = useState('');
-  const [objetivoAcao, setObjetivoAcao] = useState('Atendimento Comercial');
-  const [objetivoAcaoOutros, setObjetivoAcaoOutros] = useState('');
-
-  const [agendamentos, setAgendamentos] = useState<AgendamentoItem[]>([]);
-  const [produtosInteresse, setProdutosInteresse] = useState<string[]>([]);
-  const [contatos, setContatos] = useState<Contato[]>([]);
-  const [historicoAcoes, setHistoricoAcoes] = useState<any[]>([]);
-
-  const [loading, setLoading] = useState(false);
-  const [erroValidacao, setErroValidacao] = useState('');
-  const [carregandoHistorico, setCarregandoHistorico] = useState(false);
-  const [mostrarTodosProdutos, setMostrarTodosProdutos] = useState(false);
-
-  const dataHoje = obterDataHoje();
 
   const nomeCliente =
     activeLead?.nome_fantasia ||
     activeLead?.razao_social ||
     'Cliente';
 
-  const resultadosDisponiveis =
-    RESULTADOS_POR_ACAO[tipoAcao] || RESULTADOS_POR_ACAO.outros;
+  const [modoReagendamento, setModoReagendamento] = useState(false);
+  const [tipoAcao, setTipoAcao] = useState('ligacao');
+  const [resultadoAcao, setResultadoAcao] = useState('');
+  const [resultadoOutros, setResultadoOutros] = useState('');
+  const [objetivoAcao, setObjetivoAcao] =
+    useState('Atendimento Comercial');
+  const [objetivoOutros, setObjetivoOutros] = useState('');
 
-  const produtosVisiveis = mostrarTodosProdutos
-    ? PRODUTOS_INTERESSE_OPCOES
-    : PRODUTOS_INTERESSE_OPCOES.slice(0, 6);
+  const [produtos, setProdutos] = useState<string[]>([]);
+  const [relato, setRelato] = useState('');
+  const [dataRetorno, setDataRetorno] = useState('');
+  const [horarioRetorno, setHorarioRetorno] = useState('');
 
-  const ultimaAcao = useMemo(() => {
-    if (!historicoAcoes.length) return null;
+  const [dataReagendamento, setDataReagendamento] = useState('');
+  const [horarioReagendamento, setHorarioReagendamento] = useState('');
 
-    return historicoAcoes[0];
-  }, [historicoAcoes]);
+  const [historico, setHistorico] = useState<AcaoHistorico[]>([]);
+  const [carregandoHistorico, setCarregandoHistorico] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
+  const [mostrarProdutos, setMostrarProdutos] = useState(false);
 
-  const sugestaoProximaAcao = useMemo(() => {
-    if (!ultimaAcao?.tipo_acao) return null;
+  const resultados = RESULTADOS[tipoAcao] || RESULTADOS.outros;
 
+  const ultimaAcao = historico[0];
+
+  const sugestao = useMemo(() => {
     const mapa: Record<string, string> = {
       ligacao: 'whatsapp',
       whatsapp: 'ligacao',
@@ -324,7 +229,9 @@ export default function ModalAcoesComerciais({
       outros: 'ligacao',
     };
 
-    return mapa[ultimaAcao.tipo_acao] || 'ligacao';
+    return ultimaAcao?.tipo_acao
+      ? mapa[ultimaAcao.tipo_acao] || 'ligacao'
+      : null;
   }, [ultimaAcao]);
 
   useEffect(() => {
@@ -333,52 +240,44 @@ export default function ModalAcoesComerciais({
     let ativo = true;
 
     const carregar = async () => {
-      setLoading(false);
-      setErroValidacao('');
       setModoReagendamento(false);
-      setDataReagendamento('');
-      setHorarioReagendamento('');
-
       setTipoAcao('ligacao');
       setResultadoAcao('');
-      setResultadoAcaoOutros('');
+      setResultadoOutros('');
       setObjetivoAcao('Atendimento Comercial');
-      setObjetivoAcaoOutros('');
-      setAgendamentos([]);
-      setProdutosInteresse([]);
-      setMostrarTodosProdutos(false);
-
-      const contatosAtuais = parseArrayData<Contato>(
-        activeLead.contatos_existentes,
-        []
-      );
-
-      setContatos(contatosAtuais);
-
+      setObjetivoOutros('');
+      setProdutos([]);
+      setRelato('');
+      setDataRetorno('');
+      setHorarioRetorno('');
+      setErro('');
+      setMostrarProdutos(false);
       setCarregandoHistorico(true);
 
       try {
-        const historico = await buscarHistoricoInteracoesPorCliente(
+        const dados = await buscarHistoricoInteracoesPorCliente(
           activeLead.id
         );
 
         if (!ativo) return;
 
-        setHistoricoAcoes(
-          historico.length > 0
-            ? historico
-            : parseArrayData(activeLead.historico_acoes, [])
+        setHistorico(
+          dados.length
+            ? dados
+            : Array.isArray(activeLead.historico_acoes)
+              ? activeLead.historico_acoes
+              : []
         );
       } catch {
         if (ativo) {
-          setHistoricoAcoes(
-            parseArrayData(activeLead.historico_acoes, [])
+          setHistorico(
+            Array.isArray(activeLead.historico_acoes)
+              ? activeLead.historico_acoes
+              : []
           );
         }
       } finally {
-        if (ativo) {
-          setCarregandoHistorico(false);
-        }
+        if (ativo) setCarregandoHistorico(false);
       }
     };
 
@@ -391,249 +290,101 @@ export default function ModalAcoesComerciais({
 
   if (!isOpen || !activeLead) return null;
 
-  const adicionarAgendamento = () => {
-    setAgendamentos((atual) => [
-      ...atual,
-      {
-        id:
-          typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`,
-        proxima_acao: '',
-        data_retorno: '',
-        horario_retorno: '',
-        relato_proxima_acao: '',
-        produto_retorno: '',
-      },
-    ]);
-  };
-
-  const removerAgendamento = (id: string) => {
-    setAgendamentos((atual) =>
-      atual.filter((item) => item.id !== id)
-    );
-  };
-
-  const atualizarAgendamento = (
-    id: string,
-    campo: keyof AgendamentoItem,
-    valor: string
-  ) => {
-    setAgendamentos((atual) =>
-      atual.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              [campo]: valor,
-            }
-          : item
-      )
-    );
-  };
-
   const alternarProduto = (produto: string) => {
-    setProdutosInteresse((atual) =>
+    setProdutos((atual) =>
       atual.includes(produto)
         ? atual.filter((item) => item !== produto)
         : [...atual, produto]
     );
   };
 
-  const adicionarContato = () => {
-    setContatos((atual) => [
-      ...atual,
-      {
-        id:
-          typeof crypto !== 'undefined' && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`,
-        nome: '',
-        cargo_parentesco: '',
-        telefone: '',
-        email: '',
-        principal: atual.length === 0,
-      },
-    ]);
-  };
-
-  const atualizarContato = (
-    index: number,
-    campo: keyof Contato,
-    valor: string | boolean
-  ) => {
-    setContatos((atual) =>
-      atual.map((contato, i) =>
-        i === index
-          ? {
-              ...contato,
-              [campo]:
-                campo === 'telefone' && typeof valor === 'string'
-                  ? maskPhone(valor)
-                  : valor,
-            }
-          : contato
-      )
-    );
-  };
-
-  const removerContato = (index: number) => {
-    setContatos((atual) =>
-      atual.filter((_, i) => i !== index)
-    );
-  };
-
-  const definirContatoPrincipal = (index: number) => {
-    setContatos((atual) =>
-      atual.map((contato, i) => ({
-        ...contato,
-        principal: i === index,
-      }))
-    );
-  };
-
-  const aplicarSugestao = () => {
-    if (!sugestaoProximaAcao) return;
-
-    setAgendamentos((atual) => {
-      if (atual.length === 0) {
-        return [
-          {
-            id:
-              typeof crypto !== 'undefined' && crypto.randomUUID
-                ? crypto.randomUUID()
-                : `${Date.now()}-${Math.random()}`,
-            proxima_acao: sugestaoProximaAcao,
-            data_retorno: '',
-            horario_retorno: '',
-            relato_proxima_acao: '',
-            produto_retorno: '',
-          },
-        ];
-      }
-
-      return atual.map((item, index) =>
-        index === 0
-          ? {
-              ...item,
-              proxima_acao: sugestaoProximaAcao,
-            }
-          : item
-      );
-    });
-  };
-
-  const entrarModoReagendamento = () => {
+  const entrarReagendamento = () => {
     setModoReagendamento(true);
-    setErroValidacao('');
-
+    setErro('');
     setDataReagendamento(
       clienteContexto?.data_retorno ||
-      activeLead?.data_retorno ||
-      ''
-    );
-
-    setHorarioReagendamento(
-      formatarHora(
-        clienteContexto?.horario_retorno ||
-        activeLead?.horario_retorno ||
+        activeLead.data_retorno ||
         ''
+    );
+    setHorarioReagendamento(
+      horaBR(
+        clienteContexto?.horario_retorno ||
+          activeLead.horario_retorno ||
+          ''
       )
     );
   };
 
-  const voltarParaAcaoComercial = () => {
+  const sairReagendamento = () => {
     setModoReagendamento(false);
+    setErro('');
     setDataReagendamento('');
     setHorarioReagendamento('');
-    setErroValidacao('');
   };
 
   const validarReagendamento = () => {
     if (!dataReagendamento) {
-      setErroValidacao('Informe a nova data do retorno.');
+      setErro('Informe a nova data do retorno.');
       return false;
     }
 
-    if (dataReagendamento < dataHoje) {
-      setErroValidacao(
-        'A nova data do retorno não pode ser anterior a hoje.'
-      );
+    if (dataReagendamento < hoje()) {
+      setErro('A nova data não pode ser anterior a hoje.');
       return false;
     }
 
     if (!horarioReagendamento) {
-      setErroValidacao('Informe o novo horário do retorno.');
+      setErro('Informe o novo horário do retorno.');
       return false;
     }
 
-    setErroValidacao('');
     return true;
   };
 
-  const validarFormulario = () => {
+  const validar = () => {
     if (!resultadoAcao) {
-      setErroValidacao('Informe o resultado da ação.');
+      setErro('Informe o resultado da ação.');
       return false;
     }
 
     if (
       (resultadoAcao === 'outros' || tipoAcao === 'outros') &&
-      !resultadoAcaoOutros.trim()
+      !resultadoOutros.trim()
     ) {
-      setErroValidacao('Informe o resultado da ação.');
+      setErro('Informe o resultado da ação.');
       return false;
     }
 
-    if (
-      objetivoAcao === 'Outros' &&
-      !objetivoAcaoOutros.trim()
-    ) {
-      setErroValidacao('Informe o objetivo da ação.');
+    if (objetivoAcao === 'Outros' && !objetivoOutros.trim()) {
+      setErro('Informe o objetivo da ação.');
       return false;
     }
 
-    for (const agendamento of agendamentos) {
-      if (!agendamento.proxima_acao) {
-        setErroValidacao(
-          'Informe a próxima ação de todos os retornos.'
-        );
-        return false;
-      }
-
-      if (!agendamento.data_retorno) {
-        setErroValidacao(
-          'Informe a data de todos os retornos.'
-        );
-        return false;
-      }
-
-      if (agendamento.data_retorno < dataHoje) {
-        setErroValidacao(
-          'A data do retorno não pode ser anterior a hoje.'
-        );
-        return false;
-      }
-
-      if (!agendamento.horario_retorno) {
-        setErroValidacao(
-          'Informe o horário de todos os retornos.'
-        );
-        return false;
-      }
-
-      if (!agendamento.relato_proxima_acao.trim()) {
-        setErroValidacao(
-          'Informe o relato de todos os retornos.'
-        );
-        return false;
-      }
+    if (dataRetorno && dataRetorno < hoje()) {
+      setErro('A data do retorno não pode ser anterior a hoje.');
+      return false;
     }
 
-    setErroValidacao('');
+    if (dataRetorno && !horarioRetorno) {
+      setErro('Informe o horário do retorno.');
+      return false;
+    }
+
+    if (!dataRetorno && horarioRetorno) {
+      setErro('Informe a data do retorno.');
+      return false;
+    }
+
+    if (dataRetorno && !relato.trim()) {
+      setErro('Informe o relato do próximo contato.');
+      return false;
+    }
+
+    setErro('');
     return true;
   };
 
-  const handleSubmeter = async () => {
+  const salvar = async () => {
     if (loading) return;
 
     if (modoReagendamento) {
@@ -649,18 +400,10 @@ export default function ModalAcoesComerciais({
           horario_retorno: `${horarioReagendamento}:00`,
         });
 
-        const historicoAtualizado =
-          await buscarHistoricoInteracoesPorCliente(
-            activeLead.id
-          );
-
-        setHistoricoAcoes(historicoAtualizado);
         onClose();
       } catch (error) {
-        console.error('Erro ao reagendar retorno:', error);
-        setErroValidacao(
-          'Não foi possível reagendar o retorno. Tente novamente.'
-        );
+        console.error(error);
+        setErro('Não foi possível reagendar o retorno.');
       } finally {
         setLoading(false);
       }
@@ -668,685 +411,55 @@ export default function ModalAcoesComerciais({
       return;
     }
 
-    if (!validarFormulario()) return;
+    if (!validar()) return;
 
     setLoading(true);
 
     try {
       const resultadoFinal =
         resultadoAcao === 'outros' || tipoAcao === 'outros'
-          ? resultadoAcaoOutros
+          ? resultadoOutros
           : resultadoAcao;
 
       const objetivoFinal =
         objetivoAcao === 'Outros'
-          ? objetivoAcaoOutros
+          ? objetivoOutros
           : objetivoAcao;
 
-      const primeiroAgendamento =
-        agendamentos[0] || null;
-
-      const payload = {
+      await onSave({
         cliente_id: activeLead.id,
         tipo_acao: tipoAcao,
-        relato:
-          primeiroAgendamento?.relato_proxima_acao || '',
+        relato,
         resultado_acao: resultadoFinal || null,
         objetivo_acao: objetivoFinal || null,
-        proxima_acao:
-          primeiroAgendamento?.proxima_acao || null,
-        relato_proxima_acao:
-          primeiroAgendamento?.relato_proxima_acao || null,
-        produtos_interesse:
-          produtosInteresse.length > 0
-            ? produtosInteresse
-            : null,
-        data_retorno:
-          primeiroAgendamento?.data_retorno || null,
-        horario_retorno:
-          primeiroAgendamento?.horario_retorno
-            ? `${primeiroAgendamento.horario_retorno}:00`
-            : null,
-        status_agendamento:
-          primeiroAgendamento
-            ? 'PENDENTE'
-            : null,
-        contatos,
-      };
+        proxima_acao: dataRetorno ? 'retorno' : null,
+        relato_proxima_acao: relato || null,
+        produtos_interesse: produtos.length ? produtos : null,
+        data_retorno: dataRetorno || null,
+        horario_retorno: horarioRetorno
+          ? `${horarioRetorno}:00`
+          : null,
+        status_agendamento: dataRetorno ? 'PENDENTE' : null,
+      });
 
-      await onSave(payload);
-
-      const historicoAtualizado =
-        await buscarHistoricoInteracoesPorCliente(
-          activeLead.id
-        );
-
-      setHistoricoAcoes(historicoAtualizado);
       onClose();
     } catch (error) {
-      console.error(
-        'Erro ao registrar ação comercial:',
-        error
-      );
-
-      setErroValidacao(
-        'Não foi possível registrar a ação. Tente novamente.'
-      );
+      console.error(error);
+      setErro('Não foi possível registrar a ação.');
     } finally {
       setLoading(false);
     }
   };
 
-  const renderReagendamento = () => (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
-        <div className="flex items-start gap-3">
-          <div className="rounded-lg bg-purple-100 p-2">
-            <Calendar className="h-5 w-5 text-purple-700" />
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-gray-900">
-              Reagendar retorno
-            </h3>
-
-            <p className="mt-1 text-sm text-gray-600">
-              Altere somente a data e o horário do próximo
-              retorno de {nomeCliente}.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700">
-            Nova data
-          </label>
-
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-
-            <input
-              type="date"
-              min={dataHoje}
-              value={dataReagendamento}
-              onChange={(e) =>
-                setDataReagendamento(e.target.value)
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700">
-            Novo horário
-          </label>
-
-          <div className="relative">
-            <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-
-            <input
-              type="time"
-              value={horarioReagendamento}
-              onChange={(e) =>
-                setHorarioReagendamento(e.target.value)
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
-            />
-          </div>
-        </div>
-      </div>
-
-      {dataReagendamento && horarioReagendamento && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <Check className="h-4 w-4 text-green-600" />
-
-            <span>
-              Novo retorno:{' '}
-              <strong>
-                {formatarData(dataReagendamento)}
-              </strong>{' '}
-              às{' '}
-              <strong>
-                {horarioReagendamento}
-              </strong>
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderAcaoComercial = () => (
-    <div className="space-y-6">
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">
-            Última interação
-          </h3>
-
-          {carregandoHistorico && (
-            <span className="text-xs text-gray-400">
-              Carregando...
-            </span>
-          )}
-        </div>
-
-        {ultimaAcao ? (
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
-                {ultimaAcao.tipo_acao || 'Interação'}
-              </span>
-
-              {ultimaAcao.resultado_acao && (
-                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
-                  {ultimaAcao.resultado_acao}
-                </span>
-              )}
-            </div>
-
-            {ultimaAcao.relato && (
-              <p className="mt-3 text-sm text-gray-600">
-                {ultimaAcao.relato}
-              </p>
-            )}
-
-            {ultimaAcao.data_retorno && (
-              <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                <Calendar className="h-4 w-4" />
-                {formatarData(ultimaAcao.data_retorno)}
-                {ultimaAcao.horario_retorno &&
-                  ` às ${formatarHora(
-                    ultimaAcao.horario_retorno
-                  )}`}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
-            Nenhuma interação registrada.
-          </div>
-        )}
-      </section>
-
-      <section>
-        <div className="mb-4 flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-purple-600" />
-
-          <h3 className="text-sm font-semibold text-gray-900">
-            Registrar nova ação
-          </h3>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {TIPOS_ACAO.map((tipo) => {
-            const Icon = tipo.icon;
-            const selecionado = tipoAcao === tipo.value;
-
-            return (
-              <button
-                key={tipo.value}
-                type="button"
-                onClick={() => {
-                  setTipoAcao(tipo.value);
-                  setResultadoAcao('');
-                  setResultadoAcaoOutros('');
-                }}
-                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition ${
-                  selecionado
-                    ? 'border-purple-600 bg-purple-600 text-white'
-                    : 'border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {tipo.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Resultado da ação
-            </label>
-
-            <select
-              value={resultadoAcao}
-              onChange={(e) =>
-                setResultadoAcao(e.target.value)
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
-            >
-              <option value="">
-                Selecione o resultado
-              </option>
-
-              {resultadosDisponiveis.map((resultado) => (
-                <option
-                  key={resultado.value}
-                  value={resultado.value}
-                >
-                  {resultado.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Objetivo da ação
-            </label>
-
-            <select
-              value={objetivoAcao}
-              onChange={(e) =>
-                setObjetivoAcao(e.target.value)
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
-            >
-              <option value="Atendimento Comercial">
-                Atendimento Comercial
-              </option>
-              <option value="Prospecção">
-                Prospecção
-              </option>
-              <option value="Follow-up">
-                Follow-up
-              </option>
-              <option value="Pós-venda">
-                Pós-venda
-              </option>
-              <option value="Renovação">
-                Renovação
-              </option>
-              <option value="Outros">
-                Outros
-              </option>
-            </select>
-          </div>
-        </div>
-
-        {(resultadoAcao === 'outros' ||
-          tipoAcao === 'outros') && (
-          <input
-            value={resultadoAcaoOutros}
-            onChange={(e) =>
-              setResultadoAcaoOutros(e.target.value)
-            }
-            placeholder="Descreva o resultado"
-            className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
-          />
-        )}
-
-        {objetivoAcao === 'Outros' && (
-          <input
-            value={objetivoAcaoOutros}
-            onChange={(e) =>
-              setObjetivoAcaoOutros(e.target.value)
-            }
-            placeholder="Descreva o objetivo"
-            className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
-          />
-        )}
-      </section>
-
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">
-              Próximos passos / Retornos
-            </h3>
-
-            <p className="mt-1 text-xs text-gray-500">
-              Agende os próximos contatos necessários.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={adicionarAgendamento}
-            className="flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700"
-          >
-            <Plus className="h-4 w-4" />
-            Adicionar
-          </button>
-        </div>
-
-        {sugestaoProximaAcao && (
-          <button
-            type="button"
-            onClick={aplicarSugestao}
-            className="mb-4 flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100"
-          >
-            <Sparkles className="h-4 w-4" />
-            Aplicar sugestão de próxima ação
-          </button>
-        )}
-
-        {agendamentos.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
-            Nenhum retorno agendado.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {agendamentos.map((agendamento, index) => (
-              <div
-                key={agendamento.id}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4"
-              >
-                <div className="mb-4 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-800">
-                    Retorno {index + 1}
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removerAgendamento(agendamento.id)
-                    }
-                    className="rounded-lg p-2 text-red-500 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-gray-600">
-                      Próxima ação
-                    </label>
-
-                    <select
-                      value={agendamento.proxima_acao}
-                      onChange={(e) =>
-                        atualizarAgendamento(
-                          agendamento.id,
-                          'proxima_acao',
-                          e.target.value
-                        )
-                      }
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
-                    >
-                      <option value="">
-                        Selecione
-                      </option>
-
-                      {PROXIMAS_ACOES_OPCOES.map(
-                        (opcao) => (
-                          <option
-                            key={opcao.value}
-                            value={opcao.value}
-                          >
-                            {opcao.label}
-                          </option>
-                        )
-                      )}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-gray-600">
-                      Data
-                    </label>
-
-                    <input
-                      type="date"
-                      min={dataHoje}
-                      value={agendamento.data_retorno}
-                      onChange={(e) =>
-                        atualizarAgendamento(
-                          agendamento.id,
-                          'data_retorno',
-                          e.target.value
-                        )
-                      }
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-gray-600">
-                      Horário
-                    </label>
-
-                    <input
-                      type="time"
-                      value={agendamento.horario_retorno}
-                      onChange={(e) =>
-                        atualizarAgendamento(
-                          agendamento.id,
-                          'horario_retorno',
-                          e.target.value
-                        )
-                      }
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
-                    />
-                  </div>
-                </div>
-
-                <textarea
-                  value={agendamento.relato_proxima_acao}
-                  onChange={(e) =>
-                    atualizarAgendamento(
-                      agendamento.id,
-                      'relato_proxima_acao',
-                      e.target.value
-                    )
-                  }
-                  placeholder="Descreva o que deverá ser feito no próximo contato..."
-                  rows={2}
-                  className="mt-4 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-gray-900">
-            Produtos de interesse
-          </h3>
-
-          <p className="mt-1 text-xs text-gray-500">
-            Selecione os produtos relacionados ao cliente.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {produtosVisiveis.map((produto) => {
-            const selecionado =
-              produtosInteresse.includes(produto);
-
-            return (
-              <button
-                key={produto}
-                type="button"
-                onClick={() => alternarProduto(produto)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                  selecionado
-                    ? 'border-purple-600 bg-purple-600 text-white'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-purple-300'
-                }`}
-              >
-                {selecionado && (
-                  <Check className="mr-1 inline h-3 w-3" />
-                )}
-
-                {produto}
-              </button>
-            );
-          })}
-        </div>
-
-        {PRODUTOS_INTERESSE_OPCOES.length > 6 && (
-          <button
-            type="button"
-            onClick={() =>
-              setMostrarTodosProdutos(
-                (atual) => !atual
-              )
-            }
-            className="mt-3 flex items-center gap-1 text-xs font-medium text-purple-600"
-          >
-            {mostrarTodosProdutos ? (
-              <>
-                Mostrar menos
-                <ChevronUp className="h-4 w-4" />
-              </>
-            ) : (
-              <>
-                Mostrar todos
-                <ChevronDown className="h-4 w-4" />
-              </>
-            )}
-          </button>
-        )}
-      </section>
-
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">
-              Contatos
-            </h3>
-
-            <p className="mt-1 text-xs text-gray-500">
-              Pessoas relacionadas ao cliente.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={adicionarContato}
-            className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100"
-          >
-            <UserPlus className="h-4 w-4" />
-            Adicionar
-          </button>
-        </div>
-
-        {contatos.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
-            Nenhum contato adicional cadastrado.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {contatos.map((contato, index) => (
-              <div
-                key={contato.id || index}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4"
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-purple-600" />
-
-                    <span className="text-sm font-medium text-gray-800">
-                      Contato {index + 1}
-                    </span>
-
-                    {contato.principal && (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
-                        Principal
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removerContato(index)
-                    }
-                    className="rounded-lg p-2 text-red-500 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                  <input
-                    value={contato.nome}
-                    onChange={(e) =>
-                      atualizarContato(
-                        index,
-                        'nome',
-                        e.target.value
-                      )
-                    }
-                    placeholder="Nome"
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
-                  />
-
-                  <input
-                    value={contato.cargo_parentesco}
-                    onChange={(e) =>
-                      atualizarContato(
-                        index,
-                        'cargo_parentesco',
-                        e.target.value
-                      )
-                    }
-                    placeholder="Cargo / Parentesco"
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
-                  />
-
-                  <input
-                    value={contato.telefone}
-                    onChange={(e) =>
-                      atualizarContato(
-                        index,
-                        'telefone',
-                        e.target.value
-                      )
-                    }
-                    placeholder="Telefone"
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
-                  />
-
-                  <input
-                    value={contato.email}
-                    onChange={(e) =>
-                      atualizarContato(
-                        index,
-                        'email',
-                        e.target.value
-                      )
-                    }
-                    placeholder="E-mail"
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
-                  />
-                </div>
-
-                <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(contato.principal)}
-                    onChange={() =>
-                      definirContatoPrincipal(index)
-                    }
-                    className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                  />
-
-                  Definir como contato principal
-                </label>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  );
+  const aplicarSugestao = () => {
+    if (!sugestao) return;
+    setDataRetorno((atual) => atual || '');
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="shrink-0 bg-gradient-to-r from-purple-800 to-purple-600 px-6 py-5 text-white">
+        <header className="shrink-0 bg-gradient-to-r from-purple-800 to-purple-600 px-6 py-5 text-white">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="rounded-xl bg-white/10 p-2">
@@ -1361,6 +474,19 @@ export default function ModalAcoesComerciais({
                 <p className="mt-1 text-sm text-purple-100">
                   {nomeCliente}
                 </p>
+
+                {produtos.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {produtos.map((produto) => (
+                      <span
+                        key={produto}
+                        className="rounded-full bg-white/15 px-2.5 py-1 text-xs text-white"
+                      >
+                        {produto}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1369,18 +495,17 @@ export default function ModalAcoesComerciais({
                 type="button"
                 onClick={
                   modoReagendamento
-                    ? voltarParaAcaoComercial
-                    : entrarModoReagendamento
+                    ? sairReagendamento
+                    : entrarReagendamento
                 }
                 disabled={loading}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
                   modoReagendamento
-                    ? 'bg-white text-purple-700 hover:bg-purple-50'
+                    ? 'bg-white text-purple-700'
                     : 'bg-white/15 text-white hover:bg-white/25'
                 }`}
               >
                 <Calendar className="h-4 w-4" />
-
                 {modoReagendamento
                   ? 'Ação Comercial'
                   : 'Reagendamento'}
@@ -1396,96 +521,414 @@ export default function ModalAcoesComerciais({
               </button>
             </div>
           </div>
-        </div>
+        </header>
 
-        <div className="flex-1 overflow-y-auto p-6">
-          {modoReagendamento
-            ? renderReagendamento()
-            : renderAcaoComercial()}
+        <main className="flex-1 overflow-y-auto p-6">
+          {modoReagendamento ? (
+            <section className="space-y-6">
+              <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-purple-100 p-2">
+                    <Calendar className="h-5 w-5 text-purple-700" />
+                  </div>
 
-          {erroValidacao && (
-            <div className="mt-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">
+                      Reagendar retorno
+                    </h3>
 
-              <span>{erroValidacao}</span>
-            </div>
-          )}
+                    <p className="mt-1 text-sm text-gray-600">
+                      Altere a data e o horário do próximo retorno.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-          {!modoReagendamento &&
-            historicoAcoes.length > 0 && (
-              <section className="mt-8">
-                <div className="mb-4 flex items-center gap-2">
-                  <SendHorizontal className="h-5 w-5 text-purple-600" />
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Nova data
+                  <div className="relative mt-2">
+                    <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 
+                    <input
+                      type="date"
+                      min={hoje()}
+                      value={dataReagendamento}
+                      onChange={(e) =>
+                        setDataReagendamento(e.target.value)
+                      }
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                    />
+                  </div>
+                </label>
+
+                <label className="text-sm font-medium text-gray-700">
+                  Novo horário
+                  <div className="relative mt-2">
+                    <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+                    <input
+                      type="time"
+                      value={horarioReagendamento}
+                      onChange={(e) =>
+                        setHorarioReagendamento(e.target.value)
+                      }
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                    />
+                  </div>
+                </label>
+              </div>
+
+              {dataReagendamento && horarioReagendamento && (
+                <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                  <Check className="mr-2 inline h-4 w-4 text-green-600" />
+                  Novo retorno em{' '}
+                  <strong>{dataBR(dataReagendamento)}</strong> às{' '}
+                  <strong>{horarioReagendamento}</strong>
+                </div>
+              )}
+            </section>
+          ) : (
+            <div className="space-y-7">
+              <section>
+                <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-900">
-                    Histórico completo
+                    Última interação
+                  </h3>
+
+                  {carregandoHistorico && (
+                    <span className="text-xs text-gray-400">
+                      Carregando...
+                    </span>
+                  )}
+                </div>
+
+                {ultimaAcao ? (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
+                        {ultimaAcao.tipo_acao || 'Interação'}
+                      </span>
+
+                      {ultimaAcao.resultado_acao && (
+                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs text-blue-700">
+                          {ultimaAcao.resultado_acao}
+                        </span>
+                      )}
+                    </div>
+
+                    {ultimaAcao.relato && (
+                      <p className="mt-3 text-sm text-gray-600">
+                        {ultimaAcao.relato}
+                      </p>
+                    )}
+
+                    {ultimaAcao.criado_em && (
+                      <p className="mt-3 text-xs text-gray-500">
+                        {dataHora(ultimaAcao.criado_em)}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
+                    Nenhuma interação registrada.
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <div className="mb-4 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-600" />
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    Registrar nova ação
                   </h3>
                 </div>
 
-                <div className="space-y-3">
-                  {historicoAcoes.map(
-                    (acao, index) => (
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  {TIPOS_ACAO.map(([value, label, Icon]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setTipoAcao(value);
+                        setResultadoAcao('');
+                        setResultadoOutros('');
+                      }}
+                      className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition ${
+                        tipoAcao === value
+                          ? 'border-purple-600 bg-purple-600 text-white'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    Resultado da ação
+                    <select
+                      value={resultadoAcao}
+                      onChange={(e) =>
+                        setResultadoAcao(e.target.value)
+                      }
+                      className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                    >
+                      <option value="">
+                        Selecione o resultado
+                      </option>
+
+                      {resultados.map((resultado) => (
+                        <option
+                          key={resultado.value}
+                          value={resultado.value}
+                        >
+                          {resultado.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-sm font-medium text-gray-700">
+                    Objetivo da ação
+                    <select
+                      value={objetivoAcao}
+                      onChange={(e) =>
+                        setObjetivoAcao(e.target.value)
+                      }
+                      className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                    >
+                      <option>Atendimento Comercial</option>
+                      <option>Prospecção</option>
+                      <option>Follow-up</option>
+                      <option>Pós-venda</option>
+                      <option>Renovação</option>
+                      <option>Outros</option>
+                    </select>
+                  </label>
+                </div>
+
+                {(resultadoAcao === 'outros' ||
+                  tipoAcao === 'outros') && (
+                  <input
+                    value={resultadoOutros}
+                    onChange={(e) =>
+                      setResultadoOutros(e.target.value)
+                    }
+                    placeholder="Descreva o resultado"
+                    className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                  />
+                )}
+
+                {objetivoAcao === 'Outros' && (
+                  <input
+                    value={objetivoOutros}
+                    onChange={(e) =>
+                      setObjetivoOutros(e.target.value)
+                    }
+                    placeholder="Descreva o objetivo"
+                    className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                  />
+                )}
+              </section>
+
+              <section>
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    Próximos passos
+                  </h3>
+
+                  <p className="mt-1 text-xs text-gray-500">
+                    Registre apenas o que deverá acontecer no próximo contato.
+                  </p>
+                </div>
+
+                {sugestao && (
+                  <button
+                    type="button"
+                    onClick={aplicarSugestao}
+                    className="mb-4 flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Sugestão: próximo contato
+                  </button>
+                )}
+
+                <textarea
+                  value={relato}
+                  onChange={(e) => setRelato(e.target.value)}
+                  placeholder="O que deverá ser feito no próximo contato?"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                />
+
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    Data de retorno
+                    <input
+                      type="date"
+                      min={hoje()}
+                      value={dataRetorno}
+                      onChange={(e) =>
+                        setDataRetorno(e.target.value)
+                      }
+                      className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                    />
+                  </label>
+
+                  <label className="text-sm font-medium text-gray-700">
+                    Horário
+                    <input
+                      type="time"
+                      value={horarioRetorno}
+                      onChange={(e) =>
+                        setHorarioRetorno(e.target.value)
+                      }
+                      className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
+                    />
+                  </label>
+                </div>
+
+                {dataRetorno && horarioRetorno && (
+                  <div className="mt-3 rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                    <Calendar className="mr-2 inline h-4 w-4" />
+                    Retorno em{' '}
+                    <strong>{dataBR(dataRetorno)}</strong> às{' '}
+                    <strong>{horarioRetorno}</strong>
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Produto de interesse
+                    </h3>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      Opcional. Selecione um ou mais produtos.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMostrarProdutos((atual) => !atual)
+                    }
+                    className="text-xs font-medium text-purple-600"
+                  >
+                    {mostrarProdutos
+                      ? 'Mostrar menos'
+                      : 'Mostrar todos'}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {(mostrarProdutos
+                    ? PRODUTOS
+                    : PRODUTOS.slice(0, 6)
+                  ).map((produto) => (
+                    <button
+                      key={produto}
+                      type="button"
+                      onClick={() => alternarProduto(produto)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                        produtos.includes(produto)
+                          ? 'border-purple-600 bg-purple-600 text-white'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-purple-300'
+                      }`}
+                    >
+                      {produtos.includes(produto) && (
+                        <Check className="mr-1 inline h-3 w-3" />
+                      )}
+                      {produto}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {historico.length > 0 && (
+                <section>
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Histórico das ações
+                    </h3>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      Registro cronológico das interações comerciais.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {historico.map((acao, index) => (
                       <div
                         key={acao.id || index}
-                        className="relative rounded-xl border border-gray-200 bg-white p-4"
+                        className="rounded-xl border border-gray-200 bg-white p-4"
                       >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-700">
-                            {acao.tipo_acao}
-                          </span>
-
-                          {acao.resultado_acao && (
-                            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs text-blue-700">
-                              {acao.resultado_acao}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-700">
+                              {acao.tipo_acao || 'Interação'}
                             </span>
-                          )}
 
-                          {acao.tipo_acao ===
-                            'reagendamento' && (
-                            <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
-                              Reagendamento
+                            {acao.resultado_acao && (
+                              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs text-blue-700">
+                                {acao.resultado_acao}
+                              </span>
+                            )}
+                          </div>
+
+                          {acao.criado_em && (
+                            <span className="text-xs text-gray-400">
+                              {dataHora(acao.criado_em)}
                             </span>
                           )}
                         </div>
 
                         {acao.relato && (
-                          <p className="mt-3 text-sm text-gray-600">
+                          <p className="mt-3 text-sm leading-relaxed text-gray-600">
                             {acao.relato}
                           </p>
                         )}
 
                         {acao.proxima_acao && (
                           <p className="mt-2 text-xs text-gray-500">
-                            Próxima ação:{' '}
-                            <strong>
-                              {acao.proxima_acao}
-                            </strong>
+                            Próximo passo:{' '}
+                            <strong>{acao.proxima_acao}</strong>
                           </p>
                         )}
 
                         {acao.data_retorno && (
-                          <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                            <Calendar className="h-4 w-4" />
-
-                            {formatarData(
-                              acao.data_retorno
-                            )}
-
+                          <div className="mt-2 text-xs text-gray-500">
+                            <Calendar className="mr-1 inline h-3.5 w-3.5" />
+                            Retorno:{' '}
+                            {dataBR(acao.data_retorno)}
                             {acao.horario_retorno &&
-                              ` às ${formatarHora(
+                              ` às ${horaBR(
                                 acao.horario_retorno
                               )}`}
                           </div>
                         )}
                       </div>
-                    )
-                  )}
-                </div>
-              </section>
-            )}
-        </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
 
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+          {erro && (
+            <div className="mt-6 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              {erro}
+            </div>
+          )}
+        </main>
+
+        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
           <button
             type="button"
             onClick={onClose}
@@ -1497,7 +940,7 @@ export default function ModalAcoesComerciais({
 
           <button
             type="button"
-            onClick={handleSubmeter}
+            onClick={salvar}
             disabled={loading}
             className="flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -1514,14 +957,13 @@ export default function ModalAcoesComerciais({
             ) : (
               <>
                 <Check className="h-4 w-4" />
-                {agendamentos.length > 0
-                  ? 'Registrar e agendar retorno'
-                  : 'Registrar interação'}
+                Registrar interação
               </>
             )}
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );
 }
+
