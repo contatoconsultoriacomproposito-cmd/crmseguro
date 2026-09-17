@@ -1,29 +1,18 @@
+
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Clock,
-  X,
-  Phone,
-  MessageCircle,
-  Mail,
-  MapPin,
-  Send,
-  MessageSquare,
-  FileText,
-  HelpCircle,
-  Check,
-  Calendar,
-  AlertCircle,
-  Sparkles,
+  Clock, X, Phone, MessageCircle, Mail, MapPin, Send,
+  MessageSquare, FileText, HelpCircle, Check, Calendar,
+  AlertCircle, Sparkles,
 } from 'lucide-react';
-
 import { buscarHistoricoInteracoesPorCliente } from './clienteServiceV2';
 
 export interface Contato {
   id?: string;
   nome: string;
-  cargo_parentesco: string;
-  telefone: string;
-  email: string;
+  cargo_parentesco?: string;
+  telefone?: string;
+  email?: string;
   principal?: boolean;
 }
 
@@ -45,9 +34,11 @@ export interface LeadData {
   nome_fantasia?: string;
   razao_social?: string;
   nomes_socios?: any;
+  contatos?: Contato[] | null;
+  contatos_existentes?: Contato[];
+  produtos_interesse?: string[] | null;
   data_retorno?: string | null;
   horario_retorno?: string | null;
-  contatos_existentes?: Contato[];
   historico_acoes?: AcaoHistorico[];
 }
 
@@ -124,22 +115,6 @@ const RESULTADOS: Record<string, { value: string; label: string }[]> = {
   ].map(([value, label]) => ({ value, label })),
 };
 
-const PRODUTOS = [
-  'AUTO',
-  'RESIDENCIAL',
-  'EMPRESARIAL',
-  'VIDA EMPRESARIAL',
-  'VIDA INDIVIDUAL',
-  'ODONTOLÓGICO',
-  'SAÚDE',
-  'EQUIPAMENTOS',
-  'PREVIDÊNCIA',
-  'CONDOMÍNIO',
-  'VIAGEM',
-  'RESPONSABILIDADE CIVIL',
-  'OUTROS',
-];
-
 const hoje = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -177,9 +152,18 @@ export default function ModalAcoesComerciais({
     if (!origem) return null;
 
     return {
+      ...origem,
       id: origem.id,
       nome_fantasia: origem.nome_fantasia,
       razao_social: origem.razao_social || origem.nome_razao_social,
+      contatos: Array.isArray(origem.contatos)
+        ? origem.contatos
+        : Array.isArray(origem.contatos_existentes)
+          ? origem.contatos_existentes
+          : [],
+      produtos_interesse: Array.isArray(origem.produtos_interesse)
+        ? origem.produtos_interesse
+        : [],
       data_retorno: origem.data_retorno || null,
       horario_retorno: origem.horario_retorno || null,
       historico_acoes: origem.historico_acoes || origem.historico || [],
@@ -195,44 +179,20 @@ export default function ModalAcoesComerciais({
   const [tipoAcao, setTipoAcao] = useState('ligacao');
   const [resultadoAcao, setResultadoAcao] = useState('');
   const [resultadoOutros, setResultadoOutros] = useState('');
-  const [objetivoAcao, setObjetivoAcao] =
-    useState('Atendimento Comercial');
+  const [objetivoAcao, setObjetivoAcao] = useState('Atendimento Comercial');
   const [objetivoOutros, setObjetivoOutros] = useState('');
-
   const [produtos, setProdutos] = useState<string[]>([]);
   const [relato, setRelato] = useState('');
   const [dataRetorno, setDataRetorno] = useState('');
   const [horarioRetorno, setHorarioRetorno] = useState('');
-
   const [dataReagendamento, setDataReagendamento] = useState('');
   const [horarioReagendamento, setHorarioReagendamento] = useState('');
-
   const [historico, setHistorico] = useState<AcaoHistorico[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
-  const [mostrarProdutos, setMostrarProdutos] = useState(false);
 
   const resultados = RESULTADOS[tipoAcao] || RESULTADOS.outros;
-
-  const ultimaAcao = historico[0];
-
-  const sugestao = useMemo(() => {
-    const mapa: Record<string, string> = {
-      ligacao: 'whatsapp',
-      whatsapp: 'ligacao',
-      email: 'ligacao',
-      visita: 'ligacao',
-      email_marketing: 'ligacao',
-      sms: 'ligacao',
-      entrega_folders: 'ligacao',
-      outros: 'ligacao',
-    };
-
-    return ultimaAcao?.tipo_acao
-      ? mapa[ultimaAcao.tipo_acao] || 'ligacao'
-      : null;
-  }, [ultimaAcao]);
 
   useEffect(() => {
     if (!isOpen || !activeLead?.id) return;
@@ -246,28 +206,25 @@ export default function ModalAcoesComerciais({
       setResultadoOutros('');
       setObjetivoAcao('Atendimento Comercial');
       setObjetivoOutros('');
-      setProdutos([]);
+      setProdutos(activeLead.produtos_interesse || []);
       setRelato('');
       setDataRetorno('');
       setHorarioRetorno('');
       setErro('');
-      setMostrarProdutos(false);
       setCarregandoHistorico(true);
 
       try {
-        const dados = await buscarHistoricoInteracoesPorCliente(
-          activeLead.id
-        );
+        const dados = await buscarHistoricoInteracoesPorCliente(activeLead.id);
 
-        if (!ativo) return;
-
-        setHistorico(
-          dados.length
-            ? dados
-            : Array.isArray(activeLead.historico_acoes)
-              ? activeLead.historico_acoes
-              : []
-        );
+        if (ativo) {
+          setHistorico(
+            dados.length
+              ? dados
+              : Array.isArray(activeLead.historico_acoes)
+                ? activeLead.historico_acoes
+                : []
+          );
+        }
       } catch {
         if (ativo) {
           setHistorico(
@@ -290,27 +247,17 @@ export default function ModalAcoesComerciais({
 
   if (!isOpen || !activeLead) return null;
 
-  const alternarProduto = (produto: string) => {
-    setProdutos((atual) =>
-      atual.includes(produto)
-        ? atual.filter((item) => item !== produto)
-        : [...atual, produto]
-    );
-  };
-
   const entrarReagendamento = () => {
     setModoReagendamento(true);
     setErro('');
     setDataReagendamento(
-      clienteContexto?.data_retorno ||
-        activeLead.data_retorno ||
-        ''
+      clienteContexto?.data_retorno || activeLead.data_retorno || ''
     );
     setHorarioReagendamento(
       horaBR(
         clienteContexto?.horario_retorno ||
-          activeLead.horario_retorno ||
-          ''
+        activeLead.horario_retorno ||
+        ''
       )
     );
   };
@@ -451,11 +398,6 @@ export default function ModalAcoesComerciais({
     }
   };
 
-  const aplicarSugestao = () => {
-    if (!sugestao) return;
-    setDataRetorno((atual) => atual || '');
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -506,9 +448,7 @@ export default function ModalAcoesComerciais({
                 }`}
               >
                 <Calendar className="h-4 w-4" />
-                {modoReagendamento
-                  ? 'Ação Comercial'
-                  : 'Reagendamento'}
+                {modoReagendamento ? 'Ação Comercial' : 'Reagendamento'}
               </button>
 
               <button
@@ -554,9 +494,7 @@ export default function ModalAcoesComerciais({
                       type="date"
                       min={hoje()}
                       value={dataReagendamento}
-                      onChange={(e) =>
-                        setDataReagendamento(e.target.value)
-                      }
+                      onChange={(e) => setDataReagendamento(e.target.value)}
                       className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                     />
                   </div>
@@ -570,9 +508,7 @@ export default function ModalAcoesComerciais({
                     <input
                       type="time"
                       value={horarioReagendamento}
-                      onChange={(e) =>
-                        setHorarioReagendamento(e.target.value)
-                      }
+                      onChange={(e) => setHorarioReagendamento(e.target.value)}
                       className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                     />
                   </div>
@@ -590,52 +526,6 @@ export default function ModalAcoesComerciais({
             </section>
           ) : (
             <div className="space-y-7">
-              <section>
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    Última interação
-                  </h3>
-
-                  {carregandoHistorico && (
-                    <span className="text-xs text-gray-400">
-                      Carregando...
-                    </span>
-                  )}
-                </div>
-
-                {ultimaAcao ? (
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
-                        {ultimaAcao.tipo_acao || 'Interação'}
-                      </span>
-
-                      {ultimaAcao.resultado_acao && (
-                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs text-blue-700">
-                          {ultimaAcao.resultado_acao}
-                        </span>
-                      )}
-                    </div>
-
-                    {ultimaAcao.relato && (
-                      <p className="mt-3 text-sm text-gray-600">
-                        {ultimaAcao.relato}
-                      </p>
-                    )}
-
-                    {ultimaAcao.criado_em && (
-                      <p className="mt-3 text-xs text-gray-500">
-                        {dataHora(ultimaAcao.criado_em)}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
-                    Nenhuma interação registrada.
-                  </div>
-                )}
-              </section>
-
               <section>
                 <div className="mb-4 flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-purple-600" />
@@ -671,20 +561,13 @@ export default function ModalAcoesComerciais({
                     Resultado da ação
                     <select
                       value={resultadoAcao}
-                      onChange={(e) =>
-                        setResultadoAcao(e.target.value)
-                      }
+                      onChange={(e) => setResultadoAcao(e.target.value)}
                       className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                     >
-                      <option value="">
-                        Selecione o resultado
-                      </option>
+                      <option value="">Selecione o resultado</option>
 
                       {resultados.map((resultado) => (
-                        <option
-                          key={resultado.value}
-                          value={resultado.value}
-                        >
+                        <option key={resultado.value} value={resultado.value}>
                           {resultado.label}
                         </option>
                       ))}
@@ -695,9 +578,7 @@ export default function ModalAcoesComerciais({
                     Objetivo da ação
                     <select
                       value={objetivoAcao}
-                      onChange={(e) =>
-                        setObjetivoAcao(e.target.value)
-                      }
+                      onChange={(e) => setObjetivoAcao(e.target.value)}
                       className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                     >
                       <option>Atendimento Comercial</option>
@@ -710,13 +591,10 @@ export default function ModalAcoesComerciais({
                   </label>
                 </div>
 
-                {(resultadoAcao === 'outros' ||
-                  tipoAcao === 'outros') && (
+                {(resultadoAcao === 'outros' || tipoAcao === 'outros') && (
                   <input
                     value={resultadoOutros}
-                    onChange={(e) =>
-                      setResultadoOutros(e.target.value)
-                    }
+                    onChange={(e) => setResultadoOutros(e.target.value)}
                     placeholder="Descreva o resultado"
                     className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-purple-500"
                   />
@@ -725,9 +603,7 @@ export default function ModalAcoesComerciais({
                 {objetivoAcao === 'Outros' && (
                   <input
                     value={objetivoOutros}
-                    onChange={(e) =>
-                      setObjetivoOutros(e.target.value)
-                    }
+                    onChange={(e) => setObjetivoOutros(e.target.value)}
                     placeholder="Descreva o objetivo"
                     className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-purple-500"
                   />
@@ -745,17 +621,6 @@ export default function ModalAcoesComerciais({
                   </p>
                 </div>
 
-                {sugestao && (
-                  <button
-                    type="button"
-                    onClick={aplicarSugestao}
-                    className="mb-4 flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Sugestão: próximo contato
-                  </button>
-                )}
-
                 <textarea
                   value={relato}
                   onChange={(e) => setRelato(e.target.value)}
@@ -771,9 +636,7 @@ export default function ModalAcoesComerciais({
                       type="date"
                       min={hoje()}
                       value={dataRetorno}
-                      onChange={(e) =>
-                        setDataRetorno(e.target.value)
-                      }
+                      onChange={(e) => setDataRetorno(e.target.value)}
                       className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
                     />
                   </label>
@@ -783,9 +646,7 @@ export default function ModalAcoesComerciais({
                     <input
                       type="time"
                       value={horarioRetorno}
-                      onChange={(e) =>
-                        setHorarioRetorno(e.target.value)
-                      }
+                      onChange={(e) => setHorarioRetorno(e.target.value)}
                       className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500"
                     />
                   </label>
@@ -794,65 +655,74 @@ export default function ModalAcoesComerciais({
                 {dataRetorno && horarioRetorno && (
                   <div className="mt-3 rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700">
                     <Calendar className="mr-2 inline h-4 w-4" />
-                    Retorno em{' '}
-                    <strong>{dataBR(dataRetorno)}</strong> às{' '}
+                    Retorno em <strong>{dataBR(dataRetorno)}</strong> às{' '}
                     <strong>{horarioRetorno}</strong>
                   </div>
                 )}
               </section>
 
               <section>
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Produto de interesse
-                    </h3>
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    Contatos cadastrados
+                  </h3>
 
-                    <p className="mt-1 text-xs text-gray-500">
-                      Opcional. Selecione um ou mais produtos.
-                    </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Contatos vinculados a este registro de cliente.
+                  </p>
+                </div>
+
+                {activeLead.contatos.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {activeLead.contatos.map((contato: Contato, index: number) => (
+                      <div
+                        key={contato.id || index}
+                        className="rounded-xl border border-gray-200 bg-white p-4"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="text-sm text-gray-900">
+                            {contato.nome || 'Sem nome'}
+                          </strong>
+
+                          {contato.principal && (
+                            <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-700">
+                              Principal
+                            </span>
+                          )}
+                        </div>
+
+                        {contato.cargo_parentesco && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            {contato.cargo_parentesco}
+                          </p>
+                        )}
+
+                        {contato.telefone && (
+                          <p className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+                            <Phone className="h-4 w-4 shrink-0 text-gray-400" />
+                            {contato.telefone}
+                          </p>
+                        )}
+
+                        {contato.email && (
+                          <p className="mt-2 flex items-center gap-2 break-all text-sm text-gray-600">
+                            <Mail className="h-4 w-4 shrink-0 text-gray-400" />
+                            {contato.email}
+                          </p>
+                        )}
+                      </div>
+                    ))}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMostrarProdutos((atual) => !atual)
-                    }
-                    className="text-xs font-medium text-purple-600"
-                  >
-                    {mostrarProdutos
-                      ? 'Mostrar menos'
-                      : 'Mostrar todos'}
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {(mostrarProdutos
-                    ? PRODUTOS
-                    : PRODUTOS.slice(0, 6)
-                  ).map((produto) => (
-                    <button
-                      key={produto}
-                      type="button"
-                      onClick={() => alternarProduto(produto)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                        produtos.includes(produto)
-                          ? 'border-purple-600 bg-purple-600 text-white'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-purple-300'
-                      }`}
-                    >
-                      {produtos.includes(produto) && (
-                        <Check className="mr-1 inline h-3 w-3" />
-                      )}
-                      {produto}
-                    </button>
-                  ))}
-                </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
+                    Nenhum contato cadastrado neste registro.
+                  </div>
+                )}
               </section>
 
-              {historico.length > 0 && (
-                <section>
-                  <div className="mb-4">
+              <section>
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
                     <h3 className="text-sm font-semibold text-gray-900">
                       Histórico das ações
                     </h3>
@@ -862,6 +732,14 @@ export default function ModalAcoesComerciais({
                     </p>
                   </div>
 
+                  {carregandoHistorico && (
+                    <span className="text-xs text-gray-400">
+                      Carregando...
+                    </span>
+                  )}
+                </div>
+
+                {historico.length > 0 ? (
                   <div className="space-y-3">
                     {historico.map((acao, index) => (
                       <div
@@ -904,19 +782,20 @@ export default function ModalAcoesComerciais({
                         {acao.data_retorno && (
                           <div className="mt-2 text-xs text-gray-500">
                             <Calendar className="mr-1 inline h-3.5 w-3.5" />
-                            Retorno:{' '}
-                            {dataBR(acao.data_retorno)}
+                            Retorno: {dataBR(acao.data_retorno)}
                             {acao.horario_retorno &&
-                              ` às ${horaBR(
-                                acao.horario_retorno
-                              )}`}
+                              ` às ${horaBR(acao.horario_retorno)}`}
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
-                </section>
-              )}
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
+                    Nenhuma interação registrada.
+                  </div>
+                )}
+              </section>
             </div>
           )}
 
@@ -966,4 +845,3 @@ export default function ModalAcoesComerciais({
     </div>
   );
 }
-
