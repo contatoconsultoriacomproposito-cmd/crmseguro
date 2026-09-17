@@ -2906,317 +2906,470 @@ export const ComissoesLista = () => {
       )}
 
       {modalDetalhe && itemDetalhado && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-zinc-900 border p-6 rounded-[2rem] shadow-2xl max-w-lg w-full space-y-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-black uppercase text-purple-600 bg-purple-50 px-2.5 py-1 rounded-md">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-3">
+
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+
+          {/* =========================================================
+              CABEÇALHO
+          ========================================================= */}
+          <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-900 z-10">
+
+            <div className="flex justify-between items-center">
+
+              <div className="flex items-center gap-2">
+
+                <span className="text-[9px] font-black uppercase text-purple-600 bg-purple-50 px-2 py-1 rounded-md">
                   Raio-X
                 </span>
 
-                <h3 className="text-xs font-black uppercase mt-2">
+                <h3 className="text-[11px] font-black uppercase text-zinc-800 dark:text-zinc-100">
                   Origem da Comissão
                 </h3>
+
               </div>
 
               <button
-                onClick={() =>
-                  setModalDetalhe(false)
-                }
-                className="text-zinc-400 font-bold text-sm"
+                onClick={() => setModalDetalhe(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 transition"
               >
                 ✕
               </button>
+
             </div>
 
-            <div className="p-4 bg-zinc-50 rounded-2xl text-xs space-y-1">
-              <p>
-                <span className="text-zinc-400">
-                  Cliente:
-                </span>{' '}
-                <strong className="uppercase">
+          </div>
+
+
+          {/* =========================================================
+              CONTEÚDO
+          ========================================================= */}
+          <div className="p-3 space-y-2">
+
+
+            {/* =======================================================
+                IDENTIFICAÇÃO
+            ======================================================= */}
+            <div className="grid grid-cols-3 gap-2 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl px-3 py-2">
+
+              <div className="min-w-0">
+                <span className="block text-[8px] text-zinc-400 uppercase">
+                  Cliente
+                </span>
+
+                <strong className="block text-[10px] uppercase truncate">
                   {obterNomeCliente(
-                    itemDetalhado
-                      .tab_comissoes_regras
-                      ?.tab_clientes
+                    itemDetalhado.tab_comissoes_regras?.tab_clientes
                   )}
                 </strong>
-              </p>
+              </div>
 
-              <p>
-                <span className="text-zinc-400">
-                  Produto:
-                </span>{' '}
-                <span className="uppercase font-bold">
-                  {itemDetalhado
-                    .tab_comissoes_regras
-                    ?.base_produtos?.nome ||
-                    '—'}
-                </span>
-              </p>
 
-              <p>
-                <span className="text-zinc-400">
-                  Seguradora:
-                </span>{' '}
-                <span className="uppercase font-bold">
-                  {itemDetalhado
-                    .tab_comissoes_regras
-                    ?.base_seguradoras?.nome ||
-                    '—'}
+              <div className="min-w-0">
+                <span className="block text-[8px] text-zinc-400 uppercase">
+                  Produto
                 </span>
-              </p>
+
+                <strong className="block text-[10px] uppercase truncate">
+                  {itemDetalhado.tab_comissoes_regras
+                    ?.base_produtos?.nome || '—'}
+                </strong>
+              </div>
+
+
+              <div className="min-w-0">
+                <span className="block text-[8px] text-zinc-400 uppercase">
+                  Seguradora
+                </span>
+
+                <strong className="block text-[10px] uppercase truncate">
+                  {itemDetalhado.tab_comissoes_regras
+                    ?.base_seguradoras?.nome || '—'}
+                </strong>
+              </div>
+
             </div>
 
-            {/* DETALHAMENTO DA REGRA DE COMISSÃO */}
-            <div className="border rounded-2xl p-4 space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Regra de Comissão Contratada
-              </h4>
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="block text-[10px] text-zinc-400 uppercase">
-                    Base de cálculo
+            {/* =======================================================
+                REGRA CONTRATADA
+            ======================================================= */}
+            <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl px-3 py-2">
+
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+
+                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                  Regra Contratada
+                </span>
+
+                <div className="flex items-center gap-1">
+                  <span className="text-[8px] text-zinc-400 uppercase">
+                    Base
                   </span>
-                  <strong className="font-mono">
+
+                  <strong className="text-[10px] font-mono">
                     {formatBRL(
                       parseToNumber(
-                        itemDetalhado.tab_comissoes_regras?.base_calculo_valor
+                        itemDetalhado.tab_comissoes_regras
+                          ?.base_calculo_valor
                       )
                     )}
                   </strong>
                 </div>
 
-                <div>
-                  <span className="block text-[10px] text-zinc-400 uppercase">
-                    Comissão de venda
+
+                <div className="flex items-center gap-1">
+                  <span className="text-[8px] text-zinc-400 uppercase">
+                    Venda
                   </span>
-                  <strong>
+
+                  <strong className="text-[10px]">
                     {parseToNumber(
-                      itemDetalhado.tab_comissoes_regras?.pct_comissao_venda
+                      itemDetalhado.tab_comissoes_regras
+                        ?.pct_comissao_venda
                     )}%
                   </strong>
                 </div>
 
-                <div>
-                  <span className="block text-[10px] text-zinc-400 uppercase">
+
+                <div className="flex items-center gap-1">
+                  <span className="text-[8px] text-zinc-400 uppercase">
                     Recorrência
                   </span>
-                  <strong>
-                    {itemDetalhado.tab_comissoes_regras?.tipo_recorrencia || '—'}
+
+                  <strong className="text-[10px]">
+                    {itemDetalhado.tab_comissoes_regras
+                      ?.tipo_recorrencia || '—'}
                   </strong>
                 </div>
 
-                <div>
-                  <span className="block text-[10px] text-zinc-400 uppercase">
-                    Parcelas contratadas
+
+                <div className="flex items-center gap-1">
+                  <span className="text-[8px] text-zinc-400 uppercase">
+                    Parc.
                   </span>
-                  <strong>
-                    {itemDetalhado.tab_comissoes_regras?.quantidade_parcelas || 1}
+
+                  <strong className="text-[10px]">
+                    {itemDetalhado.tab_comissoes_regras
+                      ?.quantidade_parcelas || 1}
                   </strong>
                 </div>
 
-                <div>
-                  <span className="block text-[10px] text-zinc-400 uppercase">
-                    Dia de vencimento
+
+                <div className="flex items-center gap-1">
+                  <span className="text-[8px] text-zinc-400 uppercase">
+                    Venc.
                   </span>
-                  <strong>
-                    Dia {itemDetalhado.tab_comissoes_regras?.dia_vencimento_parcelas ?? '—'}
+
+                  <strong className="text-[10px]">
+                    Dia {itemDetalhado.tab_comissoes_regras
+                      ?.dia_vencimento_parcelas ?? '—'}
                   </strong>
                 </div>
+
               </div>
+
             </div>
 
-            {/* SPLITS CONTRATADOS */}
-            <div className="border rounded-2xl p-4 space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-wider text-blue-600">
-                Distribuição da Comissão — Splits
-              </h4>
 
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-600">
-                  Percentual do corretor
-                </span>
-                <strong className="font-mono">
-                  {parseToNumber(
-                    itemDetalhado.tab_comissoes_regras?.pct_corretor
-                  )}%
-                </strong>
+            {/* =======================================================
+                SPLIT + IOF
+            ======================================================= */}
+            <div className="grid grid-cols-2 gap-2">
+
+
+              {/* SPLITS */}
+              <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl px-3 py-2">
+
+                <h4 className="text-[9px] font-black uppercase tracking-wider text-blue-600 mb-1.5">
+                  Distribuição — Splits
+                </h4>
+
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-zinc-500">
+                    Corretor
+                  </span>
+
+                  <strong className="font-mono">
+                    {parseToNumber(
+                      itemDetalhado.tab_comissoes_regras?.pct_corretor
+                    )}%
+                  </strong>
+                </div>
+
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-zinc-500">
+                    Parceiro
+                  </span>
+
+                  <strong className="font-mono">
+                    {parseToNumber(
+                      itemDetalhado.tab_comissoes_regras?.pct_parceiro
+                    )}%
+                  </strong>
+                </div>
+
               </div>
 
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-600">
-                  Percentual do parceiro
-                </span>
-                <strong className="font-mono">
-                  {parseToNumber(
-                    itemDetalhado.tab_comissoes_regras?.pct_parceiro
-                  )}%
-                </strong>
+
+              {/* IOF */}
+              <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl px-3 py-2">
+
+                <h4 className="text-[9px] font-black uppercase tracking-wider text-amber-600 mb-1.5">
+                  IOF
+                </h4>
+
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-zinc-500">
+                    Descontar?
+                  </span>
+
+                  <strong>
+                    {itemDetalhado.tab_comissoes_regras?.descontar_iof
+                      ? 'Sim'
+                      : 'Não'}
+                  </strong>
+                </div>
+
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-zinc-500">
+                    Valor informado
+                  </span>
+
+                  <strong className="font-mono">
+                    {formatBRL(
+                      parseToNumber(
+                        itemDetalhado.tab_comissoes_regras?.valor_iof
+                      )
+                    )}
+                  </strong>
+                </div>
+
               </div>
+
             </div>
 
-            {/* IOF */}
-            <div className="border rounded-2xl p-4 space-y-2">
-              <h4 className="text-[10px] font-black uppercase tracking-wider text-amber-600">
-                IOF
-              </h4>
 
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-600">
-                  Descontar IOF?
-                </span>
-                <strong>
-                  {itemDetalhado.tab_comissoes_regras?.descontar_iof
-                    ? 'Sim'
-                    : 'Não'}
-                </strong>
+            {/* =======================================================
+                DESCONTOS + FAIXAS
+            ======================================================= */}
+            <div className="grid grid-cols-2 gap-2">
+
+
+              {/* DESCONTOS SOBRE COMISSÃO */}
+              <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl px-3 py-2">
+
+                <h4 className="text-[9px] font-black uppercase tracking-wider text-purple-600 mb-1.5">
+                  Descontos sobre a Comissão
+                </h4>
+
+                {Array.isArray(
+                  itemDetalhado.tab_comissoes_regras
+                    ?.descontos_comissao_json
+                ) &&
+                itemDetalhado.tab_comissoes_regras
+                  .descontos_comissao_json.length > 0 ? (
+
+                  <div className="space-y-1">
+
+                    {itemDetalhado.tab_comissoes_regras
+                      .descontos_comissao_json.map(
+                        (desconto: any, index: number) => (
+
+                          <div
+                            key={desconto.id || index}
+                            className="flex justify-between items-center text-[10px]"
+                          >
+
+                            <span className="text-zinc-500 truncate pr-2">
+                              {desconto.nome || 'Desconto'}
+                            </span>
+
+                            <strong className="font-mono text-rose-600 shrink-0">
+                              {parseToNumber(
+                                desconto.percentual
+                              )}%
+                            </strong>
+
+                          </div>
+
+                        )
+                      )}
+
+                  </div>
+
+                ) : (
+
+                  <p className="text-[9px] text-zinc-400">
+                    Nenhum desconto cadastrado.
+                  </p>
+
+                )}
+
               </div>
 
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-600">
-                  Valor do IOF informado
-                </span>
-                <strong className="font-mono">
-                  {formatBRL(
-                    parseToNumber(
-                      itemDetalhado.tab_comissoes_regras?.valor_iof
-                    )
-                  )}
-                </strong>
+
+              {/* FAIXAS */}
+              <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl px-3 py-2">
+
+                <h4 className="text-[9px] font-black uppercase tracking-wider text-indigo-600 mb-1.5">
+                  Faixas de Comissão
+                </h4>
+
+                {Array.isArray(
+                  itemDetalhado.tab_comissoes_regras
+                    ?.meta_faixas_json
+                ) &&
+                itemDetalhado.tab_comissoes_regras
+                  .meta_faixas_json.length > 0 ? (
+
+                  <div className="space-y-1">
+
+                    {itemDetalhado.tab_comissoes_regras
+                      .meta_faixas_json.map(
+                        (faixa: any, index: number) => (
+
+                          <div
+                            key={faixa.id || index}
+                            className="flex justify-between items-center text-[10px]"
+                          >
+
+                            <span className="text-zinc-500">
+                              Parcela {faixa.parcelaInicio} até{' '}
+                              {faixa.parcelaFim}
+                            </span>
+
+                            <strong className="font-mono">
+                              {parseToNumber(
+                                faixa.pctComissaoVenda
+                              )}%
+                            </strong>
+
+                          </div>
+
+                        )
+                      )}
+
+                  </div>
+
+                ) : (
+
+                  <p className="text-[9px] text-zinc-400">
+                    Nenhuma faixa cadastrada.
+                  </p>
+
+                )}
+
               </div>
+
             </div>
 
-            {/* DESCONTOS SOBRE A COMISSÃO */}
-            <div className="border rounded-2xl p-4 space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-wider text-purple-600">
-                Descontos sobre a Comissão
-              </h4>
+
+            {/* =======================================================
+                DESCONTOS DO CORRETOR
+            ======================================================= */}
+            <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl px-3 py-2">
+
+              <div className="flex items-center justify-between mb-1.5">
+
+                <h4 className="text-[9px] font-black uppercase tracking-wider text-orange-600">
+                  Descontos do Corretor
+                </h4>
+
+              </div>
 
               {Array.isArray(
-                itemDetalhado.tab_comissoes_regras?.descontos_comissao_json
+                itemDetalhado.tab_comissoes_regras
+                  ?.descontos_corretor_json
               ) &&
-              itemDetalhado.tab_comissoes_regras.descontos_comissao_json.length > 0 ? (
-                itemDetalhado.tab_comissoes_regras.descontos_comissao_json.map(
-                  (desconto: any, index: number) => (
-                    <div
-                      key={desconto.id || index}
-                      className="flex justify-between items-center text-xs"
-                    >
-                      <span className="text-zinc-600">
-                        {desconto.nome || 'Desconto'}
-                      </span>
-                      <strong className="font-mono text-rose-600">
-                        {parseToNumber(desconto.percentual)}%
-                      </strong>
-                    </div>
-                  )
-                )
+              itemDetalhado.tab_comissoes_regras
+                .descontos_corretor_json.length > 0 ? (
+
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+
+                  {itemDetalhado.tab_comissoes_regras
+                    .descontos_corretor_json.map(
+                      (desconto: any, index: number) => (
+
+                        <div
+                          key={desconto.id || index}
+                          className="flex justify-between items-center text-[10px]"
+                        >
+
+                          <span className="text-zinc-500 truncate pr-2">
+                            {desconto.nome || 'Desconto'}
+                            {desconto.tipo
+                              ? ` (${desconto.tipo})`
+                              : ''}
+                          </span>
+
+                          <strong className="font-mono text-rose-600 shrink-0">
+                            {desconto.tipo === 'PERCENTUAL'
+                              ? `${parseToNumber(desconto.valor)}%`
+                              : formatBRL(
+                                  parseToNumber(
+                                    desconto.valor
+                                  )
+                                )}
+                          </strong>
+
+                        </div>
+
+                      )
+                    )}
+
+                </div>
+
               ) : (
-                <p className="text-xs text-zinc-400">
+
+                <p className="text-[9px] text-zinc-400">
                   Nenhum desconto cadastrado.
                 </p>
+
               )}
+
             </div>
 
-            {/* DESCONTOS DO CORRETOR */}
-            <div className="border rounded-2xl p-4 space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-wider text-orange-600">
-                Descontos do Corretor
-              </h4>
 
-              {Array.isArray(
-                itemDetalhado.tab_comissoes_regras?.descontos_corretor_json
-              ) &&
-              itemDetalhado.tab_comissoes_regras.descontos_corretor_json.length > 0 ? (
-                itemDetalhado.tab_comissoes_regras.descontos_corretor_json.map(
-                  (desconto: any, index: number) => (
-                    <div
-                      key={desconto.id || index}
-                      className="flex justify-between items-center text-xs"
-                    >
-                      <span className="text-zinc-600">
-                        {desconto.nome || 'Desconto'}
-                        {desconto.tipo ? ` (${desconto.tipo})` : ''}
-                      </span>
-                      <strong className="font-mono text-rose-600">
-                        {desconto.tipo === 'PERCENTUAL'
-                          ? `${parseToNumber(desconto.valor)}%`
-                          : formatBRL(parseToNumber(desconto.valor))}
-                      </strong>
-                    </div>
-                  )
-                )
-              ) : (
-                <p className="text-xs text-zinc-400">
-                  Nenhum desconto cadastrado.
-                </p>
-              )}
-            </div>
+            {/* =======================================================
+                RESULTADOS FINANCEIROS
+            ======================================================= */}
+            <div className="grid grid-cols-2 gap-2 border-t border-zinc-100 pt-2">
 
-            {/* FAIXAS DE COMISSÃO */}
-            <div className="border rounded-2xl p-4 space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-wider text-indigo-600">
-                Faixas de Comissão
-              </h4>
 
-              {Array.isArray(
-                itemDetalhado.tab_comissoes_regras?.meta_faixas_json
-              ) &&
-              itemDetalhado.tab_comissoes_regras.meta_faixas_json.length > 0 ? (
-                itemDetalhado.tab_comissoes_regras.meta_faixas_json.map(
-                  (faixa: any, index: number) => (
-                    <div
-                      key={faixa.id || index}
-                      className="flex justify-between items-center text-xs"
-                    >
-                      <span className="text-zinc-600">
-                        Parcela {faixa.parcelaInicio} até {faixa.parcelaFim}
-                      </span>
-                      <strong className="font-mono">
-                        {parseToNumber(faixa.pctComissaoVenda)}%
-                      </strong>
-                    </div>
-                  )
-                )
-              ) : (
-                <p className="text-xs text-zinc-400">
-                  Nenhuma faixa cadastrada.
-                </p>
-              )}
-            </div>
+              {/* DIREITO ORIGINAL */}
+              <div className="flex justify-between items-center bg-blue-50 px-3 py-2 rounded-xl">
 
-            <div className="border-t pt-3 space-y-2">
-              <div className="flex justify-between items-center bg-blue-50 p-2.5 rounded-xl text-xs">
-                <span className="font-bold text-blue-700">
+                <span className="text-[9px] font-bold text-blue-700">
                   Direito Corretor Original (
                   {parseToNumber(
-                    itemDetalhado
-                      .tab_comissoes_regras
+                    itemDetalhado.tab_comissoes_regras
                       ?.pct_corretor
                   )}
                   %)
                 </span>
 
-                <span className="font-black text-blue-700 font-mono">
+                <span className="text-[11px] font-black text-blue-700 font-mono">
                   {formatBRL(
                     parseToNumber(
                       itemDetalhado.valor_direito_corretor
                     )
                   )}
                 </span>
+
               </div>
 
-              <div className="flex justify-between items-center bg-emerald-50 p-2.5 rounded-xl text-xs">
-                <span className="font-bold text-emerald-700">
+
+              {/* LÍQUIDO */}
+              <div className="flex justify-between items-center bg-emerald-50 px-3 py-2 rounded-xl">
+
+                <span className="text-[9px] font-bold text-emerald-700">
                   Líquido após Acerto de Caixa
                 </span>
 
-                <span className="font-black text-emerald-700 font-mono">
+                <span className="text-[11px] font-black text-emerald-700 font-mono">
                   {formatBRL(
-                    itemDetalhado.valor_recebido_liquido !==
-                      null
+                    itemDetalhado.valor_recebido_liquido !== null
                       ? parseToNumber(
                           itemDetalhado.valor_recebido_liquido
                         )
@@ -3225,20 +3378,31 @@ export const ComissoesLista = () => {
                         )
                   )}
                 </span>
+
               </div>
+
             </div>
 
+          </div>
+
+
+          {/* =========================================================
+              RODAPÉ
+          ========================================================= */}
+          <div className="px-3 pb-3">
+
             <button
-              onClick={() =>
-                setModalDetalhe(false)
-              }
-              className="w-full py-2.5 bg-zinc-900 text-white font-black text-[10px] uppercase rounded-xl"
+              onClick={() => setModalDetalhe(false)}
+              className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 text-white font-black text-[9px] uppercase rounded-xl transition"
             >
               Fechar Diagnóstico
             </button>
+
           </div>
+
         </div>
-      )}
+      </div>
+    )}
     </div>
   );
 };

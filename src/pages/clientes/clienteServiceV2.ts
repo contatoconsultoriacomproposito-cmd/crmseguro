@@ -754,12 +754,26 @@ export const buscarClientesV2 = async (
     if (filtros.origem) query = query.eq('origem', filtros.origem);
     if (filtros.fase_atendimento) query = query.eq('fase_atendimento', filtros.fase_atendimento);
     if (filtros.temperatura) query = query.eq('temperatura', filtros.temperatura);
-    if (filtros.status_kanban) {
+
+    // LÓGICA CORRIGIDA DO KANBAN:
+    const temBuscaGlobal = Boolean(
+      filtros.buscaGlobal?.trim()
+    );
+
+    // Na busca global, não restringe os clientes pelo status Kanban.
+    // Assim, clientes "novo" também podem ser encontrados.
+    if (!temBuscaGlobal) {
+      if (filtros.status_kanban) {
         query = query.eq('status_kanban', filtros.status_kanban);
       } else {
+        // Com a busca global vazia, oculta os clientes "novo".
         query = query.neq('status_kanban', 'novo');
       }
-    if (filtros.fase_kanban) query = query.eq('fase_kanban', filtros.fase_kanban);
+    }
+
+    if (filtros.fase_kanban) {
+      query = query.eq('fase_kanban', filtros.fase_kanban);
+    }
 
     // ==========================================
     // 4. RETORNO CRM E INTERAÇÕES
