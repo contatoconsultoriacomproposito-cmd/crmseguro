@@ -11,6 +11,8 @@ import { ModalCadastroCliente } from './ModalCadastroCliente';
 import ModalAcoesComerciais from './ModalAcoesComerciais';
 import { salvarAcaoComercialV2 } from './clienteServiceV2';
 import { toast } from "sonner";
+import { useNavigate } from 'react-router-dom';
+
 const ITENS_POR_PAGINA = 10;
 
 const FILTROS_INICIAIS: FiltrosClientesV2 = {
@@ -155,6 +157,7 @@ export const ClientesListaV2: React.FC = () => {
   const [exibirAvancados, setExibirAvancados] = useState<boolean>(true);
   const [sociosExpandidos, setSociosExpandidos] = useState<Record<string, boolean>>({});
   const [clienteParaConverter, setClienteParaConverter] = useState<ClienteV2Formatado | null>(null);
+  const navigate = useNavigate();
   const [gruposExpandidos, setGruposExpandidos] = useState({
     localizacao: false,
     perfilEmpresa: false,
@@ -836,6 +839,14 @@ export const ClientesListaV2: React.FC = () => {
                               onClick={() => handleNovaAcao(cliente)}
                           >
                               <Calendar size={15} />
+                          </button>
+
+                          <button
+                              title="Nova Proposta"
+                              className="border border-slate-200 bg-white p-1.5 rounded-md cursor-pointer flex items-center justify-center hover:bg-slate-100 text-green-600 transition-colors"
+                              onClick={() => navigate(`/propostas/criar?clienteId=${cliente.id}`)}
+                          >
+                              <Plus size={15} />
                           </button>
                           {/* Validação direta inline (sem precisar de função auxiliar) */}
                           {(!cliente.status_kanban || cliente.status_kanban.toString().trim() === '' || cliente.status_kanban.toString().trim().toLowerCase() === 'novo') && (

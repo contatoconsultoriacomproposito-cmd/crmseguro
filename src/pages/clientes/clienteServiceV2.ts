@@ -981,23 +981,61 @@ export const buscarClientesV2 = async (
     }
 
     const dadosFormatados: ClienteV2Formatado[] = clientes.map((cli: any) => {
-      let sociosTexto = '';
-      if (Array.isArray(cli.socios) && cli.socios.length > 0) {
-        sociosTexto = cli.socios.map((s: any) => s.nome).join(', ');
-      }
+        let sociosTexto = '';
 
-      const interacaoPendente = Array.isArray(cli.interacoes)
-        ? cli.interacoes.find((i: any) => i.status_agendamento === 'PENDENTE')
-        : null;
+        if (Array.isArray(cli.socios) && cli.socios.length > 0) {
+          sociosTexto = cli.socios.map((s: any) => s.nome).join(', ');
+        }
 
-      return {
+        // =====================================================
+        // DADOS DO CONTATO PRINCIPAL
+        // =====================================================
+        const contatosCliente = padronizarContatos(cli.contatos);
+
+        const contatoPrincipal =
+          contatosCliente.find((c: any) => c.principal === true) ||
+          contatosCliente[0] ||
+          null;
+
+        // =====================================================
+        // CPF / CNPJ
+        // =====================================================
+        // PJ continua usando o campo da raiz.
+        // PF pode ter o CPF armazenado no contato principal.
+        const cpfCnpj =
+          cli.cpf_cnpj ||
+          contatoPrincipal?.cpf ||
+          null;
+
+        // =====================================================
+        // LOCALIZAÇÃO
+        // =====================================================
+        // Primeiro tenta a estrutura antiga da raiz.
+        // Se não existir, utiliza o endereço do contato principal.
+        const municipio =
+          cli.municipio ||
+          contatoPrincipal?.municipio ||
+          contatoPrincipal?.endereco?.municipio ||
+          null;
+
+        const uf =
+          cli.uf ||
+          contatoPrincipal?.uf ||
+          contatoPrincipal?.endereco?.uf ||
+          null;
+
+        const interacaoPendente = Array.isArray(cli.interacoes)
+          ? cli.interacoes.find((i: any) => i.status_agendamento === 'PENDENTE')
+          : null;
+
+        return {
         id: cli.id,
         tipo_cliente: cli.tipo_cliente,
         nome_razao_social: cli.nome_razao_social,
         nome_fantasia: cli.nome_fantasia,
-        cpf_cnpj: cli.cpf_cnpj,
-        municipio: cli.municipio,
-        uf: cli.uf,
+        cpf_cnpj: cpfCnpj,
+        municipio: municipio,
+        uf: uf,
         socios_texto: sociosTexto,
         responsavel_nome: cli.corretor_id ? (mapaResponsaveis[cli.corretor_id] || 'Não Encontrado') : 'Não Atribuído',
         data_retorno: interacaoPendente?.data_retorno || cli.data_retorno || null,
