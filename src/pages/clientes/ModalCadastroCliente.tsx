@@ -109,36 +109,40 @@ export const ModalCadastroCliente = ({
   const [socios, setSocios] = useState<any[]>([]);
   const [contatos, setContatos] = useState<any[]>([
     {
-      id: crypto.randomUUID(),
-      nome: '',
-      cargo_parentesco: '',
-      telefone: '',
-      email: '',
-      cpf: '',
-      rg: '',
-      rg_numero: '',
-      rg_orgao: '',
-      data_emissao_rg: '',
-      data_emissao_doc: '',
-      data_nascimento: '',
-      sexo: '',
-      estado_civil: '',
-      naturalidade: '',
-      ocupacao: '',
-      principal: true,
-      usar_endereco_principal: true,
-      mostrarDocs: false,
-      mostrarEndereco: false,
-      endereco: {
-        cep: '',
-        logradouro: '',
-        numero: '',
-        bairro: '',
-        municipio: '',
-        uf: '',
-        complemento: ''
-      }
-    }
+    id: crypto.randomUUID(),
+
+    nome: '',
+    cargo_parentesco: '',
+    telefone: '',
+    email: '',
+
+    cpf: '',
+    rg: '',
+    rg_numero: '',
+    rg_orgao: '',
+    data_emissao_rg: '',
+
+    data_nascimento: '',
+    sexo: '',
+    estado_civil: '',
+    naturalidade: '',
+    ocupacao: '',
+    outros: '',
+
+    principal: true,
+    usar_endereco_principal: true,
+
+    mostrarDocs: false,
+    mostrarEndereco: false,
+
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    municipio: '',
+    uf: '',
+    complemento: ''
+  }
   ]);
 
   // --- ESTADOS DADOS PESSOAIS PF ---
@@ -147,13 +151,6 @@ export const ModalCadastroCliente = ({
   const [naturalidade, setNaturalidade] = useState('');
   const [ocupacao, setOcupacao] = useState('');
 
-  // --- ESTADOS CONTROLE DE INTERFACE / SANFONA ---
-  const [openDocsPF, setOpenDocsPF] = useState(true);
-
-  // --- ESTADOS DOCUMENTOS RG ---
-  const [rgNumero, setRgNumero] = useState('');
-  const [rgOrgao, setRgOrgao] = useState('');
-  const [dataEmissaoRG, setDataEmissaoRG] = useState('');
 
   // Define o dono inicial baseado no usuário logado
   useEffect(() => {
@@ -169,10 +166,25 @@ export const ModalCadastroCliente = ({
     if (cliente) {
       // 1. Identificação Básica
       setTipoCliente(cliente.tipo_cliente || 'PJ');
-      setCpfCnpj(cliente.cpf_cnpj || '');
-      setNomeRazaoSocial(cliente.nome_razao_social || cliente.razao_social || cliente.nome || '');
+
+      // CPF/CNPJ:
+      // - PF → CPF vem de contatos[].cpf
+      // - PJ → CNPJ continua vindo de cliente.cpf_cnpj
+      if (cliente.tipo_cliente === 'PF') {
+        setCpfCnpj('');
+      } else {
+        setCpfCnpj(cliente.cpf_cnpj || '');
+      }
+
+      setNomeRazaoSocial(
+        cliente.nome_razao_social ||
+        cliente.razao_social ||
+        cliente.nome ||
+        ''
+      );
+
       setNomeFantasia(cliente.nome_fantasia || '');
-      
+
       if (cliente.corretor_id || cliente.dono_id) {
         setDonoId(cliente.corretor_id || cliente.dono_id);
       }
@@ -188,6 +200,7 @@ export const ModalCadastroCliente = ({
 
       // 3. Modos Visuais
       setModoCadastro('COMPLETO');
+
       if (cliente.tipo_cliente === 'PJ') {
         setOpenComplementarPJ(true);
       } else {
@@ -197,9 +210,15 @@ export const ModalCadastroCliente = ({
       // 4. Parser seguro de campos JSON
       const parseSeguro = (valor: any, fallback: any) => {
         if (!valor) return fallback;
+
         if (typeof valor === 'string') {
-          try { return JSON.parse(valor); } catch (e) { return fallback; }
+          try {
+            return JSON.parse(valor);
+          } catch (e) {
+            return fallback;
+          }
         }
+
         return valor;
       };
 
@@ -216,21 +235,25 @@ export const ModalCadastroCliente = ({
         setSexo(complPF.sexo || '');
         setNaturalidade(complPF.naturalidade || '');
         setOcupacao(complPF.ocupacao || '');
-        setRgNumero(complPF.rg_numero || '');
-        setRgOrgao(complPF.rg_orgao || '');
-        setDataEmissaoRG(complPF.data_emissao_rg || '');
       }
 
-
-
-      if (contatosBanco.length > 0) setContatos(contatosBanco);
+      if (contatosBanco.length > 0) {
+        setContatos(contatosBanco);
+      }
 
       const sociosBanco = parseSeguro(cliente.socios, []);
-      if (sociosBanco.length > 0) setSocios(sociosBanco);
+
+      if (sociosBanco.length > 0) {
+        setSocios(sociosBanco);
+      }
 
       // 6. Dados PJ
       if (cliente.tipo_cliente === 'PJ') {
-        const complPJ = parseSeguro(cliente.dados_pj || cliente.dados_complementares_pj, {});
+        const complPJ = parseSeguro(
+          cliente.dados_pj || cliente.dados_complementares_pj,
+          {}
+        );
+
         setDadosReceita({
           data_abertura: complPJ.data_abertura || '',
           porte: complPJ.porte || '',
@@ -239,8 +262,14 @@ export const ModalCadastroCliente = ({
           opcao_pelo_simples: Boolean(complPJ.opcao_pelo_simples),
           natureza_juridica: complPJ.natureza_juridica || '',
           matriz_filial: complPJ.matriz_filial || '',
-          situacao_cadastral: complPJ.situacao_cadastral || cliente.situacao_cadastral || '',
-          cnae_principal: complPJ.cnae_principal || cliente.cnae_principal || '',
+          situacao_cadastral:
+            complPJ.situacao_cadastral ||
+            cliente.situacao_cadastral ||
+            '',
+          cnae_principal:
+            complPJ.cnae_principal ||
+            cliente.cnae_principal ||
+            '',
         });
       }
     }
@@ -311,15 +340,13 @@ export const ModalCadastroCliente = ({
         usar_endereco_principal: true,
         mostrarDocs: false,
         mostrarEndereco: false,
-        endereco: {
-          cep: '',
-          logradouro: '',
-          numero: '',
-          bairro: '',
-          municipio: '',
-          uf: '',
-          complemento: ''
-        }
+        cep: '',
+        logradouro: '',
+        numero: '',
+        bairro: '',
+        municipio: '',
+        uf: '',
+        complemento: ''
       }
     ]);
   };
@@ -424,15 +451,13 @@ export const ModalCadastroCliente = ({
             usar_endereco_principal: true,
             mostrarDocs: false,
             mostrarEndereco: false,
-            endereco: {
-              cep: data.cep ? maskCEP(data.cep) : '',
-              logradouro: data.logradouro || '',
-              numero: data.numero || '',
-              bairro: data.bairro || '',
-              municipio: data.municipio || '',
-              uf: data.uf || '',
-              complemento: data.complemento || ''
-            }
+            cep: data.cep ? maskCEP(data.cep) : '',
+            logradouro: data.logradouro || '',
+            numero: data.numero || '',
+            bairro: data.bairro || '',
+            municipio: data.municipio || '',
+            uf: data.uf || '',
+            complemento: data.complemento || ''
           }))
         );
       } else {
@@ -457,7 +482,13 @@ export const ModalCadastroCliente = ({
           usar_endereco_principal: true,
           mostrarDocs: false,
           mostrarEndereco: false,
-          endereco: { cep: '', logradouro: '', numero: '', bairro: '', municipio: '', uf: '', complemento: '' }
+          cep: '',
+          logradouro: '',
+          numero: '',
+          bairro: '',
+          municipio: '',
+          uf: '',
+          complemento: ''
         }]);
       }
 
@@ -503,7 +534,13 @@ export const ModalCadastroCliente = ({
       usar_endereco_principal: true,
       mostrarDocs: false,
       mostrarEndereco: false,
-      endereco: { cep: '', logradouro: '', numero: '', bairro: '', municipio: '', uf: '', complemento: '' }
+      cep: '',
+      logradouro: '',
+      numero: '',
+      bairro: '',
+      municipio: '',
+      uf: '',
+      complemento: ''
     }
   ]);
   
@@ -565,17 +602,35 @@ export const ModalCadastroCliente = ({
     }
   };
 
-  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCpfChange = (
+    contatoId: string,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const valorFormatado = maskCPF(e.target.value);
-    setCpfCnpj(valorFormatado);
     const apenasNumeros = valorFormatado.replace(/\D/g, '');
-    setErroCPF(apenasNumeros.length === 11 ? !validarCPF(apenasNumeros) : false);
+
+    const contato = contatos.find(
+      (c) => (c.id || '') === contatoId
+    );
+
+    if (contato?.principal) {
+      const contato = contatos.find((c) => c.id === contatoId);
+
+      const cpfInvalido =
+        contato?.principal === true &&
+        apenasNumeros.length === 11 &&
+        !validarCPF(apenasNumeros);
+
+      setErroCPF(cpfInvalido);
+    }
+
     setMensagemErro('');
 
-    // Atualiza o CPF do contato principal no caso de Pessoa Física
-    if (tipoCliente === 'PF' && contatos.length > 0) {
-      handleUpdateContato(contatos[0].id, 'cpf', valorFormatado);
-    }
+    handleUpdateContato(
+      contatoId,
+      'cpf',
+      valorFormatado
+    );
   };
 
   const handleCnpjChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -602,10 +657,28 @@ export const ModalCadastroCliente = ({
     }
 
     if (tipoCliente === 'PF') {
-      const cpfLimpo = cpfCnpj.replace(/\D/g, '');
-      if (modoCadastro === 'COMPLETO' && cpfLimpo.length !== 11) erros.push('CPF é obrigatório no Cadastro Completo.');
-      if (cpfLimpo.length > 0 && cpfLimpo.length !== 11) erros.push('O CPF informado está incompleto.');
-      if (erroCPF) erros.push('O CPF informado é inválido.');
+      const contatoPrincipal =
+        contatos.find((c) => c.principal) || contatos[0];
+
+      const cpfLimpo = (contatoPrincipal?.cpf || '').replace(/\D/g, '');
+
+      // CPF obrigatório no Cadastro Completo
+      if (modoCadastro === 'COMPLETO' && cpfLimpo.length !== 11) {
+        erros.push('CPF é obrigatório no Cadastro Completo.');
+      }
+
+      // CPF informado, mas incompleto
+      if (cpfLimpo.length > 0 && cpfLimpo.length !== 11) {
+        erros.push('O CPF informado está incompleto.');
+      }
+
+      // CPF com 11 dígitos, mas inválido
+      if (
+        cpfLimpo.length === 11 &&
+        !validarCPF(cpfLimpo)
+      ) {
+        erros.push('O CPF informado é inválido.');
+      }
     }
 
     const temContato = contatos.some(c => (c.telefone?.replace(/\D/g, '') || '').length >= 10 || (c.email?.trim() || '').length > 0);
@@ -642,13 +715,40 @@ export const ModalCadastroCliente = ({
       cpf_cnpj: cpfCnpj,
       nome_razao_social: nomeRazaoSocial,
       nome_fantasia: nomeFantasia,
-      data_nascimento: tipoCliente === 'PF' ? dataNascimento : null,
-      sexo: tipoCliente === 'PF' ? sexo : null,
-      naturalidade: tipoCliente === 'PF' ? naturalidade : null,
-      ocupacao: tipoCliente === 'PF' ? ocupacao : null,
-      rg_numero: tipoCliente === 'PF' ? rgNumero : null,
-      rg_orgao: tipoCliente === 'PF' ? rgOrgao : null,
-      data_emissao_rg: tipoCliente === 'PF' ? dataEmissaoRG : null,
+
+      data_nascimento: tipoCliente === 'PF'
+        ? (contatos.find(c => c.principal) || contatos[0])?.data_nascimento || null
+        : null,
+
+      sexo: tipoCliente === 'PF'
+        ? (contatos.find(c => c.principal) || contatos[0])?.sexo || null
+        : null,
+
+      naturalidade: tipoCliente === 'PF'
+        ? (contatos.find(c => c.principal) || contatos[0])?.naturalidade || null
+        : null,
+
+      ocupacao: tipoCliente === 'PF'
+        ? (contatos.find(c => c.principal) || contatos[0])?.ocupacao || null
+        : null,
+
+      rg_numero: tipoCliente === 'PF'
+        ? (contatos.find(c => c.principal) || contatos[0])?.rg || null
+        : null,
+
+      rg_orgao: tipoCliente === 'PF'
+        ? (contatos.find(c => c.principal) || contatos[0])?.rg_orgao || null
+        : null,
+
+      data_emissao_rg: tipoCliente === 'PF'
+        ? (contatos.find(c => c.principal) || contatos[0])?.data_emissao_rg || null
+        : null,
+
+      estado_civil: tipoCliente === 'PF'
+        ? (contatos.find(c => c.principal) || contatos[0])?.estado_civil || null
+        : null,
+
+
       dados_pj: tipoCliente === 'PJ' ? dadosReceita : null,
       dono_id: donoFinal,
       corretor_id: donoFinal,
@@ -658,8 +758,6 @@ export const ModalCadastroCliente = ({
     };
 
     console.log('=== DEBUG DATA EMISSÃO RG ===');
-    console.log('dataEmissaoRG:', dataEmissaoRG);
-    console.log('payload.data_emissao_rg:', payloadCliente.data_emissao_rg);
 
     handleSubmit(payloadCliente);
   };
@@ -694,9 +792,56 @@ export const ModalCadastroCliente = ({
         contatos,
         socios: socios || [],
         dados_pj: tipoCliente === 'PJ' ? dadosReceita : null,
+
+        data_nascimento: tipoCliente === 'PF'
+          ? (contatos.find(c => c.principal) || contatos[0])?.data_nascimento || null
+          : null,
+
+        sexo: tipoCliente === 'PF'
+          ? (contatos.find(c => c.principal) || contatos[0])?.sexo || null
+          : null,
+
+        naturalidade: tipoCliente === 'PF'
+          ? (contatos.find(c => c.principal) || contatos[0])?.naturalidade || null
+          : null,
+
+        ocupacao: tipoCliente === 'PF'
+          ? (contatos.find(c => c.principal) || contatos[0])?.ocupacao || null
+          : null,
+
+        rg_numero: tipoCliente === 'PF'
+          ? (contatos.find(c => c.principal) || contatos[0])?.rg || null
+          : null,
+
+        rg_orgao: tipoCliente === 'PF'
+          ? (contatos.find(c => c.principal) || contatos[0])?.rg_orgao || null
+          : null,
+
+        data_emissao_rg: tipoCliente === 'PF'
+          ? (contatos.find(c => c.principal) || contatos[0])?.data_emissao_rg || null
+          : null,
+
+        estado_civil: tipoCliente === 'PF'
+          ? (contatos.find(c => c.principal) || contatos[0])?.estado_civil || null
+          : null,
       },
       true
     );
+  };
+
+  const handleMarcarContatoPrincipal = (id: string) => {
+    setContatos((prev) =>
+      prev.map((contato, index) => {
+        const contatoId = contato.id || String(index);
+
+        return {
+          ...contato,
+          principal: contatoId === id
+        };
+      })
+    );
+
+    setMensagemErro('');
   };
 
   return (
@@ -1208,171 +1353,7 @@ export const ModalCadastroCliente = ({
                 </div>
               </div>
 
-              {modoCadastro === 'COMPLETO' && (
-                <>
-                  {/* DOCUMENTOS PF */}
-                  <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                    <button
-                      type="button"
-                      onClick={() => setOpenDocsPF(!openDocsPF)}
-                      className="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 flex items-center justify-between text-xs font-bold text-slate-700 transition"
-                    >
-                      <span className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-slate-500" />
-                        Documentos de Identificação
-                      </span>
-                      {openDocsPF ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-
-                    {openDocsPF && (
-                      <div className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50/50">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">
-                            CPF <span className="text-red-600 ml-1">🔴</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={cpfCnpj}
-                            onChange={handleCpfChange}
-                            placeholder="000.000.000-00"
-                            maxLength={14}
-                            className={`w-full px-2.5 py-1.5 border rounded-md text-xs font-mono outline-none bg-white focus:ring-2 transition ${
-                              erroCPF ? 'border-red-500 focus:ring-red-500 text-red-600' : 'focus:ring-blue-500'
-                            }`}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Número do RG</label>
-                          <input
-                            type="text"
-                            value={rgNumero}
-                            onChange={(e) => setRgNumero(e.target.value)}
-                            placeholder="Ex: 00.000.000-0"
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Órgão Emissor</label>
-                          <input
-                            type="text"
-                            value={rgOrgao}
-                            onChange={(e) => setRgOrgao(e.target.value)}
-                            placeholder="SSP/UF"
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Data de Emissão</label>
-                          <input
-                            type="date"
-                            value={dataEmissaoRG}
-                            onChange={(e) => setDataEmissaoRG(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ENDEREÇO RESIDENCIAL PF */}
-                  <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                    <button
-                      type="button"
-                      onClick={() => setOpenEndereco(!openEndereco)}
-                      className="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 flex items-center justify-between text-xs font-bold text-slate-700 transition"
-                    >
-                      <span className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-slate-500" />
-                        Endereço Residencial
-                      </span>
-                      {openEndereco ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-
-                    {openEndereco && (
-                      <div className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50/50">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1 flex items-center justify-between">
-                            <span>CEP</span>
-                            {loadingCEP && <span className="text-blue-600 text-[10px] animate-pulse">Buscando...</span>}
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value={cep}
-                              onChange={handleCepChange}
-                              placeholder="00000-00"
-                              maxLength={9}
-                              disabled={loadingCEP}
-                              className="w-full px-2.5 py-1.5 pr-8 border rounded-md text-xs font-mono outline-none bg-white focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-gray-400"
-                            />
-                            {loadingCEP && (
-                              <div className="absolute right-2 top-2">
-                                <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Logradouro</label>
-                          <input
-                            type="text"
-                            value={logradouro}
-                            onChange={(e) => setLogradouro(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Número</label>
-                          <input
-                            type="text"
-                            value={numero}
-                            onChange={(e) => setNumero(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Bairro</label>
-                          <input
-                            type="text"
-                            value={bairro}
-                            onChange={(e) => setBairro(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Município</label>
-                          <input
-                            type="text"
-                            value={municipio}
-                            onChange={(e) => setMunicipio(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">UF</label>
-                          <input
-                            type="text"
-                            value={uf}
-                            onChange={(e) => setUf(e.target.value)}
-                            maxLength={2}
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs uppercase outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Complemento</label>
-                          <input
-                            type="text"
-                            value={complemento}
-                            onChange={(e) => setComplemento(e.target.value)}
-                            placeholder="Apt, Bloco, etc."
-                            className="w-full px-2.5 py-1.5 border rounded-md text-xs outline-none bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
+              
             </>
           )}
 
@@ -1413,7 +1394,7 @@ export const ModalCadastroCliente = ({
                       <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-zinc-700 pb-2">
                         <button
                           type="button"
-                          onClick={() => handleUpdateContato(itemKey, 'principal', !contato.principal)}
+                          onClick={() => handleMarcarContatoPrincipal(itemKey)}
                           className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${
                             contato.principal
                               ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
@@ -1559,12 +1540,36 @@ export const ModalCadastroCliente = ({
                             <div>
                               <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">CEP</label>
                               <input
-                                type="text"
-                                placeholder="00000-000"
-                                value={contato.cep || ''}
-                                onChange={(e) => handleUpdateContato(itemKey, 'cep', e.target.value)}
-                                className="w-full p-1.5 border rounded text-xs bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
-                              />
+                                  type="text"
+                                  placeholder="00000-000"
+                                  maxLength={9}
+                                  value={contato.cep || ''}
+                                  onChange={async (e) => {
+                                    const cepFormatado = maskCEP(e.target.value);
+
+                                    handleUpdateContato(itemKey, 'cep', cepFormatado);
+
+                                    const cepNumeros = cepFormatado.replace(/\D/g, '');
+
+                                    if (cepNumeros.length === 8) {
+                                      try {
+                                        const endereco = await buscarCEP(cepNumeros);
+
+                                        if (endereco) {
+                                          if (endereco) {
+                                            handleUpdateContato(itemKey, 'logradouro', endereco.street || '');
+                                            handleUpdateContato(itemKey, 'bairro', endereco.neighborhood || '');
+                                            handleUpdateContato(itemKey, 'municipio', endereco.city || '');
+                                            handleUpdateContato(itemKey, 'uf', endereco.state || '');
+                                          }
+                                        }
+                                      } catch (error) {
+                                        console.error('Erro ao buscar CEP do contato:', error);
+                                      }
+                                    }
+                                  }}
+                                  className="w-full p-1.5 border rounded text-xs bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
+                                />
                             </div>
                             <div>
                               <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">UF</label>
@@ -1643,9 +1648,14 @@ export const ModalCadastroCliente = ({
                               <input
                                 type="text"
                                 placeholder="000.000.000-00"
+                                maxLength={14}
                                 value={contato.cpf || ''}
-                                onChange={(e) => handleUpdateContato(itemKey, 'cpf', e.target.value)}
-                                className="w-full p-1.5 border rounded text-xs bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
+                                onChange={(e) => handleCpfChange(itemKey, e)}
+                                className={`w-full p-1.5 border rounded text-xs bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 ${
+                                  contato.cpf && erroCPF && contato.principal
+                                    ? 'border-red-500 text-red-600'
+                                    : ''
+                                }`}
                               />
                             </div>
                             <div>

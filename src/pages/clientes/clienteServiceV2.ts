@@ -316,7 +316,7 @@ export async function criarClienteV2(payload: any) {
       data_nascimento: payload.data_nascimento ?? null,
       sexo: payload.sexo ?? null,
       ocupacao: payload.ocupacao ?? null,
-      rg_numero: payload.rg_numero ?? null,
+      rg_numero: payload.rg_numero ?? payload.rg ?? null,
       rg_orgao: payload.rg_orgao ?? null,
       data_emissao_rg: payload.data_emissao_rg ?? null,
       estado_civil: payload.estado_civil ?? null
