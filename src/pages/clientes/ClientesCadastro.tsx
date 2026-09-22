@@ -145,20 +145,23 @@ export default function ClientesCadastroV2() {
 
   // 3. Payload final alinhado estritamente com o schema public.tab_clientes
   const payloadFinal = {
-    corretora_id: userProfile?.corretora_id,
-    corretor_id: corretorResponsavelId,
-    tipo_cliente: tipoClienteFinal,
-    cpf_cnpj:
-      cpfCnpj?.replace(/\D/g, '') ||
-      cpf_cnpj?.replace(/\D/g, '') ||
-      null,
-    nome_razao_social: nomeRazaoSocial || nome_razao_social,
-    nome_fantasia: nomeFantasia || nome_fantasia || null,
+  corretora_id: userProfile?.corretora_id,
+  corretor_id: corretorResponsavelId,
+  tipo_cliente: tipoClienteFinal,
+  cpf_cnpj:
+    cpfCnpj?.replace(/\D/g, '') ||
+    cpf_cnpj?.replace(/\D/g, '') ||
+    null,
+  nome_razao_social: nomeRazaoSocial || nome_razao_social,
+  nome_fantasia: nomeFantasia || nome_fantasia || null,
 
-    origem: origem || 'MANUAL',
-    fase_atendimento:
-      faseAtendimento || fase_atendimento || 'nao_contatado',
-    temperatura: temperatura || 'frio',
+  origem: origem || 'MANUAL',
+  
+  // CORREÇÃO: Fallback alterado de 'nao_contatado' para 'LEAD'
+  fase_atendimento:
+    faseAtendimento || fase_atendimento || 'LEAD',
+
+  temperatura: temperatura || 'frio',
 
     cnae_principal:
       cnaePrincipal ||

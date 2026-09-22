@@ -249,10 +249,11 @@ export default function KanbanAtendimentos() {
           else if (temInteracao) novaFase = 'contato_realizado';
           else novaFase = 'nao_contatado';
 
+          // CORREÇÃO: Atualizamos Apenas a fase_kanban no banco de dados
           if (novaFase !== cliente.fase_kanban) {
             supabase
               .from('tab_clientes')
-              .update({ fase_kanban: novaFase, fase_atendimento: novaFase })
+              .update({ fase_kanban: novaFase })
               .eq('id', cliente.id)
               .then(({ error }) => error && console.error(error));
           }
@@ -371,19 +372,20 @@ export default function KanbanAtendimentos() {
     }
 
     try {
+      // CORREÇÃO: Removemos a alteração da fase_atendimento no estado local
       setClientes(prev =>
         prev.map(cliente =>
           cliente.id === activeIdStr
-            ? { ...cliente, fase_kanban: colDestino, fase_atendimento: colDestino, posicao_kanban: 0 }
+            ? { ...cliente, fase_kanban: colDestino, posicao_kanban: 0 }
             : cliente
         )
       );
 
+      // CORREÇÃO: Removemos a alteração da fase_atendimento na atualização do Supabase
       const { error } = await supabase
         .from('tab_clientes')
         .update({
           fase_kanban: colDestino,
-          fase_atendimento: colDestino,
           posicao_kanban: 0
         })
         .eq('id', activeIdStr);
