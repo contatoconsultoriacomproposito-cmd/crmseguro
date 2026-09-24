@@ -702,11 +702,19 @@ export const ModalCadastroCliente = ({
       return;
     }
 
-    // Pega a corretora do usuário logado
-    const corretoraId = usuarioLogado?.corretora_id || usuarioLogado?.id;
+    // 1. CORREÇÃO DA CORRETORA:
+    // Se o usuário logado for a própria Corretora Master, o ID dele é a corretora.
+    // Se for um Corretor/Funcionário, pega o corretora_id pai. Se não tiver, envia null para a função buscar no banco.
+    const corretoraId = usuarioLogado?.tipo_usuario === 'CORRETORA' 
+      ? usuarioLogado?.id 
+      : (usuarioLogado?.corretora_id || null);
     
-    // CORREÇÃO AQUI: Se não selecionou um dono/corretor específico, assume o usuário logado / corretora
-    const donoFinal = donoId || usuarioLogado?.id || corretoraId;
+    // 2. CORREÇÃO DO CORRETOR (DONO):
+    // Pega o donoId selecionado no formulário ou assume o ID do usuário logado atual.
+    const donoFinal = donoId || usuarioLogado?.id || null;
+
+    // Busca o contato principal para extrair dados PF
+    const contatoPrincipal = contatos.find(c => c.principal) || contatos[0];
 
     const payloadCliente = {
       corretora_id: corretoraId,
@@ -716,48 +724,34 @@ export const ModalCadastroCliente = ({
       nome_razao_social: nomeRazaoSocial,
       nome_fantasia: nomeFantasia,
 
-      data_nascimento: tipoCliente === 'PF'
-        ? (contatos.find(c => c.principal) || contatos[0])?.data_nascimento || null
-        : null,
-
-      sexo: tipoCliente === 'PF'
-        ? (contatos.find(c => c.principal) || contatos[0])?.sexo || null
-        : null,
-
-      naturalidade: tipoCliente === 'PF'
-        ? (contatos.find(c => c.principal) || contatos[0])?.naturalidade || null
-        : null,
-
-      ocupacao: tipoCliente === 'PF'
-        ? (contatos.find(c => c.principal) || contatos[0])?.ocupacao || null
-        : null,
-
-      rg_numero: tipoCliente === 'PF'
-        ? (contatos.find(c => c.principal) || contatos[0])?.rg || null
-        : null,
-
-      rg_orgao: tipoCliente === 'PF'
-        ? (contatos.find(c => c.principal) || contatos[0])?.rg_orgao || null
-        : null,
-
-      data_emissao_rg: tipoCliente === 'PF'
-        ? (contatos.find(c => c.principal) || contatos[0])?.data_emissao_rg || null
-        : null,
-
-      estado_civil: tipoCliente === 'PF'
-        ? (contatos.find(c => c.principal) || contatos[0])?.estado_civil || null
-        : null,
-
+      // Campos de PF extraídos do contato principal
+      data_nascimento: tipoCliente === 'PF' ? (contatoPrincipal?.data_nascimento || null) : null,
+      sexo: tipoCliente === 'PF' ? (contatoPrincipal?.sexo || null) : null,
+      naturalidade: tipoCliente === 'PF' ? (contatoPrincipal?.naturalidade || null) : null,
+      ocupacao: tipoCliente === 'PF' ? (contatoPrincipal?.ocupacao || null) : null,
+      rg_numero: tipoCliente === 'PF' ? (contatoPrincipal?.rg_numero || contatoPrincipal?.rg || null) : null,
+      rg_orgao: tipoCliente === 'PF' ? (contatoPrincipal?.rg_orgao || null) : null,
+      data_emissao_rg: tipoCliente === 'PF' ? (contatoPrincipal?.data_emissao_rg || null) : null,
+      estado_civil: tipoCliente === 'PF' ? (contatoPrincipal?.estado_civil || null) : null,
 
       dados_pj: tipoCliente === 'PJ' ? dadosReceita : null,
       dono_id: donoFinal,
       corretor_id: donoFinal,
-      cep, logradouro, numero, bairro, municipio, uf, complemento,
+      cep, 
+      logradouro, 
+      numero, 
+      bairro, 
+      municipio, 
+      uf, 
+      complemento,
       socios,
       contatos,
     };
 
-    console.log('=== DEBUG DATA EMISSÃO RG ===');
+    console.log('=== DEBUG PAYLOAD ENVIADO ===', {
+      corretoraIdEnviada: payloadCliente.corretora_id,
+      corretorIdEnviado: payloadCliente.corretor_id
+    });
 
     handleSubmit(payloadCliente);
   };

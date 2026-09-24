@@ -259,6 +259,9 @@ const obterDadosSessao = async (): Promise<UsuarioSessao | null> => {
   return null;
 };
 
+// Helper para tratar valores vazios ou undefined e não passar strings vazias para o Postgres
+const cleanVal = (val: any) => (val === "" || val === undefined ? null : val);
+
 // ==========================================
 // CRIAR NOVO CLIENTE
 // ==========================================
@@ -266,100 +269,106 @@ export async function criarClienteV2(payload: any) {
   try {
     // 1. Extrai campos aceitando camelCase ou snake_case
     const tipoCliente = payload.tipo_cliente || payload.tipoCliente;
-    let corretoraId = payload.corretora_id || payload.corretoraId;
+    let corretoraId = payload.corretora_id || payload.corretoraId || null;
     let corretorId = payload.corretor_id || payload.corretorId || payload.dono_id || null;
     const nomeRazaoSocial = payload.nome_razao_social || payload.nomeRazaoSocial;
     const cpfCnpj = payload.cpf_cnpj || payload.cpfCnpj;
 
-    // Validation
+    // Validação de tipo
     if (!tipoCliente) {
       throw new Error("O campo 'tipo_cliente' (PF ou PJ) é obrigatório.");
     }
 
-    // 2. Fallback de Segurança: Se não veio corretora_id no payload, busca na sessão ativa do usuário
-    if (!corretoraId || !corretorId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: perfil } = await supabase
-          .from('usuarios_perfis')
-          .select('id, corretora_id, tipo_usuario')
-          .eq('id', user.id)
-          .single();
+    // 2. BUSCA O PERFIL REAL DO USUÁRIO LOGADO NO BANCO DE DADOS
+    // Isso garante a integridade dos IDs mesmo se o payload do frontend vier inconsistente
+    const { data: { user } } = await supabase.auth.getUser();
 
-        if (perfil) {
-          if (!corretoraId) {
-            corretoraId = perfil.tipo_usuario === 'CORRETORA' ? perfil.id : perfil.corretora_id;
-          }
-          // CORREÇÃO AQUI: Se corretorId for nulo, assume o id do usuário ou da corretora
-          if (!corretorId) {
-            corretorId = perfil.tipo_usuario === 'CORRETORA' ? perfil.id : user.id;
-          }
+    if (user) {
+      // Usa .maybeSingle() para evitar erro PGRST116 se a linha não existir
+      const { data: perfil } = await supabase
+        .from('usuarios_perfis')
+        .select('id, corretora_id, tipo_usuario')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (perfil) {
+        if (perfil.tipo_usuario === 'CORRETORA') {
+          // Se a conta logada é a própria Corretora Master
+          corretoraId = perfil.id;
+        } else if (perfil.corretora_id) {
+          // Se for um Corretor/Vendedor, força o corretora_id pai do perfil
+          corretoraId = perfil.corretora_id;
+        }
+
+        // Se o corretor (dono) não foi definido, assume o usuário logado
+        if (!corretorId) {
+          corretorId = user.id;
         }
       }
     }
 
-    // Garantia final: Se corretorId ainda estiver nulo, ele DEVE ser igual a corretoraId
-    if (!corretorId && corretoraId) {
-      corretorId = corretoraId;
-    }
-
+    // Trava de segurança para impedir salvar o cliente se a corretora_id for inválida ou não encontrada
     if (!corretoraId) {
-      throw new Error("O campo 'corretora_id' é obrigatório para cadastrar um cliente.");
+      throw new Error("Não foi possível determinar o 'corretora_id'. Verifique se o perfil do usuário possui uma corretora vinculada.");
     }
 
     const isPF = tipoCliente === 'PF';
 
     const dadosPF = isPF ? {
       modo_cadastro: payload.modoCadastro || payload.modo_cadastro || 'COMPLETO',
-      naturalidade: payload.naturalidade ?? null,
-      pep: payload.pep ?? false,
-      data_nascimento: payload.data_nascimento ?? null,
-      sexo: payload.sexo ?? null,
-      ocupacao: payload.ocupacao ?? null,
-      rg_numero: payload.rg_numero ?? payload.rg ?? null,
-      rg_orgao: payload.rg_orgao ?? null,
-      data_emissao_rg: payload.data_emissao_rg ?? null,
-      estado_civil: payload.estado_civil ?? null
+      naturalidade: cleanVal(payload.naturalidade),
+      pep: Boolean(payload.pep),
+      data_nascimento: cleanVal(payload.data_nascimento),
+      sexo: cleanVal(payload.sexo),
+      ocupacao: cleanVal(payload.ocupacao),
+      rg_numero: cleanVal(payload.rg_numero || payload.rg),
+      rg_orgao: cleanVal(payload.rg_orgao),
+      data_emissao_rg: cleanVal(payload.data_emissao_rg),
+      estado_civil: cleanVal(payload.estado_civil)
     } : {};
 
     const dadosReceitaObj = parseRealJson(payload.dadosReceita || payload.dados_pj, {});
     const dadosPJ = !isPF ? {
-      porte: payload.porte || dadosReceitaObj.porte || null,
-      data_abertura: payload.dataAbertura || payload.data_abertura || dadosReceitaObj.data_abertura || null,
-      matriz_filial: payload.matrizFilial || payload.matriz_filial || dadosReceitaObj.matriz_filial || null,
+      porte: cleanVal(payload.porte || dadosReceitaObj.porte),
+      data_abertura: cleanVal(payload.dataAbertura || payload.data_abertura || dadosReceitaObj.data_abertura),
+      matriz_filial: cleanVal(payload.matrizFilial || payload.matriz_filial || dadosReceitaObj.matriz_filial),
       modo_cadastro: payload.modoCadastro || payload.modo_cadastro || 'RAPIDO',
-      capital_social: payload.capitalSocial || payload.capital_social || dadosReceitaObj.capital_social || null,
-      cnae_principal: payload.cnaePrincipal || payload.cnae_principal || dadosReceitaObj.cnae_principal || null,
-      opcao_pelo_mei: payload.opcaoPeloMei ?? payload.opcao_pelo_mei ?? dadosReceitaObj.opcao_pelo_mei ?? false,
-      natureza_juridica: payload.naturezaJuridica || payload.natureza_juridica || dadosReceitaObj.natureza_juridica || null,
-      opcao_pelo_simples: payload.opcaoPeloSimples ?? payload.opcao_pelo_simples ?? dadosReceitaObj.opcao_pelo_simples ?? false,
+      capital_social: cleanVal(payload.capitalSocial || payload.capital_social || dadosReceitaObj.capital_social),
+      cnae_principal: cleanVal(payload.cnaePrincipal || payload.cnae_principal || dadosReceitaObj.cnae_principal),
+      opcao_pelo_mei: Boolean(payload.opcaoPeloMei ?? payload.opcao_pelo_mei ?? dadosReceitaObj.opcao_pelo_mei),
+      natureza_juridica: cleanVal(payload.naturezaJuridica || payload.natureza_juridica || dadosReceitaObj.natureza_juridica),
+      opcao_pelo_simples: Boolean(payload.opcaoPeloSimples ?? payload.opcao_pelo_simples ?? dadosReceitaObj.opcao_pelo_simples),
       situacao_cadastral: payload.situacaoCadastral || payload.situacao_cadastral || dadosReceitaObj.situacao_cadastral || 'ATIVA'
     } : {};
 
+    // Garante que contatos e socios sejam sempre arrays válidos para satisfazer as triggers e o tipo JSONB
+    const contatosTratados = padronizarContatos(payload.contatos);
+    const sociosTratados = padronizarSocios(payload.socios);
+
     const novoCliente = {
       corretora_id: corretoraId,
-      corretor_id: corretorId, // Agora NUNCA será nulo se a corretora_id existir!
+      corretor_id: corretorId,
       tipo_cliente: tipoCliente,
-      fase_atendimento: 'LEAD',
+      fase_atendimento: payload.fase_atendimento || payload.faseAtendimento || 'LEAD',
       origem: payload.origem || 'MANUAL',
       cpf_cnpj: cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : null,
       nome_razao_social: nomeRazaoSocial,
-      nome_fantasia: payload.nome_fantasia || payload.nomeFantasia || null,
+      nome_fantasia: cleanVal(payload.nome_fantasia || payload.nomeFantasia),
       
       // Endereço Principal
-      cep: payload.cep || null,
-      logradouro: payload.logradouro || null,
-      numero: payload.numero || null,
-      bairro: payload.bairro || null,
-      municipio: payload.municipio || null,
-      uf: payload.uf || null,
-      complemento: payload.complemento || null,
-      cnae_principal: payload.cnae_principal || payload.cnaePrincipal || null,
+      cep: cleanVal(payload.cep),
+      logradouro: cleanVal(payload.logradouro),
+      numero: cleanVal(payload.numero),
+      bairro: cleanVal(payload.bairro),
+      municipio: cleanVal(payload.municipio),
+      uf: cleanVal(payload.uf),
+      complemento: cleanVal(payload.complemento),
+      cnae_principal: cleanVal(payload.cnae_principal || payload.cnaePrincipal),
       situacao_cadastral: payload.situacao_cadastral || payload.situacaoCadastral || 'ATIVA',
 
-      // JSONB sem stringify
-      contatos: padronizarContatos(payload.contatos),
-      socios: padronizarSocios(payload.socios),
+      // JSONB
+      contatos: Array.isArray(contatosTratados) ? contatosTratados : [],
+      socios: Array.isArray(sociosTratados) ? sociosTratados : [],
       dados_complementares_pf: dadosPF,
       dados_complementares_pj: dadosPJ
     };
