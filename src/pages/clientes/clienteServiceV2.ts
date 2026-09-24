@@ -340,6 +340,7 @@ export async function criarClienteV2(payload: any) {
       corretora_id: corretoraId,
       corretor_id: corretorId, // Agora NUNCA será nulo se a corretora_id existir!
       tipo_cliente: tipoCliente,
+      fase_atendimento: 'LEAD',
       origem: payload.origem || 'MANUAL',
       cpf_cnpj: cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : null,
       nome_razao_social: nomeRazaoSocial,

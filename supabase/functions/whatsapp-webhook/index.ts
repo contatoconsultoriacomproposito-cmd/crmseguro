@@ -1,165 +1,456 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
-const META_PHONE_ID = "636770376190002"; 
+const META_TOKEN = Deno.env.get("WHATSAPP_API_TOKEN") ?? "";
 
-// Defina o UUID de uma corretora válida cadastrada no seu banco
-const DEFAULT_CORRETORA_ID = Deno.env.get("DEFAULT_CORRETORA_ID") ?? "e8d1fdac-fc46-4646-b1f7-33aedee29f3a";
+const CORRETORA_ID =
+  Deno.env.get("DEFAULT_CORRETORA_ID") ??
+  "e8d1fdac-fc46-4646-b1f7-33aedee29f3a";
 
-serve(async (req: Request) => {
-  const url = new URL(req.url);
+// ============================================================
+// WHATSAPP PHONE NUMBERS AUTORIZADOS
+// ============================================================
+//
+// ATUALMENTE ESTAMOS EM TESTE.
+//
+// 636770376190002 = NÚMERO DE TESTE
+// 620031661201651 = NÚMERO REAL/PESSOAL
+//
+// IMPORTANTE:
+// Enquanto estivermos testando, SOMENTE o número de teste
+// pode ser processado pelo CRM.
+//
+// Quando formos colocar o número real em produção, basta
+// adicionar o ID real ao Set.
+//
+// ============================================================
 
-  // 1. VALIDAÇÃO DO WEBHOOK (GET)
-  if (req.method === "GET") {
-    const mode = url.searchParams.get("hub.mode");
-    const token = url.searchParams.get("hub.verify_token");
-    const challenge = url.searchParams.get("hub.challenge");
+const ALLOWED_PHONE_IDS = new Set([
+  "636770376190002", // TESTE
+  // "620031661201651", // PRODUÇÃO - NÃO LIBERAR AGORA
+]);
 
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      console.log("WEBHOOK_VERIFIED com sucesso.");
-      return new Response(challenge, { status: 200 });
-    } else {
-      return new Response("Forbidden", { status: 403 });
-    }
-  }
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // 2. PROCESSAMENTO DE MENSAGENS (POST)
-  if (req.method === "POST") {
-    try {
-      const body = await req.json();
+const log = (msg: string, data?: unknown) =>
+  data === undefined ? console.log(msg) : console.log(msg, data);
 
-      const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-      
-      if (!supabaseUrl || !supabaseKey) {
-        console.error("ERRO GRAVE: Variáveis do Supabase não encontradas!");
+Deno.serve(async (req) => {
+  try {
+    // ============================================================
+    // VALIDAÇÃO META
+    // ============================================================
+
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+
+      if (
+        url.searchParams.get("hub.mode") === "subscribe" &&
+        url.searchParams.get("hub.verify_token") === VERIFY_TOKEN
+      ) {
+        log("✅ Webhook validado pela Meta");
+
+        return new Response(url.searchParams.get("hub.challenge"), {
+          status: 200,
+        });
       }
 
-      const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+      return new Response("Forbidden", {
+        status: 403,
+      });
+    }
 
-      if (body.object === "whatsapp_business_account") {
-        for (const entry of body.entry || []) {
-          for (const change of entry.changes || []) {
-            const value = change.value;
+    // ============================================================
+    // SOMENTE POST
+    // ============================================================
 
-            // CASO A: NOVA MENSAGEM RECEBIDA
-            if (value.messages && value.messages.length > 0) {
-              const message = value.messages[0];
-              const fromPhone = message.from; 
-              const messageType = message.type;
-              let textContent = messageType === "text" ? message.text.body : `[Mídia: ${messageType}]`;
+    if (req.method !== "POST") {
+      return new Response("Method Not Allowed", {
+        status: 405,
+      });
+    }
 
-              console.log(`Nova mensagem de ${fromPhone}: ${textContent}`);
+    // ============================================================
+    // RECEBE EVENTO
+    // ============================================================
 
-              // A.1 Busca cliente existente dentro do JSONB contatos
-              const { data: clientesEncontrados, error: erroBusca } = await supabaseAdmin
-                .from("tab_clientes")
-                .select("id")
-                .filter("contatos", "cs", JSON.stringify([{ valor: fromPhone }]))
-                .limit(1);
+    const body = await req.json();
 
-              if (erroBusca) console.error("Erro ao buscar cliente na tab_clientes:", erroBusca);
+    const value = body?.entry?.[0]?.changes?.[0]?.value;
 
-              let clienteId = clientesEncontrados?.[0]?.id;
+    const message = value?.messages?.[0];
 
-              // A.2 Cria novo cliente se não existir
-              if (!clienteId) {
-                const contactName = value.contacts?.[0]?.profile?.name || "Lead WhatsApp";
-                const { data: novoCliente, error: erroInsertCliente } = await supabaseAdmin
-                  .from("tab_clientes")
-                  .insert({
-                    corretora_id: DEFAULT_CORRETORA_ID,
-                    nome_razao_social: contactName,
-                    tipo_cliente: "PF",
-                    origem: "WHATSAPP",
-                    status_kanban: "lead",
-                    contatos: [{ tipo: "WHATSAPP", valor: fromPhone }]
-                  })
-                  .select("id")
-                  .single();
+    const status = value?.statuses?.[0];
 
-                if (erroInsertCliente) {
-                  console.error("Erro ao CRIAR cliente na 'tab_clientes':", erroInsertCliente);
-                } else {
-                  console.log("Novo cliente criado com ID:", novoCliente.id);
-                  clienteId = novoCliente?.id;
-                }
-              }
+    // ============================================================
+    // IDENTIFICA O PHONE NUMBER ID QUE RECEBEU A MENSAGEM
+    // ============================================================
 
-              // A.3 Grava a interação na tab_interacoes
-              if (clienteId) {
-                const { error: erroInteracao } = await supabaseAdmin
-                  .from("tab_interacoes")
-                  .insert({
-                    cliente_id: clienteId,
-                    corretora_id: DEFAULT_CORRETORA_ID,
-                    tipo_acao: "WHATSAPP",
-                    relato: `[RECEBIDA] ${textContent}`
-                  });
+    const inboundPhoneId =
+      value?.metadata?.phone_number_id ?? null;
 
-                if (erroInteracao) {
-                  console.error("ERRO FATAL AO INSERIR NA tab_interacoes:", erroInteracao);
-                } else {
-                  console.log("Mensagem salva na tab_interacoes com SUCESSO!");
-                }
+    const inboundDisplayPhone =
+      value?.metadata?.display_phone_number ?? null;
 
-                // A.4 Resposta Automática via Meta API
-                const META_TOKEN = Deno.env.get("WHATSAPP_API_TOKEN") ?? "";
-                
-                try {
-                  const metaResponse = await fetch(`https://graph.facebook.com/v25.0/${META_PHONE_ID}/messages`, {
-                    method: "POST",
-                    headers: {
-                      "Authorization": `Bearer ${META_TOKEN}`,
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                      messaging_product: "whatsapp",
-                      to: fromPhone,
-                      type: "template",
-                      template: {
-                        name: "hello_world",
-                        language: {
-                          code: "en_US" // Deve coincidir exatamente com o idioma do seu painel
-                        }
-                      }
-                    })
-                  });
-                  
-                  const metaResult = await metaResponse.json();
-                  console.log("RETORNO DA META AO ENVIAR:", JSON.stringify({
-                    httpStatus: metaResponse.status,
-                    success: metaResponse.ok,
-                    response: metaResult,
-                  }));
-                } catch (metaErr) {
-                  console.error("Erro na requisição Fetch para a Meta:", metaErr);
-                }
-              } else {
-                console.error("Não foi possível gravar a interação porque o clienteId é nulo ou indefinido.");
-              }
-            }
+    // ============================================================
+    // LOG DO EVENTO RECEBIDO
+    // ============================================================
 
-            // CASO B: Atualização de status
-            if (value.statuses && value.statuses.length > 0) {
-              for (const status of value.statuses) {
-                console.log("STATUS WHATSAPP:", JSON.stringify(status));
-              }
-            }
-          }
+    log("📡 Evento WhatsApp recebido", {
+      phoneId: inboundPhoneId,
+      displayPhone: inboundDisplayPhone,
+      field: body?.entry?.[0]?.changes?.[0]?.field ?? null,
+      hasMessage: !!message,
+      hasStatus: !!status,
+    });
+
+    // ============================================================
+    // SEGURANÇA:
+    // PROCESSAR SOMENTE PHONE NUMBER IDs AUTORIZADOS
+    // ============================================================
+    //
+    // Isso impede que mensagens recebidas pelo seu número pessoal
+    // sejam gravadas no SeguroCRM enquanto estamos testando.
+    //
+    // Exemplo:
+    //
+    // 636770376190002 → continua
+    // 620031661201651 → IGNORA
+    //
+    // ============================================================
+
+    if (
+      !inboundPhoneId ||
+      !ALLOWED_PHONE_IDS.has(inboundPhoneId)
+    ) {
+      log("🚫 Evento ignorado - Phone Number ID não autorizado", {
+        phoneId: inboundPhoneId,
+        displayPhone: inboundDisplayPhone,
+      });
+
+      return new Response("EVENT_RECEIVED", {
+        status: 200,
+      });
+    }
+
+    // ============================================================
+    // STATUS DE MENSAGEM
+    // ============================================================
+
+    if (status) {
+      log("📊 Status Meta", {
+        id: status.id,
+        status: status.status,
+        recipient: status.recipient_id,
+        errors: status.errors ?? null,
+        phoneId: inboundPhoneId,
+      });
+
+      return new Response("EVENT_RECEIVED", {
+        status: 200,
+      });
+    }
+
+    // ============================================================
+    // EVENTO SEM MENSAGEM
+    // ============================================================
+
+    if (!message) {
+      log("ℹ️ Evento webhook sem mensagem/status", {
+        field: body?.entry?.[0]?.changes?.[0]?.field,
+        phoneId: inboundPhoneId,
+      });
+
+      return new Response("EVENT_RECEIVED", {
+        status: 200,
+      });
+    }
+
+    // ============================================================
+    // IGNORA EVENTOS DO TIPO SYSTEM
+    // ============================================================
+    //
+    // Eventos system não são mensagens comerciais normais.
+    // Não devem criar clientes nem gerar interações.
+    //
+    // ============================================================
+
+    if (message.type === "system") {
+      log("ℹ️ Evento system ignorado", {
+        from: message.from ?? null,
+        phoneId: inboundPhoneId,
+        system: message.system ?? null,
+        messageId: message.id ?? null,
+      });
+
+      return new Response("EVENT_RECEIVED", {
+        status: 200,
+      });
+    }
+
+    // ============================================================
+    // DADOS DA MENSAGEM
+    // ============================================================
+
+    let fromPhone = String(message.from);
+
+    // Trata números do Brasil para garantir a inclusão do nono dígito (DDD + 8 dígitos -> DDD + 9 + 8 dígitos)
+    if (fromPhone.startsWith("55") && fromPhone.length === 12) {
+      const ddd = fromPhone.substring(2, 4);
+      const numero = fromPhone.substring(4);
+      fromPhone = "55" + ddd + "9" + numero;
+    }
+
+    const contactName =
+      value?.contacts?.[0]?.profile?.name ??
+      "Contato WhatsApp";
+
+    const relato =
+      message?.text?.body ??
+      `[Mensagem ${message.type}]`;
+
+    // ============================================================
+    // LOG COMPLETO DA MENSAGEM
+    // ============================================================
+
+    log("📩 WhatsApp recebido", {
+      from: fromPhone,
+      nome: contactName,
+      tipo: message.type,
+      texto: relato,
+
+      metadata: {
+        display_phone_number:
+          inboundDisplayPhone,
+
+        phone_number_id:
+          inboundPhoneId,
+      },
+
+      messageId: message?.id ?? null,
+    });
+
+    // ============================================================
+    // LOCALIZA CLIENTE
+    // ============================================================
+
+    const { data: clientes, error: buscaError } =
+      await supabase
+        .from("tab_clientes")
+        .select("id")
+        .eq("corretora_id", CORRETORA_ID)
+        .filter(
+          "contatos",
+          "cs",
+          JSON.stringify([
+            {
+              valor: fromPhone,
+            },
+          ]),
+        )
+        .limit(1);
+
+    if (buscaError) {
+      throw buscaError;
+    }
+
+    let clienteId = clientes?.[0]?.id;
+
+    // ============================================================
+    // CRIA CLIENTE
+    // ============================================================
+
+    if (!clienteId) {
+      log("👤 Cliente não encontrado. Criando...");
+
+      const {
+        data: cliente,
+        error: criarError,
+      } = await supabase
+        .from("tab_clientes")
+        .insert({
+          corretora_id: CORRETORA_ID,
+          tipo_cliente: "PF",
+          origem: "WHATSAPP",
+          nome_razao_social: contactName,
+          fase_atendimento: "LEAD",
+          status_kanban: "lead",
+
+          contatos: [
+            {
+              tipo: "WHATSAPP",
+              valor: fromPhone,
+            },
+          ],
+        })
+        .select("id")
+        .single();
+
+      if (criarError) {
+        throw criarError;
+      }
+
+      clienteId = cliente.id;
+
+      log("✅ Cliente criado", {
+        clienteId,
+      });
+    } else {
+      log("👤 Cliente encontrado", {
+        clienteId,
+      });
+    }
+
+    // ============================================================
+    // GRAVA INTERAÇÃO
+    // ============================================================
+
+    const {
+      error: interacaoError,
+    } = await supabase
+      .from("tab_interacoes")
+      .insert({
+        cliente_id: clienteId,
+        tipo_acao: "WHATSAPP",
+        relato,
+        corretora_id: CORRETORA_ID,
+      });
+
+    if (interacaoError) {
+      log(
+        "⚠️ Erro ao gravar interação",
+        interacaoError,
+      );
+    } else {
+      log("✅ Interação gravada");
+    }
+
+    // ============================================================
+    // VERIFICA TOKEN META
+    // ============================================================
+
+    if (!META_TOKEN) {
+      log(
+        "⚠️ WHATSAPP_API_TOKEN não configurado.",
+      );
+
+      return new Response("EVENT_RECEIVED", {
+        status: 200,
+      });
+    }
+
+    // ============================================================
+    // URL DINÂMICA DO WHATSAPP
+    // ============================================================
+    //
+    // NÃO usamos mais:
+    //
+    // const PHONE_ID = "636770376190002";
+    //
+    // O próprio evento informa qual número recebeu a mensagem.
+    //
+    // Isso permite:
+    //
+    // TESTE:
+    // 636770376190002
+    //
+    // PRODUÇÃO:
+    // 620031661201651
+    //
+    // ============================================================
+
+    const META_URL =
+      `https://graph.facebook.com/v25.0/${inboundPhoneId}/messages`;
+
+    // ============================================================
+    // PAYLOAD
+    // ============================================================
+
+    const payload = {
+      messaging_product: "whatsapp",
+      to: fromPhone,
+      type: "template",
+      template: {
+        name: "hello_world", // Substitua pelo nome do seu modelo aprovado na Meta
+        language: {
+          code: "en_US"      // Substitua pelo idioma do modelo (ex: "pt_BR")
         }
       }
+    };
 
-      return new Response(JSON.stringify({ status: "success" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
-    } catch (error) {
-      console.error("Erro global ao processar webhook:", error);
-      return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-    }
+    // ============================================================
+    // ENVIA RESPOSTA
+    // ============================================================
+
+    log("📤 Enviando resposta para Meta", {
+      to: fromPhone,
+
+      phoneId: inboundPhoneId,
+
+      displayPhone: inboundDisplayPhone,
+
+      endpoint: META_URL,
+    });
+
+    const response = await fetch(META_URL, {
+      method: "POST",
+
+      headers: {
+        Authorization: `Bearer ${META_TOKEN}`,
+
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify(payload),
+    });
+
+    const result = await response.json();
+
+    // ============================================================
+    // RESULTADO META
+    // ============================================================
+
+    log("📨 Resposta Meta", {
+      status: response.status,
+
+      ok: response.ok,
+
+      phoneId: inboundPhoneId,
+
+      to: fromPhone,
+
+      data: result,
+    });
+
+    return new Response("EVENT_RECEIVED", {
+      status: 200,
+    });
+
+  } catch (error) {
+    console.error(
+      "❌ ERRO WHATSAPP WEBHOOK:",
+      error,
+    );
+
+    return new Response(
+      JSON.stringify({
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      }),
+      {
+        status: 500,
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+      },
+    );
   }
-
-  return new Response("Method Not Allowed", { status: 405 });
 });
+
