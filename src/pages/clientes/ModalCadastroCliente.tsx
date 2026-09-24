@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   Building2,
   User,
-  Zap,
   FileText,
   Search,
   AlertCircle,
@@ -30,6 +29,7 @@ import {
 
 import { validarCPF } from '../../utils/validarCPF';
 import { buscarCEP } from '../../services/brasilApi';
+import { toast } from 'sonner';
 
 export const ModalCadastroCliente = ({
   onClose,
@@ -46,7 +46,6 @@ export const ModalCadastroCliente = ({
   // =========================================================
 
   const [tipoCliente, setTipoCliente] = useState<'PF' | 'PJ'>('PJ');
-  const [modoCadastro, setModoCadastro] = useState<'RAPIDO' | 'COMPLETO'>('RAPIDO');
   const [donoId, setDonoId] = useState('');
 
   // =========================================================
@@ -145,13 +144,6 @@ export const ModalCadastroCliente = ({
   }
   ]);
 
-  // --- ESTADOS DADOS PESSOAIS PF ---
-  const [dataNascimento, setDataNascimento] = useState('');
-  const [sexo, setSexo] = useState('');
-  const [naturalidade, setNaturalidade] = useState('');
-  const [ocupacao, setOcupacao] = useState('');
-
-
   // Define o dono inicial baseado no usuário logado
   useEffect(() => {
     if (usuarioLogado?.id) {
@@ -167,14 +159,9 @@ export const ModalCadastroCliente = ({
       // 1. Identificação Básica
       setTipoCliente(cliente.tipo_cliente || 'PJ');
 
-      // CPF/CNPJ:
-      // - PF → CPF vem de contatos[].cpf
-      // - PJ → CNPJ continua vindo de cliente.cpf_cnpj
-      if (cliente.tipo_cliente === 'PF') {
-        setCpfCnpj('');
-      } else {
-        setCpfCnpj(cliente.cpf_cnpj || '');
-      }
+      // CPF / CNPJ Correto (Pega do contato principal em PF ou do campo cpf_cnpj)
+      const cpfPadrao = cliente.cpf_cnpj || (Array.isArray(cliente.contatos) ? cliente.contatos[0]?.cpf : '') || '';
+      setCpfCnpj(cpfPadrao);
 
       setNomeRazaoSocial(
         cliente.nome_razao_social ||
@@ -198,16 +185,13 @@ export const ModalCadastroCliente = ({
       setUf(cliente.uf || '');
       setComplemento(cliente.complemento || '');
 
-      // 3. Modos Visuais
-      setModoCadastro('COMPLETO');
-
       if (cliente.tipo_cliente === 'PJ') {
         setOpenComplementarPJ(true);
       } else {
         setOpenEndereco(true);
       }
 
-      // 4. Parser seguro de campos JSON
+      // 3. Parser seguro de campos JSON
       const parseSeguro = (valor: any, fallback: any) => {
         if (!valor) return fallback;
 
@@ -222,27 +206,32 @@ export const ModalCadastroCliente = ({
         return valor;
       };
 
-      // 5. Contatos e Sócios
+      // 4. PREENCHER CONTATOS (Crucial para Pessoa Física e exibição do Card)
       const contatosBanco = parseSeguro(cliente.contatos, []);
-
-      if (cliente.tipo_cliente === 'PF') {
-        const complPF = parseSeguro(
-          cliente.dados_complementares_pf,
-          {}
-        );
-
-        setDataNascimento(complPF.data_nascimento || '');
-        setSexo(complPF.sexo || '');
-        setNaturalidade(complPF.naturalidade || '');
-        setOcupacao(complPF.ocupacao || '');
+      if (Array.isArray(contatosBanco) && contatosBanco.length > 0) {
+        // Garante que as flags dos accordion de Endereço e Documentos do Contato venham visíveis
+        const contatosFormatados = contatosBanco.map((c: any) => ({
+          ...c,
+          mostrarDocs: c.mostrarDocs ?? true,
+          mostrarEndereco: c.mostrarEndereco ?? true
+        }));
+        setContatos(contatosFormatados);
+      } else if (cliente.tipo_cliente === 'PF') {
+        // Fallback: Se não houver contatos salvos, cria o contato principal inicial
+        setContatos([{
+          id: crypto.randomUUID(),
+          principal: true,
+          nome: cliente.nome_razao_social || '',
+          cpf: cliente.cpf_cnpj || '',
+          telefone: cliente.telefone || '',
+          email: cliente.email || '',
+          mostrarDocs: true,
+          mostrarEndereco: true
+        }]);
       }
 
-      if (contatosBanco.length > 0) {
-        setContatos(contatosBanco);
-      }
-
+      // 5. PREENCHER SÓCIOS
       const sociosBanco = parseSeguro(cliente.socios, []);
-
       if (sociosBanco.length > 0) {
         setSocios(sociosBanco);
       }
@@ -284,16 +273,11 @@ export const ModalCadastroCliente = ({
       setOpenComplementarPJ(true);
       setOpenEndereco(false);
       setOpenSocios(false);
-      return;
-    }
-
-    // PF
-    if (modoCadastro === 'COMPLETO') {
-      setOpenEndereco(true);
     } else {
-      setOpenEndereco(false);
+      // Para PF (agora sempre cadastro completo)
+      setOpenEndereco(true);
     }
-  }, [modoCadastro, tipoCliente]);
+  }, [tipoCliente]);
 
   // =========================================================
   // LIMPAR DADOS AO TROCAR PF/PJ
@@ -609,18 +593,14 @@ export const ModalCadastroCliente = ({
     const valorFormatado = maskCPF(e.target.value);
     const apenasNumeros = valorFormatado.replace(/\D/g, '');
 
+    // Localiza o contato comparando por ID ou pelo índice no array
     const contato = contatos.find(
-      (c) => (c.id || '') === contatoId
+      (c, idx) => (c.id || String(idx)) === contatoId
     );
 
+    // Se for o contato principal, faz a validação do CPF ao atingir 11 dígitos
     if (contato?.principal) {
-      const contato = contatos.find((c) => c.id === contatoId);
-
-      const cpfInvalido =
-        contato?.principal === true &&
-        apenasNumeros.length === 11 &&
-        !validarCPF(apenasNumeros);
-
+      const cpfInvalido = apenasNumeros.length === 11 && !validarCPF(apenasNumeros);
       setErroCPF(cpfInvalido);
     }
 
@@ -646,43 +626,48 @@ export const ModalCadastroCliente = ({
   const validarCadastro = (): string[] => {
     const erros: string[] = [];
 
+    // 1. Validação de Nome / Razão Social
     if (!nomeRazaoSocial.trim()) {
-      erros.push(tipoCliente === 'PJ' ? 'Razão Social é obrigatória.' : 'Nome completo é obrigatório.');
+      erros.push(
+        tipoCliente === 'PJ' ? 'Razão Social é obrigatória.' : 'Nome completo é obrigatório.'
+      );
     }
 
+    // 2. Validação para Pessoa Jurídica (PJ)
     if (tipoCliente === 'PJ') {
       const cnpjLimpo = cpfCnpj.replace(/\D/g, '');
-      if (cnpjLimpo.length !== 14) erros.push('Informe um CNPJ válido com 14 dígitos.');
-      if (statusConsultaCNPJ === 'erro' && !nomeRazaoSocial.trim()) erros.push('Informe a Razão Social para continuar.');
+      if (cnpjLimpo.length !== 14) {
+        erros.push('Informe um CNPJ válido com 14 dígitos.');
+      }
+      if (statusConsultaCNPJ === 'erro' && !nomeRazaoSocial.trim()) {
+        erros.push('Informe a Razão Social para continuar.');
+      }
     }
 
+    // 3. Validação para Pessoa Física (PF)
     if (tipoCliente === 'PF') {
-      const contatoPrincipal =
-        contatos.find((c) => c.principal) || contatos[0];
-
+      const contatoPrincipal = contatos.find((c) => c.principal) || contatos[0];
       const cpfLimpo = (contatoPrincipal?.cpf || '').replace(/\D/g, '');
 
-      // CPF obrigatório no Cadastro Completo
-      if (modoCadastro === 'COMPLETO' && cpfLimpo.length !== 11) {
-        erros.push('CPF é obrigatório no Cadastro Completo.');
-      }
-
-      // CPF informado, mas incompleto
-      if (cpfLimpo.length > 0 && cpfLimpo.length !== 11) {
+      if (!cpfLimpo) {
+        erros.push('CPF é obrigatório.');
+      } else if (cpfLimpo.length !== 11) {
         erros.push('O CPF informado está incompleto.');
-      }
-
-      // CPF com 11 dígitos, mas inválido
-      if (
-        cpfLimpo.length === 11 &&
-        !validarCPF(cpfLimpo)
-      ) {
+      } else if (!validarCPF(cpfLimpo)) {
         erros.push('O CPF informado é inválido.');
       }
     }
 
-    const temContato = contatos.some(c => (c.telefone?.replace(/\D/g, '') || '').length >= 10 || (c.email?.trim() || '').length > 0);
-    if (!temContato) erros.push('Informe pelo menos um telefone/WhatsApp ou e-mail nos contatos.');
+    // 4. Validação de Meios de Contato
+    const temContato = contatos.some(
+      (c) =>
+        (c.telefone?.replace(/\D/g, '') || '').length >= 10 ||
+        (c.email?.trim() || '').length > 0
+    );
+
+    if (!temContato) {
+      erros.push('Informe pelo menos um telefone/WhatsApp ou e-mail nos contatos.');
+    }
 
     return erros;
   };
@@ -691,7 +676,7 @@ export const ModalCadastroCliente = ({
   // SUBMIT E AÇÕES COMERCIAIS
   // =========================================================
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving || isLoading) return;
 
@@ -702,29 +687,31 @@ export const ModalCadastroCliente = ({
       return;
     }
 
-    // 1. CORREÇÃO DA CORRETORA:
-    // Se o usuário logado for a própria Corretora Master, o ID dele é a corretora.
-    // Se for um Corretor/Funcionário, pega o corretora_id pai. Se não tiver, envia null para a função buscar no banco.
+    // 1. Definição da Corretora
     const corretoraId = usuarioLogado?.tipo_usuario === 'CORRETORA' 
       ? usuarioLogado?.id 
       : (usuarioLogado?.corretora_id || null);
-    
-    // 2. CORREÇÃO DO CORRETOR (DONO):
-    // Pega o donoId selecionado no formulário ou assume o ID do usuário logado atual.
+
+    // 2. Definição do Corretor/Dono
     const donoFinal = donoId || usuarioLogado?.id || null;
 
-    // Busca o contato principal para extrair dados PF
-    const contatoPrincipal = contatos.find(c => c.principal) || contatos[0];
+    // 3. Contato Principal para extração dos dados de PF
+    const contatoPrincipal = contatos.find((c) => c.principal) || contatos[0];
 
+    // 4. Definição do CPF ou CNPJ correto de acordo com o tipo do cliente
+    const cpfCnpjFinal = tipoCliente === 'PF'
+      ? (contatoPrincipal?.cpf || null)
+      : (cpfCnpj || null);
+
+    // 5. Montagem do Payload Seguro
     const payloadCliente = {
       corretora_id: corretoraId,
       tipo_cliente: tipoCliente,
-      modoCadastro,
-      cpf_cnpj: cpfCnpj,
-      nome_razao_social: nomeRazaoSocial,
-      nome_fantasia: nomeFantasia,
+      cpf_cnpj: cpfCnpjFinal,
+      nome_razao_social: nomeRazaoSocial || '',
+      nome_fantasia: nomeFantasia || '',
 
-      // Campos de PF extraídos do contato principal
+      // Campos complementares de PF (extraídos do contato principal)
       data_nascimento: tipoCliente === 'PF' ? (contatoPrincipal?.data_nascimento || null) : null,
       sexo: tipoCliente === 'PF' ? (contatoPrincipal?.sexo || null) : null,
       naturalidade: tipoCliente === 'PF' ? (contatoPrincipal?.naturalidade || null) : null,
@@ -734,93 +721,149 @@ export const ModalCadastroCliente = ({
       data_emissao_rg: tipoCliente === 'PF' ? (contatoPrincipal?.data_emissao_rg || null) : null,
       estado_civil: tipoCliente === 'PF' ? (contatoPrincipal?.estado_civil || null) : null,
 
-      dados_pj: tipoCliente === 'PJ' ? dadosReceita : null,
+      dados_pj: tipoCliente === 'PJ' ? (dadosReceita || null) : null,
       dono_id: donoFinal,
       corretor_id: donoFinal,
-      cep, 
-      logradouro, 
-      numero, 
-      bairro, 
-      municipio, 
-      uf, 
-      complemento,
-      socios,
-      contatos,
+      cep: cep || null, 
+      logradouro: logradouro || null, 
+      numero: numero || null, 
+      bairro: bairro || null, 
+      municipio: municipio || null, 
+      uf: uf || null, 
+      complemento: complemento || null,
+      socios: socios || [],
+      contatos: contatos || [],
     };
 
     console.log('=== DEBUG PAYLOAD ENVIADO ===', {
       corretoraIdEnviada: payloadCliente.corretora_id,
-      corretorIdEnviado: payloadCliente.corretor_id
+      corretorIdEnviado: payloadCliente.corretor_id,
+      cpfCnpjFinal: payloadCliente.cpf_cnpj
     });
 
-    handleSubmit(payloadCliente);
+    try {
+      // FIX CRÍTICO: 'await' garante a espera da resposta da requisição no banco
+      await handleSubmit(payloadCliente);
+    } catch (error: any) {
+      console.error("Erro capturado dentro do modal:", error);
+
+      // Tratamento com TOAST CHAMATIVO NO CENTRO DA TELA
+      if (error?.code === '23505' || error?.message?.includes('tab_clientes_v2_cpf_cnpj_key')) {
+        const docTipo = tipoCliente === 'PJ' ? 'CNPJ' : 'CPF';
+        const mensagem = `Este ${docTipo} já está cadastrado em sua corretora!`;
+
+        setMensagemErro(mensagem);
+
+        // Toast chamativo e centralizado do Sonner
+        toast.error(`⚠️ ${docTipo} JÁ CADASTRADO!`, {
+          description: `O ${docTipo} informado já existe no sistema. Verifique os dados ou busque pelo cliente existente.`,
+          position: 'top-center',
+          duration: 6000,
+          style: {
+            background: '#FEF2F2',
+            border: '2px solid #EF4444',
+            color: '#991B1B',
+            fontSize: '15px',
+            padding: '16px',
+            borderRadius: '12px',
+            boxShadow: '0px 10px 30px rgba(0,0,0,0.25)',
+          },
+        });
+      } else {
+        const msgErro = error?.message || "Ocorreu um erro ao salvar o cliente.";
+        setMensagemErro(msgErro);
+        toast.error(msgErro, { position: 'top-center' });
+      }
+    }
   };
 
-  const handleAbrirAcaoComercial = () => {
+  const handleAbrirAcaoComercial = async () => {
+    if (saving || isLoading) return;
+
+    setMensagemErro('');
     const erros = validarCadastro();
     if (erros.length > 0) {
       setMensagemErro(erros[0]);
       return;
     }
 
-    // Pega a corretora do usuário logado
-    const corretoraId = usuarioLogado?.corretora_id || usuarioLogado?.id;
+    // 1. Pega a corretora do usuário logado
+    const corretoraId = usuarioLogado?.tipo_usuario === 'CORRETORA' 
+      ? usuarioLogado?.id 
+      : (usuarioLogado?.corretora_id || null);
 
-    handleSubmit(
-      {
-        corretora_id: corretoraId,
-        tipo_cliente: tipoCliente,
-        modoCadastro,
-        cpf_cnpj: cpfCnpj,
-        nome_razao_social: nomeRazaoSocial,
-        nome_fantasia: nomeFantasia || '',
-        dono_id: donoId,
-        corretor_id: donoId,
-        cep,
-        logradouro,
-        numero,
-        complemento,
-        bairro,
-        municipio,
-        uf,
-        contatos,
-        socios: socios || [],
-        dados_pj: tipoCliente === 'PJ' ? dadosReceita : null,
+    // 2. Busca o contato principal para extrair o CPF e dados de PF
+    const contatoPrincipal = contatos.find(c => c.principal) || contatos[0];
+    
+    // 3. Resgata o documento correto
+    const cpfCnpjFinal = tipoCliente === 'PF' 
+      ? (contatoPrincipal?.cpf || null) 
+      : (cpfCnpj || null);
 
-        data_nascimento: tipoCliente === 'PF'
-          ? (contatos.find(c => c.principal) || contatos[0])?.data_nascimento || null
-          : null,
+    // 4. Montagem do payload mantendo a estrutura exata do formulário
+    const payloadCliente = {
+      corretora_id: corretoraId,
+      tipo_cliente: tipoCliente,
+      cpf_cnpj: cpfCnpjFinal,
+      nome_razao_social: nomeRazaoSocial || '',
+      nome_fantasia: nomeFantasia || '',
+      dono_id: donoId || usuarioLogado?.id || null,
+      corretor_id: donoId || usuarioLogado?.id || null,
+      cep: cep || null,
+      logradouro: logradouro || null,
+      numero: numero || null,
+      complemento: complemento || null,
+      bairro: bairro || null,
+      municipio: municipio || null,
+      uf: uf || null,
+      contatos: contatos || [],
+      socios: socios || [],
+      dados_pj: tipoCliente === 'PJ' ? (dadosReceita || null) : null,
 
-        sexo: tipoCliente === 'PF'
-          ? (contatos.find(c => c.principal) || contatos[0])?.sexo || null
-          : null,
+      // Dados PF
+      data_nascimento: tipoCliente === 'PF' ? (contatoPrincipal?.data_nascimento || null) : null,
+      sexo: tipoCliente === 'PF' ? (contatoPrincipal?.sexo || null) : null,
+      naturalidade: tipoCliente === 'PF' ? (contatoPrincipal?.naturalidade || null) : null,
+      ocupacao: tipoCliente === 'PF' ? (contatoPrincipal?.ocupacao || null) : null,
+      rg_numero: tipoCliente === 'PF' ? (contatoPrincipal?.rg_numero || contatoPrincipal?.rg || null) : null,
+      rg_orgao: tipoCliente === 'PF' ? (contatoPrincipal?.rg_orgao || null) : null,
+      data_emissao_rg: tipoCliente === 'PF' ? (contatoPrincipal?.data_emissao_rg || null) : null,
+      estado_civil: tipoCliente === 'PF' ? (contatoPrincipal?.estado_civil || null) : null,
+    };
 
-        naturalidade: tipoCliente === 'PF'
-          ? (contatos.find(c => c.principal) || contatos[0])?.naturalidade || null
-          : null,
+    try {
+      // Executa o handleSubmit original passando o segundo parâmetro 'true' (flag para ação comercial)
+      await handleSubmit(payloadCliente, true);
+    } catch (error: any) {
+      console.error("Erro capturado ao abrir ação comercial:", error);
 
-        ocupacao: tipoCliente === 'PF'
-          ? (contatos.find(c => c.principal) || contatos[0])?.ocupacao || null
-          : null,
+      if (error?.code === '23505' || error?.message?.includes('tab_clientes_v2_cpf_cnpj_key')) {
+        const docTipo = tipoCliente === 'PJ' ? 'CNPJ' : 'CPF';
+        const mensagem = `Este ${docTipo} já possui cadastro no sistema.`;
 
-        rg_numero: tipoCliente === 'PF'
-          ? (contatos.find(c => c.principal) || contatos[0])?.rg || null
-          : null,
+        setMensagemErro(mensagem);
 
-        rg_orgao: tipoCliente === 'PF'
-          ? (contatos.find(c => c.principal) || contatos[0])?.rg_orgao || null
-          : null,
-
-        data_emissao_rg: tipoCliente === 'PF'
-          ? (contatos.find(c => c.principal) || contatos[0])?.data_emissao_rg || null
-          : null,
-
-        estado_civil: tipoCliente === 'PF'
-          ? (contatos.find(c => c.principal) || contatos[0])?.estado_civil || null
-          : null,
-      },
-      true
-    );
+        // Toast chamativo e centralizado do Sonner
+        toast.error(`⚠️ ${docTipo} JÁ CADASTRADO!`, {
+          description: `Este ${docTipo} já possui cadastro no sistema. Não é possível criar uma nova oportunidade para um cliente duplicado.`,
+          position: 'top-center',
+          duration: 6000,
+          style: {
+            background: '#FEF2F2',
+            border: '2px solid #EF4444',
+            color: '#991B1B',
+            fontSize: '15px',
+            padding: '16px',
+            borderRadius: '12px',
+            boxShadow: '0px 10px 30px rgba(0,0,0,0.25)',
+          },
+        });
+      } else {
+        const msgErro = error?.message || "Ocorreu um erro ao processar o cadastro.";
+        setMensagemErro(msgErro);
+        toast.error(msgErro, { position: 'top-center' });
+      }
+    }
   };
 
   const handleMarcarContatoPrincipal = (id: string) => {
@@ -888,33 +931,12 @@ export const ModalCadastroCliente = ({
               </button>
             </div>
 
-            {/* TOGGLE MODO CADASTRO */}
-            {tipoCliente === 'PF' ? (
-              <div className="flex bg-gray-200 p-1 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setModoCadastro('RAPIDO')}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold transition ${
-                    modoCadastro === 'RAPIDO' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <Zap className="w-4 h-4" /> Cadastro Rápido
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModoCadastro('COMPLETO')}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold transition ${
-                    modoCadastro === 'COMPLETO' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <FileText className="w-4 h-4" /> Cadastro Completo
-                </button>
-              </div>
-            ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold">
+              <FileText className="w-3.5 h-3.5" /> Cadastro Completo
+            </div>
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 px-3 py-2 rounded-lg">
                 <ShieldCheck className="w-4 h-4 text-blue-600" /> Cadastro PJ via CNPJ
               </div>
-            )}
           </div>
           
           <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px]">
@@ -1262,93 +1284,34 @@ export const ModalCadastroCliente = ({
           {/* PESSOA FÍSICA                                     */}
           {/* ================================================= */}
           {tipoCliente === 'PF' && (
-            <>
-              {/* DADOS BÁSICOS / IDENTIFICAÇÃO PF */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                    <User className="w-4 h-4 text-blue-600" /> Identificação do Cliente
-                  </h3>
-                  {erroCPF && (
-                    <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600">
-                      <AlertCircle className="w-3.5 h-3.5" /> CPF Inválido
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className={modoCadastro === 'RAPIDO' ? 'md:col-span-3' : 'md:col-span-2'}>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      Nome Completo <span className="text-red-600 ml-1">🔴</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={nomeRazaoSocial}
-                      onChange={handleNomeRazaoSocialChange}
-                      placeholder="Nome completo do cliente"
-                      className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-                    />
-                  </div>
-
-                  {modoCadastro === 'COMPLETO' && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1">
-                          Data de Nascimento <span className="text-gray-400 ml-1">⚪</span>
-                        </label>
-                        <input
-                          type="date"
-                          value={dataNascimento}
-                          onChange={(e) => setDataNascimento(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1">
-                          Sexo <span className="text-gray-400 ml-1">⚪</span>
-                        </label>
-                        <select
-                          value={sexo}
-                          onChange={(e) => setSexo(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-                        >
-                          <option value="">Selecione...</option>
-                          <option value="M">Masculino</option>
-                          <option value="F">Feminino</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1">
-                          Naturalidade <span className="text-gray-400 ml-1">⚪</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={naturalidade}
-                          onChange={(e) => setNaturalidade(e.target.value)}
-                          placeholder="Cidade onde nasceu"
-                          className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1">
-                          Ocupação / Profissão <span className="text-gray-400 ml-1">⚪</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={ocupacao}
-                          onChange={(e) => setOcupacao(e.target.value)}
-                          placeholder="Ex: Engenheiro"
-                          className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <User className="w-4 h-4 text-blue-600" /> Identificação do Cliente
+                </h3>
+                {erroCPF && (
+                  <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600">
+                    <AlertCircle className="w-3.5 h-3.5" /> CPF Inválido
+                  </span>
+                )}
               </div>
 
-              
-            </>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Nome Completo <span className="text-red-600 ml-1">🔴</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={nomeRazaoSocial}
+                    onChange={handleNomeRazaoSocialChange}
+                    placeholder="Nome completo do cliente"
+                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                  />
+                </div>
+              </div>
+            </div>
           )}
 
           {/* ================================================= */}
@@ -1534,36 +1497,32 @@ export const ModalCadastroCliente = ({
                             <div>
                               <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">CEP</label>
                               <input
-                                  type="text"
-                                  placeholder="00000-000"
-                                  maxLength={9}
-                                  value={contato.cep || ''}
-                                  onChange={async (e) => {
-                                    const cepFormatado = maskCEP(e.target.value);
+                                type="text"
+                                placeholder="00000-000"
+                                maxLength={9}
+                                value={contato.cep || ''}
+                                onChange={async (e) => {
+                                  const cepFormatado = maskCEP(e.target.value);
+                                  handleUpdateContato(itemKey, 'cep', cepFormatado);
 
-                                    handleUpdateContato(itemKey, 'cep', cepFormatado);
+                                  const cepNumeros = cepFormatado.replace(/\D/g, '');
 
-                                    const cepNumeros = cepFormatado.replace(/\D/g, '');
-
-                                    if (cepNumeros.length === 8) {
-                                      try {
-                                        const endereco = await buscarCEP(cepNumeros);
-
-                                        if (endereco) {
-                                          if (endereco) {
-                                            handleUpdateContato(itemKey, 'logradouro', endereco.street || '');
-                                            handleUpdateContato(itemKey, 'bairro', endereco.neighborhood || '');
-                                            handleUpdateContato(itemKey, 'municipio', endereco.city || '');
-                                            handleUpdateContato(itemKey, 'uf', endereco.state || '');
-                                          }
-                                        }
-                                      } catch (error) {
-                                        console.error('Erro ao buscar CEP do contato:', error);
+                                  if (cepNumeros.length === 8) {
+                                    try {
+                                      const endereco = await buscarCEP(cepNumeros);
+                                      if (endereco) {
+                                        handleUpdateContato(itemKey, 'logradouro', endereco.street || '');
+                                        handleUpdateContato(itemKey, 'bairro', endereco.neighborhood || '');
+                                        handleUpdateContato(itemKey, 'municipio', endereco.city || '');
+                                        handleUpdateContato(itemKey, 'uf', endereco.state || '');
                                       }
+                                    } catch (error) {
+                                      console.error('Erro ao buscar CEP do contato:', error);
                                     }
-                                  }}
-                                  className="w-full p-1.5 border rounded text-xs bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
-                                />
+                                  }
+                                }}
+                                className="w-full p-1.5 border rounded text-xs bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
+                              />
                             </div>
                             <div>
                               <label className="block text-[9px] font-bold text-slate-400 uppercase mb-0.5">UF</label>

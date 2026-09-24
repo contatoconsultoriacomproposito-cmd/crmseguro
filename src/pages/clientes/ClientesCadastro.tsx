@@ -206,8 +206,18 @@ export default function ClientesCadastroV2() {
 
   if (error) {
     console.error('Erro ao salvar no Supabase:', error);
-    toast.error(`Erro ao cadastrar cliente: ${error.message}`);
-    throw error;
+
+    // Trata especificamente a duplicidade de CPF/CNPJ (Erro Supabase 23505)
+    if (error.code === '23505' || error.message?.includes('tab_clientes_v2_cpf_cnpj_key')) {
+      const tipoDoc = tipoClienteFinal === 'PJ' ? 'CNPJ' : 'CPF';
+      toast.error(`${tipoDoc} já cadastrado em sua base de clientes!`, {
+        duration: 5000,
+      });
+    } else {
+      toast.error(`Erro ao cadastrar cliente: ${error.message}`);
+    }
+
+    throw error; // Re-lança para travar os fluxos seguintes (ex: não abrir modal de ação se falhar)
   }
 
   return data;

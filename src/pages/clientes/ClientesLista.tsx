@@ -206,10 +206,108 @@ export const ClientesListaV2: React.FC = () => {
   const totalPaginas = useMemo(() => Math.ceil(totalRegistros / ITENS_POR_PAGINA), [totalRegistros]);
 
   const handleEditarCliente = async (cliente: ClienteV2Formatado) => {
-    const dadosCompletos = await buscarClienteCompletoPorId(cliente.id);
-    setClienteSelecionado(dadosCompletos || cliente);
+    // 1. Busca os dados atualizados/completos do banco
+    const dadosDoBanco = await buscarClienteCompletoPorId(cliente.id);
+    const clienteBase = dadosDoBanco || cliente;
+
+    // 2. Função auxiliar para garantir que campos JSON venham como Objetos/Arrays reais e não como Strings JSON
+    const parseJsonField = (field: any, defaultValue: any) => {
+      if (!field) return defaultValue;
+      if (typeof field === 'object') return field;
+      try {
+        return JSON.parse(field);
+      } catch (e) {
+        return defaultValue;
+      }
+    };
+
+    // 3. Faz o parse de todos os campos JSONB
+    let contatosList = parseJsonField(clienteBase.contatos, []);
+    let sociosList = parseJsonField(clienteBase.socios, []);
+    let dadosPF = parseJsonField(clienteBase.dados_complementares_pf, {});
+    let dadosPJ = parseJsonField(clienteBase.dados_complementares_pj, {});
+
+    // 4. Se a lista de contatos estiver vazia mas houver dados na raiz, recria o contato principal
+    if (contatosList.length === 0) {
+      contatosList = [{
+        id: crypto.randomUUID(),
+        principal: true,
+        nome: clienteBase.nome_razao_social || '',
+        cpf: clienteBase.cpf_cnpj || '',
+        telefone: clienteBase.telefone || '',
+        email: clienteBase.email || '',
+        cargo_parentesco: 'Proprietária',
+        mostrarDocs: true,
+        mostrarEndereco: true,
+        rg_numero: dadosPF.rg_numero || '',
+        rg_orgao: dadosPF.rg_orgao || '',
+        data_emissao_rg: dadosPF.data_emissao_rg || '',
+        data_nascimento: dadosPF.data_nascimento || '',
+        sexo: dadosPF.sexo || '',
+        estado_civil: dadosPF.estado_civil || '',
+        naturalidade: dadosPF.naturalidade || '',
+        ocupacao: dadosPF.ocupacao || '',
+        endereco: {
+          cep: clienteBase.cep || '',
+          uf: clienteBase.uf || '',
+          municipio: clienteBase.municipio || '',
+          bairro: clienteBase.bairro || '',
+          logradouro: clienteBase.logradouro || '',
+          numero: clienteBase.numero || '',
+          complemento: clienteBase.complemento || ''
+        }
+      }];
+    } else {
+      // Garante que as flags de exibição fiquem ativas para mostrar os botões expandidos se necessário
+      contatosList = contatosList.map((c: any) => ({
+        ...c,
+        mostrarDocs: c.mostrarDocs ?? true,
+        mostrarEndereco: c.mostrarEndereco ?? true
+      }));
+    }
+
+    // 5. Monta o objeto final para o Modal de Cadastro
+    const clienteParaModal = {
+      ...clienteBase,
+      // Garante que o tipo do cliente está correto
+      tipo_cliente: clienteBase.tipo_cliente || 'PF',
+      
+      // Garante que o modo de cadastro (Completo vs Simplificado) seja reconhecido pelo Modal
+      modo_cadastro: dadosPF.modo_cadastro || dadosPJ.modo_cadastro || 'COMPLETO',
+
+      // Coleções parseadas como Array JS
+      contatos: contatosList,
+      socios: sociosList,
+      dados_complementares_pf: dadosPF,
+      dados_complementares_pj: dadosPJ,
+
+      // Propriedades diretas de PF (para preencher as abas/campos do modal)
+      cpf_cnpj: clienteBase.cpf_cnpj || contatosList[0]?.cpf || '',
+      rg_numero: dadosPF.rg_numero || contatosList[0]?.rg_numero || contatosList[0]?.rg || '',
+      rg_orgao: dadosPF.rg_orgao || contatosList[0]?.rg_orgao || '',
+      data_emissao_rg: dadosPF.data_emissao_rg || contatosList[0]?.data_emissao_rg || '',
+      data_nascimento: dadosPF.data_nascimento || contatosList[0]?.data_nascimento || '',
+      sexo: dadosPF.sexo || contatosList[0]?.sexo || '',
+      estado_civil: dadosPF.estado_civil || contatosList[0]?.estado_civil || '',
+      naturalidade: dadosPF.naturalidade || contatosList[0]?.naturalidade || '',
+      ocupacao: dadosPF.ocupacao || contatosList[0]?.ocupacao || '',
+      pep: dadosPF.pep ?? false,
+
+      // Dados de endereço na raiz
+      cep: clienteBase.cep || contatosList[0]?.cep || contatosList[0]?.endereco?.cep || '',
+      uf: clienteBase.uf || contatosList[0]?.uf || contatosList[0]?.endereco?.uf || '',
+      municipio: clienteBase.municipio || contatosList[0]?.municipio || contatosList[0]?.endereco?.municipio || '',
+      bairro: clienteBase.bairro || contatosList[0]?.bairro || contatosList[0]?.endereco?.bairro || '',
+      logradouro: clienteBase.logradouro || contatosList[0]?.logradouro || contatosList[0]?.endereco?.logradouro || '',
+      numero: clienteBase.numero || contatosList[0]?.numero || contatosList[0]?.endereco?.numero || '',
+      complemento: clienteBase.complemento || contatosList[0]?.complemento || contatosList[0]?.endereco?.complemento || ''
+    };
+
+    // 6. Seta o estado do cliente e abre o modal
+    setClienteSelecionado(clienteParaModal);
     setModalCadastroAberto(true);
   };
+
   const handleNovaAcao = async (cliente: ClienteV2Formatado) => {
     const dadosCompletos = await buscarClienteCompletoPorId(cliente.id);
     setClienteSelecionado(dadosCompletos || cliente);
@@ -218,6 +316,7 @@ export const ClientesListaV2: React.FC = () => {
   const handleSalvarCliente = async (payloadCliente: any, abrirOportunidade: boolean = false) => {
     try {
       let clienteSalvo = clienteSelecionado;
+
       if (clienteSelecionado?.id) {
         await atualizarClienteV2(clienteSelecionado.id, payloadCliente);
         toast.success("Cliente atualizado com sucesso!");
@@ -227,8 +326,10 @@ export const ClientesListaV2: React.FC = () => {
         toast.success("Cliente cadastrado com sucesso!");
         clienteSalvo = novoCliente;
       }
+
       setModalCadastroAberto(false);
       await carregarClientes();
+
       if (abrirOportunidade) {
         if (!clienteSalvo?.id) {
           throw new Error("Cliente criado sem ID. Não foi possível abrir a ação comercial.");
@@ -238,9 +339,26 @@ export const ClientesListaV2: React.FC = () => {
       } else {
         setClienteSelecionado(null);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao salvar cliente:", error);
-      toast.error("Ocorreu um erro ao salvar o cliente.");
+
+      // 1. Identifica a duplicidade do CPF/CNPJ (Erro Supabase 23505)
+      const isDuplicado = error?.code === '23505' || error?.message?.includes('tab_clientes_v2_cpf_cnpj_key');
+
+      if (isDuplicado) {
+        const docTipo = payloadCliente?.tipo_cliente === 'PJ' ? 'CNPJ' : 'CPF';
+        const msgErro = `${docTipo} já cadastrado em sua base de clientes!`;
+
+        // Exibe o Toast bem visível na tela
+        toast.error(msgErro, { duration: 5000 });
+
+        // RE-LANÇA o erro para que o Modal saiba que falhou e destrave os botões
+        throw new Error(msgErro);
+      } else {
+        const msgGenerica = error?.message || "Ocorreu um erro ao salvar o cliente.";
+        toast.error(msgGenerica);
+        throw error;
+      }
     }
   };
 
