@@ -5,7 +5,8 @@ import {
   MessageSquare, FileText, HelpCircle, Check, Calendar,
   AlertCircle, Sparkles,
 } from 'lucide-react';
-import { buscarHistoricoInteracoesPorCliente } from './clienteServiceV2';
+import { buscarHistoricoInteracoesPorCliente, atualizarClienteV2 } from './clienteServiceV2';
+import { maskPhone } from '../../utils/masks';
 
 export interface Contato {
   id?: string;
@@ -14,6 +15,14 @@ export interface Contato {
   telefone?: string;
   email?: string;
   principal?: boolean;
+  origem?: 'contato' | 'socio';
+}
+
+export interface Socio {
+  nome?: string;
+  cpf_cnpj?: string;
+  faixa_etaria?: string;
+  qualificacao?: string;
 }
 
 export interface AcaoHistorico {
@@ -33,7 +42,9 @@ export interface LeadData {
   id: string;
   nome_fantasia?: string;
   razao_social?: string;
+  tipo_cliente?: 'PF' | 'PJ';
   nomes_socios?: any;
+  socios?: Socio[] | null;
   contatos?: Contato[] | null;
   contatos_existentes?: Contato[];
   produtos_interesse?: string[] | null;
@@ -154,13 +165,20 @@ export default function ModalAcoesComerciais({
     return {
       ...origem,
       id: origem.id,
+      tipo_cliente: origem.tipo_cliente,
       nome_fantasia: origem.nome_fantasia,
       razao_social: origem.razao_social || origem.nome_razao_social,
+
       contatos: Array.isArray(origem.contatos)
         ? origem.contatos
         : Array.isArray(origem.contatos_existentes)
           ? origem.contatos_existentes
           : [],
+
+      socios: Array.isArray(origem.socios)
+        ? origem.socios
+        : [],
+
       produtos_interesse: Array.isArray(origem.produtos_interesse)
         ? origem.produtos_interesse
         : [],
@@ -187,10 +205,18 @@ export default function ModalAcoesComerciais({
   const [horarioRetorno, setHorarioRetorno] = useState('');
   const [dataReagendamento, setDataReagendamento] = useState('');
   const [horarioReagendamento, setHorarioReagendamento] = useState('');
+  
   const [historico, setHistorico] = useState<AcaoHistorico[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
+
+  const [adicionandoContato, setAdicionandoContato] = useState(false);
+  const [novoContatoNome, setNovoContatoNome] = useState('');
+  const [novoContatoTelefone, setNovoContatoTelefone] = useState('');
+  const [novoContatoEmail, setNovoContatoEmail] = useState('');
+  const [salvandoContato, setSalvandoContato] = useState(false);
+  const [contatosLocais, setContatosLocais] = useState<Contato[]>([]);
 
   const resultados = RESULTADOS[tipoAcao] || RESULTADOS.outros;
 
@@ -207,6 +233,7 @@ export default function ModalAcoesComerciais({
       setObjetivoAcao('Atendimento Comercial');
       setObjetivoOutros('');
       setProdutos(activeLead.produtos_interesse || []);
+      setContatosLocais(activeLead.contatos || []);
       setRelato('');
       setDataRetorno('');
       setHorarioRetorno('');
@@ -329,6 +356,57 @@ export default function ModalAcoesComerciais({
 
     setErro('');
     return true;
+  };
+
+  const adicionarContato = async () => {
+    if (!novoContatoNome.trim()) {
+      setErro('Informe o nome do contato.');
+      return;
+    }
+
+    if (!novoContatoTelefone.trim()) {
+      setErro('Informe o telefone do contato.');
+      return;
+    }
+
+    setSalvandoContato(true);
+    setErro('');
+
+    try {
+      const novoContato: Contato = {
+        id:
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`,
+        nome: novoContatoNome.trim(),
+        telefone: novoContatoTelefone.trim(),
+        email: novoContatoEmail.trim() || undefined,
+        principal: false,
+      };
+
+      const contatosAtuais = Array.isArray(contatosLocais)
+        ? contatosLocais
+        : [];
+
+      const clienteAtualizado = await atualizarClienteV2(activeLead.id, {
+        contatos: [...contatosAtuais, novoContato],
+      });
+
+      setAdicionandoContato(false);
+      setNovoContatoNome('');
+      setNovoContatoTelefone('');
+      setNovoContatoEmail('');
+
+      // Atualiza imediatamente os contatos exibidos
+      if (clienteAtualizado?.contatos) {
+        setContatosLocais(clienteAtualizado.contatos);
+      }
+    } catch (error) {
+      console.error(error);
+      setErro('Não foi possível adicionar o contato.');
+    } finally {
+      setSalvandoContato(false);
+    }
   };
 
   const salvar = async () => {
@@ -662,62 +740,217 @@ export default function ModalAcoesComerciais({
               </section>
 
               <section>
-                <div className="mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    Contatos cadastrados
-                  </h3>
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Contatos cadastrados
+                    </h3>
 
-                  <p className="mt-1 text-xs text-gray-500">
-                    Contatos vinculados a este registro de cliente.
-                  </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Contatos vinculados a este registro de cliente.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdicionandoContato(true);
+                      setErro('');
+                    }}
+                    className="shrink-0 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                  >
+                    + Adicionar contato
+                  </button>
                 </div>
 
-                {activeLead.contatos.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {activeLead.contatos.map((contato: Contato, index: number) => (
-                      <div
-                        key={contato.id || index}
-                        className="rounded-xl border border-gray-200 bg-white p-4"
+                {adicionandoContato && (
+                  <div className="mb-4 rounded-xl border border-purple-200 bg-purple-50 p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-gray-900">
+                        Novo contato
+                      </h4>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdicionandoContato(false);
+                          setNovoContatoNome('');
+                          setNovoContatoTelefone('');
+                          setNovoContatoEmail('');
+                        }}
+                        className="text-gray-400 hover:text-gray-700"
                       >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <strong className="text-sm text-gray-900">
-                            {contato.nome || 'Sem nome'}
-                          </strong>
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
 
-                          {contato.principal && (
-                            <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-700">
-                              Principal
-                            </span>
-                          )}
-                        </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <label className="text-sm font-medium text-gray-700">
+                        Nome *
+                        <input
+                          type="text"
+                          value={novoContatoNome}
+                          onChange={(e) => setNovoContatoNome(e.target.value)}
+                          placeholder="Nome do contato"
+                          className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                        />
+                      </label>
 
-                        {contato.cargo_parentesco && (
-                          <p className="mt-1 text-xs text-gray-500">
-                            {contato.cargo_parentesco}
-                          </p>
-                        )}
+                      <label className="text-sm font-medium text-gray-700">
+                        Telefone *
+                        <input
+                          type="text"
+                          value={novoContatoTelefone}
+                          onChange={(e) => setNovoContatoTelefone(maskPhone(e.target.value))}
+                          placeholder="(48) 99999-9999"
+                          maxLength={15}
+                          className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                        />
+                      </label>
 
-                        {contato.telefone && (
-                          <p className="mt-3 flex items-center gap-2 text-sm text-gray-600">
-                            <Phone className="h-4 w-4 shrink-0 text-gray-400" />
-                            {contato.telefone}
-                          </p>
-                        )}
+                      <label className="text-sm font-medium text-gray-700">
+                        E-mail
+                        <input
+                          type="email"
+                          value={novoContatoEmail}
+                          onChange={(e) => setNovoContatoEmail(e.target.value)}
+                          placeholder="email@exemplo.com"
+                          className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                        />
+                      </label>
+                    </div>
 
-                        {contato.email && (
-                          <p className="mt-2 flex items-center gap-2 break-all text-sm text-gray-600">
-                            <Mail className="h-4 w-4 shrink-0 text-gray-400" />
-                            {contato.email}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
-                    Nenhum contato cadastrado neste registro.
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdicionandoContato(false);
+                          setNovoContatoNome('');
+                          setNovoContatoTelefone('');
+                          setNovoContatoEmail('');
+                        }}
+                        disabled={salvandoContato}
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                      >
+                        Cancelar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={adicionarContato}
+                        disabled={salvandoContato}
+                        className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        {salvandoContato ? 'Salvando...' : 'Salvar contato'}
+                      </button>
+                    </div>
                   </div>
                 )}
+
+                {(() => {
+                  const contatos = Array.isArray(contatosLocais)
+                    ? contatosLocais
+                    : [];
+
+                  const socios =
+                    activeLead.tipo_cliente === 'PJ' &&
+                    Array.isArray(activeLead.socios)
+                      ? activeLead.socios
+                      : [];
+
+                  const contatosNormalizados = contatos.map((contato) => ({
+                    ...contato,
+                    origem: 'contato' as const,
+                  }));
+
+                  const chavesContatos = new Set(
+                    contatosNormalizados.map((contato) =>
+                      (contato.nome || '').trim().toLowerCase()
+                    )
+                  );
+
+                  const sociosExibicao = socios
+                    .filter((socio: Socio) => {
+                      const nomeSocio = (socio.nome || '').trim().toLowerCase();
+
+                      return nomeSocio && !chavesContatos.has(nomeSocio);
+                    })
+                    .map((socio: Socio) => ({
+                      id: `socio-${socio.cpf_cnpj || socio.nome}`,
+                      nome: socio.nome || 'Sócio',
+                      telefone: '',
+                      email: '',
+                      principal: false,
+                      cargo_parentesco: socio.qualificacao || 'Sócio',
+                      origem: 'socio' as const,
+                    }));
+
+                  const contatosExibicao: Contato[] = [
+                    ...contatosNormalizados,
+                    ...sociosExibicao,
+                  ];
+
+                  if (contatosExibicao.length === 0) {
+                    return (
+                      <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
+                        Nenhum contato cadastrado neste registro.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {contatosExibicao.map((contato, index) => (
+                        <div
+                          key={contato.id || index}
+                          className={`rounded-xl border p-4 ${
+                            contato.origem === 'socio'
+                              ? 'border-blue-200 bg-blue-50/40'
+                              : 'border-gray-200 bg-white'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <strong className="text-sm text-gray-900">
+                              {contato.nome || 'Sem nome'}
+                            </strong>
+
+                            {contato.principal && (
+                              <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-700">
+                                Principal
+                              </span>
+                            )}
+
+                            {contato.origem === 'socio' && (
+                              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
+                                Sócio
+                              </span>
+                            )}
+                          </div>
+
+                          {contato.cargo_parentesco && (
+                            <p className="mt-1 text-xs text-gray-500">
+                              {contato.cargo_parentesco}
+                            </p>
+                          )}
+
+                          {contato.telefone && (
+                            <p className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+                              <Phone className="h-4 w-4 shrink-0 text-gray-400" />
+                              {contato.telefone}
+                            </p>
+                          )}
+
+                          {contato.email && (
+                            <p className="mt-2 flex items-center gap-2 break-all text-sm text-gray-600">
+                              <Mail className="h-4 w-4 shrink-0 text-gray-400" />
+                              {contato.email}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </section>
 
               <section>
