@@ -429,7 +429,10 @@ export async function atualizarClienteV2(id: string, payload: any) {
 
     const pfAtuais = parseRealJson(clienteAtual.dados_complementares_pf, {});
     const pjAtuais = parseRealJson(clienteAtual.dados_complementares_pj, {});
-    const dadosPJRecebidos = parseRealJson(payload.dados_pj || payload.dadosReceita, {});
+    const dadosPJRecebidos = parseRealJson(
+      payload.dados_pj || payload.dadosReceita,
+      {}
+    );
 
     const dadosPF = isPF
       ? {
@@ -490,7 +493,6 @@ export async function atualizarClienteV2(id: string, payload: any) {
     const dadosPJ = !isPF
       ? {
           ...pjAtuais,
-          ...dadosPJRecebidos,
 
           porte:
             dadosPJRecebidos.porte ??

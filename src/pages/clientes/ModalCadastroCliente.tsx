@@ -230,10 +230,33 @@ export const ModalCadastroCliente = ({
         }]);
       }
 
-      // 5. PREENCHER SÓCIOS
+      // 5. PREENCHER SÓCIOS / QSA
       const sociosBanco = parseSeguro(cliente.socios, []);
-      if (sociosBanco.length > 0) {
+
+      if (Array.isArray(sociosBanco) && sociosBanco.length > 0) {
+        // Prioridade: quadro societário estruturado
         setSocios(sociosBanco);
+      } else {
+        // Fallback: recuperar QSA armazenado em dados_complementares_pj
+        const dadosPJ = parseSeguro(
+          cliente.dados_complementares_pj,
+          {}
+        );
+
+        const nomes = dadosPJ.nomes_socios_texto || '';
+        const cpfs = dadosPJ.cpfs_socios_texto || '';
+        const faixas = dadosPJ.faixas_etarias_texto || '';
+
+        if (nomes) {
+          setSocios([{
+            nome: nomes,
+            cpf_cnpj: cpfs,
+            qualificacao: 'Sócio',
+            faixa_etaria: faixas || 'Não informada'
+          }]);
+        } else {
+          setSocios([]);
+        }
       }
 
       // 6. Dados PJ
