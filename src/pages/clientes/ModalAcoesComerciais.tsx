@@ -42,7 +42,7 @@ export interface LeadData {
   id: string;
   nome_fantasia?: string;
   razao_social?: string;
-  tipo_cliente?: 'PF' | 'PJ';
+  tipo_cliente?: string;
   nomes_socios?: any;
   socios?: Socio[] | null;
   contatos?: Contato[] | null;
