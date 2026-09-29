@@ -152,15 +152,17 @@ export const ModalCadastroCliente = ({
   }, [usuarioLogado]);
 
   // =========================================================
-  // MODO EDIÇÃO: PREENCHER DADOS SE O CLIENTE EXISTIR
+  // 1. MODO EDIÇÃO: PREENCHER DADOS SE O CLIENTE EXISTIR
   // =========================================================
   useEffect(() => {
     if (cliente) {
       // 1. Identificação Básica
       setTipoCliente(cliente.tipo_cliente || 'PJ');
 
-      // CPF / CNPJ Correto (Pega do contato principal em PF ou do campo cpf_cnpj)
-      const cpfPadrao = cliente.cpf_cnpj || (Array.isArray(cliente.contatos) ? cliente.contatos[0]?.cpf : '') || '';
+      const cpfPadrao =
+        cliente.cpf_cnpj ||
+        (Array.isArray(cliente.contatos) ? cliente.contatos[0]?.cpf : '') ||
+        '';
       setCpfCnpj(cpfPadrao);
 
       setNomeRazaoSocial(
@@ -194,7 +196,6 @@ export const ModalCadastroCliente = ({
       // 3. Parser seguro de campos JSON
       const parseSeguro = (valor: any, fallback: any) => {
         if (!valor) return fallback;
-
         if (typeof valor === 'string') {
           try {
             return JSON.parse(valor);
@@ -202,82 +203,115 @@ export const ModalCadastroCliente = ({
             return fallback;
           }
         }
-
         return valor;
       };
 
-      // 4. PREENCHER CONTATOS (Crucial para Pessoa Física e exibição do Card)
+      // 4. PREENCHER CONTATOS
       const contatosBanco = parseSeguro(cliente.contatos, []);
       if (Array.isArray(contatosBanco) && contatosBanco.length > 0) {
-        // Garante que as flags dos accordion de Endereço e Documentos do Contato venham visíveis
         const contatosFormatados = contatosBanco.map((c: any) => ({
           ...c,
           mostrarDocs: c.mostrarDocs ?? true,
-          mostrarEndereco: c.mostrarEndereco ?? true
+          mostrarEndereco: c.mostrarEndereco ?? true,
         }));
         setContatos(contatosFormatados);
       } else if (cliente.tipo_cliente === 'PF') {
-        // Fallback: Se não houver contatos salvos, cria o contato principal inicial
-        setContatos([{
-          id: crypto.randomUUID(),
-          principal: true,
-          nome: cliente.nome_razao_social || '',
-          cpf: cliente.cpf_cnpj || '',
-          telefone: cliente.telefone || '',
-          email: cliente.email || '',
-          mostrarDocs: true,
-          mostrarEndereco: true
-        }]);
+        setContatos([
+          {
+            id: crypto.randomUUID(),
+            principal: true,
+            nome: cliente.nome_razao_social || '',
+            cpf: cliente.cpf_cnpj || '',
+            telefone: cliente.telefone || '',
+            email: cliente.email || '',
+            mostrarDocs: true,
+            mostrarEndereco: true,
+          },
+        ]);
       }
 
       // 5. PREENCHER SÓCIOS / QSA
       const sociosBanco = parseSeguro(cliente.socios, []);
-
       if (Array.isArray(sociosBanco) && sociosBanco.length > 0) {
-        // Prioridade: quadro societário estruturado
         setSocios(sociosBanco);
       } else {
-        // Fallback: recuperar QSA armazenado em dados_complementares_pj
-        const dadosPJ = parseSeguro(
-          cliente.dados_complementares_pj,
-          {}
-        );
-
+        const dadosPJ = parseSeguro(cliente.dados_complementares_pj, {});
         const nomes = dadosPJ.nomes_socios_texto || '';
         const cpfs = dadosPJ.cpfs_socios_texto || '';
         const faixas = dadosPJ.faixas_etarias_texto || '';
 
         if (nomes) {
-          setSocios([{
-            nome: nomes,
-            cpf_cnpj: cpfs,
-            qualificacao: 'Sócio',
-            faixa_etaria: faixas || 'Não informada'
-          }]);
+          setSocios([
+            {
+              nome: nomes,
+              cpf_cnpj: cpfs,
+              qualificacao: 'Sócio',
+              faixa_etaria: faixas || 'Não informada',
+            },
+          ]);
         } else {
           setSocios([]);
         }
       }
 
-      // 6. Dados PJ
-      if (cliente.tipo_cliente === 'PJ') {
+      // 6. PREENCHER DADOS DE PESSOA JURÍDICA
+      if (cliente.tipo_cliente === 'PJ' || cliente.tipo_cliente === undefined) {
         const complPJ = parseSeguro(
           cliente.dados_pj || cliente.dados_complementares_pj,
           {}
         );
 
+        const rawMei =
+          complPJ.opcao_pelo_mei ??
+          complPJ.opcao_mei ??
+          cliente.opcao_pelo_mei ??
+          cliente.opcao_mei;
+
+        const rawSimples =
+          complPJ.opcao_pelo_simples ??
+          complPJ.opcao_simples ??
+          cliente.opcao_pelo_simples ??
+          cliente.opcao_simples;
+
+        const isMeiBool =
+          rawMei === true || rawMei === 'true' || rawMei === 'Sim';
+        const isSimplesBool =
+          rawSimples === true || rawSimples === 'true' || rawSimples === 'Sim';
+
         setDadosReceita({
-          data_abertura: complPJ.data_abertura || '',
-          porte: complPJ.porte || '',
-          capital_social: complPJ.capital_social || '',
-          opcao_pelo_mei: Boolean(complPJ.opcao_pelo_mei),
-          opcao_pelo_simples: Boolean(complPJ.opcao_pelo_simples),
-          natureza_juridica: complPJ.natureza_juridica || '',
-          matriz_filial: complPJ.matriz_filial || '',
+          data_abertura:
+            complPJ.data_abertura ||
+            cliente.data_abertura ||
+            '',
+
+          porte:
+            complPJ.porte ||
+            cliente.porte ||
+            '',
+
+          capital_social:
+            complPJ.capital_social ||
+            cliente.capital_social ||
+            '',
+
+          opcao_pelo_mei: isMeiBool,
+          opcao_pelo_simples: isSimplesBool,
+
+          natureza_juridica:
+            complPJ.natureza_juridica ||
+            cliente.natureza_juridica ||
+            '',
+
+          matriz_filial:
+            complPJ.matriz_filial ||
+            cliente.matriz_filial ||
+            '',
+
           situacao_cadastral:
             complPJ.situacao_cadastral ||
             cliente.situacao_cadastral ||
             '',
+
           cnae_principal:
             complPJ.cnae_principal ||
             cliente.cnae_principal ||
@@ -378,9 +412,8 @@ export const ModalCadastroCliente = ({
   };
 
   // =========================================================
-  // CONSULTA CNPJ
+  // 2. CONSULTAR CNPJ
   // =========================================================
-
   const handleConsultarCNPJ = async () => {
     const cnpjLimpo = cpfCnpj.replace(/\D/g, '');
     setMensagemErro('');
@@ -394,11 +427,14 @@ export const ModalCadastroCliente = ({
     setStatusConsultaCNPJ('loading');
 
     try {
-      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+      const response = await fetch(
+        `https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`
+      );
       if (!response.ok) throw new Error('Erro ao consultar CNPJ na API');
-      
+
       const data = await response.json();
-      if (!data || !data.razao_social) throw new Error('Dados insuficientes retornados pela API');
+      if (!data || !data.razao_social)
+        throw new Error('Dados insuficientes retornados pela API');
 
       setNomeRazaoSocial(data.razao_social || '');
       setNomeFantasia(data.nome_fantasia || '');
@@ -407,14 +443,18 @@ export const ModalCadastroCliente = ({
         data_abertura: data.data_inicio_atividade || '',
         porte: data.porte || '',
         capital_social: data.capital_social
-          ? `R$ ${Number(data.capital_social).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+          ? `R$ ${Number(data.capital_social).toLocaleString('pt-BR', {
+              minimumFractionDigits: 2,
+            })}`
           : '',
         opcao_pelo_mei: Boolean(data.opcao_pelo_mei),
         opcao_pelo_simples: Boolean(data.opcao_pelo_simples),
         natureza_juridica: data.natureza_juridica || '',
         matriz_filial: data.descricao_matriz_filial || '',
-        situacao_cadastral: data.descricao_situacao_cadastral || '',
-        cnae_principal: data.cnae_fiscal ? `${data.cnae_fiscal} - ${data.cnae_fiscal_descricao || ''}` : '',
+        situacao_cadastral: data.descricao_situacao_cadastral || 'ATIVA',
+        cnae_principal: data.cnae_fiscal
+          ? `\({data.cnae_fiscal} -\){data.cnae_fiscal_descricao || ''}`
+          : '',
       });
 
       setCep(data.cep ? maskCEP(data.cep) : '');
@@ -427,87 +467,161 @@ export const ModalCadastroCliente = ({
 
       const qsaList = Array.isArray(data.qsa) ? data.qsa : [];
       const sociosMapeados = qsaList.map((socio: any) => ({
-        nome: socio.nome_socio || socio.nome_socio_razao_social || socio.nome || socio.nome_empresarial || '',
+        nome:
+          socio.nome_socio ||
+          socio.nome_socio_razao_social ||
+          socio.nome ||
+          socio.nome_empresarial ||
+          '',
         cpf_cnpj: socio.cnpj_cpf_do_socio || socio.cpf_cnpj || '',
-        qualificacao: socio.qualificacao_socio || socio.qualificacao || socio.descricao_qualificacao_socio || 'Sócio',
+        qualificacao:
+          socio.qualificacao_socio ||
+          socio.qualificacao ||
+          socio.descricao_qualificacao_socio ||
+          'Sócio',
         faixa_etaria: socio.faixa_etaria || 'Não informada',
       }));
 
       setSocios(sociosMapeados);
 
+      // LÓGICA DE PRESERVAÇÃO E MESCLAGEM DOS CONTATOS
       if (sociosMapeados.length > 0) {
-        setContatos(
-          sociosMapeados.map((socio: any, idx: number) => ({
-            id: crypto.randomUUID(),
-            nome: socio.nome,
-            cargo_parentesco: socio.qualificacao || 'Sócio',
-            telefone: '',
-            email: '',
-            cpf: socio.cpf_cnpj || '',
-            rg: '',
-            rg_numero: '',
-            rg_orgao: '',
-            data_emissao_rg: '',
-            data_emissao_doc: '',
-            data_nascimento: '',
-            sexo: '',
-            estado_civil: '',
-            naturalidade: '',
-            ocupacao: '',
-            principal: idx === 0,
-            usar_endereco_principal: true,
-            mostrarDocs: false,
-            mostrarEndereco: false,
-            cep: data.cep ? maskCEP(data.cep) : '',
-            logradouro: data.logradouro || '',
-            numero: data.numero || '',
-            bairro: data.bairro || '',
-            municipio: data.municipio || '',
-            uf: data.uf || '',
-            complemento: data.complemento || ''
-          }))
-        );
+        setContatos((contatosExistentes) => {
+          // Filtra contatos antigos válidos (que possuem nome ou CPF preenchido)
+          const contatosValidosAntigos = contatosExistentes.filter(
+            (c) => c.nome.trim() !== '' || c.cpf.trim() !== ''
+          );
+
+          const novosContatosMesclados = sociosMapeados.map((socio: any, idx: number) => {
+            const nomeSocioLimpo = (socio.nome || '').trim().toLowerCase();
+            const cpfSocioLimpo = (socio.cpf_cnpj || '').replace(/\D/g, '');
+
+            // Procura se o sócio da API já existe no estado local
+            const contatoEncontrado = contatosValidosAntigos.find((c) => {
+              const nomeContatoLimpo = (c.nome || '').trim().toLowerCase();
+              const cpfContatoLimpo = (c.cpf || '').replace(/\D/g, '');
+
+              const mesmoNome = nomeSocioLimpo !== '' && nomeContatoLimpo === nomeSocioLimpo;
+              const mesmoCpf = cpfSocioLimpo !== '' && cpfContatoLimpo === cpfSocioLimpo;
+
+              return mesmoNome || mesmoCpf;
+            });
+
+            // Se o contato já existe, PRESERVA 100% dos dados preenchidos pelo usuário
+            if (contatoEncontrado) {
+              return {
+                ...contatoEncontrado,
+                cargo_parentesco:
+                  contatoEncontrado.cargo_parentesco ||
+                  socio.qualificacao ||
+                  'Sócio',
+              };
+            }
+
+            // Se for um novo sócio da API, cria o registro inicial
+            return {
+              id: crypto.randomUUID(),
+              nome: socio.nome,
+              cargo_parentesco: socio.qualificacao || 'Sócio',
+              telefone: '',
+              email: '',
+              cpf: socio.cpf_cnpj || '',
+              rg: '',
+              rg_numero: '',
+              rg_orgao: '',
+              data_emissao_rg: '',
+              data_emissao_doc: '',
+              data_nascimento: '',
+              sexo: '',
+              estado_civil: '',
+              naturalidade: '',
+              ocupacao: '',
+              principal: idx === 0 && contatosValidosAntigos.length === 0,
+              usar_endereco_principal: true,
+              mostrarDocs: false,
+              mostrarEndereco: false,
+              cep: data.cep ? maskCEP(data.cep) : '',
+              logradouro: data.logradouro || '',
+              numero: data.numero || '',
+              bairro: data.bairro || '',
+              municipio: data.municipio || '',
+              uf: data.uf || '',
+              complemento: data.complemento || '',
+            };
+          });
+
+          // Mantém também quaisquer contatos extras preenchidos manualmente que não vieram no QSA da API
+          const contatosAdicionaisManuais = contatosValidosAntigos.filter(
+            (cAntigo: any) =>
+              !novosContatosMesclados.some(
+                (cNovo: any) => cNovo.id === cAntigo.id
+              )
+          );
+
+          const listaFinal = [...novosContatosMesclados, ...contatosAdicionaisManuais];
+
+          // Garante que exista pelo menos 1 contato marcado como principal
+          if (listaFinal.length > 0 && !listaFinal.some((c) => c.principal)) {
+            listaFinal[0].principal = true;
+          }
+
+          return listaFinal;
+        });
       } else {
-        setContatos([{
-          id: crypto.randomUUID(),
-          nome: '',
-          cargo_parentesco: '',
-          telefone: '',
-          email: '',
-          cpf: '',
-          rg: '',
-          rg_numero: '',
-          rg_orgao: '',
-          data_emissao_rg: '',
-          data_emissao_doc: '',
-          data_nascimento: '',
-          sexo: '',
-          estado_civil: '',
-          naturalidade: '',
-          ocupacao: '',
-          principal: true,
-          usar_endereco_principal: true,
-          mostrarDocs: false,
-          mostrarEndereco: false,
-          cep: '',
-          logradouro: '',
-          numero: '',
-          bairro: '',
-          municipio: '',
-          uf: '',
-          complemento: ''
-        }]);
+        // Se a API não retornar sócios, só reseta se o usuário ainda não tiver preenchido nenhum contato
+        setContatos((contatosExistentes) => {
+          const temContatoPreenchido = contatosExistentes.some(
+            (c) => c.nome.trim() !== '' || c.cpf.trim() !== '' || c.telefone.trim() !== ''
+          );
+
+          if (temContatoPreenchido) {
+            return contatosExistentes;
+          }
+
+          return [
+            {
+              id: crypto.randomUUID(),
+              nome: '',
+              cargo_parentesco: '',
+              telefone: '',
+              email: '',
+              cpf: '',
+              rg: '',
+              rg_numero: '',
+              rg_orgao: '',
+              data_emissao_rg: '',
+              data_emissao_doc: '',
+              data_nascimento: '',
+              sexo: '',
+              estado_civil: '',
+              naturalidade: '',
+              ocupacao: '',
+              principal: true,
+              usar_endereco_principal: true,
+              mostrarDocs: false,
+              mostrarEndereco: false,
+              cep: '',
+              logradouro: '',
+              numero: '',
+              bairro: '',
+              municipio: '',
+              uf: '',
+              complemento: '',
+            },
+          ];
+        });
       }
 
       setStatusConsultaCNPJ('sucesso');
       setOpenComplementarPJ(true);
       setOpenEndereco(false);
       setOpenSocios(false);
-
     } catch (error) {
       console.error('Erro na consulta do CNPJ:', error);
       setStatusConsultaCNPJ('erro');
-      setMensagemErro('Não foi possível consultar o CNPJ automaticamente. Você pode preencher os dados manualmente para continuar.');
+      setMensagemErro(
+        'Não foi possível consultar o CNPJ automaticamente. Você pode preencher os dados manualmente para continuar.'
+      );
       setOpenComplementarPJ(true);
       setOpenEndereco(true);
       setOpenSocios(true);
@@ -696,9 +810,8 @@ export const ModalCadastroCliente = ({
   };
 
   // =========================================================
-  // SUBMIT E AÇÕES COMERCIAIS
+  // 3. SUBMIT DO FORMULÁRIO
   // =========================================================
-
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving || isLoading) return;
@@ -710,23 +823,32 @@ export const ModalCadastroCliente = ({
       return;
     }
 
-    // 1. Definição da Corretora
-    const corretoraId = usuarioLogado?.tipo_usuario === 'CORRETORA' 
-      ? usuarioLogado?.id 
-      : (usuarioLogado?.corretora_id || null);
+    const corretoraId =
+      usuarioLogado?.tipo_usuario === 'CORRETORA'
+        ? usuarioLogado?.id
+        : usuarioLogado?.corretora_id || null;
 
-    // 2. Definição do Corretor/Dono
     const donoFinal = donoId || usuarioLogado?.id || null;
-
-    // 3. Contato Principal para extração dos dados de PF
     const contatoPrincipal = contatos.find((c) => c.principal) || contatos[0];
 
-    // 4. Definição do CPF ou CNPJ correto de acordo com o tipo do cliente
-    const cpfCnpjFinal = tipoCliente === 'PF'
-      ? (contatoPrincipal?.cpf || null)
-      : (cpfCnpj || null);
+    const cpfCnpjFinal =
+      tipoCliente === 'PF' ? contatoPrincipal?.cpf || null : cpfCnpj || null;
 
-    // 5. Montagem do Payload Seguro
+    const dadosPJFormatados =
+      tipoCliente === 'PJ'
+        ? {
+            data_abertura: dadosReceita?.data_abertura || null,
+            porte: dadosReceita?.porte || null,
+            capital_social: dadosReceita?.capital_social || null,
+            matriz_filial: dadosReceita?.matriz_filial || null,
+            natureza_juridica: dadosReceita?.natureza_juridica || null,
+            cnae_principal: dadosReceita?.cnae_principal || null,
+            situacao_cadastral: dadosReceita?.situacao_cadastral || null,
+            opcao_pelo_mei: Boolean(dadosReceita?.opcao_pelo_mei),
+            opcao_pelo_simples: Boolean(dadosReceita?.opcao_pelo_simples),
+          }
+        : null;
+
     const payloadCliente = {
       corretora_id: corretoraId,
       tipo_cliente: tipoCliente,
@@ -734,50 +856,55 @@ export const ModalCadastroCliente = ({
       nome_razao_social: nomeRazaoSocial || '',
       nome_fantasia: nomeFantasia || '',
 
-      // Campos complementares de PF (extraídos do contato principal)
-      data_nascimento: tipoCliente === 'PF' ? (contatoPrincipal?.data_nascimento || null) : null,
-      sexo: tipoCliente === 'PF' ? (contatoPrincipal?.sexo || null) : null,
-      naturalidade: tipoCliente === 'PF' ? (contatoPrincipal?.naturalidade || null) : null,
-      ocupacao: tipoCliente === 'PF' ? (contatoPrincipal?.ocupacao || null) : null,
-      rg_numero: tipoCliente === 'PF' ? (contatoPrincipal?.rg_numero || contatoPrincipal?.rg || null) : null,
-      rg_orgao: tipoCliente === 'PF' ? (contatoPrincipal?.rg_orgao || null) : null,
-      data_emissao_rg: tipoCliente === 'PF' ? (contatoPrincipal?.data_emissao_rg || null) : null,
-      estado_civil: tipoCliente === 'PF' ? (contatoPrincipal?.estado_civil || null) : null,
+      cnae_principal:
+        tipoCliente === 'PJ' ? dadosReceita?.cnae_principal || null : null,
+      situacao_cadastral:
+        tipoCliente === 'PJ' ? dadosReceita?.situacao_cadastral || null : null,
 
-      dados_pj: tipoCliente === 'PJ' ? (dadosReceita || null) : null,
+      data_nascimento:
+        tipoCliente === 'PF' ? contatoPrincipal?.data_nascimento || null : null,
+      sexo: tipoCliente === 'PF' ? contatoPrincipal?.sexo || null : null,
+      naturalidade:
+        tipoCliente === 'PF' ? contatoPrincipal?.naturalidade || null : null,
+      ocupacao: tipoCliente === 'PF' ? contatoPrincipal?.ocupacao || null : null,
+      rg_numero:
+        tipoCliente === 'PF'
+          ? contatoPrincipal?.rg_numero || contatoPrincipal?.rg || null
+          : null,
+      rg_orgao: tipoCliente === 'PF' ? contatoPrincipal?.rg_orgao || null : null,
+      data_emissao_rg:
+        tipoCliente === 'PF' ? contatoPrincipal?.data_emissao_rg || null : null,
+      estado_civil:
+        tipoCliente === 'PF' ? contatoPrincipal?.estado_civil || null : null,
+
+      dados_pj: dadosPJFormatados,
       dono_id: donoFinal,
       corretor_id: donoFinal,
-      cep: cep || null, 
-      logradouro: logradouro || null, 
-      numero: numero || null, 
-      bairro: bairro || null, 
-      municipio: municipio || null, 
-      uf: uf || null, 
+      cep: cep || null,
+      logradouro: logradouro || null,
+      numero: numero || null,
+      bairro: bairro || null,
+      municipio: municipio || null,
+      uf: uf || null,
       complemento: complemento || null,
       socios: socios || [],
       contatos: contatos || [],
     };
 
-    console.log('=== DEBUG PAYLOAD ENVIADO ===', {
-      corretoraIdEnviada: payloadCliente.corretora_id,
-      corretorIdEnviado: payloadCliente.corretor_id,
-      cpfCnpjFinal: payloadCliente.cpf_cnpj
-    });
-
     try {
-      // FIX CRÍTICO: 'await' garante a espera da resposta da requisição no banco
       await handleSubmit(payloadCliente);
     } catch (error: any) {
-      console.error("Erro capturado dentro do modal:", error);
+      console.error('Erro capturado dentro do modal:', error);
 
-      // Tratamento com TOAST CHAMATIVO NO CENTRO DA TELA
-      if (error?.code === '23505' || error?.message?.includes('tab_clientes_v2_cpf_cnpj_key')) {
+      if (
+        error?.code === '23505' ||
+        error?.message?.includes('tab_clientes_v2_cpf_cnpj_key')
+      ) {
         const docTipo = tipoCliente === 'PJ' ? 'CNPJ' : 'CPF';
         const mensagem = `Este ${docTipo} já está cadastrado em sua corretora!`;
 
         setMensagemErro(mensagem);
 
-        // Toast chamativo e centralizado do Sonner
         toast.error(`⚠️ ${docTipo} JÁ CADASTRADO!`, {
           description: `O ${docTipo} informado já existe no sistema. Verifique os dados ou busque pelo cliente existente.`,
           position: 'top-center',
@@ -793,7 +920,8 @@ export const ModalCadastroCliente = ({
           },
         });
       } else {
-        const msgErro = error?.message || "Ocorreu um erro ao salvar o cliente.";
+        const msgErro =
+          error?.message || 'Ocorreu um erro ao salvar o cliente.';
         setMensagemErro(msgErro);
         toast.error(msgErro, { position: 'top-center' });
       }

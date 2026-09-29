@@ -300,7 +300,16 @@ export const ClientesListaV2: React.FC = () => {
       bairro: clienteBase.bairro || contatosList[0]?.bairro || contatosList[0]?.endereco?.bairro || '',
       logradouro: clienteBase.logradouro || contatosList[0]?.logradouro || contatosList[0]?.endereco?.logradouro || '',
       numero: clienteBase.numero || contatosList[0]?.numero || contatosList[0]?.endereco?.numero || '',
-      complemento: clienteBase.complemento || contatosList[0]?.complemento || contatosList[0]?.endereco?.complemento || ''
+      complemento: clienteBase.complemento || contatosList[0]?.complemento || contatosList[0]?.endereco?.complemento || '',
+      
+      // Propriedades diretas de PJ para preencher os inputs do modal
+      data_abertura: dadosPJ.data_abertura || '',
+      porte: dadosPJ.porte || '',
+      capital_social: dadosPJ.capital_social || '',
+      opcao_mei: dadosPJ.opcao_mei || 'Não',
+      opcao_simples: dadosPJ.opcao_simples || 'Não',
+      matriz_filial: dadosPJ.matriz_filial || '',
+      natureza_juridica: dadosPJ.natureza_juridica || '',
     };
 
     // 6. Seta o estado do cliente e abre o modal

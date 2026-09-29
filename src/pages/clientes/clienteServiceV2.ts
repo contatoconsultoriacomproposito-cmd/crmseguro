@@ -387,7 +387,7 @@ export async function criarClienteV2(payload: any) {
 }
 
 // ==========================================
-// ATUALIZAR CLIENTE EXISTENTE
+// ATUALIZAR CLIENTE EXISTENTE (VERSÃO CORRIGIDA)
 // ==========================================
 export async function atualizarClienteV2(id: string, payload: any) {
   try {
@@ -429,11 +429,16 @@ export async function atualizarClienteV2(id: string, payload: any) {
 
     const pfAtuais = parseRealJson(clienteAtual.dados_complementares_pf, {});
     const pjAtuais = parseRealJson(clienteAtual.dados_complementares_pj, {});
+    
+    // Suporta 'dados_pj', 'dadosReceita' ou o próprio payload solto
     const dadosPJRecebidos = parseRealJson(
       payload.dados_pj || payload.dadosReceita,
       {}
     );
 
+    // ==========================================
+    // 1. DADOS COMPLEMENTARES PF
+    // ==========================================
     const dadosPF = isPF
       ? {
           ...pfAtuais,
@@ -488,70 +493,95 @@ export async function atualizarClienteV2(id: string, payload: any) {
               ? payload.estado_civil
               : pfAtuais.estado_civil ?? null
         }
-      : pfAtuais;
+      : {}; // Se virou PJ, resseta/limpa o JSONB de PF
 
+    // ==========================================
+    // 2. DADOS COMPLEMENTARES PJ (CORRIGIDO)
+    // ==========================================
     const dadosPJ = !isPF
       ? {
           ...pjAtuais,
-
-          porte:
-            dadosPJRecebidos.porte ??
-            pjAtuais.porte ??
-            null,
-
-          data_abertura:
-            dadosPJRecebidos.data_abertura ??
-            pjAtuais.data_abertura ??
-            null,
-
-          matriz_filial:
-            dadosPJRecebidos.matriz_filial ??
-            pjAtuais.matriz_filial ??
-            null,
 
           modo_cadastro:
             payload.modoCadastro ||
             payload.modo_cadastro ||
             dadosPJRecebidos.modo_cadastro ||
             pjAtuais.modo_cadastro ||
-            'RAPIDO',
+            'COMPLETO',
+
+          data_abertura:
+            payload.data_abertura ??
+            payload.dataAbertura ??
+            dadosPJRecebidos.data_abertura ??
+            pjAtuais.data_abertura ??
+            null,
+
+          porte:
+            payload.porte ??
+            dadosPJRecebidos.porte ??
+            pjAtuais.porte ??
+            null,
 
           capital_social:
+            payload.capital_social ??
+            payload.capitalSocial ??
             dadosPJRecebidos.capital_social ??
             pjAtuais.capital_social ??
             null,
 
-          cnae_principal:
-            dadosPJRecebidos.cnae_principal ??
-            payload.cnae_principal ??
-            payload.cnaePrincipal ??
-            pjAtuais.cnae_principal ??
+          matriz_filial:
+            payload.matriz_filial ??
+            payload.matrizFilial ??
+            dadosPJRecebidos.matriz_filial ??
+            pjAtuais.matriz_filial ??
             null,
 
-          opcao_pelo_mei:
-            dadosPJRecebidos.opcao_pelo_mei ??
-            pjAtuais.opcao_pelo_mei ??
-            false,
-
           natureza_juridica:
+            payload.natureza_juridica ??
+            payload.naturezaJuridica ??
             dadosPJRecebidos.natureza_juridica ??
             pjAtuais.natureza_juridica ??
             null,
 
-          opcao_pelo_simples:
-            dadosPJRecebidos.opcao_pelo_simples ??
-            pjAtuais.opcao_pelo_simples ??
-            false,
+          cnae_principal:
+            payload.cnae_principal ??
+            payload.cnaePrincipal ??
+            dadosPJRecebidos.cnae_principal ??
+            pjAtuais.cnae_principal ??
+            null,
 
           situacao_cadastral:
-            dadosPJRecebidos.situacao_cadastral ??
             payload.situacao_cadastral ??
             payload.situacaoCadastral ??
+            dadosPJRecebidos.situacao_cadastral ??
             pjAtuais.situacao_cadastral ??
-            'ATIVA'
-        }
-      : pjAtuais;
+            'ATIVA',
 
+          opcao_mei:
+            payload.opcao_mei ??
+            payload.opcao_pelo_mei ??
+            payload.opcaoMei ??
+            dadosPJRecebidos.opcao_mei ??
+            dadosPJRecebidos.opcao_pelo_mei ??
+            pjAtuais.opcao_mei ??
+            pjAtuais.opcao_pelo_mei ??
+            'Não',
+
+          opcao_simples:
+            payload.opcao_simples ??
+            payload.opcao_pelo_simples ??
+            payload.opcaoSimples ??
+            dadosPJRecebidos.opcao_simples ??
+            dadosPJRecebidos.opcao_pelo_simples ??
+            pjAtuais.opcao_simples ??
+            pjAtuais.opcao_pelo_simples ??
+            'Não',
+        }
+      : {}; // Se virou PF, resseta/limpa o JSONB de PJ
+
+    // ==========================================
+    // 3. MONTAGEM DO PAYLOAD FINAL SUPABASE
+    // ==========================================
     const dadosParaAtualizar = {
       tipo_cliente: tipoCliente,
       cpf_cnpj: cpfCnpjTratado,
