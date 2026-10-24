@@ -12,7 +12,6 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  Columns,
   DollarSign,
   FileText,
   HandCoins,
@@ -50,6 +49,7 @@ type NavItemProps = {
   collapsed: boolean
   end?: boolean
   onNavigate?: () => void
+  iconClassName?: string
 }
 
 export default function Sidebar({
@@ -154,53 +154,82 @@ export default function Sidebar({
 
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-5 custom-scrollbar">
+        {/* =================================================
+            ESTRUTURA
+        ================================================= */}
+
+        <NavSection
+          title="Estrutura"
+          collapsed={isCollapsed}
+        >
+          <SidebarItem
+            to="/whatsapp/equipe"
+            icon={<UserRoundCog size={18} />}
+            label="Equipe"
+            collapsed={isCollapsed}
+            onNavigate={handleNavigate}
+            iconClassName="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
+          />
+
+          <SidebarItem
+            to="/whatsapp/conexoes"
+            icon={<Cable size={18} />}
+            label="Conexões WhatsApp"
+            collapsed={isCollapsed}
+            onNavigate={handleNavigate}
+            iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+          />
+
+          <SidebarItem
+            to="/whatsapp/contatos"
+            icon={<Users size={18} />}
+            label="Contatos"
+            collapsed={isCollapsed}
+            onNavigate={handleNavigate}
+            iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
+          />
+        </NavSection>
+
+        {/* =================================================
+            ATENDIMENTO
+        ================================================= */}
+
         <NavSection
           title="Atendimento"
           collapsed={isCollapsed}
         >
           <SidebarItem
             to="/whatsapp"
-            icon={
-              <MessagesSquare size={19} />
-            }
+            icon={<MessagesSquare size={18} />}
             label="Conversas"
             collapsed={isCollapsed}
             end
             onNavigate={handleNavigate}
-          />
-
-          <SidebarItem
-            to="/whatsapp/contatos"
-            icon={<Users size={19} />}
-            label="Contatos"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
+            iconClassName="bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
           />
 
           <SidebarItem
             to="/whatsapp/agenda"
-            icon={<Calendar size={19} />}
+            icon={<Calendar size={18} />}
             label="Agenda"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
-          />
-
-          <SidebarItem
-            to="/whatsapp/kanban"
-            icon={<Columns size={19} />}
-            label="Kanban"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
+            iconClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
           />
 
           <SidebarItem
             to="/whatsapp/automacoes"
-            icon={<Bot size={19} />}
+            icon={<Bot size={18} />}
             label="Automações"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-500/10 dark:text-fuchsia-400"
           />
         </NavSection>
+
+        {/* =================================================
+            OPERAÇÃO
+        ================================================= */}
 
         <NavSection
           title="Operação"
@@ -208,52 +237,62 @@ export default function Sidebar({
         >
           <SidebarItem
             to="/whatsapp/clientes"
-            icon={<Users size={19} />}
+            icon={<Users size={18} />}
             label="Clientes"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
           />
 
           <SidebarItem
             to="/whatsapp/propostas"
-            icon={<FileText size={19} />}
+            icon={<FileText size={18} />}
             label="Propostas"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
           />
 
           <SidebarItem
             to="/whatsapp/financeiro"
-            icon={<DollarSign size={19} />}
+            icon={<DollarSign size={18} />}
             label="Financeiro"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
           />
 
           <SidebarItem
             to="/whatsapp/comissoes"
-            icon={<HandCoins size={19} />}
+            icon={<HandCoins size={18} />}
             label="Comissões"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-lime-50 text-lime-600 dark:bg-lime-500/10 dark:text-lime-400"
           />
 
           <SidebarItem
             to="/whatsapp/sinistro"
-            icon={<ShieldCheck size={19} />}
+            icon={<ShieldCheck size={18} />}
             label="Sinistros"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
           />
 
           <SidebarItem
             to="/whatsapp/assistencia"
-            icon={<Headphones size={19} />}
+            icon={<Headphones size={18} />}
             label="Assistências"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400"
           />
         </NavSection>
+
+        {/* =================================================
+            GESTÃO
+        ================================================= */}
 
         <NavSection
           title="Gestão"
@@ -261,42 +300,29 @@ export default function Sidebar({
         >
           <SidebarItem
             to="/whatsapp/armazenamento"
-            icon={<HardDrive size={19} />}
-            label="Gestão de Documentos"
+            icon={<HardDrive size={18} />}
+            label="Armazenamento"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
           />
 
           <SidebarItem
             to="/whatsapp/seguradoras"
-            icon={<Building2 size={19} />}
+            icon={<Building2 size={18} />}
             label="Seguradoras"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
-          />
-
-          <SidebarItem
-            to="/whatsapp/equipe"
-            icon={<UserRoundCog size={19} />}
-            label="Equipe"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-          />
-
-          <SidebarItem
-            to="/whatsapp/conexoes"
-            icon={<Cable size={19} />}
-            label="Conexões WhatsApp"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
+            iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
           />
 
           <SidebarItem
             to="/whatsapp/configuracao/perfil"
-            icon={<Settings size={19} />}
+            icon={<Settings size={18} />}
             label="Configurações"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
+            iconClassName="bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
           />
         </NavSection>
       </div>
@@ -483,6 +509,9 @@ export default function Sidebar({
               src={corretoraLogo}
               alt="Logo"
               className="h-full w-full object-contain p-1"
+              onError={() =>
+                setCorretoraLogo(null)
+              }
             />
           ) : (
             <User
@@ -636,7 +665,7 @@ export default function Sidebar({
 
 function BrandIcon() {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-500/20">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20">
       <ShieldCheck size={21} />
     </div>
   )
@@ -675,6 +704,7 @@ function SidebarItem({
   collapsed,
   end = false,
   onNavigate,
+  iconClassName = "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300",
 }: NavItemProps) {
   return (
     <NavLink
@@ -693,7 +723,7 @@ function SidebarItem({
           ${
             collapsed
               ? "justify-center px-0"
-              : "gap-3 px-3"
+              : "gap-3 px-2"
           }
           ${
             isActive
@@ -712,13 +742,14 @@ function SidebarItem({
 
           <span
             className={`
-              flex shrink-0 items-center justify-center
-              transition-transform duration-200
+              flex h-8 w-8 shrink-0 items-center justify-center
+              rounded-lg
+              transition-all duration-200
               group-hover:scale-105
               ${
                 isActive
-                  ? "text-white"
-                  : ""
+                  ? "bg-white/15 text-white"
+                  : iconClassName
               }
             `}
           >
@@ -726,7 +757,16 @@ function SidebarItem({
           </span>
 
           {!collapsed && (
-            <span className="truncate text-[13px] font-bold">
+            <span
+              className={`
+                truncate text-[13px] font-bold
+                ${
+                  isActive
+                    ? "text-white"
+                    : ""
+                }
+              `}
+            >
               {label}
             </span>
           )}

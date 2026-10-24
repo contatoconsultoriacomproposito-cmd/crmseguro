@@ -93,6 +93,12 @@ export interface ContextoContratoComissao {
   status: string;
 }
 
+export type ModoProvisionamentoComissao =
+  | "ANTECIPADO"
+  | "PARCELADO"
+  | "VINCULADO_A_PARCELAS"
+  | "VITALICIO_PROVISIONADO";
+
 export interface Comissao {
   id: string;
   corretora_id: string;

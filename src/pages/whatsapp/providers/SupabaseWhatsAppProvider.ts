@@ -1962,6 +1962,9 @@ async sendContactMessage(
               data.file.name,
 
             mimeType,
+
+            fileSize:
+              data.file.size,
           },
         }
       )

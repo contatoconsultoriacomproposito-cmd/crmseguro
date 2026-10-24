@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
+  CircleDollarSign,
   Loader2,
   MessageCircle,
   Plus,
@@ -18,6 +19,9 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ModalConexoes } from "../configuracao-corretora/ModalConexoes";
+import { supabase } from "../../../lib/supabaseClient";
+import { useAuth } from "../../../auth/AuthContext";
 import {
   useWhatsAppConnections,
   type WhatsAppConnection,
@@ -25,7 +29,13 @@ import {
 } from "../hooks/useWhatsAppConnections";
 
 
-type ModalType = "create" | "qr" | "cancel" | "disconnect" | null;
+type ModalType =
+  | "create"
+  | "limit"
+  | "qr"
+  | "cancel"
+  | "disconnect"
+  | null;
 
 function formatPhone(value: string | null) {
   if (!value) return "Número ainda não identificado";
@@ -37,6 +47,16 @@ function formatPhone(value: string | null) {
     return `+55 (${phone.slice(2, 4)}) ${phone.slice(4, 8)}-${phone.slice(8)}`;
   }
   return `+${phone}`;
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat(
+    "pt-BR",
+    {
+      style: "currency",
+      currency: "BRL",
+    },
+  ).format(Number(value) || 0);
 }
 
 function getResponsible(connection: WhatsAppConnection) {
@@ -97,8 +117,11 @@ function StatusBadge({ status }: { status: WhatsAppConnection["status"] }) {
 }
 
 export default function ConexoesWhatsApp() {
+  const { userProfile } = useAuth();
+
   const {
     connections,
+    commercialLimit,
     responsibles,
     operatorsByConnection,
     loading,
@@ -117,6 +140,7 @@ export default function ConexoesWhatsApp() {
   } = useWhatsAppConnections();
 
   const [modal, setModal] = useState<ModalType>(null);
+  const [showModalConexoes, setShowModalConexoes] = useState(false);
   const [selected, setSelected] = useState<WhatsAppConnection | null>(null);
   const [name, setName] = useState("");
   const [responsibleId, setResponsibleId] = useState("");
@@ -133,8 +157,14 @@ export default function ConexoesWhatsApp() {
     setResponsibleId("");
     setSelected(null);
     setQr(null);
+
+    if (commercialLimit?.atingido) {
+      setModal("limit");
+      return;
+    }
+
     setModal("create");
-    };
+  };
 
   const closeModal = () => {
     if (creating || loadingQr || processingId) return;
@@ -145,9 +175,14 @@ export default function ConexoesWhatsApp() {
     };
 
   const handleCreate = async () => {
+    if (commercialLimit?.atingido) {
+      setModal("limit");
+      return;
+    }
+
     if (!name.trim()) {
-        toast.error("Informe um nome para a conexão.");
-        return;
+      toast.error("Informe um nome para a conexão.");
+      return;
     }
 
     let connection: WhatsAppConnection;
@@ -305,6 +340,100 @@ export default function ConexoesWhatsApp() {
     }
   };
 
+  const handleSolicitarConexoes = async (
+  novaQuantidade: number,
+) => {
+  const { data, error } = await supabase.rpc(
+    "crm_solicitar_adicional_whatsapp",
+    {
+      p_qtd_conexoes_total: novaQuantidade,
+    },
+  );
+
+  if (error) {
+    if (
+      error.message?.includes(
+        "SOLICITACAO_PENDENTE_EXISTENTE",
+      )
+    ) {
+      throw new Error(
+        "Já existe uma solicitação de conexões aguardando ativação.",
+      );
+    }
+
+    if (
+      error.message?.includes(
+        "ASSINATURA_PAGA_NAO_ENCONTRADA",
+      )
+    ) {
+      throw new Error(
+        "Não foi encontrada uma assinatura ativa para contratar conexões adicionais.",
+      );
+    }
+
+    throw error;
+  }
+
+  if (!data?.sucesso) {
+    throw new Error(
+      "Não foi possível registrar a solicitação.",
+    );
+  }
+
+  const profile = userProfile as any;
+
+  const corretoraId =
+    profile?.corretora_id ||
+    profile?.id ||
+    "N/A";
+
+  const nomeCorretora =
+    profile?.nome_corretora ||
+    profile?.nome ||
+    "N/A";
+
+  const whatsapp = data.whatsapp;
+
+  const mensagem = `*SOLICITAÇÃO DE CONEXÕES WHATSAPP - SEGUROCRM*
+---------------------------------------
+
+*Corretora:* ${nomeCorretora}
+*ID da corretora:* ${corretoraId}
+*ID da solicitação:* ${data.solicitacao_id}
+*Status:* ${data.status}
+
+*CONEXÕES WHATSAPP*
+- Quantidade atual: *${whatsapp.qtd_conexoes_atual}*
+- Nova quantidade solicitada: *${whatsapp.qtd_conexoes_nova}*
+- Novas conexões: *+${whatsapp.qtd_conexoes_adicionadas}*
+
+*VALORES*
+- Valor unitário adicional: *${formatMoney(Number(whatsapp.valor_unitario_adicional))}*
+- Adicional atual: *${formatMoney(Number(whatsapp.valor_whatsapp_atual))}/mês*
+- Novo adicional: *${formatMoney(Number(whatsapp.valor_whatsapp_novo))}/mês*
+- Acréscimo mensal: *${formatMoney(Number(whatsapp.acrescimo_mensal))}*
+
+---------------------------------------
+Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do SeguroCRM.`;
+
+  const whatsappUrl =
+    `https://wa.me/5548996461645?text=${encodeURIComponent(
+      mensagem,
+    )}`;
+
+  window.open(
+    whatsappUrl,
+    "_blank",
+    "noopener,noreferrer",
+  );
+
+  toast.success(
+    "Solicitação registrada e enviada para ativação.",
+  );
+
+  setShowModalConexoes(false);
+};
+
   return (
     <div className="min-h-full bg-slate-50 p-4 md:p-6">
       <div className="mx-auto max-w-7xl">
@@ -334,8 +463,43 @@ export default function ConexoesWhatsApp() {
 
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Conexões</div>
-            <div className="mt-1 text-2xl font-bold text-slate-900">{connections.length}</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Conexões
+            </div>
+
+            <div className="mt-1 flex items-end gap-2">
+              <span className="text-2xl font-bold text-slate-900">
+                {commercialLimit?.utilizadas ?? connections.length}
+              </span>
+
+              {commercialLimit && (
+                <span className="mb-0.5 text-sm font-medium text-slate-400">
+                  de {commercialLimit.limite} utilizadas
+                </span>
+              )}
+            </div>
+
+            {commercialLimit && (
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    commercialLimit.atingido
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                  }`}
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      commercialLimit.limite > 0
+                        ? (commercialLimit.utilizadas /
+                            commercialLimit.limite) *
+                            100
+                        : 100,
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Conectadas</div>
@@ -364,6 +528,7 @@ export default function ConexoesWhatsApp() {
               Adicione um número para começar a receber e enviar mensagens pelo SeguroCRM.
             </p>
             <button
+              type="button"
               onClick={openCreateModal}
               className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
             >
@@ -588,7 +753,113 @@ export default function ConexoesWhatsApp() {
         )}
       </div>
 
-      {modal === "create" && (
+        {modal === "limit" && commercialLimit && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="border-b border-slate-100 px-5 py-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                      <CircleDollarSign size={22} />
+                    </div>
+
+                    <div>
+                      <h2 className="font-semibold text-slate-900">
+                        Limite de conexões atingido
+                      </h2>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Todas as conexões WhatsApp disponíveis na sua assinatura
+                        estão atualmente em uso.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5">
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm font-medium text-slate-600">
+                      Conexões utilizadas
+                    </span>
+
+                    <span className="text-lg font-bold text-slate-900">
+                      {commercialLimit.utilizadas} de {commercialLimit.limite}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                    <div className="h-full w-full rounded-full bg-amber-500" />
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Precisa conectar outro número?
+                  </h3>
+
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Adicione novas conexões à sua assinatura para utilizar outros
+                    números de WhatsApp no SeguroCRM.
+                  </p>
+                </div>
+
+                <div className="mt-5 rounded-xl bg-slate-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <MessageCircle
+                      size={18}
+                      className="mt-0.5 shrink-0 text-emerald-600"
+                    />
+
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">
+                        Sua conexão atual continua funcionando normalmente.
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        A contratação adicional apenas aumenta a quantidade de
+                        números que sua corretora pode manter ativos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+                >
+                  Agora não
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModal(null);
+                    setShowModalConexoes(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                >
+                  <Plus size={17} />
+                  Adicionar conexão
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {modal === "create" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -757,6 +1028,13 @@ export default function ConexoesWhatsApp() {
           onConfirm={() => void handleCancel()}
         />
       )}
+
+      <ModalConexoes
+        isOpen={showModalConexoes}
+        onClose={() => setShowModalConexoes(false)}
+        quantidadeAtual={commercialLimit?.limite ?? 1}
+        onSolicitar={handleSolicitarConexoes}
+      />
     </div>
   );
 }
@@ -812,6 +1090,7 @@ function ConfirmModal({
           </button>
         </div>
       </div>
+      
     </div>
   );
 }

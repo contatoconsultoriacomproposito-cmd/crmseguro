@@ -57,6 +57,15 @@ export interface WhatsAppQrCode {
   qrCodeUpdatedAt: string | null;
 }
 
+export interface WhatsAppCommercialLimit {
+  assinatura_id: string | null;
+  status_assinatura: string | null;
+  limite: number;
+  utilizadas: number;
+  disponiveis: number;
+  atingido: boolean;
+}
+
 interface DapiResponse<T = unknown> {
   success: boolean;
   error?: string;
@@ -70,6 +79,7 @@ interface DapiResponse<T = unknown> {
   existsRemote?: boolean;
   cancelled?: boolean;
   historyPreserved?: boolean;
+  comercial?: WhatsAppCommercialLimit;
   provider?: unknown;
   data?: T;
 }
@@ -85,6 +95,8 @@ const sleep = (ms: number) =>
 
 export function useWhatsAppConnections() {
   const [connections, setConnections] = useState<WhatsAppConnection[]>([]);
+  const [commercialLimit, setCommercialLimit] =
+    useState<WhatsAppCommercialLimit | null>(null);
   const [responsibles, setResponsibles] = useState<MembroEquipeAtivo[]>([]);
   const [operatorsByConnection, setOperatorsByConnection] = useState<
     Record<string, string[]>
@@ -153,6 +165,7 @@ export function useWhatsAppConnections() {
           : [];
 
         setConnections(items);
+        setCommercialLimit(response.comercial || null);
 
         return items;
       } catch (err) {
@@ -279,6 +292,8 @@ export function useWhatsAppConnections() {
           ),
         ]);
 
+        await listConnections(true);
+
         return response.instancia;
       } catch (err) {
         setError(
@@ -293,7 +308,7 @@ export function useWhatsAppConnections() {
         setCreating(false);
       }
     },
-    [invoke],
+    [invoke, listConnections],
   );
 
   const getQrCode = useCallback(
@@ -606,6 +621,8 @@ export function useWhatsAppConnections() {
           return next;
         });
 
+        await listConnections(true);
+
         return {
           cancelled: response.cancelled === true,
           historyPreserved:
@@ -624,7 +641,7 @@ export function useWhatsAppConnections() {
         setProcessingId(null);
       }
     },
-    [invoke],
+    [invoke, listConnections],
   );
 
   const clearError = useCallback(
@@ -644,6 +661,7 @@ export function useWhatsAppConnections() {
 
   return {
     connections,
+    commercialLimit,
     responsibles,
     operatorsByConnection,
     loading,

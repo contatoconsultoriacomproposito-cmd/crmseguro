@@ -1,8 +1,22 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { 
-  X, Building2, Save, Phone, Mail, Loader2, 
-  CheckCircle2, Globe, Search, Lock, User, Instagram, Facebook, FileText, Hash, MapPin
+import {
+  X,
+  Building2,
+  Save,
+  Phone,
+  Mail,
+  Loader2,
+  CheckCircle2,
+  Globe,
+  Search,
+  Lock,
+  User,
+  Instagram,
+  Facebook,
+  FileText,
+  Hash,
+  MapPin
 } from "lucide-react";
 import { supabasePublic } from "../../lib/supabaseClient";
 import { buscarCNPJ, buscarCEP } from "../../services/brasilApi";
@@ -10,7 +24,9 @@ import { maskCNPJ, maskPhone, maskCPF, maskCEP } from "../../utils/masks";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
+// =========================================================
 // VALIDADOR MATEMÁTICO DE CPF
+// =========================================================
 function validarCPF(cpf: string): boolean {
   const clean = cpf.replace(/\D/g, "");
   if (clean.length !== 11) return false;
@@ -22,14 +38,17 @@ function validarCPF(cpf: string): boolean {
   for (let i = 1; i <= 9; i++) {
     soma += parseInt(clean.substring(i - 1, i)) * (11 - i);
   }
+
   resto = (soma * 10) % 11;
   if (resto === 10 || resto === 11) resto = 0;
   if (resto !== parseInt(clean.substring(9, 10))) return false;
 
   soma = 0;
+
   for (let i = 1; i <= 10; i++) {
     soma += parseInt(clean.substring(i - 1, i)) * (12 - i);
   }
+
   resto = (soma * 10) % 11;
   if (resto === 10 || resto === 11) resto = 0;
   if (resto !== parseInt(clean.substring(10, 11))) return false;
@@ -44,6 +63,7 @@ export default function RegistroModal({ onClose }: any) {
   const [sucesso, setSucesso] = useState(false);
   const [tipoPessoa, setTipoPessoa] = useState<"PJ" | "PF">("PJ");
   const [aceiteTermos, setAceiteTermos] = useState(false);
+
   const navigate = useNavigate();
   const { refreshProfile } = useAuth();
 
@@ -75,32 +95,51 @@ export default function RegistroModal({ onClose }: any) {
     cpf_responsavel: "",
     telefone_responsavel: "",
     email_responsavel: "",
-    registro_susep: "",
-    plano: "FREE",
-    status_pagamento: "PENDENTE"
+    registro_susep: ""
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
+
     let finalValue: any = type === "checkbox" ? checked : value;
+
     if (name === "cnpj") finalValue = maskCNPJ(value);
     if (name === "cpf_responsavel") finalValue = maskCPF(value);
     if (name === "cep") finalValue = maskCEP(value);
-    if (["whatsapp_comercial", "telefone_responsavel", "ddd_telefone_1"].includes(name)) finalValue = maskPhone(value);
-    setForm(prev => ({ ...prev, [name]: finalValue }));
+
+    if (
+      ["whatsapp_comercial", "telefone_responsavel", "ddd_telefone_1"].includes(
+        name
+      )
+    ) {
+      finalValue = maskPhone(value);
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: finalValue
+    }));
   };
 
   async function handleBuscarCNPJ() {
     const clean = form.cnpj.replace(/\D/g, "");
-    if (clean.length !== 14) return alert("CNPJ inválido.");
+
+    if (clean.length !== 14) {
+      return alert("CNPJ inválido.");
+    }
+
     setLoadingCNPJ(true);
+
     try {
       const data = await buscarCNPJ(clean);
-      setForm(prev => ({
+
+      setForm((prev) => ({
         ...prev,
         razao_social: (data.razao_social || "").toUpperCase(),
         nome_fantasia: (data.nome_fantasia || "").toUpperCase(),
-        descricao_identificador_matriz_filial: (data.descricao_identificador_matriz_filial || "").toUpperCase(),
+        descricao_identificador_matriz_filial: (
+          data.descricao_identificador_matriz_filial || ""
+        ).toUpperCase(),
         natureza_juridica: (data.natureza_juridica || "").toUpperCase(),
         porte: (data.porte || "").toUpperCase(),
         capital_social: data.capital_social?.toString() || "",
@@ -113,291 +152,863 @@ export default function RegistroModal({ onClose }: any) {
         municipio: (data.municipio || "").toUpperCase(),
         uf: (data.uf || "").toUpperCase(),
         complemento: (data.complemento || "").toUpperCase(),
-        ddd_telefone_1: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : "",
-        email_corporativo: (data as any).email?.toLowerCase() || prev.email_corporativo
+        ddd_telefone_1: data.ddd_telefone_1
+          ? maskPhone(data.ddd_telefone_1)
+          : "",
+        email_corporativo:
+          (data as any).email?.toLowerCase() || prev.email_corporativo
       }));
-    } catch { 
-      alert("Erro ao buscar CNPJ."); 
-    } finally { 
-      setLoadingCNPJ(false); 
+    } catch {
+      alert("Erro ao buscar CNPJ.");
+    } finally {
+      setLoadingCNPJ(false);
     }
   }
 
   async function handleBuscarCEP() {
     const clean = form.cep.replace(/\D/g, "");
-    if (clean.length !== 8) return alert("CEP inválido.");
+
+    if (clean.length !== 8) {
+      return alert("CEP inválido.");
+    }
+
     setLoadingCEP(true);
+
     try {
       const data = await buscarCEP(clean);
-      setForm(prev => ({
+
+      setForm((prev) => ({
         ...prev,
         logradouro: (data.street || "").toUpperCase(),
         bairro: (data.neighborhood || "").toUpperCase(),
         municipio: (data.city || "").toUpperCase(),
-        uf: (data.state || "").toUpperCase(),
+        uf: (data.state || "").toUpperCase()
       }));
-    } catch { 
-      alert("Erro ao buscar CEP."); 
-    } finally { 
-      setLoadingCEP(false); 
+    } catch {
+      alert("Erro ao buscar CEP.");
+    } finally {
+      setLoadingCEP(false);
     }
   }
 
   async function handleRegistro(e: React.FormEvent) {
-  e.preventDefault();
-  if (loading) return;
+    e.preventDefault();
 
-  // 1. Validação do CPF
-  if (!form.cpf_responsavel || !validarCPF(form.cpf_responsavel)) {
-    return alert("O CPF informado é inválido. Por favor, verifique os números.");
-  }
+    if (loading) return;
 
-  const emailLogin = (tipoPessoa === "PJ" ? form.email_corporativo : form.email_responsavel).trim().toLowerCase();
-  if (!emailLogin?.includes('@')) return alert("E-mail de acesso inválido.");
-  if (form.senha.length < 6) return alert("A senha deve ter pelo menos 6 caracteres.");
-  if (!form.registro_susep || form.registro_susep.trim() === "") {
-    return alert("O campo Registro SUSEP é obrigatório.");
-  }
+    // =====================================================
+    // 1. VALIDAÇÕES
+    // =====================================================
 
-  setLoading(true);
-  try {
-    // 1. Cria a conta no Supabase Auth
-    const { data: authData, error: authError } = await supabasePublic.auth.signUp({
-      email: emailLogin,
-      password: form.senha,
-    });
-
-    if (authError) throw authError;
-    const userId = authData.user?.id;
-    if (!userId) throw new Error("Falha ao gerar ID de usuário.");
-
-    // 2. Grava perfil do usuário
-    const { error: perfilError } = await supabasePublic.from("usuarios_perfis").upsert({
-      id: userId,
-      tipo_usuario: "CORRETORA",
-      nome: form.nome_responsavel.toUpperCase(),
-      email: form.email_responsavel.toLowerCase(),
-      ativo: true,
-      corretora_id: userId,
-      registro_susep: form.registro_susep.toUpperCase(),
-      telefone_corretor: form.telefone_responsavel,
-      cpf_corretor: form.cpf_responsavel,
-      cnpj_corretora: tipoPessoa === "PJ" ? form.cnpj : null,
-      superior_id: null
-    });
-    if (perfilError) throw perfilError;
-
-    // 3. Grava configurações da corretora
-    const dataExpira = new Date();
-    dataExpira.setDate(dataExpira.getDate() + 7);
-
-    const { error: configError } = await supabasePublic.from("tab_corretora_config").upsert({
-      id: userId,
-      razao_social: tipoPessoa === "PJ" ? form.razao_social : null,
-      cnpj: tipoPessoa === "PJ" ? form.cnpj : null,
-      nome_fantasia: tipoPessoa === "PJ" ? form.nome_fantasia : null,
-      descricao_identificador_matriz_filial: tipoPessoa === "PJ" ? form.descricao_identificador_matriz_filial : null,
-      natureza_juridica: tipoPessoa === "PJ" ? form.natureza_juridica : null,
-      porte: tipoPessoa === "PJ" ? form.porte : null,
-      capital_social: (tipoPessoa === "PJ" && form.capital_social) ? parseFloat(form.capital_social.replace(",", ".")) : null,
-      opcao_pelo_mei: tipoPessoa === "PJ" ? form.opcao_pelo_mei : null,
-      opcao_pelo_simples: tipoPessoa === "PJ" ? form.opcao_pelo_simples : null,
-      cep: form.cep,
-      logradouro: form.logradouro,
-      numero: form.numero,
-      bairro: form.bairro,
-      municipio: form.municipio,
-      uf: form.uf,
-      complemento: form.complemento,
-      email_corporativo: emailLogin,
-      ddd_telefone_1: form.ddd_telefone_1,
-      nome_responsavel: form.nome_responsavel.toUpperCase(),
-      telefone_responsavel: form.telefone_responsavel,
-      registro_susep: form.registro_susep.toUpperCase(),
-      email_responsavel: form.email_responsavel.toLowerCase(),
-      cpf_responsavel: form.cpf_responsavel,
-      whatsapp_comercial: form.whatsapp_comercial,
-      website: form.website.toLowerCase(),
-      instagram: form.instagram.toLowerCase(),
-      facebook: form.facebook.toLowerCase(),
-      plano: "FREE",
-      status_pagamento: "PENDENTE",
-      data_expiracao: dataExpira.toISOString()
-    });
-
-    if (configError) throw configError;
-
-    // 4. Se o Supabase não iniciou a sessão automaticamente no signUp, força o login
-    if (!authData.session) {
-      const { error: loginError } = await supabasePublic.auth.signInWithPassword({
-        email: emailLogin,
-        password: form.senha,
-      });
-      if (loginError) throw loginError;
+    if (!form.cpf_responsavel || !validarCPF(form.cpf_responsavel)) {
+      return alert(
+        "O CPF informado é inválido. Por favor, verifique os números."
+      );
     }
 
-    // 5. Atualiza o estado global de autenticação e redireciona de forma síncrona
-    setSucesso(true);
-    await refreshProfile();
-    
-    onClose?.();
-    navigate("/dashboard", { replace: true });
+    const emailLogin = (
+      tipoPessoa === "PJ"
+        ? form.email_corporativo
+        : form.email_responsavel
+    )
+      .trim()
+      .toLowerCase();
 
-  } catch (error: any) {
-    alert(`Erro no cadastro: ${error.message}`);
-  } finally {
-    setLoading(false);
+    if (!emailLogin || !emailLogin.includes("@")) {
+      return alert("E-mail de acesso inválido.");
+    }
+
+    if (!form.email_responsavel.trim().includes("@")) {
+      return alert("E-mail pessoal do responsável inválido.");
+    }
+
+    if (form.senha.length < 6) {
+      return alert("A senha deve ter pelo menos 6 caracteres.");
+    }
+
+    if (!form.nome_responsavel.trim()) {
+      return alert("O nome do responsável é obrigatório.");
+    }
+
+    if (!form.registro_susep.trim()) {
+      return alert("O campo Registro SUSEP é obrigatório.");
+    }
+
+    if (!form.telefone_responsavel.trim()) {
+      return alert("O telefone do responsável é obrigatório.");
+    }
+
+    if (!form.whatsapp_comercial.trim()) {
+      return alert("O WhatsApp comercial é obrigatório.");
+    }
+
+    if (tipoPessoa === "PJ") {
+      const cnpjLimpo = form.cnpj.replace(/\D/g, "");
+
+      if (cnpjLimpo.length !== 14) {
+        return alert("Informe um CNPJ válido.");
+      }
+
+      if (!form.razao_social.trim()) {
+        return alert("Consulte o CNPJ antes de finalizar o cadastro.");
+      }
+    }
+
+    if (!aceiteTermos) {
+      return alert(
+        "Você precisa aceitar os Termos de Uso e a Política de Privacidade."
+      );
+    }
+
+    setLoading(true);
+
+    try {
+      // ===================================================
+      // 2. CRIA CONTA NO SUPABASE AUTH
+      // ===================================================
+
+      const {
+        data: authData,
+        error: authError
+      } = await supabasePublic.auth.signUp({
+        email: emailLogin,
+        password: form.senha
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      const userId = authData.user?.id;
+
+      if (!userId) {
+        throw new Error("Falha ao gerar ID de usuário.");
+      }
+
+      // ===================================================
+      // 3. GARANTE SESSÃO AUTENTICADA
+      //
+      // A RPC crm_concluir_onboarding utiliza auth.uid().
+      // Portanto ela só pode ser chamada com sessão válida.
+      // ===================================================
+
+      let session = authData.session;
+
+      if (!session) {
+        const {
+          data: loginData,
+          error: loginError
+        } = await supabasePublic.auth.signInWithPassword({
+          email: emailLogin,
+          password: form.senha
+        });
+
+        if (loginError) {
+          throw new Error(
+            `Conta criada, mas não foi possível iniciar a sessão: ${loginError.message}`
+          );
+        }
+
+        session = loginData.session;
+      }
+
+      if (!session) {
+        throw new Error(
+          "Não foi possível estabelecer uma sessão autenticada para concluir o cadastro."
+        );
+      }
+
+      // ===================================================
+      // 4. PAYLOAD DO NOVO NÚCLEO
+      // ===================================================
+
+      const dadosOnboarding = {
+        tipo_pessoa: tipoPessoa,
+
+        razao_social:
+          tipoPessoa === "PJ"
+            ? form.razao_social.trim()
+            : null,
+
+        nome_fantasia:
+          tipoPessoa === "PJ"
+            ? form.nome_fantasia.trim()
+            : null,
+
+        cnpj:
+          tipoPessoa === "PJ"
+            ? form.cnpj.trim()
+            : null,
+
+        descricao_identificador_matriz_filial:
+          tipoPessoa === "PJ"
+            ? form.descricao_identificador_matriz_filial.trim()
+            : null,
+
+        natureza_juridica:
+          tipoPessoa === "PJ"
+            ? form.natureza_juridica.trim()
+            : null,
+
+        porte:
+          tipoPessoa === "PJ"
+            ? form.porte.trim()
+            : null,
+
+        capital_social:
+          tipoPessoa === "PJ"
+            ? form.capital_social.trim()
+            : null,
+
+        opcao_pelo_mei:
+          tipoPessoa === "PJ"
+            ? form.opcao_pelo_mei
+            : false,
+
+        opcao_pelo_simples:
+          tipoPessoa === "PJ"
+            ? form.opcao_pelo_simples
+            : false,
+
+        cep: form.cep.trim(),
+        logradouro: form.logradouro.trim(),
+        numero: form.numero.trim(),
+        bairro: form.bairro.trim(),
+        municipio: form.municipio.trim(),
+        uf: form.uf.trim(),
+        complemento: form.complemento.trim(),
+
+        ddd_telefone_1: form.ddd_telefone_1.trim(),
+
+        // Para PF, o e-mail de acesso também representa
+        // o e-mail corporativo/institucional inicial.
+        email_corporativo: emailLogin,
+
+        website: form.website.trim(),
+        instagram: form.instagram.trim(),
+        facebook: form.facebook.trim(),
+        whatsapp_comercial: form.whatsapp_comercial.trim(),
+
+        nome_responsavel: form.nome_responsavel.trim(),
+        cpf_responsavel: form.cpf_responsavel.trim(),
+        telefone_responsavel: form.telefone_responsavel.trim(),
+        email_responsavel: form.email_responsavel.trim().toLowerCase(),
+        registro_susep: form.registro_susep.trim(),
+        aceite_termos: aceiteTermos
+      };
+
+      // ===================================================
+      // 5. CONCLUI ONBOARDING NO NOVO NÚCLEO
+      //
+      // A RPC cria de forma transacional:
+      // - usuarios_perfis
+      // - crm_corretoras
+      // - crm_site_config
+      // - crm_assinaturas / TESTE_ATIVO
+      //
+      // O trigger da assinatura sincroniza:
+      // - crm_storage_config
+      // ===================================================
+
+      const {
+        data: onboardingData,
+        error: onboardingError
+      } = await supabasePublic.rpc(
+        "crm_concluir_onboarding",
+        {
+          p_dados: dadosOnboarding
+        }
+      );
+
+      if (onboardingError) {
+        throw onboardingError;
+      }
+
+      if (!onboardingData?.sucesso) {
+        throw new Error(
+          "Não foi possível concluir a configuração inicial da corretora."
+        );
+      }
+
+      // ===================================================
+      // 6. ATUALIZA PERFIL GLOBAL
+      // ===================================================
+
+      await refreshProfile();
+
+      // ===================================================
+      // 7. FINALIZA E REDIRECIONA
+      // ===================================================
+
+      setSucesso(true);
+
+      onClose?.();
+
+      navigate("/whatsapp", {
+        replace: true
+      });
+    } catch (error: any) {
+      console.error("Erro no onboarding:", error);
+
+      alert(
+        `Erro no cadastro: ${
+          error?.message ||
+          "Não foi possível concluir o cadastro."
+        }`
+      );
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm">
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+      <motion.div
+        initial={{
+          scale: 0.95,
+          opacity: 0
+        }}
+        animate={{
+          scale: 1,
+          opacity: 1
+        }}
         className="relative w-full max-w-5xl bg-white dark:bg-zinc-900 rounded-[32px] shadow-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800"
       >
         {sucesso ? (
           <div className="p-20 text-center flex flex-col items-center justify-center min-h-[400px]">
-            <CheckCircle2 size={80} className="text-emerald-500 mb-6" />
-            <h2 className="text-3xl font-black dark:text-white uppercase tracking-tighter">Cadastro Realizado!</h2>
-            <p className="text-zinc-500 mt-2 font-medium">Redirecionando para o seu dashboard...</p>
+            <CheckCircle2
+              size={80}
+              className="text-emerald-500 mb-6"
+            />
+
+            <h2 className="text-3xl font-black dark:text-white uppercase tracking-tighter">
+              Cadastro Realizado!
+            </h2>
+
+            <p className="text-zinc-500 mt-2 font-medium">
+              Redirecionando para o SeguroCRM...
+            </p>
           </div>
         ) : (
-          <form onSubmit={handleRegistro} className="flex flex-col h-[90vh]">
+          <form
+            onSubmit={handleRegistro}
+            className="flex flex-col h-[90vh]"
+          >
             <div className="px-8 py-5 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50">
               <div className="flex items-center gap-6">
                 <div className="flex bg-zinc-200 dark:bg-zinc-800 p-1 rounded-2xl gap-1">
-                  <button type="button" onClick={() => setTipoPessoa("PJ")} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${tipoPessoa === "PJ" ? 'bg-white shadow-sm text-blue-600' : 'text-zinc-500'}`}>Pessoa Jurídica</button>
-                  <button type="button" onClick={() => setTipoPessoa("PF")} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${tipoPessoa === "PF" ? 'bg-white shadow-sm text-blue-600' : 'text-zinc-500'}`}>Pessoa Física</button>
+                  <button
+                    type="button"
+                    onClick={() => setTipoPessoa("PJ")}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${
+                      tipoPessoa === "PJ"
+                        ? "bg-white shadow-sm text-blue-600"
+                        : "text-zinc-500"
+                    }`}
+                  >
+                    Pessoa Jurídica
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTipoPessoa("PF")}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${
+                      tipoPessoa === "PF"
+                        ? "bg-white shadow-sm text-blue-600"
+                        : "text-zinc-500"
+                    }`}
+                  >
+                    Pessoa Física
+                  </button>
                 </div>
+
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-blue-600 rounded-lg text-white">
-                    {tipoPessoa === "PJ" ? <Building2 size={18}/> : <User size={18}/>}
+                    {tipoPessoa === "PJ" ? (
+                      <Building2 size={18} />
+                    ) : (
+                      <User size={18} />
+                    )}
                   </div>
-                  <h2 className="text-lg font-black dark:text-white uppercase tracking-tighter">Onboarding {tipoPessoa === "PJ" ? "Corretora PJ" : "Corretora PF"}</h2>
+
+                  <h2 className="text-lg font-black dark:text-white uppercase tracking-tighter">
+                    Onboarding{" "}
+                    {tipoPessoa === "PJ"
+                      ? "Corretora PJ"
+                      : "Corretora PF"}
+                  </h2>
                 </div>
               </div>
-              <button type="button" onClick={onClose} className="p-2 hover:bg-zinc-200 rounded-full transition-colors"><X size={20}/></button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {tipoPessoa === "PJ" ? (
-                  <ActionInput label="CNPJ DA CORRETORA" name="cnpj" value={form.cnpj} onChange={handleChange} onAction={handleBuscarCNPJ} loading={loadingCNPJ} placeholder="00.000.000/0000-00" icon={<Search size={14}/>} />
+                  <ActionInput
+                    label="CNPJ DA CORRETORA"
+                    name="cnpj"
+                    value={form.cnpj}
+                    onChange={handleChange}
+                    onAction={handleBuscarCNPJ}
+                    loading={loadingCNPJ}
+                    placeholder="00.000.000/0000-00"
+                    icon={<Search size={14} />}
+                  />
                 ) : (
-                  <Input label="NOME COMPLETO DO CORRETOR" name="nome_responsavel" required value={form.nome_responsavel} onChange={handleChange} placeholder="Nome do titular" icon={<User size={14}/>} />
+                  <Input
+                    label="NOME COMPLETO DO CORRETOR"
+                    name="nome_responsavel"
+                    required
+                    value={form.nome_responsavel}
+                    onChange={handleChange}
+                    placeholder="Nome do titular"
+                    icon={<User size={14} />}
+                  />
                 )}
               </div>
 
               {tipoPessoa === "PJ" ? (
-                <>
-                  <Section title="Dados Cadastrais (Receita Federal)" icon={<FileText size={16}/>}>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="md:col-span-2"><Input label="Razão Social" name="razao_social" value={form.razao_social} readOnly className="bg-zinc-50 font-medium" /></div>
-                      <Input label="Nome Fantasia" name="nome_fantasia" value={form.nome_fantasia} readOnly className="bg-zinc-50" />
-                      <Input label="Identificador Matriz/Filial" name="descricao_identificador_matriz_filial" value={form.descricao_identificador_matriz_filial} readOnly className="bg-zinc-50" />
-                      <Input label="Natureza Jurídica" name="natureza_juridica" value={form.natureza_juridica} readOnly className="bg-zinc-50" />
-                      <Input label="Porte" name="porte" value={form.porte} readOnly className="bg-zinc-50" />
-                      <Input label="Capital Social" name="capital_social" value={form.capital_social} readOnly className="bg-zinc-50" icon={<Hash size={14}/>} />
-                      <Input label="Telefone (Receita)" name="ddd_telefone_1" value={form.ddd_telefone_1} onChange={handleChange} icon={<Phone size={14}/>} />
+                <Section
+                  title="Dados Cadastrais (Receita Federal)"
+                  icon={<FileText size={16} />}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2">
+                      <Input
+                        label="Razão Social"
+                        name="razao_social"
+                        value={form.razao_social}
+                        readOnly
+                        className="bg-zinc-50 font-medium"
+                      />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-                      <Input label="CEP" name="cep" value={form.cep} readOnly className="bg-zinc-50" />
-                      <div className="md:col-span-2"><Input label="Logradouro" name="logradouro" value={form.logradouro} readOnly className="bg-zinc-50" /></div>
-                      <Input label="Número" name="numero" value={form.numero} readOnly className="bg-zinc-50" />
+                    <Input
+                      label="Nome Fantasia"
+                      name="nome_fantasia"
+                      value={form.nome_fantasia}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <Input
+                      label="Identificador Matriz/Filial"
+                      name="descricao_identificador_matriz_filial"
+                      value={
+                        form.descricao_identificador_matriz_filial
+                      }
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <Input
+                      label="Natureza Jurídica"
+                      name="natureza_juridica"
+                      value={form.natureza_juridica}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <Input
+                      label="Porte"
+                      name="porte"
+                      value={form.porte}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <Input
+                      label="Capital Social"
+                      name="capital_social"
+                      value={form.capital_social}
+                      readOnly
+                      className="bg-zinc-50"
+                      icon={<Hash size={14} />}
+                    />
+
+                    <Input
+                      label="Telefone (Receita)"
+                      name="ddd_telefone_1"
+                      value={form.ddd_telefone_1}
+                      onChange={handleChange}
+                      icon={<Phone size={14} />}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                    <Input
+                      label="CEP"
+                      name="cep"
+                      value={form.cep}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <div className="md:col-span-2">
+                      <Input
+                        label="Logradouro"
+                        name="logradouro"
+                        value={form.logradouro}
+                        readOnly
+                        className="bg-zinc-50"
+                      />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                      <Input label="Bairro" name="bairro" value={form.bairro} readOnly className="bg-zinc-50" />
-                      <Input label="Município" name="municipio" value={form.municipio} readOnly className="bg-zinc-50" />
-                      <Input label="UF" name="uf" value={form.uf} readOnly className="bg-zinc-50" />
-                      <div className="md:col-span-3"><Input label="Complemento" name="complemento" value={form.complemento} readOnly className="bg-zinc-50" /></div>
+
+                    <Input
+                      label="Número"
+                      name="numero"
+                      value={form.numero}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <Input
+                      label="Bairro"
+                      name="bairro"
+                      value={form.bairro}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <Input
+                      label="Município"
+                      name="municipio"
+                      value={form.municipio}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <Input
+                      label="UF"
+                      name="uf"
+                      value={form.uf}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <div className="md:col-span-3">
+                      <Input
+                        label="Complemento"
+                        name="complemento"
+                        value={form.complemento}
+                        readOnly
+                        className="bg-zinc-50"
+                      />
                     </div>
-                    <div className="flex gap-6 mt-4 ml-1">
-                      <Checkbox label="Optante MEI" checked={form.opcao_pelo_mei} />
-                      <Checkbox label="Optante Simples" checked={form.opcao_pelo_simples} />
-                    </div>
-                  </Section>
-                </>
+                  </div>
+
+                  <div className="flex gap-6 mt-4 ml-1">
+                    <Checkbox
+                      label="Optante MEI"
+                      checked={form.opcao_pelo_mei}
+                    />
+
+                    <Checkbox
+                      label="Optante Simples"
+                      checked={form.opcao_pelo_simples}
+                    />
+                  </div>
+                </Section>
               ) : (
-                <Section title="Localização e Endereço" icon={<MapPin size={16}/>}>
+                <Section
+                  title="Localização e Endereço"
+                  icon={<MapPin size={16} />}
+                >
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <ActionInput label="CEP RESIDENCIAL" name="cep" value={form.cep} onChange={handleChange} onAction={handleBuscarCEP} loading={loadingCEP} placeholder="00000-000" icon={<Search size={14}/>} />
-                    <div className="md:col-span-2"><Input label="Logradouro" name="logradouro" value={form.logradouro} onChange={handleChange} /></div>
-                    <Input label="Número" name="numero" value={form.numero} onChange={handleChange} />
-                    <Input label="Bairro" name="bairro" value={form.bairro} onChange={handleChange} />
-                    <Input label="Município" name="municipio" value={form.municipio} readOnly className="bg-zinc-50" />
-                    <Input label="UF" name="uf" value={form.uf} readOnly className="bg-zinc-50" />
-                    <Input label="Complemento" name="complemento" value={form.complemento} onChange={handleChange} />
+                    <ActionInput
+                      label="CEP RESIDENCIAL"
+                      name="cep"
+                      value={form.cep}
+                      onChange={handleChange}
+                      onAction={handleBuscarCEP}
+                      loading={loadingCEP}
+                      placeholder="00000-000"
+                      icon={<Search size={14} />}
+                    />
+
+                    <div className="md:col-span-2">
+                      <Input
+                        label="Logradouro"
+                        name="logradouro"
+                        value={form.logradouro}
+                        onChange={handleChange}
+                      />
+                    </div>
+
+                    <Input
+                      label="Número"
+                      name="numero"
+                      value={form.numero}
+                      onChange={handleChange}
+                    />
+
+                    <Input
+                      label="Bairro"
+                      name="bairro"
+                      value={form.bairro}
+                      onChange={handleChange}
+                    />
+
+                    <Input
+                      label="Município"
+                      name="municipio"
+                      value={form.municipio}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <Input
+                      label="UF"
+                      name="uf"
+                      value={form.uf}
+                      readOnly
+                      className="bg-zinc-50"
+                    />
+
+                    <Input
+                      label="Complemento"
+                      name="complemento"
+                      value={form.complemento}
+                      onChange={handleChange}
+                    />
                   </div>
                 </Section>
               )}
 
-              <Section title="Canais de Contato e Registro Profissional" icon={<User size={16} className="text-blue-600"/>}>
+              <Section
+                title="Canais de Contato e Registro Profissional"
+                icon={
+                  <User
+                    size={16}
+                    className="text-blue-600"
+                  />
+                }
+              >
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <Input label="WhatsApp Comercial" name="whatsapp_comercial" required value={form.whatsapp_comercial} onChange={handleChange} icon={<Phone size={14} className="text-emerald-500"/>} />
-                  <Input label="Website" name="website" value={form.website} onChange={handleChange} icon={<Globe size={14}/>} />
-                  <Input label="Instagram" name="instagram" value={form.instagram} onChange={handleChange} icon={<Instagram size={14}/>} />
-                  <Input label="Facebook" name="facebook" value={form.facebook} onChange={handleChange} icon={<Facebook size={14}/>} />
+                  <Input
+                    label="WhatsApp Comercial"
+                    name="whatsapp_comercial"
+                    required
+                    value={form.whatsapp_comercial}
+                    onChange={handleChange}
+                    icon={
+                      <Phone
+                        size={14}
+                        className="text-emerald-500"
+                      />
+                    }
+                  />
+
+                  <Input
+                    label="Website"
+                    name="website"
+                    value={form.website}
+                    onChange={handleChange}
+                    icon={<Globe size={14} />}
+                  />
+
+                  <Input
+                    label="Instagram"
+                    name="instagram"
+                    value={form.instagram}
+                    onChange={handleChange}
+                    icon={<Instagram size={14} />}
+                  />
+
+                  <Input
+                    label="Facebook"
+                    name="facebook"
+                    value={form.facebook}
+                    onChange={handleChange}
+                    icon={<Facebook size={14} />}
+                  />
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-zinc-100">
                   {tipoPessoa === "PJ" && (
-                    <div className="md:col-span-2"><Input label="Nome do Responsável" name="nome_responsavel" required value={form.nome_responsavel} onChange={handleChange} icon={<User size={14}/>} /></div>
+                    <div className="md:col-span-2">
+                      <Input
+                        label="Nome do Responsável"
+                        name="nome_responsavel"
+                        required
+                        value={form.nome_responsavel}
+                        onChange={handleChange}
+                        icon={<User size={14} />}
+                      />
+                    </div>
                   )}
-                  <Input label={tipoPessoa === "PJ" ? "CPF do Responsável" : "Seu CPF"} name="cpf_responsavel" required value={form.cpf_responsavel} onChange={handleChange} icon={<Hash size={14}/>} />
-                  <Input label="Telefone Responsável" name="telefone_responsavel" required value={form.telefone_responsavel} onChange={handleChange} icon={<Phone size={14}/>} />
-                  <Input label="Registro SUSEP" name="registro_susep" required value={form.registro_susep} onChange={handleChange} placeholder="Obrigatório" icon={<FileText size={14}/>} />
-                  <Input label="E-mail Pessoal" name="email_responsavel" required value={form.email_responsavel} onChange={handleChange} icon={<Mail size={14}/>} />
+
+                  <Input
+                    label={
+                      tipoPessoa === "PJ"
+                        ? "CPF do Responsável"
+                        : "Seu CPF"
+                    }
+                    name="cpf_responsavel"
+                    required
+                    value={form.cpf_responsavel}
+                    onChange={handleChange}
+                    icon={<Hash size={14} />}
+                  />
+
+                  <Input
+                    label="Telefone Responsável"
+                    name="telefone_responsavel"
+                    required
+                    value={form.telefone_responsavel}
+                    onChange={handleChange}
+                    icon={<Phone size={14} />}
+                  />
+
+                  <Input
+                    label="Registro SUSEP"
+                    name="registro_susep"
+                    required
+                    value={form.registro_susep}
+                    onChange={handleChange}
+                    placeholder="Obrigatório"
+                    icon={<FileText size={14} />}
+                  />
+
+                  <Input
+                    label="E-mail Pessoal"
+                    name="email_responsavel"
+                    required
+                    value={form.email_responsavel}
+                    onChange={handleChange}
+                    icon={<Mail size={14} />}
+                  />
                 </div>
               </Section>
 
-              <Section title="Configuração de Acesso ao Sistema" icon={<Lock size={16} className="text-amber-500"/>}>
+              <Section
+                title="Configuração de Acesso ao Sistema"
+                icon={
+                  <Lock
+                    size={16}
+                    className="text-amber-500"
+                  />
+                }
+              >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-zinc-50 p-4 rounded-2xl border border-dashed border-zinc-200">
-                  <Input 
-                    label={tipoPessoa === "PJ" ? "E-mail Corporativo (Login do Sistema)" : "E-mail de Acesso (Login)"} 
-                    name={tipoPessoa === "PJ" ? "email_corporativo" : "email_responsavel"} 
-                    required 
-                    value={tipoPessoa === "PJ" ? form.email_corporativo : form.email_responsavel} 
-                    onChange={handleChange} 
-                    icon={<Mail size={14} className="text-blue-500"/>}
+                  <Input
+                    label={
+                      tipoPessoa === "PJ"
+                        ? "E-mail Corporativo (Login do Sistema)"
+                        : "E-mail de Acesso (Login)"
+                    }
+                    name={
+                      tipoPessoa === "PJ"
+                        ? "email_corporativo"
+                        : "email_responsavel"
+                    }
+                    required
+                    value={
+                      tipoPessoa === "PJ"
+                        ? form.email_corporativo
+                        : form.email_responsavel
+                    }
+                    onChange={handleChange}
+                    icon={
+                      <Mail
+                        size={14}
+                        className="text-blue-500"
+                      />
+                    }
                     placeholder="este será seu login"
                   />
-                  <Input 
-                    label="DEFINA UMA SENHA DE ACESSO" 
-                    name="senha" 
-                    type="password" 
-                    required 
-                    value={form.senha} 
-                    onChange={handleChange} 
-                    placeholder="Mínimo 6 caracteres" 
-                    icon={<Lock size={14} className="text-amber-500"/>} 
+
+                  <Input
+                    label="DEFINA UMA SENHA DE ACESSO"
+                    name="senha"
+                    type="password"
+                    required
+                    value={form.senha}
+                    onChange={handleChange}
+                    placeholder="Mínimo 6 caracteres"
+                    icon={
+                      <Lock
+                        size={14}
+                        className="text-amber-500"
+                      />
+                    }
                   />
                 </div>
+
                 <p className="text-[9px] text-zinc-400 mt-2 px-2 italic">
-                  * Estes dados serão utilizados para acessar sua conta após o cadastro.
+                  * Estes dados serão utilizados para acessar sua conta
+                  após o cadastro.
                 </p>
-              </Section>         
+              </Section>
             </div>
 
             <div className="p-8 bg-zinc-50 border-t border-zinc-100 space-y-6">
               <div className="flex items-start gap-3 px-2">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   id="termos"
                   checked={aceiteTermos}
-                  onChange={(e) => setAceiteTermos(e.target.checked)}
+                  onChange={(e) =>
+                    setAceiteTermos(e.target.checked)
+                  }
                   className="mt-1 w-4 h-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                 />
-                <label htmlFor="termos" className="text-xs text-zinc-600 leading-relaxed cursor-pointer select-none">
-                  Li e concordo com os <a href="/termos" target="_blank" className="text-blue-600 font-bold hover:underline">Termos de Uso</a> e a <a href="/privacidade" target="_blank" className="text-blue-600 font-bold hover:underline">Política de Privacidade</a> da plataforma.
+
+                <label
+                  htmlFor="termos"
+                  className="text-xs text-zinc-600 leading-relaxed cursor-pointer select-none"
+                >
+                  Li e concordo com os{" "}
+                  <a
+                    href="/termos"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 font-bold hover:underline"
+                  >
+                    Termos de Uso
+                  </a>{" "}
+                  e a{" "}
+                  <a
+                    href="/privacidade"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 font-bold hover:underline"
+                  >
+                    Política de Privacidade
+                  </a>{" "}
+                  da plataforma.
                 </label>
               </div>
 
-              <button 
-                type="submit" 
-                disabled={loading || (tipoPessoa === "PJ" && !form.razao_social) || !aceiteTermos} 
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  (tipoPessoa === "PJ" &&
+                    !form.razao_social) ||
+                  !aceiteTermos
+                }
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale uppercase text-sm tracking-widest"
               >
-                {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+                {loading ? (
+                  <Loader2
+                    className="animate-spin"
+                    size={20}
+                  />
+                ) : (
+                  <Save size={20} />
+                )}
+
                 Finalizar Cadastro {tipoPessoa}
               </button>
             </div>
@@ -412,48 +1023,124 @@ function Section({ title, icon, children }: any) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 px-1">
-        <span className="text-blue-600">{icon}</span>
-        <h3 className="text-[10px] font-black uppercase text-zinc-400 tracking-[0.2em]">{title}</h3>
+        <span className="text-blue-600">
+          {icon}
+        </span>
+
+        <h3 className="text-[10px] font-black uppercase text-zinc-400 tracking-[0.2em]">
+          {title}
+        </h3>
       </div>
-      <div className="p-6 border border-zinc-100 rounded-[24px] bg-white shadow-sm">{children}</div>
+
+      <div className="p-6 border border-zinc-100 rounded-[24px] bg-white shadow-sm">
+        {children}
+      </div>
     </div>
   );
 }
 
-function Input({ label, icon, className = "", ...props }: any) {
+function Input({
+  label,
+  icon,
+  className = "",
+  ...props
+}: any) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[10px] font-black uppercase text-zinc-400 ml-1">{label}</label>
+      <label className="text-[10px] font-black uppercase text-zinc-400 ml-1">
+        {label}
+      </label>
+
       <div className="relative flex items-center group">
-        {icon && <span className="absolute left-4 text-zinc-400 transition-colors group-focus-within:text-blue-500">{icon}</span>}
-        <input {...props} className={`w-full h-11 ${icon ? 'pl-11' : 'px-4'} rounded-xl border border-zinc-200 bg-white text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all ${className}`} />
+        {icon && (
+          <span className="absolute left-4 text-zinc-400 transition-colors group-focus-within:text-blue-500">
+            {icon}
+          </span>
+        )}
+
+        <input
+          {...props}
+          className={`w-full h-11 ${
+            icon ? "pl-11" : "px-4"
+          } rounded-xl border border-zinc-200 bg-white text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all ${className}`}
+        />
       </div>
     </div>
   );
 }
 
-function ActionInput({ label, onAction, loading, icon, ...props }: any) {
+function ActionInput({
+  label,
+  onAction,
+  loading,
+  icon,
+  ...props
+}: any) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[10px] font-black uppercase text-blue-600 ml-1">{label}</label>
+      <label className="text-[10px] font-black uppercase text-blue-600 ml-1">
+        {label}
+      </label>
+
       <div className="relative flex items-center">
-        {icon && <span className="absolute left-4 text-zinc-400">{icon}</span>}
-        <input {...props} className="w-full h-12 pl-11 pr-28 rounded-xl border-2 border-blue-600/20 bg-white text-sm font-bold focus:border-blue-600 outline-none transition-all" />
-        <button type="button" onClick={onAction} disabled={loading} className="absolute right-1.5 top-1.5 bottom-1.5 px-4 rounded-lg bg-blue-600 text-white text-[10px] font-black uppercase hover:bg-blue-700 transition-all disabled:opacity-50">
-          {loading ? <Loader2 className="animate-spin w-3 h-3" /> : "BUSCAR"}
+        {icon && (
+          <span className="absolute left-4 text-zinc-400">
+            {icon}
+          </span>
+        )}
+
+        <input
+          {...props}
+          className="w-full h-12 pl-11 pr-28 rounded-xl border-2 border-blue-600/20 bg-white text-sm font-bold focus:border-blue-600 outline-none transition-all"
+        />
+
+        <button
+          type="button"
+          onClick={onAction}
+          disabled={loading}
+          className="absolute right-1.5 top-1.5 bottom-1.5 px-4 rounded-lg bg-blue-600 text-white text-[10px] font-black uppercase hover:bg-blue-700 transition-all disabled:opacity-50"
+        >
+          {loading ? (
+            <Loader2 className="animate-spin w-3 h-3" />
+          ) : (
+            "BUSCAR"
+          )}
         </button>
       </div>
     </div>
   );
 }
 
-function Checkbox({ label, checked }: any) {
+function Checkbox({
+  label,
+  checked
+}: any) {
   return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${checked ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-zinc-200 bg-zinc-50 text-zinc-400'}`}>
-      <div className={`w-4 h-4 rounded border flex items-center justify-center ${checked ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-zinc-300'}`}>
-        {checked && <CheckCircle2 size={10} className="text-white" />}
+    <div
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
+        checked
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-zinc-200 bg-zinc-50 text-zinc-400"
+      }`}
+    >
+      <div
+        className={`w-4 h-4 rounded border flex items-center justify-center ${
+          checked
+            ? "bg-emerald-500 border-emerald-500"
+            : "bg-white border-zinc-300"
+        }`}
+      >
+        {checked && (
+          <CheckCircle2
+            size={10}
+            className="text-white"
+          />
+        )}
       </div>
-      <span className="text-[10px] font-black uppercase tracking-tighter">{label}</span>
+
+      <span className="text-[10px] font-black uppercase tracking-tighter">
+        {label}
+      </span>
     </div>
   );
 }
