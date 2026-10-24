@@ -354,9 +354,21 @@ async function fetchConfig() {
   try {
     // Busca simultânea nas duas tabelas: Site e Configurações Gerais
     const [resSite, resConfig] = await Promise.all([
-      supabase.from("tab_configuracoes_site").select("*").eq("corretora_id", corretoraId).maybeSingle(),
-      supabase.from("tab_corretora_config").select("*").eq("id", corretoraId).maybeSingle()
+      supabase
+        .from("crm_site_config")
+        .select("*")
+        .eq("corretora_id", corretoraId)
+        .maybeSingle(),
+
+      supabase
+        .from("crm_corretoras")
+        .select("*")
+        .eq("id", corretoraId)
+        .maybeSingle()
     ]);
+
+    if (resSite.error) throw resSite.error;
+    if (resConfig.error) throw resConfig.error;
 
     if (resSite.data) {
       setForm(prev => ({
@@ -368,7 +380,8 @@ async function fetchConfig() {
         
         // Prioriza a logo da config geral, mas mantém fallback para o site
         logotipo_url: resConfig.data?.logotipo_url || resSite.data.logo_url || "",
-        logo_tamanho_bytes: resConfig.data?.logo_tamanho_bytes || resSite.data.logo_tamanho_bytes || 0,
+        logo_tamanho_bytes:
+          Number(resSite.data.metadata?.logo_tamanho_bytes) || 0,
 
         // Mapeia slides garantindo que o campo tamanho_bytes exista para o cálculo da trava
         hero_slides: (resSite.data.hero_slides || []).map((s: any) => ({
@@ -416,7 +429,6 @@ async function fetchConfig() {
         whatsapp_comercial: resConfig.data.whatsapp_comercial || "",
         // Logotipo e seu tamanho já tratados no bloco acima, mas reforçados aqui por segurança
         logotipo_url: resConfig.data.logotipo_url || prev.logotipo_url,
-        logo_tamanho_bytes: resConfig.data.logo_tamanho_bytes || prev.logo_tamanho_bytes,
       }));
     }
   } catch (err) {
@@ -442,7 +454,44 @@ async function handleSalvar(e: React.FormEvent) {
     const totalBytesSite = heroTamanho + sobreTamanho + diferenciaisTamanho + depoimentosTamanho + logoTamanho;
 
     // 1. Tabela de Configurações do Site
-    const promise1 = supabase
+   const promiseNovoSite = supabase
+      .from("crm_site_config")
+      .upsert({
+        corretora_id: corretoraId,
+        slug: cleanSlug,
+        nome_exibicao: form.nome_exibicao,
+        cor_primaria: form.cor_primaria,
+        status_site: form.status_site,
+        logo_url: form.logotipo_url,
+        hero_slides: form.hero_slides,
+        diferenciais: form.diferenciais,
+        sobre_conteudo: form.sobre_conteudo,
+        depoimentos: form.depoimentos,
+        metadata: {
+          origem: "MODAL_SITE",
+          site_tamanho_bytes: totalBytesSite,
+          logo_tamanho_bytes: logoTamanho,
+        },
+      }, {
+        onConflict: "corretora_id",
+      });
+
+    const promiseNovaCorretora = supabase
+      .from("crm_corretoras")
+      .update({
+        instagram: form.instagram,
+        facebook: form.facebook,
+        email_corporativo: form.email_corporativo,
+        whatsapp_comercial: form.whatsapp_comercial,
+        logotipo_url: form.logotipo_url,
+      })
+      .eq("id", corretoraId);
+
+    /*
+    * ESPELHO TEMPORÁRIO.
+    * Mantemos enquanto o site público ainda estiver lendo as tabelas antigas.
+    */
+    const promiseLegadoSite = supabase
       .from("tab_configuracoes_site")
       .upsert({
         corretora_id: corretoraId,
@@ -455,13 +504,12 @@ async function handleSalvar(e: React.FormEvent) {
         diferenciais: form.diferenciais,
         sobre_conteudo: form.sobre_conteudo,
         depoimentos: form.depoimentos,
-        site_tamanho_bytes: totalBytesSite, // Persistência da trava do Plano IA
-      }, { 
-        onConflict: 'corretora_id' 
+        
+      }, {
+        onConflict: "corretora_id",
       });
 
-    // 2. Tabela de Configurações da Corretora
-    const promise2 = supabase
+    const promiseLegadoCorretora = supabase
       .from("tab_corretora_config")
       .update({
         instagram: form.instagram,
@@ -469,18 +517,26 @@ async function handleSalvar(e: React.FormEvent) {
         email_corporativo: form.email_corporativo,
         whatsapp_comercial: form.whatsapp_comercial,
         logotipo_url: form.logotipo_url,
-        logo_tamanho_bytes: logoTamanho, // Sincroniza o peso da logo na config geral
+        logo_tamanho_bytes: logoTamanho,
       })
       .eq("id", corretoraId);
 
-    const [res1, res2] = await Promise.all([promise1, promise2]);
+    const [
+      resNovoSite,
+      resNovaCorretora,
+      resLegadoSite,
+      resLegadoCorretora,
+    ] = await Promise.all([
+      promiseNovoSite,
+      promiseNovaCorretora,
+      promiseLegadoSite,
+      promiseLegadoCorretora,
+    ]);
 
-    if (res1.error) throw res1.error;
-    if (res2.error) throw res2.error;
-
-    // 3. Sincroniza o Storage para o Dashboard atualizar na hora (RPC)
-    // Isso garante que o progresso de 0/50MB no Dashboard mude imediatamente após o save
-    await supabase.rpc('sync_corretora_storage_usage', { p_corretora_id: corretoraId });
+    if (resNovoSite.error) throw resNovoSite.error;
+    if (resNovaCorretora.error) throw resNovaCorretora.error;
+    if (resLegadoSite.error) throw resLegadoSite.error;
+    if (resLegadoCorretora.error) throw resLegadoCorretora.error;
 
     setShowSuccess(true);
     setTimeout(() => { 

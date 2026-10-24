@@ -1,78 +1,101 @@
 // src/App.tsx
-import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom"
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom"
+import { Toaster } from "sonner"
+
 import { useAuth } from "./auth/AuthContext"
 import { NotificationProvider } from "./contexts/NotificationContext"
-
-// Layout
 import DashboardLayout from "./layouts/DashboardLayout"
 
-// Páginas Públicas
+// ======================================================
+// PÁGINAS PÚBLICAS
+// ======================================================
 import HomePage from "./pages/homepage/HomePage"
 import PortalParceiro from "./pages/portal/PortalParceiro"
 import TermosUso from "./pages/juridico/TermosUso"
 import PoliticaPrivacidade from "./pages/juridico/PoliticaPrivacidade"
 import ResetPassword from "./components/homepage/ResetPassword"
 
-// Páginas Privadas
-import ConfigPerfil from "./pages/configuracao/configPerfil"
-import CorretoresCadastro from "./pages/corretores/CorretoresCadastro"
-import CorretoresLista from "./pages/corretores/CorretoresLista"
-import ParceirosCadastro from "./pages/parceiros/ParceirosCadastro"
-import ParceirosTriagem from "./pages/parceiros/ParceirosTriagem"
-import AgendaCorretor from "./pages/agenda/AgendaCorretor"
+// ======================================================
+// NOVO NÚCLEO CRM
+// Tudo que pertence à área privada principal fica em:
+// src/pages/whatsapp
+// ======================================================
 
+// WhatsApp
+import WhatsAppInbox from "./pages/whatsapp/pages/WhatsAppInbox"
+import WhatsAppContatos from "./pages/whatsapp/pages/WhatsAppContatos"
+import WhatsAppAutomacoes from "./pages/whatsapp/pages/WhatsAppAutomacoes"
+import WhatsAppKanban from "./pages/whatsapp/pages/WhatsAppKanban"
 
-import ClientesAcoes from "./pages/clientes/ClientesAcoes"
+// Agenda
+import AgendaCRM from "./pages/whatsapp/pages/agenda/pages/AgendaCRM"
 
-import CampanhasClientes from "./pages/clientes/components/painel-marketing/CampanhasClientes"
-import SeguradorasLista from "./pages/seguradoras/SeguradorasLista"
-import ProdutosLista from "./pages/propostas/ProdutosLista"
-import PropostasCadastro from "./pages/propostas/PropostasCadastro"
-import PropostasLista from "./pages/propostas/PropostasLista"
-import Dashboard from "./pages/dashboard/Dashboard"
-import KanbanAtendimentos from "./pages/kanban/KanbanAtendimentos"
-import KanbanVendas from "./pages/kanban/KanbanVendas"
-import KanbanPerdas from "./pages/kanban/KanbanPerdas"
-import { RelatorioSinistros } from "./pages/sinistros/SinistrosLista"
-import { ComissoesLista } from "./pages/comissoes/ComissoesLista"
-import PlanoContas from "./pages/financeiro/PlanoContas"
-import Lancamentos from "./pages/financeiro/Lancamentos"
+// Clientes
+import CentralClientes from "./pages/whatsapp/central-clientes/CentralClientes"
 
+// Propostas
+import PropostasLista from "./pages/whatsapp/pages/propostas/pages/PropostasLista"
+import PropostaDetalhes from "./pages/whatsapp/pages/propostas/pages/PropostaDetalhes"
 
-import ClientesCadastroV2 from "./pages/clientes/ClientesCadastro"
-import ClientesListaV2 from "./pages/clientes/ClientesLista"
+// Financeiro
+import Financeiro from "./pages/whatsapp/pages/financeiro/pages/Financeiro"
+import FinanceiroContrato from "./pages/whatsapp/pages/financeiro/pages/FinanceiroContrato"
 
-// 🛡️ Módulo de Seguros de Vida
-import PropostasAvulsas from "./pages/propostas/PropostasAvulsas"
+// Comissões
+import Comissoes from "./pages/whatsapp/pages/comissoes/pages/Comissoes"
+import ComissaoContrato from "./pages/whatsapp/pages/comissoes/pages/ComissaoContrato"
 
+// Sinistros
+import SinistrosLista from "./pages/whatsapp/pages/sinistros/SinistrosLista"
+import SinistroDetalhes from "./pages/whatsapp/pages/sinistros/SinistroDetalhes"
 
-// ===============================
-// 🔐 ROTA PRIVADA BLINDADA
-// ===============================
+// Assistências
+import AssistenciasLista from "./pages/whatsapp/pages/assistencias/AssistenciasLista"
+import AssistenciaDetalhes from "./pages/whatsapp/pages/assistencias/AssistenciaDetalhes"
+
+// Equipe
+import Equipe from "./pages/whatsapp/equipe/Equipe"
+import NovoMembro from "./pages/whatsapp/equipe/NovoMembro"
+
+// Configurações / Infraestrutura
+import ConexoesWhatsApp from "./pages/whatsapp/configuracoes/ConexoesWhatsApp"
+import CentralArmazenamento from "./pages/whatsapp/armazenamento/services/CentralArmazenamento"
+import ConfigCorretora from "./pages/whatsapp/configuracao-corretora/ConfigCorretora"
+import SeguradorasLista from "./pages/whatsapp/pages/seguradoras/SeguradorasLista"
+
+// ======================================================
+// ROTA PRIVADA
+// ======================================================
 function PrivateWrapper() {
   const { user, userProfile, loading } = useAuth()
   const location = useLocation()
 
-  // 1. Loading state enquanto o contexto recupera token e perfil
   if (loading || (user && userProfile === null)) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
       </div>
     )
   }
 
-  // 2. Não autenticado
   if (!user) {
-    return <Navigate to="/" state={{ from: location }} replace />
+    return (
+      <Navigate
+        to="/"
+        state={{ from: location }}
+        replace
+      />
+    )
   }
 
-  // 3. Usuário inativo no sistema (Evita loop de redirecionamento)
   if (userProfile?.ativo === false) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center gap-4 p-4 text-center">
-        <h1 className="text-2xl font-bold text-slate-800">Acesso Inativo</h1>
-        <p className="text-slate-600 max-w-md">
+      <div className="flex h-screen flex-col items-center justify-center gap-4 p-4 text-center">
+        <h1 className="text-2xl font-bold text-slate-800">
+          Acesso Inativo
+        </h1>
+
+        <p className="max-w-md text-slate-600">
           Sua conta está inativa ou pendente de aprovação pelo administrador da corretora.
         </p>
       </div>
@@ -82,122 +105,377 @@ function PrivateWrapper() {
   return <Outlet />
 }
 
-
-// ===============================
-// 🌍 ROTA PÚBLICA SOMENTE PARA NÃO LOGADOS
-// ===============================
+// ======================================================
+// ROTA PÚBLICA SOMENTE PARA NÃO LOGADOS
+// ======================================================
 function PublicOnlyWrapper() {
   const { user, userProfile, loading } = useAuth()
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
       </div>
     )
   }
 
-  // 🔄 ALTRADO: Redireciona para /agenda em vez de /dashboard
-  if (user && userProfile && userProfile.ativo !== false) {
-    return <Navigate to="/agenda" replace />
+  if (
+    user &&
+    userProfile &&
+    userProfile.ativo !== false
+  ) {
+    return (
+      <Navigate
+        to="/whatsapp"
+        replace
+      />
+    )
   }
 
   return <Outlet />
 }
 
-
-// ===============================
-// 🚀 APP PRINCIPAL
-// ===============================
+// ======================================================
+// APP PRINCIPAL
+// ======================================================
 export default function App() {
   const { user, userProfile } = useAuth()
 
+  const usuarioAtivo =
+    Boolean(user) &&
+    Boolean(userProfile) &&
+    userProfile?.ativo !== false
+
   return (
     <NotificationProvider>
-      <Routes>
+      <Toaster
+        position="top-right"
+        richColors
+        closeButton
+      />
 
-        {/* ================= PÚBLICAS ================= */}
+      <Routes>
+        {/* ==================================================
+            PÚBLICAS
+        ================================================== */}
+
         <Route element={<PublicOnlyWrapper />}>
-          <Route path="/" element={<HomePage />} />
+          <Route
+            path="/"
+            element={<HomePage />}
+          />
         </Route>
 
-        <Route path="/portal/:slug" element={<PortalParceiro />} />
-        <Route path="/termos" element={<TermosUso />} />
-        <Route path="/privacidade" element={<PoliticaPrivacidade />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route
+          path="/portal/:slug"
+          element={<PortalParceiro />}
+        />
 
+        <Route
+          path="/termos"
+          element={<TermosUso />}
+        />
 
-        {/* ================= PRIVADAS ================= */}
+        <Route
+          path="/privacidade"
+          element={<PoliticaPrivacidade />}
+        />
+
+        <Route
+          path="/reset-password"
+          element={<ResetPassword />}
+        />
+
+        {/* ==================================================
+            ÁREA PRIVADA
+        ================================================== */}
+
         <Route element={<PrivateWrapper />}>
           <Route element={<DashboardLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/agenda" element={<AgendaCorretor />} />
 
-            <Route path="/corretores/cadastro" element={<CorretoresCadastro />} />
-            <Route path="/corretores/lista" element={<CorretoresLista />} />
-            <Route path="/corretores/editar/:id" element={<CorretoresCadastro />} />
+            {/* ================================================
+                WHATSAPP / ATENDIMENTO
+            ================================================ */}
 
-            <Route path="/parceiros/cadastro" element={<ParceirosCadastro />} />
-            <Route path="/parceiros/editar/:id" element={<ParceirosCadastro />} />
-            <Route path="/parceiros/triagem" element={<ParceirosTriagem />} />
-
-            {/* <Route path="/clientes/cadastro" element={<ClientesCadastro />} /> */}
-            {/* <Route path="/clientes/editar/:id" element={<ClientesCadastro />} /> */}
-
-            {/* ✨ SUA NOVA ROTA V2 AQUI */}
-            <Route path="/clientes/cadastro" element={<ClientesCadastroV2 />} />
-            <Route path="/clientes/lista" element={<ClientesListaV2 />} />
-
-
-            <Route path="/clientes/acoes" element={<ClientesAcoes />} /> 
-            <Route path="/clientes/campanhas" element={<CampanhasClientes />} />
-            
-           
-            {/* ROTAS ANTIGAS */}
-            <Route path="/propostas/criar" element={<PropostasCadastro key="nova" />} />
-            <Route path="/propostas/lista" element={<PropostasLista />} />
-            <Route path="/propostas/editar/:id" element={<PropostasCadastro key="editar" />} />
-            <Route path="/propostas/produtos" element={<ProdutosLista />} />
-
-            <Route path="/seguros-vida" element={<PropostasAvulsas />} />
-
-            <Route path="/seguradoras" element={<SeguradorasLista />} />
-
-            <Route path="/kanban/atendimento" element={<KanbanAtendimentos />} />
-            <Route path="/kanban/venda" element={<KanbanVendas />} />
-            <Route path="/kanban/perda" element={<KanbanPerdas />} />
-
-            <Route path="/comissoes/lista" element={<ComissoesLista />} />
-            <Route path="/sinistros/lista" element={<RelatorioSinistros />} />
-            <Route 
-              path="/financeiro/plano-contas" 
-              element={
-                <PlanoContas 
-                  corretoraId={userProfile?.corretora_id} 
-                  usuarioId={userProfile?.id} 
-                />
-              } 
-            />
-            <Route 
-              path="/financeiro/lancamentos" 
-              element={
-                <Lancamentos 
-                  corretoraId={userProfile?.corretora_id} 
-                  usuarioId={userProfile?.id} 
-                />
-              } 
+            <Route
+              path="/whatsapp"
+              element={<WhatsAppInbox />}
             />
 
-            <Route path="/configuracao/perfil" element={<ConfigPerfil />} />
+            <Route
+              path="/whatsapp/contatos"
+              element={<WhatsAppContatos />}
+            />
+
+            <Route
+              path="/whatsapp/automacoes"
+              element={<WhatsAppAutomacoes />}
+            />
+
+            <Route
+              path="/whatsapp/kanban"
+              element={<WhatsAppKanban />}
+            />
+
+            <Route
+              path="/whatsapp/agenda"
+              element={<AgendaCRM />}
+            />
+
+            {/* ================================================
+                CLIENTES
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/clientes"
+              element={<CentralClientes />}
+            />
+
+            {/* ================================================
+                PROPOSTAS
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/propostas"
+              element={<PropostasLista />}
+            />
+
+            <Route
+              path="/whatsapp/propostas/:id"
+              element={<PropostaDetalhes />}
+            />
+
+            {/* ================================================
+                FINANCEIRO
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/financeiro"
+              element={<Financeiro />}
+            />
+
+            <Route
+              path="/whatsapp/financeiro/contratos/:contratoId"
+              element={<FinanceiroContrato />}
+            />
+
+            {/* ================================================
+                COMISSÕES
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/comissoes"
+              element={<Comissoes />}
+            />
+
+            <Route
+              path="/whatsapp/comissoes/contratos/:contratoId"
+              element={<ComissaoContrato />}
+            />
+
+            {/* ================================================
+                SINISTROS
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/sinistro"
+              element={<SinistrosLista />}
+            />
+
+            <Route
+              path="/whatsapp/sinistro/:id"
+              element={<SinistroDetalhes />}
+            />
+
+            {/* ================================================
+                ASSISTÊNCIAS
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/assistencia"
+              element={<AssistenciasLista />}
+            />
+
+            <Route
+              path="/whatsapp/assistencia/:id"
+              element={<AssistenciaDetalhes />}
+            />
+
+            {/* ================================================
+                EQUIPE
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/equipe"
+              element={<Equipe />}
+            />
+
+            <Route
+              path="/whatsapp/equipe/cadastro"
+              element={<NovoMembro />}
+            />
+
+            {/* ================================================
+                CONFIGURAÇÕES
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/conexoes"
+              element={<ConexoesWhatsApp />}
+            />
+
+            <Route
+              path="/whatsapp/armazenamento"
+              element={<CentralArmazenamento />}
+            />
+
+            <Route
+              path="/whatsapp/seguradoras"
+              element={<SeguradorasLista />}
+            />
+
+            <Route
+              path="/whatsapp/configuracao/perfil"
+              element={<ConfigCorretora />}
+            />
+
+            {/* ================================================
+                CONVERSA INDIVIDUAL
+
+                Deixar depois das rotas específicas mantém
+                a estrutura visual mais fácil de entender.
+                O React Router também prioriza rotas estáticas.
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/:conversationId"
+              element={<WhatsAppInbox />}
+            />
+
+            {/* ================================================
+                COMPATIBILIDADE TEMPORÁRIA COM LINKS ANTIGOS
+
+                Podemos remover depois que Sidebar e demais
+                referências estiverem totalmente migrados.
+            ================================================ */}
+
+            <Route
+              path="/dashboard"
+              element={
+                <Navigate
+                  to="/whatsapp"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/agenda"
+              element={
+                <Navigate
+                  to="/whatsapp"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/equipe"
+              element={
+                <Navigate
+                  to="/whatsapp/equipe"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/equipe/cadastro"
+              element={
+                <Navigate
+                  to="/whatsapp/equipe/cadastro"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/conexoes"
+              element={
+                <Navigate
+                  to="/whatsapp/conexoes"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/armazenamento"
+              element={
+                <Navigate
+                  to="/whatsapp/armazenamento"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/seguradoras"
+              element={
+                <Navigate
+                  to="/whatsapp/seguradoras"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/configuracao/perfil"
+              element={
+                <Navigate
+                  to="/whatsapp/configuracao/perfil"
+                  replace
+                />
+              }
+            />
+
+            {/* ================================================
+                NÚCLEO ANTIGO DESATIVADO
+
+                Mantido apenas como referência durante esta
+                etapa final de homologação.
+
+                /clientes/*
+                /propostas/*
+                /kanban/*
+                /financeiro/*
+                /comissoes/lista
+                /sinistros/lista
+                /corretores/*
+                /parceiros/*
+                /seguros-vida
+            ================================================ */}
+
           </Route>
         </Route>
 
-        {/* ================= FALLBACK INTELIGENTE ================= */}
-        <Route 
-          path="*" 
-          element={<Navigate to={user && userProfile?.ativo ? "/agenda" : "/"} replace />} 
-        />
+        {/* ==================================================
+            FALLBACK
+        ================================================== */}
 
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to={
+                usuarioAtivo
+                  ? "/whatsapp"
+                  : "/"
+              }
+              replace
+            />
+          }
+        />
       </Routes>
     </NotificationProvider>
   )

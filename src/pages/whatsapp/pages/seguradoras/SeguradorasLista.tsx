@@ -3,8 +3,8 @@ import {
   Building2, Loader2, Search, Shield, 
   Power, Check, Plus, X
 } from "lucide-react";
-import { supabase } from "../../lib/supabaseClient";
-import { useAuth } from "../../auth/AuthContext";
+import { supabase } from "../../../../lib/supabaseClient";
+import { useAuth } from "../../../../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 export default function SeguradorasLista() {
@@ -45,7 +45,10 @@ export default function SeguradorasLista() {
       const [resSegs, resProds, resPort] = await Promise.all([
         supabase.from("base_seguradoras").select("*").order("nome"),
         supabase.from("base_produtos").select("*").order("nome"),
-        supabase.from("tab_corretora_portfolio").select("*").eq("corretora_id", targetId)
+        supabase
+          .from("crm_corretora_portfolio")
+          .select("*")
+          .eq("corretora_id", targetId)
       ]);
 
       setBaseSeguradoras(resSegs.data || []);
@@ -112,10 +115,23 @@ export default function SeguradorasLista() {
     const ativo = isProdutoAtivo(segId, prodId);
     try {
       if (ativo) {
-        await supabase.from("tab_corretora_portfolio").delete().eq("corretora_id", corretoraIdEfetivo).eq("base_seguradora_id", segId).eq("base_produto_id", prodId);
+        await supabase
+          .from("crm_corretora_portfolio")
+          .delete()
+          .eq("corretora_id", corretoraIdEfetivo)
+          .eq("base_seguradora_id", segId)
+          .eq("base_produto_id", prodId);
         setPortfolio(prev => prev.filter(p => !(p.base_seguradora_id === segId && p.base_produto_id === prodId)));
       } else {
-        const { data, error } = await supabase.from("tab_corretora_portfolio").insert({ corretora_id: corretoraIdEfetivo, base_seguradora_id: segId, base_produto_id: prodId }).select().single();
+        const { data, error } = await supabase
+          .from("crm_corretora_portfolio")
+          .insert({
+            corretora_id: corretoraIdEfetivo,
+            base_seguradora_id: segId,
+            base_produto_id: prodId
+          })
+          .select()
+          .single();
         if (error) throw error;
         setPortfolio(prev => [...prev, data]);
       }
@@ -125,7 +141,11 @@ export default function SeguradorasLista() {
   const desligarSeguradora = async (segId: string) => {
     if (!corretoraIdEfetivo || !confirm("Isso desativará todos os produtos desta seguradora. Continuar?")) return;
     try {
-      await supabase.from("tab_corretora_portfolio").delete().eq("corretora_id", corretoraIdEfetivo).eq("base_seguradora_id", segId);
+      await supabase
+        .from("crm_corretora_portfolio")
+        .delete()
+        .eq("corretora_id", corretoraIdEfetivo)
+        .eq("base_seguradora_id", segId);
       setPortfolio(prev => prev.filter(p => p.base_seguradora_id !== segId));
     } catch (error) { console.error(error); }
   };

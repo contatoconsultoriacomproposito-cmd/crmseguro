@@ -4,6 +4,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js"
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Supabase URL ou Anon Key não configuradas.")
 }
@@ -38,7 +39,6 @@ function createSupabase() {
 export const supabase =
   window.__supabase ?? (window.__supabase = createSupabase())
 
-// Cliente Público isolado (Para uso em landing pages ou triagem)
 export const supabasePublic = createClient(
   supabaseUrl,
   supabaseAnonKey,

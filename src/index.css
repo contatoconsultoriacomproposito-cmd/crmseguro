@@ -13,7 +13,11 @@ body,
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
 .animate-spin-slow {
   animation: spin-slow 8s linear infinite;
 }
 
+[data-sonner-toaster] {
+  z-index: 999999 !important;
+}
