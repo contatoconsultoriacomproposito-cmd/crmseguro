@@ -22,22 +22,6 @@ interface TabelaComissoesProps {
   onIrParaPagina?: (pagina: number) => void;
 }
 
-function formatarModoProvisionamento(
-  modo: ItemComissaoGeral["comissao"]["modo_provisionamento"]
-): string {
-  switch (modo) {
-    case "ANTECIPADO":
-      return "Antecipado";
-    case "PARCELADO":
-      return "Parcelado";
-    case "VINCULADO_A_PARCELAS":
-      return "Vinculado às parcelas";
-    case "VITALICIO_PROVISIONADO":
-      return "Vitalício provisionado";
-    default:
-      return modo;
-  }
-}
 
 function obterIdentificacaoCliente(
   item: ItemComissaoGeral
@@ -256,7 +240,7 @@ export function TabelaComissoes({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-[1450px] w-full border-collapse">
+        <table className="min-w-[1320px] w-full border-collapse">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60">
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -291,9 +275,7 @@ export function TabelaComissoes({
                 Bruta
               </th>
 
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Provisionamento
-              </th>
+              
 
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Recebimento
@@ -322,7 +304,7 @@ export function TabelaComissoes({
                     className="border-b border-slate-100 last:border-b-0 dark:border-slate-900"
                   >
                     {Array.from({
-                      length: 13,
+                      length: 12,
                     }).map((__, coluna) => (
                       <td
                         key={coluna}
@@ -337,7 +319,7 @@ export function TabelaComissoes({
             ) : itens.length === 0 ? (
               <tr>
                 <td
-                  colSpan={13}
+                  colSpan={12}
                   className="px-4 py-12 text-center"
                 >
                   <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -446,24 +428,7 @@ export function TabelaComissoes({
                       </span>
                     </td>
 
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="text-sm text-slate-700 dark:text-slate-300">
-                          {formatarModoProvisionamento(
-                            item.comissao
-                              .modo_provisionamento
-                          )}
-                        </p>
-
-                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                          {
-                            item.comissao
-                              .quantidade_provisoes
-                          }{" "}
-                          provisão(ões)
-                        </p>
-                      </div>
-                    </td>
+                    
 
                     <td className="px-4 py-3">
                       <div className="space-y-1">
