@@ -126,7 +126,7 @@ function PublicOnlyWrapper() {
   ) {
     return (
       <Navigate
-        to="/whatsapp"
+        to="/whatsapp/kanban"
         replace
       />
     )

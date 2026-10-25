@@ -22,6 +22,10 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "../../../../lib/supabaseClient";
+import { useAuth } from "../../../../auth/AuthContext";
+import ModalArmazenamento from "../../configuracao-corretora/ModalArmazenamento";
+import { useStorageCommercial } from "../../hooks/useStorageCommercial";
+import { isStorageLimitError } from "../../services/storageQuotaError";
 import {
   atualizarAssistencia,
   buscarDossieAssistencia,
@@ -30,6 +34,7 @@ import {
   criarCompromissoAssistencia,
   criarOcorrenciaAssistencia,
   enviarAnexoAssistencia,
+  excluirAssistencia,
   obterUrlAnexoAssistencia,
   removerAnexoAssistencia,
   type CrmAgendaEvento,
@@ -238,6 +243,9 @@ export default function AssistenciaDetalhes() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { userProfile } = useAuth();
+  const storageCommercial = useStorageCommercial();
+  const podeExcluir = userProfile?.tipo_usuario === "CORRETORA";
 
   const [dossie, setDossie] =
     useState<CrmAssistenciaDossie | null>(null);
@@ -268,6 +276,9 @@ export default function AssistenciaDetalhes() {
     useState(false);
 
   const [enviandoAnexo, setEnviandoAnexo] =
+    useState(false);
+
+  const [excluindoAssistencia, setExcluindoAssistencia] =
     useState(false);
 
   const [usuarioId, setUsuarioId] =
@@ -811,6 +822,16 @@ export default function AssistenciaDetalhes() {
 
         toast.success("Anexo enviado.");
       } catch (error: any) {
+        console.error(
+          "Erro ao enviar anexo da assistência:",
+          error
+        );
+
+        if (isStorageLimitError(error)) {
+          await storageCommercial.abrirModalArmazenamento();
+          return;
+        }
+
         toast.error(
           error?.message ||
             "Não foi possível enviar o anexo."
@@ -827,8 +848,61 @@ export default function AssistenciaDetalhes() {
       assistencia,
       usuarioId,
       carregarDossie,
+      storageCommercial.abrirModalArmazenamento,
     ]
   );
+
+  const handleExcluirAssistencia = useCallback(async () => {
+    if (
+      !assistencia ||
+      !podeExcluir ||
+      excluindoAssistencia
+    ) {
+      return;
+    }
+
+    const identificacao =
+      assistencia.numero_atendimento ||
+      assistencia.protocolo ||
+      formatarTexto(assistencia.tipo_assistencia);
+
+    const confirmou = window.confirm(
+      `Excluir definitivamente a assistência "${identificacao}"?\n\n` +
+        "Esta ação removerá também ocorrências, compromissos e anexos armazenados.\n\n" +
+        "Esta ação não pode ser desfeita."
+    );
+
+    if (!confirmou) return;
+
+    try {
+      setExcluindoAssistencia(true);
+
+      await excluirAssistencia(
+        assistencia.id,
+        assistencia.corretora_id
+      );
+
+      toast.success("Assistência excluída com sucesso.");
+      navigate("/whatsapp/assistencias");
+    } catch (error: any) {
+      console.error(
+        "Erro ao excluir assistência:",
+        error
+      );
+
+      toast.error(
+        error?.message ||
+          "Não foi possível excluir a assistência."
+      );
+    } finally {
+      setExcluindoAssistencia(false);
+    }
+  }, [
+    assistencia,
+    podeExcluir,
+    excluindoAssistencia,
+    navigate,
+  ]);
 
   const abrirAnexo = useCallback(
     async (anexo: CrmEventoAnexo) => {
@@ -1008,6 +1082,25 @@ export default function AssistenciaDetalhes() {
               )}
               Salvar alterações
             </button>
+
+            {podeExcluir && (
+              <button
+                type="button"
+                onClick={() => void handleExcluirAssistencia()}
+                disabled={excluindoAssistencia}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+              >
+                {excluindoAssistencia ? (
+                  <Loader2
+                    size={16}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Trash2 size={16} />
+                )}
+                Excluir assistência
+              </button>
+            )}
           </div>
         </div>
 
@@ -1721,6 +1814,10 @@ export default function AssistenciaDetalhes() {
           </div>
         </ModalBase>
       )}
+
+      <ModalArmazenamento
+        {...storageCommercial.modalProps}
+      />
     </div>
   );
 }

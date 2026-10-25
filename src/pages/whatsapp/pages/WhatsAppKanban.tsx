@@ -1,8 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   BriefcaseBusiness,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   GripVertical,
   Handshake,
   Headphones,
@@ -10,6 +12,7 @@ import {
   MessagesSquare,
   Search,
   ShieldAlert,
+  X,
 } from 'lucide-react'
 
 import {
@@ -156,7 +159,10 @@ export default function WhatsAppKanban() {
   const [snapshot, setSnapshot] =
     useState<WhatsAppConversation[] | null>(null)
 
-  
+  const [busca, setBusca] = useState('')
+
+  const scrollRef =
+    useRef<HTMLDivElement | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -228,6 +234,71 @@ export default function WhatsAppKanban() {
   const workingConversations =
     localConversations ?? kanbanConversations
 
+  const filteredConversations = useMemo(() => {
+    const termo = normalizeSearch(busca)
+
+    if (!termo) {
+      return workingConversations
+    }
+
+    const termoNumerico = termo.replace(/\D/g, '')
+
+    return workingConversations.filter(conversation => {
+      const contactName =
+        conversation.contact.name || ''
+
+      const phone =
+        conversation.contact.phone || ''
+
+      const preview =
+        getMessagePreview(conversation)
+
+      const searchable = normalizeSearch(
+        [
+          contactName,
+          phone,
+          preview,
+          conversation.etapaKanban,
+        ].join(' ')
+      )
+
+      if (searchable.includes(termo)) {
+        return true
+      }
+
+      return Boolean(
+        termoNumerico &&
+          searchable
+            .replace(/\D/g, '')
+            .includes(termoNumerico)
+      )
+    })
+  }, [workingConversations, busca])
+
+  const moverHorizontal = useCallback(
+    (direcao: 'esquerda' | 'direita') => {
+      const elemento = scrollRef.current
+
+      if (!elemento) {
+        return
+      }
+
+      const deslocamento = Math.max(
+        220,
+        elemento.clientWidth * 0.35
+      )
+
+      elemento.scrollBy({
+        left:
+          direcao === 'direita'
+            ? deslocamento
+            : -deslocamento,
+        behavior: 'smooth',
+      })
+    },
+    []
+  )
+
   const activeConversation = useMemo(
     () =>
       workingConversations.find(
@@ -238,8 +309,8 @@ export default function WhatsAppKanban() {
   )
 
   const conversationsByStage = useMemo(() => {
-    return groupConversations(workingConversations)
-  }, [workingConversations])
+    return groupConversations(filteredConversations)
+  }, [filteredConversations])
 
   const handleOpenConversation = useCallback(
     (conversationId: string) => {
@@ -580,6 +651,65 @@ export default function WhatsAppKanban() {
           </div>
         </header>
 
+        <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-3 md:px-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative min-w-0 flex-1 sm:max-w-xl">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
+                type="text"
+                value={busca}
+                onChange={event => setBusca(event.target.value)}
+                placeholder="Buscar conversa, contato, telefone ou mensagem..."
+                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-10 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              />
+
+              {busca && (
+                <button
+                  type="button"
+                  onClick={() => setBusca('')}
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-600"
+                  title="Limpar busca"
+                  aria-label="Limpar busca"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
+                {busca.trim()
+                  ? `${filteredConversations.length} de ${workingConversations.length} encontradas`
+                  : `${workingConversations.length} conversa${workingConversations.length === 1 ? '' : 's'}`}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => moverHorizontal('esquerda')}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+                title="Colunas anteriores"
+                aria-label="Mover Kanban para a esquerda"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => moverHorizontal('direita')}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+                title="Próximas colunas"
+                aria-label="Mover Kanban para a direita"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -588,7 +718,10 @@ export default function WhatsAppKanban() {
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-slate-100/70">
+          <div
+            ref={scrollRef}
+            className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-slate-100/70 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
             <div className="flex h-full min-w-max gap-3 p-3 md:gap-4 md:p-4">
               {KANBAN_COLUMNS.map(column => (
                 <KanbanColumnComponent
@@ -965,6 +1098,16 @@ async function persistKanbanChanges(
       )
     )
   )
+}
+
+function normalizeSearch(
+  value: unknown
+): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR')
+    .trim()
 }
 
 function formatMessageTime(

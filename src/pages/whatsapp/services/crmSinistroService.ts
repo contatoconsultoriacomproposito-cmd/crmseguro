@@ -1,4 +1,5 @@
 import { supabase } from "../../../lib/supabaseClient";
+import { extrairStorageQuotaError } from "./storageQuotaError";
 
 export type CrmSinistroEtapa =
   | "ABERTURA"
@@ -1946,6 +1947,15 @@ export async function enviarAnexo(
       prepareError
     );
 
+    const storageError =
+      await extrairStorageQuotaError(
+        prepareError
+      );
+
+    if (storageError) {
+      throw storageError;
+    }
+
     throw new Error(
       prepareError.message ||
         "Não foi possível preparar o envio do arquivo."
@@ -2013,6 +2023,15 @@ export async function enviarAnexo(
       "Erro ao finalizar upload do anexo:",
       finalizeError
     );
+
+    const storageError =
+      await extrairStorageQuotaError(
+        finalizeError
+      );
+
+    if (storageError) {
+      throw storageError;
+    }
 
     throw new Error(
       finalizeError.message ||
@@ -2228,6 +2247,173 @@ export async function removerAnexo(
         data,
         "Não foi possível remover o arquivo."
       )
+    );
+  }
+}
+
+
+async function validarExclusaoSinistroCorretora(
+  corretoraId: string
+): Promise<void> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user?.id) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const { data: perfil, error: perfilError } = await supabase
+    .from("usuarios_perfis")
+    .select("id, tipo_usuario, ativo")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (perfilError) {
+    throw new Error("Não foi possível validar a permissão de exclusão.");
+  }
+
+  if (
+    !perfil ||
+    perfil.ativo !== true ||
+    perfil.tipo_usuario !== "CORRETORA" ||
+    perfil.id !== corretoraId
+  ) {
+    throw new Error(
+      "Somente a corretora responsável pode excluir este sinistro."
+    );
+  }
+}
+
+export async function excluirSinistro(
+  sinistroId: string,
+  corretoraId: string
+): Promise<void> {
+  if (!sinistroId) {
+    throw new Error("ID do sinistro não informado.");
+  }
+
+  if (!corretoraId) {
+    throw new Error("Corretora não informada.");
+  }
+
+  await validarExclusaoSinistroCorretora(corretoraId);
+
+  const { data: sinistro, error: sinistroError } = await supabase
+    .from("crm_sinistros")
+    .select("id, corretora_id")
+    .eq("id", sinistroId)
+    .eq("corretora_id", corretoraId)
+    .maybeSingle();
+
+  if (sinistroError) {
+    throw new Error(
+      sinistroError.message ||
+        "Não foi possível validar o sinistro para exclusão."
+    );
+  }
+
+  if (!sinistro) {
+    throw new Error(
+      "Sinistro não encontrado ou não pertence a esta corretora."
+    );
+  }
+
+  /*
+   * Remove primeiro os arquivos físicos/catalogados.
+   * buscarAnexosDoSinistro inclui anexos do sinistro e das ocorrências.
+   */
+  const anexos = await buscarAnexosDoSinistro(sinistroId);
+
+  for (const anexo of anexos) {
+    await removerAnexo(anexo);
+  }
+
+  const { data: ocorrencias, error: ocorrenciasError } = await supabase
+    .from("crm_sinistros_ocorrencias")
+    .select("id")
+    .eq("sinistro_id", sinistroId)
+    .eq("corretora_id", corretoraId);
+
+  if (ocorrenciasError) {
+    throw new Error(
+      ocorrenciasError.message ||
+        "Não foi possível preparar a exclusão das ocorrências do sinistro."
+    );
+  }
+
+  const ocorrenciaIds = (ocorrencias ?? [])
+    .map((item: any) => item.id)
+    .filter(Boolean);
+
+  const { error: agendaSinistroError } = await supabase
+    .from("crm_agenda")
+    .delete()
+    .eq("corretora_id", corretoraId)
+    .eq("tipo_origem", "SINISTRO")
+    .eq("origem_id", sinistroId);
+
+  if (agendaSinistroError) {
+    throw new Error(
+      agendaSinistroError.message ||
+        "Não foi possível remover os compromissos do sinistro."
+    );
+  }
+
+  if (ocorrenciaIds.length > 0) {
+    const { error: agendaOcorrenciasError } = await supabase
+      .from("crm_agenda")
+      .delete()
+      .eq("corretora_id", corretoraId)
+      .eq("tipo_origem", "SINISTRO_OCORRENCIA")
+      .in("origem_id", ocorrenciaIds);
+
+    if (agendaOcorrenciasError) {
+      throw new Error(
+        agendaOcorrenciasError.message ||
+          "Não foi possível remover os compromissos das ocorrências."
+      );
+    }
+  }
+
+  const { error: envolvidosError } = await supabase
+    .from("crm_sinistros_envolvidos")
+    .delete()
+    .eq("sinistro_id", sinistroId)
+    .eq("corretora_id", corretoraId);
+
+  if (envolvidosError) {
+    throw new Error(
+      envolvidosError.message ||
+        "Não foi possível remover os envolvidos do sinistro."
+    );
+  }
+
+  const { error: ocorrenciasDeleteError } = await supabase
+    .from("crm_sinistros_ocorrencias")
+    .delete()
+    .eq("sinistro_id", sinistroId)
+    .eq("corretora_id", corretoraId);
+
+  if (ocorrenciasDeleteError) {
+    throw new Error(
+      ocorrenciasDeleteError.message ||
+        "Não foi possível remover as ocorrências do sinistro."
+    );
+  }
+
+  const { error: deleteError } = await supabase
+    .from("crm_sinistros")
+    .delete()
+    .eq("id", sinistroId)
+    .eq("corretora_id", corretoraId);
+
+  if (deleteError) {
+    console.error("Erro ao excluir sinistro:", deleteError);
+    throw new Error(
+      deleteError.message ||
+        "Não foi possível excluir o sinistro."
     );
   }
 }

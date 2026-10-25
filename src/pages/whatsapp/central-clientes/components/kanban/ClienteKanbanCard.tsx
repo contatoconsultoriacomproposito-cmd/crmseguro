@@ -3,9 +3,7 @@ import {
   GripVertical,
   MessageCircle,
 } from 'lucide-react'
-import {
-  useSortable,
-} from '@dnd-kit/sortable'
+import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { ClienteCentral } from '../../types/centralClientes'
 import {
@@ -21,32 +19,34 @@ interface Props {
   onOpen: (cliente: ClienteCentral) => void
 }
 
-export default function ClienteKanbanCard({
-  cliente,
-  onOpen,
-}: Props) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: clienteCardId(cliente),
-  })
+type SortableAttributes = ReturnType<typeof useSortable>['attributes']
+type SortableListeners = ReturnType<typeof useSortable>['listeners']
 
+interface ContentProps {
+  cliente: ClienteCentral
+  dragging?: boolean
+  dragAttributes?: SortableAttributes
+  dragListeners?: SortableListeners
+  onOpen?: (cliente: ClienteCentral) => void
+}
+
+export function ClienteKanbanCardContent({
+  cliente,
+  dragging = false,
+  dragAttributes,
+  dragListeners,
+  onOpen,
+}: ContentProps) {
   return (
     <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
+      onClick={() => {
+        if (!dragging) {
+          onOpen?.(cliente)
+        }
       }}
-      onClick={() => onOpen(cliente)}
-      className={`rounded-xl border bg-white p-3 shadow-sm transition ${
-        isDragging
-          ? 'border-blue-300 opacity-40'
+      className={`rounded-xl border bg-white p-3 shadow-sm transition-all duration-150 ${
+        dragging
+          ? 'border-blue-300 shadow-2xl ring-2 ring-blue-100'
           : 'cursor-pointer border-slate-200 hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md'
       }`}
     >
@@ -63,16 +63,19 @@ export default function ClienteKanbanCard({
           </p>
         </div>
 
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          onClick={event => event.stopPropagation()}
-          className="flex h-7 w-7 shrink-0 touch-none cursor-grab items-center justify-center rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
-          title="Mover cliente"
-        >
-          <GripVertical size={15} />
-        </button>
+        {!dragging && (
+          <button
+            type="button"
+            {...dragAttributes}
+            {...dragListeners}
+            onClick={event => event.stopPropagation()}
+            className="flex h-7 w-7 shrink-0 touch-none cursor-grab items-center justify-center rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
+            title="Mover cliente"
+            aria-label={`Mover ${cliente.nome}`}
+          >
+            <GripVertical size={15} />
+          </button>
+        )}
       </div>
 
       <div className="mt-3 space-y-1.5">
@@ -114,6 +117,44 @@ export default function ClienteKanbanCard({
           {cliente.responsavelNome}
         </p>
       </div>
+    </div>
+  )
+}
+
+export default function ClienteKanbanCard({
+  cliente,
+  onOpen,
+}: Props) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: clienteCardId(cliente),
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={
+        isDragging
+          ? 'relative z-10 opacity-25'
+          : 'relative z-0'
+      }
+    >
+      <ClienteKanbanCardContent
+        cliente={cliente}
+        dragAttributes={attributes}
+        dragListeners={listeners}
+        onOpen={onOpen}
+      />
     </div>
   )
 }

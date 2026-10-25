@@ -18,6 +18,10 @@ import {
   type DocumentoUploadResultado,
 } from '../types/documentos'
 
+import {
+  extrairStorageQuotaError,
+} from '../../services/storageQuotaError'
+
 interface B2MediaBaseResponse {
   success?: boolean
   error?: string
@@ -544,17 +548,26 @@ const tipoArquivo =
     })
 
   if (error) {
-    console.error(
-      'Erro ao preparar upload de documento:',
+  console.error(
+    'Erro ao preparar upload de documento:',
+    error
+  )
+
+  const storageError =
+    await extrairStorageQuotaError(
       error
     )
 
-    throw extrairMensagemErroFunction(
-      error,
-      data,
-      'Não foi possível preparar o envio do documento.'
-    )
+  if (storageError) {
+    throw storageError
   }
+
+  throw extrairMensagemErroFunction(
+    error,
+    data,
+    'Não foi possível preparar o envio do documento.'
+  )
+}
 
   validarRespostaFunction(
     data,
@@ -705,17 +718,26 @@ export async function finalizarUploadDocumento(
     })
 
   if (error) {
-    console.error(
-      'Erro ao finalizar documento:',
+  console.error(
+    'Erro ao finalizar documento:',
+    error
+  )
+
+  const storageError =
+    await extrairStorageQuotaError(
       error
     )
 
-    throw extrairMensagemErroFunction(
-      error,
-      data,
-      'O arquivo foi enviado, mas não foi possível registrá-lo no CRM.'
-    )
+  if (storageError) {
+    throw storageError
   }
+
+  throw extrairMensagemErroFunction(
+    error,
+    data,
+    'O arquivo foi enviado, mas não foi possível registrá-lo no CRM.'
+  )
+}
 
   validarRespostaFunction(
     data,

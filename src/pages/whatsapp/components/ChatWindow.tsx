@@ -29,6 +29,14 @@ import { useWhatsAppTimeline } from '../hooks/useWhatsAppTimeline';
 import { mapearTimelineWhatsApp, type WhatsAppTimelineRenderable } from '../services/whatsappTimelineMapper';
 import ModalCriarTarefaWhatsApp from './ModalCriarTarefaWhatsApp';
 import { criarTarefaWhatsApp } from '../services/whatsappTaskService';
+import ModalArmazenamento from '../configuracao-corretora/ModalArmazenamento';
+
+import {
+  isStorageLimitError,
+} from '../services/storageQuotaError';
+
+import { useStorageCommercial } from '../hooks/useStorageCommercial';
+
 interface ChatWindowProps {
     conversation?: WhatsAppConversation;
     onBack?: () => void;
@@ -36,6 +44,7 @@ interface ChatWindowProps {
     onOpenContactPanel?: () => void;
 }
 type HeaderMenu = 'responsavel' | 'documentos' | null;
+
 export default function ChatWindow({ conversation, onBack, onMarkedAsRead, onOpenContactPanel, }: ChatWindowProps) {
     const whatsapp = useWhatsApp();
     const handleReactMessage = async (
@@ -67,6 +76,8 @@ export default function ChatWindow({ conversation, onBack, onMarkedAsRead, onOpe
         throw error
     }
     }
+    const storageCommercial =
+        useStorageCommercial();
     const { userProfile } = useAuth();
     const podeAlterarResponsavel = userProfile?.tipo_usuario === 'CORRETORA' ||
         userProfile?.tipo_usuario === 'ADMIN';
@@ -452,12 +463,91 @@ const timelineItems =
   useMemo<
     WhatsAppTimelineRenderable[]
   >(() => {
+    /*
+     * ======================================================
+     * MENSAGENS LOCAIS POR ID
+     * ======================================================
+     *
+     * Depois que sendMessage() retorna, useMessages pode ter
+     * uma versão local definitiva da mensagem enquanto a
+     * timeline ainda não resolveu a URL permanente da mídia.
+     */
+    const mensagensLocaisPorId =
+      new Map(
+        messages.map(message => [
+          message.id,
+          message,
+        ])
+      )
+
+    /*
+     * ======================================================
+     * HIDRATAÇÃO TEMPORÁRIA DA TIMELINE
+     * ======================================================
+     *
+     * Se a timeline já conhece a mensagem mas ainda não tem
+     * media.url, reaproveitamos temporariamente a mídia local.
+     *
+     * Assim:
+     *
+     * - não criamos uma segunda bolha;
+     * - não exibimos "Carregando imagem..." desnecessariamente;
+     * - não precisamos de F5;
+     * - quando a timeline receber a URL definitiva do B2,
+     *   ela naturalmente passa a prevalecer.
+     */
+    const eventosTimelineHidratados =
+      eventosTimeline.map(item => {
+        if (
+          item.kind !== 'message'
+        ) {
+          return item
+        }
+
+        if (
+          item.message.type === 'text' ||
+          item.message.media?.url
+        ) {
+          return item
+        }
+
+        const mensagemLocal =
+          mensagensLocaisPorId.get(
+            item.message.id
+          )
+
+        if (
+          !mensagemLocal?.media?.url
+        ) {
+          return item
+        }
+
+        return {
+          ...item,
+          message: {
+            ...item.message,
+            media: {
+              ...mensagemLocal.media,
+              ...item.message.media,
+
+              /*
+               * A URL local precisa prevalecer porque sabemos
+               * que a da timeline ainda está vazia.
+               */
+              url:
+                mensagemLocal.media.url,
+            },
+          },
+        }
+      })
+
     const idsMensagensTimeline =
       new Set(
-        eventosTimeline
+        eventosTimelineHidratados
           .filter(
             item =>
-              item.kind === 'message'
+              item.kind ===
+              'message'
           )
           .map(
             item =>
@@ -466,15 +556,14 @@ const timelineItems =
       )
 
     /*
-     * Mensagens reais já presentes
+     * Mensagens reais outbound já existentes
      * na timeline.
      *
-     * Usamos apenas mensagens outbound
-     * para reconciliar com previews
-     * optimistic locais.
+     * Elas são utilizadas para reconciliar
+     * previews optimistic.
      */
     const mensagensReaisOutbound =
-      eventosTimeline
+      eventosTimelineHidratados
         .filter(
           (
             item
@@ -482,21 +571,22 @@ const timelineItems =
             WhatsAppTimelineRenderable,
             { kind: 'message' }
           > =>
-            item.kind === 'message' &&
+            item.kind ===
+              'message' &&
             item.message.direction ===
               'outbound' &&
             !item.message.id.startsWith(
               'optimistic-'
             )
         )
-        .map(item => item.message)
+        .map(
+          item =>
+            item.message
+        )
 
     /*
-     * Cada mensagem real pode substituir
-     * no máximo UMA optimistic.
-     *
-     * Isso evita erro quando o usuário
-     * envia duas imagens iguais em sequência.
+     * Cada mensagem real substitui no máximo
+     * UMA optimistic.
      */
     const optimisticSubstituidas =
       new Set<string>()
@@ -522,16 +612,17 @@ const timelineItems =
         )
 
     const reaisOrdenadas =
-      [...mensagensReaisOutbound]
-        .sort(
-          (a, b) =>
-            new Date(
-              a.timestamp
-            ).getTime() -
-            new Date(
-              b.timestamp
-            ).getTime()
-        )
+      [
+        ...mensagensReaisOutbound,
+      ].sort(
+        (a, b) =>
+          new Date(
+            a.timestamp
+          ).getTime() -
+          new Date(
+            b.timestamp
+          ).getTime()
+      )
 
     const optimisticJaAssociadas =
       new Set<string>()
@@ -583,11 +674,9 @@ const timelineItems =
           )
 
         /*
-         * Nosso envio completo atualmente
-         * pode levar ~13–15 segundos.
-         *
-         * 30 segundos deixa margem suficiente
-         * sem reconciliar mensagens antigas.
+         * O envio de mídia pode levar alguns
+         * segundos. Mantemos uma margem segura
+         * para reconciliar a mensagem correta.
          */
         if (
           diferencaTempo >
@@ -598,7 +687,7 @@ const timelineItems =
 
         /*
          * TEXTO:
-         * compara conteúdo.
+         * compara o conteúdo.
          */
         if (
           mensagemReal.type ===
@@ -622,16 +711,13 @@ const timelineItems =
           /*
            * MÍDIA:
            *
-           * NÃO podemos comparar URL porque:
+           * Não comparamos URL porque:
            *
-           * optimistic:
-           * blob:http://localhost/...
+           * optimistic → blob:
+           * real       → URL assinada B2
            *
-           * real:
-           * signed URL do B2
-           *
-           * Portanto usamos características
-           * estáveis do arquivo.
+           * Nome e tamanho são características
+           * mais estáveis para reconciliação.
            */
           const nomeOptimistic =
             optimistic.media?.name ||
@@ -709,8 +795,12 @@ const timelineItems =
       messages
         .filter(message => {
           /*
-           * Já existe exatamente esta
-           * mensagem na timeline.
+           * A timeline já contém exatamente
+           * esta mensagem.
+           *
+           * Não adicionamos uma segunda bolha.
+           * Caso a timeline ainda estivesse sem
+           * URL, ela já foi hidratada acima.
            */
           if (
             idsMensagensTimeline.has(
@@ -721,10 +811,8 @@ const timelineItems =
           }
 
           /*
-           * Preview otimista ainda não possui
+           * Preview optimistic ainda sem
            * mensagem real correspondente.
-           *
-           * Continua visível.
            */
           if (
             message.id.startsWith(
@@ -767,7 +855,7 @@ const timelineItems =
         }))
 
     return [
-      ...eventosTimeline,
+      ...eventosTimelineHidratados,
       ...mensagensExtras,
     ].sort((a, b) => {
       const diferenca =
@@ -778,7 +866,9 @@ const timelineItems =
           b.eventAt
         ).getTime()
 
-      if (diferenca !== 0) {
+      if (
+        diferenca !== 0
+      ) {
         return diferenca
       }
 
@@ -1540,6 +1630,7 @@ const timelineItems =
         </div>
     </main>);
     }
+
     return (<main className="flex h-full min-w-0 flex-1 flex-col bg-gray-50">
     <header className="relative z-20 shrink-0 border-b bg-white">
         <div className="flex min-h-[76px] items-center gap-3 px-4">
@@ -1725,8 +1816,26 @@ const timelineItems =
         onStartRouting={handleStartRouting}
         onTakeOverAutomation={handleTakeOver}
         onSend={async data => {
+        try {
             await send(data)
-            setReplyMessage(null)
+
+            setReplyMessage(
+            null,
+            )
+        } catch (error) {
+            if (
+            isStorageLimitError(
+                error,
+            )
+            ) {
+            await storageCommercial
+                .abrirModalArmazenamento()
+
+            return
+            }
+
+            throw error
+        }
         }}
         quickReplyVariables={{
         nome: conversation.contact.name,
@@ -1743,12 +1852,30 @@ const timelineItems =
                 setModalAgendaAberto(false);
                 setClienteAgenda(null);
             }} onSubmit={handleSalvarAgenda}/>)}
-    {modalDocumentoAberto && conversation && (<ModalAdicionarDocumento conversationId={conversation.id} contatoId={conversation.contact.id} onClose={() => {
-                setModalDocumentoAberto(false);
-            }} onSuccess={() => {
-                setDocumentosRefreshKey(current => current + 1);
-                setActiveMenu('documentos');
-            }}/>)}
+    {modalDocumentoAberto && conversation && (
+        <ModalAdicionarDocumento
+            conversationId={
+                conversation.id
+            }
+            contatoId={
+                conversation.contact.id
+            }
+            onClose={() => {
+                setModalDocumentoAberto(
+                false
+                )
+            }}
+            onSuccess={() => {
+                setDocumentosRefreshKey(
+                current =>
+                    current + 1
+                )
+            }}
+            onStorageLimit={
+                storageCommercial
+                    .abrirModalArmazenamento
+            }
+            />)}
     {chamadaStatus !== 'idle' && (
         <CallModal
             open
@@ -1764,6 +1891,10 @@ const timelineItems =
             }}
             />
         )}
+
+        <ModalArmazenamento
+            {...storageCommercial.modalProps}
+        />
     <ModalCriarTarefaWhatsApp
     open={Boolean(taskMessage)}
     messageText={
@@ -1896,5 +2027,7 @@ function ResponsavelMenu({ attendants, responsavelId, onSelect, loading, assigni
         {!responsavelId && (<Check size={16} className="shrink-0 text-blue-600"/>)}
         </button>
     </div>
+
+    
     </div>);
 }

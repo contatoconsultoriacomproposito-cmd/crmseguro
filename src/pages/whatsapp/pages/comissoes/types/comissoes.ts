@@ -88,6 +88,7 @@ export interface ContextoContratoComissao {
   produto_id: string;
   seguradora_id: string;
   numero_apolice: string | null;
+  data_venda: string | null;
   valor_aceito: number;
   valor_atual: number;
   status: string;
@@ -467,6 +468,7 @@ export interface FiltrosComissoes {
   situacao_recebimento?: SituacaoRecebimentoComissao | "";
   situacao_pagamento?: SituacaoPagamentoComissao | "";
   tipo_participante?: TipoParticipanteComissao | "";
+  participante_id?: string;
   contrato_id?: string;
   cliente_id?: string;
   pagina?: number;
@@ -478,6 +480,7 @@ export interface ItemComissaoGeral {
   contrato: {
     id: string;
     numero_apolice: string | null;
+    data_venda: string | null;
     produto_id: string;
     seguradora_id: string;
     corretor_id: string;
@@ -500,13 +503,19 @@ export interface ItemComissaoGeral {
 
 export interface ResumoComissoesGeral {
   valor_comissao_bruta: number;
+
+  valor_total_a_receber: number;
   valor_a_receber: number;
   valor_recebe_hoje: number;
   valor_atrasado_recebimento: number;
   valor_recebido: number;
+
+  valor_total_a_pagar: number;
   valor_a_pagar: number;
+  valor_vence_hoje_pagamento: number;
   valor_atrasado_pagamento: number;
   valor_pago: number;
+
   valor_residual_corretora: number;
   quantidade_comissoes: number;
 }
@@ -526,6 +535,7 @@ export interface ItemMinhaComissaoCorretor {
   contrato: {
     id: string;
     numero_apolice: string | null;
+    data_venda: string | null;
     produto_id: string;
     seguradora_id: string;
     corretor_id: string;

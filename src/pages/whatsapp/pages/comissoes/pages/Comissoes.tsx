@@ -10,6 +10,7 @@ import {
   CircleDollarSign,
   Clock3,
   HandCoins,
+  FileText,
   ReceiptText,
   RefreshCw,
   RotateCcw,
@@ -21,8 +22,13 @@ import { useComissoes } from "../hooks/useComissoes";
 import { ComissoesResumoCards } from "../components/ComissoesResumoCards";
 import { ComissoesFiltros } from "../components/ComissoesFiltros";
 import { TabelaComissoes } from "../components/TabelaComissoes";
+import ModalRelatorioComissoes from "../components/ModalRelatorioComissoes";
 
 import { formatarMoedaComissao } from "../services/comissoesCalculos";
+import {
+  buscarParticipantesFiltroComissao,
+  type OpcaoParticipanteComissao,
+} from "../services/comissoesService";
 
 import type {
   ItemComissaoGeral,
@@ -187,7 +193,10 @@ function CardMinhaComissao({
             {titulo}
           </p>
 
-          <p className="mt-2 truncate text-xl font-semibold text-slate-900 dark:text-slate-100">
+          <p
+            className="mt-2 whitespace-nowrap text-xl font-semibold text-slate-900 dark:text-slate-100"
+            title={valor}
+          >
             {valor}
           </p>
 
@@ -238,8 +247,68 @@ export default function Comissoes() {
   const isCorretor =
     visao === "CORRETOR";
 
+  const [
+    modalRelatorioAberto,
+    setModalRelatorioAberto,
+  ] = useState(false);
+
+  const [
+    participantesDisponiveis,
+    setParticipantesDisponiveis,
+  ] = useState<OpcaoParticipanteComissao[]>([]);
+
+  const [
+    loadingParticipantes,
+    setLoadingParticipantes,
+  ] = useState(false);
+
   const [buscaDigitada, setBuscaDigitada] =
   useState(filtros.busca ?? "");
+
+const [dataInicioDigitada, setDataInicioDigitada] =
+  useState(filtros.data_inicio ?? "");
+
+const [dataFimDigitada, setDataFimDigitada] =
+  useState(filtros.data_fim ?? "");
+
+useEffect(() => {
+  setDataInicioDigitada(
+    filtros.data_inicio ?? ""
+  );
+}, [filtros.data_inicio]);
+
+useEffect(() => {
+  setDataFimDigitada(
+    filtros.data_fim ?? ""
+  );
+}, [filtros.data_fim]);
+
+const periodoCorretorAlterado =
+  dataInicioDigitada !==
+    (filtros.data_inicio ?? "") ||
+  dataFimDigitada !==
+    (filtros.data_fim ?? "");
+
+const periodoCorretorInvalido =
+  Boolean(
+    dataInicioDigitada &&
+      dataFimDigitada &&
+      dataFimDigitada < dataInicioDigitada
+  );
+
+function aplicarPeriodoCorretor() {
+  if (periodoCorretorInvalido) return;
+
+  atualizarFiltro(
+    "data_inicio",
+    dataInicioDigitada
+  );
+
+  atualizarFiltro(
+    "data_fim",
+    dataFimDigitada
+  );
+}
 
 useEffect(() => {
   const busca =
@@ -295,6 +364,66 @@ function atualizarFiltroInteligente(
     valor
   );
 }
+
+  useEffect(() => {
+    if (isCorretor) {
+      setParticipantesDisponiveis([]);
+      return;
+    }
+
+    let ativo = true;
+
+    async function carregarParticipantes() {
+      try {
+        setLoadingParticipantes(true);
+        const opcoes = await buscarParticipantesFiltroComissao();
+        if (ativo) setParticipantesDisponiveis(opcoes);
+      } catch (error) {
+        console.error(
+          "Erro ao carregar participantes da comissão:",
+          error
+        );
+        if (ativo) setParticipantesDisponiveis([]);
+      } finally {
+        if (ativo) setLoadingParticipantes(false);
+      }
+    }
+
+    void carregarParticipantes();
+
+    return () => {
+      ativo = false;
+    };
+  }, [isCorretor]);
+
+  const participantesFiltrados = useMemo(
+    () =>
+      participantesDisponiveis.filter(
+        (opcao) =>
+          !filtros.tipo_participante ||
+          opcao.tipo === filtros.tipo_participante
+      ),
+    [
+      participantesDisponiveis,
+      filtros.tipo_participante,
+    ]
+  );
+
+  const participanteSelecionado = useMemo(
+    () =>
+      participantesDisponiveis.find(
+        (opcao) =>
+          opcao.value === filtros.participante_id
+      ) ?? null,
+    [
+      participantesDisponiveis,
+      filtros.participante_id,
+    ]
+  );
+
+  const temFiltrosAtivosTela =
+    temFiltrosAtivos ||
+    Boolean(filtros.participante_id);
 
   /*
    * ============================================================
@@ -386,6 +515,185 @@ function atualizarFiltroInteligente(
       [itensCorretor]
     );
 
+  const filtrosRelatorio = useMemo(
+    () => ({
+      ...filtros,
+    }),
+    [
+      filtros.busca,
+      filtros.data_inicio,
+      filtros.data_fim,
+      filtros.corretor_id,
+      filtros.seguradora_id,
+      filtros.produto_id,
+      filtros.situacao_recebimento,
+      filtros.situacao_pagamento,
+      filtros.tipo_participante,
+      filtros.participante_id,
+      filtros.contrato_id,
+      filtros.cliente_id,
+    ]
+  );
+
+  const filtrosDescricaoRelatorio =
+    useMemo(() => {
+      const descricoes: string[] = [];
+
+      const buscarLabel = (
+        opcoes: OpcaoFiltro[],
+        value?: string
+      ) =>
+        opcoes.find(
+          (opcao) =>
+            opcao.value === value
+        )?.label ?? value;
+
+      if (filtros.busca?.trim()) {
+        descricoes.push(
+          `Busca: ${filtros.busca.trim()}`
+        );
+      }
+
+      if (filtros.corretor_id) {
+        descricoes.push(
+          `Corretor responsável: ${
+            buscarLabel(
+              corretores,
+              filtros.corretor_id
+            ) ??
+            filtros.corretor_id
+          }`
+        );
+      }
+
+      if (filtros.seguradora_id) {
+        descricoes.push(
+          `Seguradora: ${
+            buscarLabel(
+              seguradorasCorretora,
+              filtros.seguradora_id
+            ) ??
+            filtros.seguradora_id
+          }`
+        );
+      }
+
+      if (filtros.produto_id) {
+        descricoes.push(
+          `Produto: ${
+            buscarLabel(
+              produtosCorretora,
+              filtros.produto_id
+            ) ??
+            filtros.produto_id
+          }`
+        );
+      }
+
+      if (
+        filtros.situacao_recebimento
+      ) {
+        const labels: Record<
+          string,
+          string
+        > = {
+          A_RECEBER: "A receber",
+          RECEBE_HOJE: "Recebe hoje",
+          ATRASADA: "Atrasada",
+          RECEBIDA: "Recebida",
+          CANCELADA: "Cancelada",
+        };
+
+        descricoes.push(
+          `Situação do recebimento: ${
+            labels[
+              filtros
+                .situacao_recebimento
+            ] ??
+            filtros
+              .situacao_recebimento
+          }`
+        );
+      }
+
+      if (
+        filtros.situacao_pagamento
+      ) {
+        const labels: Record<
+          string,
+          string
+        > = {
+          A_PAGAR: "A pagar",
+          VENCE_HOJE: "Vence hoje",
+          ATRASADA: "Atrasada",
+          PAGA: "Paga",
+          CANCELADA: "Cancelada",
+        };
+
+        descricoes.push(
+          `Situação do pagamento: ${
+            labels[
+              filtros
+                .situacao_pagamento
+            ] ??
+            filtros
+              .situacao_pagamento
+          }`
+        );
+      }
+
+      if (
+        filtros.tipo_participante
+      ) {
+        const labels: Record<
+          string,
+          string
+        > = {
+          CORRETOR: "Corretor",
+          SUPERVISOR: "Supervisor",
+          PARCEIRO: "Parceiro",
+          INDICADOR: "Indicador",
+          OUTRO: "Outro",
+          CORRETORA: "Corretora",
+        };
+
+        descricoes.push(
+          `Tipo de participante: ${
+            labels[
+              filtros
+                .tipo_participante
+            ] ??
+            filtros
+              .tipo_participante
+          }`
+        );
+      }
+
+
+      if (filtros.participante_id) {
+        descricoes.push(
+          `Participante específico: ${
+            participanteSelecionado?.label ??
+            filtros.participante_id
+          }`
+        );
+      }
+      return descricoes;
+    }, [
+      filtros.busca,
+      filtros.corretor_id,
+      filtros.seguradora_id,
+      filtros.produto_id,
+      filtros.situacao_recebimento,
+      filtros.situacao_pagamento,
+      filtros.tipo_participante,
+      corretores,
+      seguradorasCorretora,
+      produtosCorretora,
+      filtros.participante_id,
+      participanteSelecionado,
+    ]);
+
   function handleAbrirComissao(
     item: ItemComissaoGeral
   ) {
@@ -429,25 +737,44 @@ function atualizarFiltroInteligente(
             </div>
           </div>
 
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => {
-              void recarregar();
-            }}
-            className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 lg:self-auto"
-          >
-            <RefreshCw
-              size={16}
-              className={
-                loading
-                  ? "animate-spin"
-                  : ""
-              }
-            />
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            {!isCorretor && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() =>
+                  setModalRelatorioAberto(
+                    true
+                  )
+                }
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-medium text-blue-700 shadow-sm transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-950/50"
+              >
+                <FileText size={16} />
 
-            Atualizar
-          </button>
+                Gerar relatório
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                void recarregar();
+              }}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <RefreshCw
+                size={16}
+                className={
+                  loading
+                    ? "animate-spin"
+                    : ""
+                }
+              />
+
+              Atualizar
+            </button>
+          </div>
         </div>
 
         {/* =====================================================
@@ -459,6 +786,9 @@ function atualizarFiltroInteligente(
             <ComissoesResumoCards
               resumo={resumo}
               loading={loading}
+              participanteNome={
+                participanteSelecionado?.label ?? null
+              }
             />
 
             <ComissoesFiltros
@@ -468,7 +798,7 @@ function atualizarFiltroInteligente(
               }}
               loading={loading}
               temFiltrosAtivos={
-                temFiltrosAtivos
+                temFiltrosAtivosTela
               }
               corretores={
                 corretores
@@ -479,11 +809,20 @@ function atualizarFiltroInteligente(
               produtos={
                 produtosCorretora
               }
+              participantes={
+                loadingParticipantes
+                  ? []
+                  : participantesFiltrados
+              }
               onFiltroChange={
                 atualizarFiltroInteligente
               }
               onLimpar={() => {
                 setBuscaDigitada("");
+                atualizarFiltro(
+                  "participante_id",
+                  ""
+                );
                 limparFiltros();
               }}
             />
@@ -532,7 +871,7 @@ function atualizarFiltroInteligente(
             />
 
             {vazio &&
-              !temFiltrosAtivos && (
+              !temFiltrosAtivosTela && (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center dark:border-slate-800 dark:bg-slate-950">
                   <ReceiptText
                     size={28}
@@ -563,69 +902,73 @@ function atualizarFiltroInteligente(
           <>
             {/* RESUMO PESSOAL */}
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-              <CardMinhaComissao
-                titulo="Minha comissão"
-                valor={formatarMoedaComissao(
-                  resumoCorretor.valor_liquido
-                )}
-                descricao="Valor líquido total"
-                icone={HandCoins}
-              />
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <CardMinhaComissao
+                  titulo="Minha comissão"
+                  valor={formatarMoedaComissao(
+                    resumoCorretor.valor_liquido
+                  )}
+                  descricao="Valor líquido total"
+                  icone={HandCoins}
+                />
 
-              <CardMinhaComissao
-                titulo="Bruto"
-                valor={formatarMoedaComissao(
-                  resumoCorretor.valor_bruto
-                )}
-                descricao="Antes das deduções"
-                icone={ReceiptText}
-              />
+                <CardMinhaComissao
+                  titulo="Bruto"
+                  valor={formatarMoedaComissao(
+                    resumoCorretor.valor_bruto
+                  )}
+                  descricao="Antes das deduções"
+                  icone={ReceiptText}
+                />
 
-              <CardMinhaComissao
-                titulo="Deduções"
-                valor={formatarMoedaComissao(
-                  resumoCorretor.valor_deducoes
-                )}
-                descricao="Descontos aplicados"
-                icone={CircleDollarSign}
-              />
+                <CardMinhaComissao
+                  titulo="Deduções"
+                  valor={formatarMoedaComissao(
+                    resumoCorretor.valor_deducoes
+                  )}
+                  descricao="Descontos aplicados"
+                  icone={CircleDollarSign}
+                />
+              </div>
 
-              <CardMinhaComissao
-                titulo="A receber"
-                valor={formatarMoedaComissao(
-                  resumoCorretor.valor_a_receber
-                )}
-                descricao="Pagamentos pendentes"
-                icone={WalletCards}
-              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <CardMinhaComissao
+                  titulo="A receber"
+                  valor={formatarMoedaComissao(
+                    resumoCorretor.valor_a_receber
+                  )}
+                  descricao="Pagamentos pendentes"
+                  icone={WalletCards}
+                />
 
-              <CardMinhaComissao
-                titulo="Vence hoje"
-                valor={formatarMoedaComissao(
-                  resumoCorretor.valor_vence_hoje
-                )}
-                descricao="Previsto para hoje"
-                icone={CalendarDays}
-              />
+                <CardMinhaComissao
+                  titulo="Vence hoje"
+                  valor={formatarMoedaComissao(
+                    resumoCorretor.valor_vence_hoje
+                  )}
+                  descricao="Previsto para hoje"
+                  icone={CalendarDays}
+                />
 
-              <CardMinhaComissao
-                titulo="Atrasado"
-                valor={formatarMoedaComissao(
-                  resumoCorretor.valor_atrasado
-                )}
-                descricao="Pagamento vencido"
-                icone={Clock3}
-              />
+                <CardMinhaComissao
+                  titulo="Atrasado"
+                  valor={formatarMoedaComissao(
+                    resumoCorretor.valor_atrasado
+                  )}
+                  descricao="Pagamento vencido"
+                  icone={Clock3}
+                />
 
-              <CardMinhaComissao
-                titulo="Recebido"
-                valor={formatarMoedaComissao(
-                  resumoCorretor.valor_pago
-                )}
-                descricao="Já pago pela corretora"
-                icone={HandCoins}
-              />
+                <CardMinhaComissao
+                  titulo="Recebido"
+                  valor={formatarMoedaComissao(
+                    resumoCorretor.valor_pago
+                  )}
+                  descricao="Já pago pela corretora"
+                  icone={HandCoins}
+                />
+              </div>
             </div>
 
             {/* FILTROS PESSOAIS */}
@@ -661,6 +1004,42 @@ function atualizarFiltroInteligente(
                       className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Data da venda - inicial
+                  </label>
+
+                  <input
+                    type="date"
+                    value={dataInicioDigitada}
+                    disabled={loading}
+                    onChange={(event) =>
+                      setDataInicioDigitada(
+                        event.target.value
+                      )
+                    }
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Data da venda - final
+                  </label>
+
+                  <input
+                    type="date"
+                    value={dataFimDigitada}
+                    disabled={loading}
+                    onChange={(event) =>
+                      setDataFimDigitada(
+                        event.target.value
+                      )
+                    }
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                  />
                 </div>
 
                 <div>
@@ -809,6 +1188,29 @@ function atualizarFiltroInteligente(
                   </select>
                 </div>
 
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    disabled={
+                      loading ||
+                      !periodoCorretorAlterado ||
+                      periodoCorretorInvalido
+                    }
+                    onClick={aplicarPeriodoCorretor}
+                    className="inline-flex h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-400"
+                  >
+                    Aplicar período
+                  </button>
+                </div>
+
+                {periodoCorretorInvalido && (
+                  <div className="flex items-end xl:col-span-2">
+                    <span className="pb-2 text-xs font-medium text-red-600 dark:text-red-400">
+                      A data final não pode ser anterior à data inicial.
+                    </span>
+                  </div>
+                )}
+
                 {temFiltrosAtivos && (
                   <div className="flex items-end">
                     <button
@@ -818,6 +1220,8 @@ function atualizarFiltroInteligente(
                       }
                       onClick={() => {
                         setBuscaDigitada("");
+                        setDataInicioDigitada("");
+                        setDataFimDigitada("");
                         limparFiltros();
                       }}
                       className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
@@ -1180,6 +1584,28 @@ function atualizarFiltroInteligente(
                 )}
             </section>
           </>
+        )}
+
+        {!isCorretor && (
+          <ModalRelatorioComissoes
+            isOpen={
+              modalRelatorioAberto
+            }
+            onClose={() =>
+              setModalRelatorioAberto(
+                false
+              )
+            }
+            filtros={
+              filtrosRelatorio
+            }
+            filtrosDescricao={
+              filtrosDescricaoRelatorio
+            }
+            participanteNome={
+              participanteSelecionado?.label ?? null
+            }
+          />
         )}
       </div>
     </div>

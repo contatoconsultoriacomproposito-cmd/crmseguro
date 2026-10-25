@@ -56,6 +56,7 @@ interface UsuarioEquipeComissaoDb {
 export interface OpcaoParticipanteComissao {
   value: string;
   label: string;
+  tipo?: string;
 }
 
 interface ContratoComissaoDb {
@@ -67,6 +68,7 @@ interface ContratoComissaoDb {
   produto_id: string;
   seguradora_id: string;
   numero_apolice: string | null;
+  data_venda: string | null;
   valor_aceito: number;
   valor_atual: number;
   status: string;
@@ -263,7 +265,8 @@ export async function buscarContextoContratoComissao(
         numero_apolice,
         valor_aceito,
         valor_atual,
-        status
+        status,
+        data_venda
       `)
       .eq("id", contratoId)
       .maybeSingle();
@@ -314,6 +317,7 @@ export async function buscarContextoContratoComissao(
       produto_id: data.produto_id,
       seguradora_id: data.seguradora_id,
       numero_apolice: data.numero_apolice,
+      data_venda: data.data_venda,
       valor_aceito: normalizarNumero(
         data.valor_aceito
       ),
@@ -672,6 +676,7 @@ export async function buscarMinhasComissoesCorretor(
           produto_id,
           seguradora_id,
           numero_apolice,
+          data_venda,
           valor_aceito,
           valor_atual,
           status
@@ -860,6 +865,8 @@ export async function buscarMinhasComissoesCorretor(
               id: contrato.id,
               numero_apolice:
                 contrato.numero_apolice,
+              data_venda:
+                contrato.data_venda,
               produto_id:
                 contrato.produto_id,
               seguradora_id:
@@ -987,6 +994,24 @@ export async function buscarMinhasComissoesCorretor(
               pagamento.situacao ===
               filtros.situacao_pagamento
           )
+      );
+    }
+
+    if (filtros.data_inicio) {
+      itens = itens.filter(
+        (item) =>
+          Boolean(item.contrato.data_venda) &&
+          item.contrato.data_venda! >=
+            filtros.data_inicio!
+      );
+    }
+
+    if (filtros.data_fim) {
+      itens = itens.filter(
+        (item) =>
+          Boolean(item.contrato.data_venda) &&
+          item.contrato.data_venda! <=
+            filtros.data_fim!
       );
     }
 
@@ -1524,8 +1549,116 @@ export async function buscarSupervisoresComissao(): Promise<
   }
 }
 
+function criarReferenciaParticipanteSplit(
+  split: Pick<
+    ComissaoSplit,
+    "usuario_id" | "participante_nome" | "tipo_participante"
+  >
+): string | null {
+  if (split.usuario_id) {
+    return `usuario:${split.usuario_id}`;
+  }
+
+  const nome = split.participante_nome?.trim();
+  if (!nome) return null;
+
+  return `nome:${split.tipo_participante}:${encodeURIComponent(nome)}`;
+}
+
+function splitCorrespondeParticipante(
+  split: ComissaoSplit,
+  participanteId?: string
+): boolean {
+  if (!participanteId) return true;
+  return criarReferenciaParticipanteSplit(split) === participanteId;
+}
+
+export async function buscarParticipantesFiltroComissao(): Promise<
+  OpcaoParticipanteComissao[]
+> {
+  try {
+    const perfil = await buscarPerfilAtualComissao();
+
+    if (perfil.tipo_usuario !== "CORRETORA") {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from("crm_comissao_splits")
+      .select("usuario_id, participante_nome, tipo_participante")
+      .eq("corretora_id", perfil.id);
+
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as Array<{
+      usuario_id: string | null;
+      participante_nome: string | null;
+      tipo_participante: string;
+    }>;
+
+    const idsUsuarios = Array.from(
+      new Set(
+        rows
+          .map((row) => row.usuario_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+
+    const nomesUsuarios = new Map<string, string>();
+
+    if (idsUsuarios.length > 0) {
+      const { data: usuarios, error: usuariosError } = await supabase
+        .from("usuarios_perfis")
+        .select("id, nome")
+        .in("id", idsUsuarios);
+
+      if (usuariosError) throw new Error(usuariosError.message);
+
+      for (const usuario of usuarios ?? []) {
+        if (usuario.id && usuario.nome) {
+          nomesUsuarios.set(usuario.id, usuario.nome);
+        }
+      }
+    }
+
+    const mapa = new Map<string, OpcaoParticipanteComissao>();
+
+    for (const row of rows) {
+      const ref = criarReferenciaParticipanteSplit(
+        row as Pick<ComissaoSplit, "usuario_id" | "participante_nome" | "tipo_participante">
+      );
+
+      if (!ref) continue;
+
+      const nome = row.participante_nome?.trim();
+      const nomeUsuario = row.usuario_id
+        ? nomesUsuarios.get(row.usuario_id)
+        : null;
+      const label = nome || nomeUsuario ||
+        (row.tipo_participante === "CORRETORA"
+          ? "Corretora"
+          : row.tipo_participante);
+
+      mapa.set(ref, {
+        value: ref,
+        label,
+        tipo: row.tipo_participante,
+      });
+    }
+
+    return Array.from(mapa.values()).sort((a, b) =>
+      a.label.localeCompare(b.label, "pt-BR")
+    );
+  } catch (erro) {
+    throw new Error(
+      mensagemErro(erro, "Não foi possível carregar os participantes da comissão.")
+    );
+  }
+}
+
 async function buscarResumosComissoes(
-  comissoes: Comissao[]
+  comissoes: Comissao[],
+  filtros: FiltrosComissoes = {}
 ): Promise<
   Map<
     string,
@@ -1537,103 +1670,91 @@ async function buscarResumosComissoes(
         typeof calcularResumoPagamentos
       >;
       splits: ReturnType<typeof calcularResumoSplits>;
+      correspondeParticipante: boolean;
     }
   >
 > {
   const ids = comissoes.map((item) => item.id);
 
-  if (!ids.length) {
-    return new Map();
-  }
+  if (!ids.length) return new Map();
 
-  const [
-    recebimentosResult,
-    pagamentosResult,
-    splitsResult,
-  ] = await Promise.all([
-    supabase
-      .from("crm_comissao_recebimentos")
-      .select("*")
-      .in("comissao_id", ids),
-    supabase
-      .from("crm_comissao_pagamentos")
-      .select("*")
-      .in("comissao_id", ids),
-    supabase
-      .from("crm_comissao_splits")
-      .select("*")
-      .in("comissao_id", ids),
-  ]);
+  const [recebimentosResult, pagamentosResult, splitsResult] =
+    await Promise.all([
+      supabase.from("crm_comissao_recebimentos").select("*").in("comissao_id", ids),
+      supabase.from("crm_comissao_pagamentos").select("*").in("comissao_id", ids),
+      supabase.from("crm_comissao_splits").select("*").in("comissao_id", ids),
+    ]);
 
-  if (recebimentosResult.error) {
-    throw new Error(recebimentosResult.error.message);
-  }
+  if (recebimentosResult.error) throw new Error(recebimentosResult.error.message);
+  if (pagamentosResult.error) throw new Error(pagamentosResult.error.message);
+  if (splitsResult.error) throw new Error(splitsResult.error.message);
 
-  if (pagamentosResult.error) {
-    throw new Error(pagamentosResult.error.message);
-  }
+  const recebimentos = (recebimentosResult.data ?? []) as ComissaoRecebimento[];
+  const pagamentos = (pagamentosResult.data ?? []) as ComissaoPagamento[];
+  const splits = (splitsResult.data ?? []) as ComissaoSplit[];
 
-  if (splitsResult.error) {
-    throw new Error(splitsResult.error.message);
-  }
-
-  const recebimentos =
-    (recebimentosResult.data ??
-      []) as ComissaoRecebimento[];
-
-  const pagamentos =
-    (pagamentosResult.data ??
-      []) as ComissaoPagamento[];
-
-  const splits =
-    (splitsResult.data ?? []) as ComissaoSplit[];
+  const possuiFiltroParticipante = Boolean(
+    filtros.tipo_participante || filtros.participante_id
+  );
 
   const mapa = new Map<
     string,
     {
-      recebimentos: ReturnType<
-        typeof calcularResumoRecebimentos
-      >;
-      pagamentos: ReturnType<
-        typeof calcularResumoPagamentos
-      >;
+      recebimentos: ReturnType<typeof calcularResumoRecebimentos>;
+      pagamentos: ReturnType<typeof calcularResumoPagamentos>;
       splits: ReturnType<typeof calcularResumoSplits>;
+      correspondeParticipante: boolean;
     }
   >();
 
   for (const comissao of comissoes) {
-    const recebimentosComissao =
-      adicionarSituacaoRecebimentos(
-        recebimentos.filter(
-          (item) => item.comissao_id === comissao.id
-        )
-      );
-
-    const pagamentosComissao =
-      adicionarSituacaoPagamentos(
-        pagamentos.filter(
-          (item) => item.comissao_id === comissao.id
-        )
-      );
+    const recebimentosComissao = adicionarSituacaoRecebimentos(
+      recebimentos.filter((item) => item.comissao_id === comissao.id)
+    );
 
     const splitsComissao = splits.filter(
       (item) => item.comissao_id === comissao.id
     );
 
+    const splitsEscopo = splitsComissao.filter((split) => {
+      if (
+        filtros.tipo_participante &&
+        split.tipo_participante !== filtros.tipo_participante
+      ) {
+        return false;
+      }
+
+      return splitCorrespondeParticipante(
+        split,
+        filtros.participante_id
+      );
+    });
+
+    const idsSplitsEscopo = new Set(
+      splitsEscopo.map((split) => split.id)
+    );
+
+    const pagamentosBase = pagamentos.filter(
+      (item) => item.comissao_id === comissao.id
+    );
+
+    const pagamentosComissao = adicionarSituacaoPagamentos(
+      possuiFiltroParticipante
+        ? pagamentosBase.filter((item) =>
+            idsSplitsEscopo.has(item.split_id)
+          )
+        : pagamentosBase
+    );
+
     mapa.set(comissao.id, {
-      recebimentos:
-        calcularResumoRecebimentos(
-          recebimentosComissao
-        ),
-      pagamentos:
-        calcularResumoPagamentos(
-          pagamentosComissao
-        ),
+      recebimentos: calcularResumoRecebimentos(recebimentosComissao),
+      pagamentos: calcularResumoPagamentos(pagamentosComissao),
       splits: calcularResumoSplits({
-        valor_comissao_bruta:
-          comissao.valor_comissao_bruta,
+        valor_comissao_bruta: comissao.valor_comissao_bruta,
         splits: splitsComissao,
       }),
+      correspondeParticipante:
+        !possuiFiltroParticipante || splitsEscopo.length > 0,
     });
   }
 
@@ -1643,11 +1764,14 @@ async function buscarResumosComissoes(
 function criarResumoGeralVazio(): ResumoComissoesGeral {
   return {
     valor_comissao_bruta: 0,
+    valor_total_a_receber: 0,
     valor_a_receber: 0,
     valor_recebe_hoje: 0,
     valor_atrasado_recebimento: 0,
     valor_recebido: 0,
+    valor_total_a_pagar: 0,
     valor_a_pagar: 0,
+    valor_vence_hoje_pagamento: 0,
     valor_atrasado_pagamento: 0,
     valor_pago: 0,
     valor_residual_corretora: 0,
@@ -1659,68 +1783,48 @@ function calcularResumoGeral(
   itens: ItemComissaoGeral[]
 ): ResumoComissoesGeral {
   const resumo = criarResumoGeralVazio();
-
   resumo.quantidade_comissoes = itens.length;
 
   for (const item of itens) {
-    resumo.valor_comissao_bruta +=
-      item.comissao.valor_comissao_bruta;
+    resumo.valor_comissao_bruta += item.comissao.valor_comissao_bruta;
+    resumo.valor_a_receber += item.resumo_recebimentos.valor_a_receber;
+    resumo.valor_recebe_hoje += item.resumo_recebimentos.valor_recebe_hoje;
+    resumo.valor_atrasado_recebimento += item.resumo_recebimentos.valor_atrasado;
+    resumo.valor_recebido += item.resumo_recebimentos.valor_recebido;
 
-    resumo.valor_a_receber +=
-      item.resumo_recebimentos.valor_a_receber;
-
-    resumo.valor_recebe_hoje +=
-      item.resumo_recebimentos.valor_recebe_hoje;
-
-    resumo.valor_atrasado_recebimento +=
-      item.resumo_recebimentos.valor_atrasado;
-
-    resumo.valor_recebido +=
-      item.resumo_recebimentos.valor_recebido;
-
-    resumo.valor_a_pagar +=
-      item.resumo_pagamentos.valor_a_pagar;
-
-    resumo.valor_atrasado_pagamento +=
-      item.resumo_pagamentos.valor_atrasado;
-
-    resumo.valor_pago +=
-      item.resumo_pagamentos.valor_pago;
+    resumo.valor_a_pagar += item.resumo_pagamentos.valor_a_pagar;
+    resumo.valor_vence_hoje_pagamento += item.resumo_pagamentos.valor_vence_hoje;
+    resumo.valor_atrasado_pagamento += item.resumo_pagamentos.valor_atrasado;
+    resumo.valor_pago += item.resumo_pagamentos.valor_pago;
 
     resumo.valor_residual_corretora +=
       item.resumo_splits.valor_residual_corretora;
   }
 
+  resumo.valor_total_a_receber =
+    resumo.valor_a_receber +
+    resumo.valor_recebe_hoje +
+    resumo.valor_atrasado_recebimento;
+
+  resumo.valor_total_a_pagar =
+    resumo.valor_a_pagar +
+    resumo.valor_vence_hoje_pagamento +
+    resumo.valor_atrasado_pagamento;
+
   return {
-    valor_comissao_bruta: arredondarMoeda(
-      resumo.valor_comissao_bruta
-    ),
-    valor_a_receber: arredondarMoeda(
-      resumo.valor_a_receber
-    ),
-    valor_recebe_hoje: arredondarMoeda(
-      resumo.valor_recebe_hoje
-    ),
-    valor_atrasado_recebimento: arredondarMoeda(
-      resumo.valor_atrasado_recebimento
-    ),
-    valor_recebido: arredondarMoeda(
-      resumo.valor_recebido
-    ),
-    valor_a_pagar: arredondarMoeda(
-      resumo.valor_a_pagar
-    ),
-    valor_atrasado_pagamento: arredondarMoeda(
-      resumo.valor_atrasado_pagamento
-    ),
-    valor_pago: arredondarMoeda(
-      resumo.valor_pago
-    ),
-    valor_residual_corretora: arredondarMoeda(
-      resumo.valor_residual_corretora
-    ),
-    quantidade_comissoes:
-      resumo.quantidade_comissoes,
+    valor_comissao_bruta: arredondarMoeda(resumo.valor_comissao_bruta),
+    valor_total_a_receber: arredondarMoeda(resumo.valor_total_a_receber),
+    valor_a_receber: arredondarMoeda(resumo.valor_a_receber),
+    valor_recebe_hoje: arredondarMoeda(resumo.valor_recebe_hoje),
+    valor_atrasado_recebimento: arredondarMoeda(resumo.valor_atrasado_recebimento),
+    valor_recebido: arredondarMoeda(resumo.valor_recebido),
+    valor_total_a_pagar: arredondarMoeda(resumo.valor_total_a_pagar),
+    valor_a_pagar: arredondarMoeda(resumo.valor_a_pagar),
+    valor_vence_hoje_pagamento: arredondarMoeda(resumo.valor_vence_hoje_pagamento),
+    valor_atrasado_pagamento: arredondarMoeda(resumo.valor_atrasado_pagamento),
+    valor_pago: arredondarMoeda(resumo.valor_pago),
+    valor_residual_corretora: arredondarMoeda(resumo.valor_residual_corretora),
+    quantidade_comissoes: resumo.quantidade_comissoes,
   };
 }
 
@@ -1765,8 +1869,6 @@ export async function buscarComissoesGeral(
     const {
       pagina,
       limite,
-      inicio,
-      fim,
     } = normalizarPagina(
       filtros.pagina,
       filtros.limite
@@ -1786,6 +1888,7 @@ export async function buscarComissoesGeral(
             produto_id,
             seguradora_id,
             numero_apolice,
+            data_venda,
             valor_aceito,
             valor_atual,
             status
@@ -1823,13 +1926,27 @@ export async function buscarComissoesGeral(
       );
     }
 
+    if (filtros.data_inicio) {
+      query = query.gte(
+        "crm_contratos.data_venda",
+        filtros.data_inicio
+      );
+    }
+
+    if (filtros.data_fim) {
+      query = query.lte(
+        "crm_contratos.data_venda",
+        filtros.data_fim
+      );
+    }
+
     const {
       data,
       error,
-      count,
     } = await query
-      .order("created_at", { ascending: false })
-      .range(inicio, fim);
+      .order("created_at", {
+        ascending: false,
+      });
 
     if (error) {
       throw new Error(error.message);
@@ -1933,7 +2050,7 @@ export async function buscarComissoesGeral(
           )
         )
       ),
-      buscarResumosComissoes(comissoes),
+      buscarResumosComissoes(comissoes, filtros),
     ]);
 
     let itens: ItemComissaoGeral[] =
@@ -1990,6 +2107,10 @@ export async function buscarComissoesGeral(
           return [];
         }
 
+        if (!resumo.correspondeParticipante) {
+          return [];
+        }
+
         return [
           {
             comissao,
@@ -1997,6 +2118,8 @@ export async function buscarComissoesGeral(
               id: contrato.id,
               numero_apolice:
                 contrato.numero_apolice,
+              data_venda:
+                contrato.data_venda,
               produto_id:
                 contrato.produto_id,
               seguradora_id:
@@ -2124,68 +2247,40 @@ export async function buscarComissoesGeral(
       });
     }
 
-    if (filtros.tipo_participante) {
-      const idsComissao =
-        itens.map(
-          (item) => item.comissao.id
-        );
 
-      if (idsComissao.length) {
-        const { data: splitsFiltrados, error: splitsError } =
-          await supabase
-            .from("crm_comissao_splits")
-            .select("comissao_id")
-            .in("comissao_id", idsComissao)
-            .eq(
-              "tipo_participante",
-              filtros.tipo_participante
-            );
+    const resumo =
+      calcularResumoGeral(itens);
 
-        if (splitsError) {
-          throw new Error(
-            splitsError.message
-          );
-        }
+    const total =
+      itens.length;
 
-        const permitidas = new Set(
-          (splitsFiltrados ?? []).map(
-            (item) => item.comissao_id
+    const totalPaginas =
+      total > 0
+        ? Math.ceil(
+            total / limite
           )
-        );
+        : 0;
 
-        itens = itens.filter((item) =>
-          permitidas.has(item.comissao.id)
-        );
-      } else {
-        itens = [];
-      }
-    }
+    const inicioPagina =
+      (pagina - 1) * limite;
 
-    /*
-     * data_inicio/data_fim serão aplicados corretamente
-     * quando a visão geral for movida para uma RPC/view.
-     * A semântica deverá ser definida:
-     * - data prevista de recebimento?
-     * - data prevista de pagamento?
-     * - ou ambas?
-     *
-     * Não vamos assumir isso silenciosamente aqui.
-     */
+    const fimPagina =
+      inicioPagina + limite;
 
-    const totalBanco = count ?? 0;
+    const itensPaginados =
+      itens.slice(
+        inicioPagina,
+        fimPagina
+      );
 
     return {
-      itens,
-      resumo: calcularResumoGeral(itens),
-      total: totalBanco,
+      itens: itensPaginados,
+      resumo,
+      total,
       pagina,
       limite,
       total_paginas:
-        totalBanco > 0
-          ? Math.ceil(
-              totalBanco / limite
-            )
-          : 0,
+        totalPaginas,
     };
   } catch (erro) {
     throw new Error(

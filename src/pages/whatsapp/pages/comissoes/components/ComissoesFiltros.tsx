@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   RotateCcw,
   Search,
@@ -26,6 +27,7 @@ interface ComissoesFiltrosProps {
   corretores?: OpcaoFiltro[];
   seguradoras?: OpcaoFiltro[];
   produtos?: OpcaoFiltro[];
+  participantes?: OpcaoFiltro[];
   onFiltroChange: <
     K extends keyof FiltrosComissoes
   >(
@@ -48,9 +50,54 @@ export function ComissoesFiltros({
   corretores = [],
   seguradoras = [],
   produtos = [],
+  participantes = [],
   onFiltroChange,
   onLimpar,
 }: ComissoesFiltrosProps) {
+  const [dataInicioDigitada, setDataInicioDigitada] =
+    useState(filtros.data_inicio ?? "");
+  const [dataFimDigitada, setDataFimDigitada] =
+    useState(filtros.data_fim ?? "");
+
+  useEffect(() => {
+    setDataInicioDigitada(
+      filtros.data_inicio ?? ""
+    );
+  }, [filtros.data_inicio]);
+
+  useEffect(() => {
+    setDataFimDigitada(
+      filtros.data_fim ?? ""
+    );
+  }, [filtros.data_fim]);
+
+  const periodoAlterado =
+    dataInicioDigitada !==
+      (filtros.data_inicio ?? "") ||
+    dataFimDigitada !==
+      (filtros.data_fim ?? "");
+
+  const periodoInvalido =
+    Boolean(
+      dataInicioDigitada &&
+        dataFimDigitada &&
+        dataFimDigitada < dataInicioDigitada
+    );
+
+  function aplicarPeriodo() {
+    if (periodoInvalido) return;
+
+    onFiltroChange(
+      "data_inicio",
+      dataInicioDigitada
+    );
+
+    onFiltroChange(
+      "data_fim",
+      dataFimDigitada
+    );
+  }
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -82,16 +129,15 @@ export function ComissoesFiltros({
 
         <div>
           <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-            Data inicial
+            Data da venda - inicial
           </label>
 
           <input
             type="date"
-            value={filtros.data_inicio ?? ""}
+            value={dataInicioDigitada}
             disabled={loading}
             onChange={(event) =>
-              onFiltroChange(
-                "data_inicio",
+              setDataInicioDigitada(
                 event.target.value
               )
             }
@@ -101,16 +147,15 @@ export function ComissoesFiltros({
 
         <div>
           <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-            Data final
+            Data da venda - final
           </label>
 
           <input
             type="date"
-            value={filtros.data_fim ?? ""}
+            value={dataFimDigitada}
             disabled={loading}
             onChange={(event) =>
-              onFiltroChange(
-                "data_fim",
+              setDataFimDigitada(
                 event.target.value
               )
             }
@@ -120,7 +165,7 @@ export function ComissoesFiltros({
 
         <div>
           <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-            Corretor
+            Corretor responsável
           </label>
 
           <select
@@ -291,7 +336,7 @@ export function ComissoesFiltros({
 
         <div>
           <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-            Participante
+            Tipo de participante
           </label>
 
           <select
@@ -300,15 +345,18 @@ export function ComissoesFiltros({
               ""
             }
             disabled={loading}
-            onChange={(event) =>
+            onChange={(event) => {
               onFiltroChange(
                 "tipo_participante",
-                event.target
-                  .value as
+                event.target.value as
                   | TipoParticipanteComissao
                   | ""
-              )
-            }
+              );
+              onFiltroChange(
+                "participante_id",
+                ""
+              );
+            }}
             className={selectClassName}
           >
             <option value="">
@@ -327,6 +375,58 @@ export function ComissoesFiltros({
             )}
           </select>
         </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            Participante específico
+          </label>
+
+          <select
+            value={filtros.participante_id ?? ""}
+            disabled={loading || participantes.length === 0}
+            onChange={(event) =>
+              onFiltroChange(
+                "participante_id",
+                event.target.value
+              )
+            }
+            className={selectClassName}
+          >
+            <option value="">
+              Todos os participantes
+            </option>
+
+            {participantes.map((opcao) => (
+              <option
+                key={opcao.value}
+                value={opcao.value}
+              >
+                {opcao.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={
+            loading ||
+            !periodoAlterado ||
+            periodoInvalido
+          }
+          onClick={aplicarPeriodo}
+          className="inline-flex h-9 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-400"
+        >
+          Aplicar período
+        </button>
+
+        {periodoInvalido && (
+          <span className="text-xs font-medium text-red-600 dark:text-red-400">
+            A data final não pode ser anterior à data inicial.
+          </span>
+        )}
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">

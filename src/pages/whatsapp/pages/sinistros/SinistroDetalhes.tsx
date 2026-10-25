@@ -23,6 +23,11 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "../../../../lib/supabaseClient";
+import { useAuth } from "../../../../auth/AuthContext";
+import { toast } from "sonner";
+import ModalArmazenamento from "../../configuracao-corretora/ModalArmazenamento";
+import { useStorageCommercial } from "../../hooks/useStorageCommercial";
+import { isStorageLimitError } from "../../services/storageQuotaError";
 import {
   adicionarEnvolvido,
   atualizarSinistro,
@@ -32,6 +37,7 @@ import {
   criarCompromissoNaAgenda,
   criarOcorrencia,
   enviarAnexo,
+  excluirSinistro,
   obterUrlAnexo,
   removerAnexo,
   type CrmAgendaEvento,
@@ -240,6 +246,9 @@ export default function SinistroDetalhes() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const inputArquivoRef = useRef<HTMLInputElement | null>(null);
+  const { userProfile } = useAuth();
+  const storageCommercial = useStorageCommercial();
+  const podeExcluir = userProfile?.tipo_usuario === "CORRETORA";
 
   const [dossie, setDossie] = useState<CrmSinistroDossie | null>(null);
   const [cliente, setCliente] = useState<ClienteInfo | null>(null);
@@ -255,6 +264,7 @@ export default function SinistroDetalhes() {
   const [modalEnvolvido, setModalEnvolvido] = useState(false);
   const [modalCompromisso, setModalCompromisso] = useState(false);
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
+  const [excluindoSinistro, setExcluindoSinistro] = useState(false);
 
   const [tipoOcorrencia, setTipoOcorrencia] = useState("ATUALIZACAO");
   const [relatoOcorrencia, setRelatoOcorrencia] = useState("");
@@ -616,6 +626,12 @@ export default function SinistroDetalhes() {
       setAba("ANEXOS");
     } catch (error: any) {
       console.error("Erro ao enviar anexo:", error);
+
+      if (isStorageLimitError(error)) {
+        await storageCommercial.abrirModalArmazenamento();
+        return;
+      }
+
       setErro(error?.message || "Não foi possível enviar o arquivo.");
     } finally {
       setEnviandoAnexo(false);
@@ -623,6 +639,53 @@ export default function SinistroDetalhes() {
       if (inputArquivoRef.current) {
         inputArquivoRef.current.value = "";
       }
+    }
+  };
+
+  const handleExcluirSinistro = async () => {
+    if (
+      !sinistro ||
+      !podeExcluir ||
+      excluindoSinistro
+    ) {
+      return;
+    }
+
+    const identificacao =
+      sinistro.numero_sinistro
+        ? `#${sinistro.numero_sinistro}`
+        : "sem número";
+
+    const confirmou = window.confirm(
+      `Excluir definitivamente o sinistro ${identificacao}?\n\n` +
+        "Esta ação removerá também ocorrências, envolvidos, compromissos e anexos armazenados.\n\n" +
+        "Esta ação não pode ser desfeita."
+    );
+
+    if (!confirmou) return;
+
+    try {
+      setExcluindoSinistro(true);
+      setErro("");
+
+      await excluirSinistro(
+        sinistro.id,
+        sinistro.corretora_id
+      );
+
+      toast.success("Sinistro excluído com sucesso.");
+      navigate("/whatsapp/sinistro");
+    } catch (error: any) {
+      console.error("Erro ao excluir sinistro:", error);
+
+      const mensagem =
+        error?.message ||
+        "Não foi possível excluir o sinistro.";
+
+      setErro(mensagem);
+      toast.error(mensagem);
+    } finally {
+      setExcluindoSinistro(false);
     }
   };
 
@@ -827,6 +890,22 @@ export default function SinistroDetalhes() {
                 )}
                 Anexo
               </button>
+
+              {podeExcluir && (
+                <button
+                  type="button"
+                  onClick={() => void handleExcluirSinistro()}
+                  disabled={excluindoSinistro}
+                  className="flex h-10 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:opacity-60 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+                >
+                  {excluindoSinistro ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                  Excluir sinistro
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1766,6 +1845,10 @@ export default function SinistroDetalhes() {
           </div>
         </div>
       )}
+
+      <ModalArmazenamento
+        {...storageCommercial.modalProps}
+      />
     </div>
   );
 }

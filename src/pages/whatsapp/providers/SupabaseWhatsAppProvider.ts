@@ -18,6 +18,9 @@ import type {
 import { getWhatsAppTransport } from './transports/getWhatsAppTransport'
 import type { WhatsAppTransportName } from './transports/WhatsAppTransport'
 import { getBrazilPhoneVariants, normalizeWhatsAppPhone } from '../utils/whatsappPhone'
+import {
+  extrairStorageQuotaError,
+} from '../services/storageQuotaError'
 
 
 interface SupabaseMidia {
@@ -1979,6 +1982,15 @@ async sendContactMessage(
         b2Error
       )
 
+      const storageError =
+        await extrairStorageQuotaError(
+          b2Error
+        )
+
+      if (storageError) {
+        throw storageError
+      }
+
       throw new Error(
         b2Error.message ||
           'Erro ao preparar upload da mídia no Backblaze.'
@@ -2419,22 +2431,30 @@ async sendContactMessage(
      * Continua catalogando no núcleo
      * Central Storage exatamente como antes.
      */
-    const finalized =
-      await finalizeWhatsAppMediaInStorage(
+    void finalizeWhatsAppMediaInStorage(
         insertedMedia.id
-      )
-
-    if (!finalized) {
-      console.error(
-        '❌ Central Storage → mídia enviada, mas a catalogação não foi confirmada:',
-        {
-          mediaId:
-            insertedMedia.id,
-
-          storagePath,
+      ).then(finalized => {
+        if (!finalized) {
+          console.error(
+            '❌ Central Storage → mídia enviada, mas a catalogação não foi confirmada:',
+            {
+              mediaId:
+                insertedMedia.id,
+              storagePath,
+            }
+          )
         }
-      )
-    }
+      }).catch(error => {
+        console.error(
+          '❌ Central Storage → falha assíncrona ao catalogar mídia:',
+          {
+            mediaId:
+              insertedMedia.id,
+            storagePath,
+            error,
+          }
+        )
+      })
   }
 
   console.log(

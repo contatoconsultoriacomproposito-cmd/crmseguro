@@ -1,4 +1,5 @@
 import { supabase } from "../../../lib/supabaseClient";
+import { extrairStorageQuotaError } from "./storageQuotaError";
 
 export type CrmAssistenciaStatus =
   | "SOLICITADA"
@@ -730,6 +731,15 @@ export async function enviarAnexoAssistencia(
       prepareError
     );
 
+    const storageError =
+      await extrairStorageQuotaError(
+        prepareError
+      );
+
+    if (storageError) {
+      throw storageError;
+    }
+
     throw new Error(
       prepareError.message ||
         "Não foi possível preparar o envio do arquivo."
@@ -797,6 +807,15 @@ export async function enviarAnexoAssistencia(
       "Erro ao finalizar upload do anexo da assistência:",
       finalizeError
     );
+
+    const storageError =
+      await extrairStorageQuotaError(
+        finalizeError
+      );
+
+    if (storageError) {
+      throw storageError;
+    }
 
     throw new Error(
       finalizeError.message ||
@@ -1012,6 +1031,160 @@ export async function removerAnexoAssistencia(
         data,
         "Não foi possível remover o arquivo."
       )
+    );
+  }
+}
+
+
+async function validarExclusaoAssistenciaCorretora(
+  corretoraId: string
+): Promise<void> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user?.id) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const { data: perfil, error: perfilError } = await supabase
+    .from("usuarios_perfis")
+    .select("id, tipo_usuario, ativo")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (perfilError) {
+    throw new Error("Não foi possível validar a permissão de exclusão.");
+  }
+
+  if (
+    !perfil ||
+    perfil.ativo !== true ||
+    perfil.tipo_usuario !== "CORRETORA" ||
+    perfil.id !== corretoraId
+  ) {
+    throw new Error(
+      "Somente a corretora responsável pode excluir esta assistência."
+    );
+  }
+}
+
+export async function excluirAssistencia(
+  assistenciaId: string,
+  corretoraId: string
+): Promise<void> {
+  if (!assistenciaId) {
+    throw new Error("ID da assistência não informado.");
+  }
+
+  if (!corretoraId) {
+    throw new Error("Corretora não informada.");
+  }
+
+  await validarExclusaoAssistenciaCorretora(corretoraId);
+
+  const { data: assistencia, error: assistenciaError } = await supabase
+    .from("crm_assistencias")
+    .select("id, corretora_id")
+    .eq("id", assistenciaId)
+    .eq("corretora_id", corretoraId)
+    .maybeSingle();
+
+  if (assistenciaError) {
+    throw new Error(
+      assistenciaError.message ||
+        "Não foi possível validar a assistência para exclusão."
+    );
+  }
+
+  if (!assistencia) {
+    throw new Error(
+      "Assistência não encontrada ou não pertence a esta corretora."
+    );
+  }
+
+  /*
+   * Remove primeiro os arquivos físicos/catalogados.
+   * buscarTodosAnexosAssistencia inclui anexos da assistência e ocorrências.
+   */
+  const anexos = await buscarTodosAnexosAssistencia(assistenciaId);
+
+  for (const anexo of anexos) {
+    await removerAnexoAssistencia(anexo);
+  }
+
+  const { data: ocorrencias, error: ocorrenciasError } = await supabase
+    .from("crm_assistencias_ocorrencias")
+    .select("id")
+    .eq("assistencia_id", assistenciaId)
+    .eq("corretora_id", corretoraId);
+
+  if (ocorrenciasError) {
+    throw new Error(
+      ocorrenciasError.message ||
+        "Não foi possível preparar a exclusão das ocorrências da assistência."
+    );
+  }
+
+  const ocorrenciaIds = (ocorrencias ?? [])
+    .map((item: any) => item.id)
+    .filter(Boolean);
+
+  const { error: agendaAssistenciaError } = await supabase
+    .from("crm_agenda")
+    .delete()
+    .eq("corretora_id", corretoraId)
+    .eq("tipo_origem", "ASSISTENCIA")
+    .eq("origem_id", assistenciaId);
+
+  if (agendaAssistenciaError) {
+    throw new Error(
+      agendaAssistenciaError.message ||
+        "Não foi possível remover os compromissos da assistência."
+    );
+  }
+
+  if (ocorrenciaIds.length > 0) {
+    const { error: agendaOcorrenciasError } = await supabase
+      .from("crm_agenda")
+      .delete()
+      .eq("corretora_id", corretoraId)
+      .eq("tipo_origem", "ASSISTENCIA_OCORRENCIA")
+      .in("origem_id", ocorrenciaIds);
+
+    if (agendaOcorrenciasError) {
+      throw new Error(
+        agendaOcorrenciasError.message ||
+          "Não foi possível remover os compromissos das ocorrências."
+      );
+    }
+  }
+
+  const { error: ocorrenciasDeleteError } = await supabase
+    .from("crm_assistencias_ocorrencias")
+    .delete()
+    .eq("assistencia_id", assistenciaId)
+    .eq("corretora_id", corretoraId);
+
+  if (ocorrenciasDeleteError) {
+    throw new Error(
+      ocorrenciasDeleteError.message ||
+        "Não foi possível remover as ocorrências da assistência."
+    );
+  }
+
+  const { error: deleteError } = await supabase
+    .from("crm_assistencias")
+    .delete()
+    .eq("id", assistenciaId)
+    .eq("corretora_id", corretoraId);
+
+  if (deleteError) {
+    console.error("Erro ao excluir assistência:", deleteError);
+    throw new Error(
+      deleteError.message ||
+        "Não foi possível excluir a assistência."
     );
   }
 }

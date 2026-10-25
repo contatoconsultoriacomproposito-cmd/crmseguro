@@ -33,11 +33,16 @@ import {
   type DocumentoGrupo,
 } from '../types/documentos'
 
+import {
+  isStorageLimitError,
+} from '../../services/storageQuotaError'
+
 interface ModalAdicionarDocumentoProps {
   conversationId: string
   contatoId: string
   onClose: () => void
   onSuccess: () => void
+  onStorageLimit: () => Promise<void> | void
 }
 
 const ACCEPT_DOCUMENTOS = [
@@ -191,6 +196,7 @@ export function ModalAdicionarDocumento({
   contatoId,
   onClose,
   onSuccess,
+  onStorageLimit,
 }: ModalAdicionarDocumentoProps) {
   const inputArquivoRef =
     useRef<HTMLInputElement | null>(
@@ -435,6 +441,22 @@ export function ModalAdicionarDocumento({
           'Erro ao adicionar documento:',
           error
         )
+
+        if (
+          isStorageLimitError(
+            error
+          )
+        ) {
+          toast.error(
+            'O documento não cabe no espaço disponível.'
+          )
+
+          onClose()
+
+          await onStorageLimit()
+
+          return
+        }
 
         toast.error(
           error instanceof Error
