@@ -38,13 +38,19 @@ const RESULTADO_INICIAL_CORRETORA: ResultadoBuscaComissoesGeral = {
   itens: [],
   resumo: {
     valor_comissao_bruta: 0,
+
+    valor_total_a_receber: 0,
     valor_a_receber: 0,
     valor_recebe_hoje: 0,
     valor_atrasado_recebimento: 0,
     valor_recebido: 0,
+
+    valor_total_a_pagar: 0,
     valor_a_pagar: 0,
+    valor_vence_hoje_pagamento: 0,
     valor_atrasado_pagamento: 0,
     valor_pago: 0,
+
     valor_residual_corretora: 0,
     quantidade_comissoes: 0,
   },
