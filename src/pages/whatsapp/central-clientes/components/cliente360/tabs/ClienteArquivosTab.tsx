@@ -7,6 +7,7 @@ import {
   FileText,
   FileVideo,
   Loader2,
+  Plus,
   RefreshCw,
   Trash2,
 } from 'lucide-react'
@@ -18,10 +19,11 @@ import {
 } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '../../../../../../lib/supabaseClient'
+import { useAuth } from '../../../../../../auth/AuthContext'
 import { criarUrlLeituraStorage } from '../../../../armazenamento/services/storageService'
 import { excluirArquivoStorage } from '../../../../armazenamento/services/storageService'
 import type { ClienteCentral } from '../../../types/centralClientes'
-import { useAuth } from '../../../../../../auth/AuthContext'
+import ModalAdicionarArquivoCliente from '../../ModalAdicionarArquivoCliente'
 
 interface ArquivoRow {
   id: string
@@ -165,16 +167,21 @@ export default function ClienteArquivosTab({
 }: {
   cliente: ClienteCentral
 }) {
-
   const { userProfile } = useAuth()
+
   const podeExcluir =
-  userProfile?.tipo_usuario === 'CORRETORA'
+    userProfile?.tipo_usuario ===
+    'CORRETORA'
 
-  const [itens, setItens] =
-    useState<ArquivoRow[]>([])
+  const [
+    itens,
+    setItens,
+  ] = useState<ArquivoRow[]>([])
 
-  const [loading, setLoading] =
-    useState(true)
+  const [
+    loading,
+    setLoading,
+  ] = useState(true)
 
   const [
     atualizando,
@@ -188,86 +195,100 @@ export default function ClienteArquivosTab({
     null
   )
 
+  const [
+    modalAdicionarAberto,
+    setModalAdicionarAberto,
+  ] = useState(false)
+
   const carregar =
-    useCallback(async () => {
-      setLoading(true)
-
-      try {
-        const coluna =
-          cliente.tipo === 'PF'
-            ? 'crm_pessoa_id'
-            : 'crm_empresa_id'
-
-        const {
-          data,
-          error,
-        } = await supabase
-          .from('crm_arquivos')
-          .select(`
-            id,
-            nome_original,
-            mime_type,
-            tamanho_bytes,
-            tipo_arquivo,
-            origem,
-            origem_id,
-            storage_path,
-            status,
-            metadata,
-            created_at
-          `)
-          .eq(
-            coluna,
-            cliente.id
-          )
-          .eq(
-            'status',
-            'ATIVO'
-          )
-          .order(
-            'created_at',
-            {
-              ascending: false,
-            }
-          )
-
-        if (error) {
-          throw error
+    useCallback(
+      async (
+        mostrarLoading = true
+      ) => {
+        if (mostrarLoading) {
+          setLoading(true)
         }
 
-        setItens(
-          (data || []).map(
-            item => ({
-              ...item,
-              tamanho_bytes:
-                Number(
-                  item.tamanho_bytes ||
-                    0
-                ),
-              metadata:
-                item.metadata || {},
-            })
-          ) as ArquivoRow[]
-        )
-      } catch (error: any) {
-        console.error(
-          'Erro ao carregar arquivos do cliente:',
-          error
-        )
+        try {
+          const coluna =
+            cliente.tipo === 'PF'
+              ? 'crm_pessoa_id'
+              : 'crm_empresa_id'
 
-        toast.error(
-          error?.message ||
-            'Não foi possível carregar os arquivos.'
-        )
+          const {
+            data,
+            error,
+          } = await supabase
+            .from('crm_arquivos')
+            .select(`
+              id,
+              nome_original,
+              mime_type,
+              tamanho_bytes,
+              tipo_arquivo,
+              origem,
+              origem_id,
+              storage_path,
+              status,
+              metadata,
+              created_at
+            `)
+            .eq(
+              coluna,
+              cliente.id
+            )
+            .eq(
+              'status',
+              'ATIVO'
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false,
+              }
+            )
 
-        setItens([])
-      } finally {
-        setLoading(false)
-      }
-    }, [
-      cliente.id,
-      cliente.tipo,
-    ])
+          if (error) {
+            throw error
+          }
+
+          setItens(
+            (data || []).map(
+              item => ({
+                ...item,
+                tamanho_bytes:
+                  Number(
+                    item.tamanho_bytes ||
+                      0
+                  ),
+                metadata:
+                  item.metadata || {},
+              })
+            ) as ArquivoRow[]
+          )
+        } catch (error: any) {
+          console.error(
+            'Erro ao carregar arquivos do cliente:',
+            error
+          )
+
+          toast.error(
+            error?.message ||
+              'Não foi possível carregar os arquivos.'
+          )
+
+          setItens([])
+        } finally {
+          if (mostrarLoading) {
+            setLoading(false)
+          }
+        }
+      },
+      [
+        cliente.id,
+        cliente.tipo,
+      ]
+    )
 
   useEffect(() => {
     void carregar()
@@ -275,20 +296,35 @@ export default function ClienteArquivosTab({
 
   const atualizar =
     async () => {
+      if (
+        atualizando ||
+        arquivoEmAcao
+      ) {
+        return
+      }
+
       setAtualizando(true)
 
       try {
-        await carregar()
+        await carregar(false)
       } finally {
         setAtualizando(false)
       }
+    }
+
+  const handleArquivoAdicionado =
+    async () => {
+      await carregar(false)
     }
 
   const totalBytes =
     useMemo(
       () =>
         itens.reduce(
-          (total, item) =>
+          (
+            total,
+            item
+          ) =>
             total +
             Number(
               item.tamanho_bytes ||
@@ -375,7 +411,9 @@ export default function ClienteArquivosTab({
           )
 
         const response =
-          await fetch(readUrl)
+          await fetch(
+            readUrl
+          )
 
         if (!response.ok) {
           throw new Error(
@@ -396,7 +434,8 @@ export default function ClienteArquivosTab({
             'a'
           )
 
-        link.href = blobUrl
+        link.href =
+          blobUrl
 
         link.download =
           arquivo.nome_original ||
@@ -478,7 +517,7 @@ export default function ClienteArquivosTab({
           'Arquivo excluído com sucesso.'
         )
 
-        await carregar()
+        await carregar(false)
       } catch (error) {
         console.error(
           'Erro ao excluir arquivo:',
@@ -509,214 +548,288 @@ export default function ClienteArquivosTab({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold text-slate-800">
-            Arquivos
-          </h3>
+    <>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">
+              Arquivos
+            </h3>
 
-          <p className="mt-0.5 text-xs text-slate-400">
-            Arquivos do cliente armazenados na Central de Armazenamento.
-          </p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Arquivos do cliente armazenados na Central de Armazenamento.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setModalAdicionarAberto(
+                  true
+                )
+              }
+              disabled={
+                Boolean(
+                  arquivoEmAcao
+                )
+              }
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Plus
+                size={14}
+              />
+
+              Adicionar documento
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                void atualizar()
+              }}
+              disabled={
+                atualizando ||
+                Boolean(
+                  arquivoEmAcao
+                )
+              }
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw
+                size={14}
+                className={
+                  atualizando
+                    ? 'animate-spin'
+                    : ''
+                }
+              />
+
+              Atualizar
+            </button>
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={atualizar}
-          disabled={
-            atualizando ||
-            Boolean(
-              arquivoEmAcao
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              Arquivos vinculados
+            </p>
+
+            <p className="mt-1 text-xl font-bold text-slate-900">
+              {itens.length}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              Espaço utilizado
+            </p>
+
+            <p className="mt-1 text-xl font-bold text-slate-900">
+              {tamanho(
+                totalBytes
+              )}
+            </p>
+          </div>
+        </div>
+
+        {itens.length === 0 ? (
+          <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-4 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400">
+              <File size={18} />
+            </div>
+
+            <p className="mt-3 text-sm font-semibold text-slate-600">
+              Nenhum arquivo vinculado
+            </p>
+
+            <p className="mt-1 max-w-md text-xs text-slate-400">
+              Ainda não existem arquivos ativos vinculados diretamente a este cliente.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="divide-y divide-slate-100">
+              {itens.map(
+                item => {
+                  const processando =
+                    arquivoEmAcao ===
+                    item.id
+
+                  return (
+                    <article
+                      key={
+                        item.id
+                      }
+                      className="flex flex-col gap-4 p-4 transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                          {processando ? (
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <IconeArquivo
+                              tipo={
+                                item.tipo_arquivo
+                              }
+                            />
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <p
+                            className="truncate text-sm font-semibold text-slate-700"
+                            title={
+                              item.nome_original
+                            }
+                          >
+                            {
+                              item.nome_original
+                            }
+                          </p>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
+                            <span>
+                              {
+                                item.tipo_arquivo
+                              }
+                            </span>
+
+                            <span>
+                              •
+                            </span>
+
+                            <span>
+                              {tamanho(
+                                item.tamanho_bytes
+                              )}
+                            </span>
+
+                            <span>
+                              •
+                            </span>
+
+                            <span>
+                              {labelOrigem(
+                                item.origem
+                              )}
+                            </span>
+
+                            <span>
+                              •
+                            </span>
+
+                            <span>
+                              {formatarData(
+                                item.created_at
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          title="Visualizar arquivo"
+                          disabled={
+                            Boolean(
+                              arquivoEmAcao
+                            )
+                          }
+                          onClick={() =>
+                            void visualizarArquivo(
+                              item
+                            )
+                          }
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <ExternalLink
+                            size={15}
+                          />
+                        </button>
+
+                        <button
+                          type="button"
+                          title="Baixar arquivo"
+                          disabled={
+                            Boolean(
+                              arquivoEmAcao
+                            )
+                          }
+                          onClick={() =>
+                            void baixarArquivo(
+                              item
+                            )
+                          }
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Download
+                            size={15}
+                          />
+                        </button>
+
+                        {podeExcluir && (
+                          <button
+                            type="button"
+                            title="Excluir arquivo"
+                            disabled={
+                              Boolean(
+                                arquivoEmAcao
+                              )
+                            }
+                            onClick={() =>
+                              void excluirArquivo(
+                                item
+                              )
+                            }
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Trash2
+                              size={15}
+                            />
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  )
+                }
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {modalAdicionarAberto && (
+        <ModalAdicionarArquivoCliente
+          cliente={{
+            id:
+              cliente.id,
+
+            tipo:
+              cliente.tipo,
+
+            nome:
+              cliente.nome,
+
+            documento:
+              cliente.documento ||
+              null,
+          }}
+          onClose={() =>
+            setModalAdicionarAberto(
+              false
             )
           }
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw
-            size={14}
-            className={
-              atualizando
-                ? 'animate-spin'
-                : ''
-            }
-          />
-
-          Atualizar
-        </button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-            Arquivos vinculados
-          </p>
-
-          <p className="mt-1 text-xl font-bold text-slate-900">
-            {itens.length}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-            Espaço utilizado
-          </p>
-
-          <p className="mt-1 text-xl font-bold text-slate-900">
-            {tamanho(
-              totalBytes
-            )}
-          </p>
-        </div>
-      </div>
-
-      {itens.length === 0 ? (
-        <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-4 text-center">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400">
-            <File size={18} />
-          </div>
-
-          <p className="mt-3 text-sm font-semibold text-slate-600">
-            Nenhum arquivo vinculado
-          </p>
-
-          <p className="mt-1 max-w-md text-xs text-slate-400">
-            Ainda não existem arquivos ativos vinculados diretamente a este cliente.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="divide-y divide-slate-100">
-            {itens.map(item => {
-              const processando =
-                arquivoEmAcao ===
-                item.id
-
-              return (
-                <article
-                  key={item.id}
-                  className="flex flex-col gap-4 p-4 transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                      {processando ? (
-                        <Loader2
-                          size={17}
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <IconeArquivo
-                          tipo={
-                            item.tipo_arquivo
-                          }
-                        />
-                      )}
-                    </div>
-
-                    <div className="min-w-0">
-                      <p
-                        className="truncate text-sm font-semibold text-slate-700"
-                        title={
-                          item.nome_original
-                        }
-                      >
-                        {
-                          item.nome_original
-                        }
-                      </p>
-
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
-                        <span>
-                          {item.tipo_arquivo}
-                        </span>
-
-                        <span>•</span>
-
-                        <span>
-                          {tamanho(
-                            item.tamanho_bytes
-                          )}
-                        </span>
-
-                        <span>•</span>
-
-                        <span>
-                          {labelOrigem(
-                            item.origem
-                          )}
-                        </span>
-
-                        <span>•</span>
-
-                        <span>
-                          {formatarData(
-                            item.created_at
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      title="Visualizar arquivo"
-                      disabled={
-                        Boolean(
-                          arquivoEmAcao
-                        )
-                      }
-                      onClick={() =>
-                        void visualizarArquivo(
-                          item
-                        )
-                      }
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <ExternalLink
-                        size={15}
-                      />
-                    </button>
-
-                    <button
-                      type="button"
-                      title="Baixar arquivo"
-                      disabled={
-                        Boolean(
-                          arquivoEmAcao
-                        )
-                      }
-                      onClick={() =>
-                        void baixarArquivo(
-                          item
-                        )
-                      }
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <Download
-                        size={15}
-                      />
-                    </button>
-
-                    {podeExcluir && (
-                      <button
-                        type="button"
-                        title="Excluir arquivo"
-                        disabled={Boolean(arquivoEmAcao)}
-                        onClick={() =>
-                          void excluirArquivo(item)
-                        }
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    )}
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        </div>
+          onSuccess={
+            handleArquivoAdicionado
+          }
+        />
       )}
-    </div>
+    </>
   )
 }
