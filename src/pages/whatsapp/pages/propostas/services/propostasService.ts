@@ -32,11 +32,36 @@ type UsuarioPerfilMinimo = {
 };
 
 type PropostaRow = Proposta & {
-  corretor?: { id: string; nome: string | null } | { id: string; nome: string | null }[] | null;
-  pessoa?: Record<string, unknown> | Record<string, unknown>[] | null;
-  empresa?: Record<string, unknown> | Record<string, unknown>[] | null;
+  corretor?:
+    | {
+        id: string;
+        nome: string | null;
+      }
+    | {
+        id: string;
+        nome: string | null;
+      }[]
+    | null;
+
+  pessoa?:
+    | Record<string, unknown>
+    | Record<string, unknown>[]
+    | null;
+
+  empresa?:
+    | Record<string, unknown>
+    | Record<string, unknown>[]
+    | null;
+
   itens?: PropostaItem[] | null;
 };
+
+type ContratoListaRow = Pick<
+  ContratoResumo,
+  | 'proposta_id'
+  | 'inicio_vigencia'
+  | 'fim_vigencia'
+>;
 
 function normalizarRelacao<T>(valor: T | T[] | null | undefined): T | null {
   if (Array.isArray(valor)) return valor[0] ?? null;
@@ -182,72 +207,116 @@ function obterCorretoraId(perfil: UsuarioPerfilMinimo): string {
 export async function listarPropostas(
   filtros: FiltrosPropostas = {},
 ): Promise<ResultadoListaPropostas> {
-  const perfil = await buscarPerfilAtual();
-  const corretoraId = obterCorretoraId(perfil);
+  const perfil =
+    await buscarPerfilAtual();
 
-  const pagina = Math.max(1, filtros.pagina ?? 1);
-  const porPagina = Math.min(
-    100,
-    Math.max(1, filtros.por_pagina ?? 20),
+  const corretoraId =
+    obterCorretoraId(perfil);
+
+  const pagina = Math.max(
+    1,
+    filtros.pagina ?? 1,
   );
 
-  const inicio = (pagina - 1) * porPagina;
-  const fim = inicio + porPagina - 1;
+  const porPagina = Math.min(
+    100,
+    Math.max(
+      1,
+      filtros.por_pagina ?? 20,
+    ),
+  );
+
+  const inicio =
+    (pagina - 1) * porPagina;
+
+  const fim =
+    inicio + porPagina - 1;
 
   const busca =
     filtros.busca
       ?.trim()
-      .toLocaleLowerCase('pt-BR') ?? '';
+      .toLocaleLowerCase(
+        'pt-BR',
+      ) ?? '';
 
+  /*
+   * ============================================================
+   * QUERY BASE
+   * ============================================================
+   *
+   * Mantém o comportamento atual da
+   * listagem, mas passa a carregar
+   * também o produto de cada item.
+   */
   const criarQuery = () => {
     let query = supabase
       .from('crm_propostas')
-      .select(`
-        *,
-        corretor:usuarios_perfis!crm_propostas_corretor_id_fkey(
-          id,
-          nome
-        ),
-        pessoa:crm_pessoas!crm_propostas_crm_pessoa_id_fkey(
-          id,
-          corretora_id,
-          corretor_id,
-          cpf,
-          dados,
-          cliente_id_legado
-        ),
-        empresa:crm_empresas!crm_propostas_crm_empresa_id_fkey(
-          id,
-          corretora_id,
-          corretor_id,
-          cnpj,
-          dados,
-          cliente_id_legado
-        ),
-        itens:crm_proposta_itens(
-          id,
-          proposta_id,
-          corretora_id,
-          produto_id,
-          seguradora_id,
-          valor_premio,
-          valor_liquido,
-          numero_cotacao,
-          parcelamento_cotado,
-          meio_pagamento_cotado,
-          coberturas_franquias,
-          resultado,
-          ordem,
-          created_at,
-          updated_at
-        )
-      `, { count: 'exact' })
-      .eq('corretora_id', corretoraId)
-      .order('created_at', {
-        ascending: false,
-      });
+      .select(
+        `
+          *,
+          corretor:usuarios_perfis!crm_propostas_corretor_id_fkey(
+            id,
+            nome
+          ),
+          pessoa:crm_pessoas!crm_propostas_crm_pessoa_id_fkey(
+            id,
+            corretora_id,
+            corretor_id,
+            cpf,
+            dados,
+            cliente_id_legado
+          ),
+          empresa:crm_empresas!crm_propostas_crm_empresa_id_fkey(
+            id,
+            corretora_id,
+            corretor_id,
+            cnpj,
+            dados,
+            cliente_id_legado
+          ),
+          itens:crm_proposta_itens(
+            id,
+            proposta_id,
+            corretora_id,
+            produto_id,
+            seguradora_id,
+            valor_premio,
+            valor_liquido,
+            numero_cotacao,
+            parcelamento_cotado,
+            meio_pagamento_cotado,
+            coberturas_franquias,
+            resultado,
+            ordem,
+            created_at,
+            updated_at,
+            produto:base_produtos(
+              id,
+              nome,
+              categoria,
+              descricao
+            )
+          )
+        `,
+        {
+          count: 'exact',
+        },
+      )
+      .eq(
+        'corretora_id',
+        corretoraId,
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false,
+        },
+      );
 
-    if (perfil.tipo_usuario === 'CORRETOR') {
+    if (
+      perfil.tipo_usuario ===
+      'CORRETOR'
+    ) {
       query = query.eq(
         'corretor_id',
         perfil.id,
@@ -261,21 +330,27 @@ export async function listarPropostas(
       );
     }
 
-    if (filtros.tipo_negocio) {
+    if (
+      filtros.tipo_negocio
+    ) {
       query = query.eq(
         'tipo_negocio',
         filtros.tipo_negocio,
       );
     }
 
-    if (filtros.corretor_id) {
+    if (
+      filtros.corretor_id
+    ) {
       query = query.eq(
         'corretor_id',
         filtros.corretor_id,
       );
     }
 
-    if (filtros.data_inicio) {
+    if (
+      filtros.data_inicio
+    ) {
       query = query.gte(
         'data_emissao',
         filtros.data_inicio,
@@ -298,132 +373,466 @@ export async function listarPropostas(
     return query;
   };
 
-  const mapearPropostas = (
-    rows: PropostaRow[],
-  ): PropostaListaItem[] => {
-    return rows.map(
-      (row): PropostaListaItem => {
-        const proposta =
-          normalizarProposta(row);
+  /*
+   * ============================================================
+   * MAPA DE CONTRATOS
+   * ============================================================
+   *
+   * A vigência pertence ao contrato,
+   * não à proposta.
+   *
+   * Buscamos os contratos apenas das
+   * propostas que realmente serão
+   * mostradas na página.
+   */
+  const buscarContratosPorProposta =
+    async (
+      rows: PropostaRow[],
+    ): Promise<
+      Map<
+        string,
+        ContratoListaRow[]
+      >
+    > => {
+      const mapa =
+        new Map<
+          string,
+          ContratoListaRow[]
+        >();
 
-        const cliente =
-          mapearClienteDaProposta(row);
+      const propostaIds =
+        Array.from(
+          new Set(
+            rows
+              .map(
+                row =>
+                  row.id,
+              )
+              .filter(Boolean),
+          ),
+        );
 
-        const corretor =
-          normalizarRelacao(
-            row.corretor,
-          );
+      if (
+        propostaIds.length ===
+        0
+      ) {
+        return mapa;
+      }
 
-        return {
-          ...proposta,
-          cliente_nome:
-            cliente?.nome ??
-            'Cliente não identificado',
-          cliente_documento:
-            cliente?.documento ?? null,
-          cliente_tipo: (
-            cliente?.tipo ?? 'PF'
-          ) as TipoClienteProposta,
-          corretor_nome:
-            corretor?.nome ?? null,
-          quantidade_itens:
-            Array.isArray(row.itens)
-              ? row.itens.length
-              : 0,
-        };
-      },
-    );
-  };
+      const {
+        data,
+        error,
+      } = await supabase
+        .from('crm_contratos')
+        .select(`
+          proposta_id,
+          inicio_vigencia,
+          fim_vigencia
+        `)
+        .eq(
+          'corretora_id',
+          corretoraId,
+        )
+        .in(
+          'proposta_id',
+          propostaIds,
+        );
 
+      if (error) {
+        throw error;
+      }
+
+      for (
+        const contrato of
+        (data ??
+          []) as ContratoListaRow[]
+      ) {
+        if (
+          !contrato.proposta_id
+        ) {
+          continue;
+        }
+
+        const atuais =
+          mapa.get(
+            contrato.proposta_id,
+          ) ?? [];
+
+        atuais.push(
+          contrato,
+        );
+
+        mapa.set(
+          contrato.proposta_id,
+          atuais,
+        );
+      }
+
+      return mapa;
+    };
+
+  /*
+   * ============================================================
+   * NORMALIZA LISTA FINAL
+   * ============================================================
+   *
+   * Aqui acrescentamos:
+   *
+   * - produtos[]
+   * - vigencia_inicio
+   * - vigencia_fim
+   */
+  const mapearPropostas =
+    async (
+      rows: PropostaRow[],
+    ): Promise<
+      PropostaListaItem[]
+    > => {
+      if (
+        rows.length === 0
+      ) {
+        return [];
+      }
+
+      const contratosPorProposta =
+        await buscarContratosPorProposta(
+          rows,
+        );
+
+      return rows.map(
+        (
+          row,
+        ): PropostaListaItem => {
+          const proposta =
+            normalizarProposta(
+              row,
+            );
+
+          const cliente =
+            mapearClienteDaProposta(
+              row,
+            );
+
+          const corretor =
+            normalizarRelacao(
+              row.corretor,
+            );
+
+          /*
+           * Produtos da negociação.
+           *
+           * A proposta pode possuir
+           * várias cotações do mesmo
+           * produto, portanto usamos
+           * Set para não repetir nomes.
+           */
+          const produtos =
+            Array.from(
+              new Set(
+                (
+                  Array.isArray(
+                    row.itens,
+                  )
+                    ? row.itens
+                    : []
+                )
+                  .map(item => {
+                    const produto =
+                      normalizarRelacao(
+                        item.produto,
+                      );
+
+                    const nome =
+                      produto?.nome
+                        ?.trim();
+
+                    return (
+                      nome || ''
+                    );
+                  })
+                  .filter(
+                    (
+                      nome,
+                    ): nome is string =>
+                      Boolean(
+                        nome,
+                      ),
+                  ),
+              ),
+            );
+
+          /*
+           * Pode existir mais de um
+           * contrato porque uma proposta
+           * pode fechar mais de um item.
+           *
+           * Para a lista usamos:
+           *
+           * - menor início de vigência;
+           * - maior fim de vigência.
+           *
+           * Assim mostramos o intervalo
+           * completo dos contratos
+           * originados pela proposta.
+           */
+          const contratos =
+            contratosPorProposta.get(
+              row.id,
+            ) ?? [];
+
+          const inicios =
+            contratos
+              .map(
+                contrato =>
+                  contrato.inicio_vigencia,
+              )
+              .filter(
+                (
+                  valor,
+                ): valor is string =>
+                  Boolean(
+                    valor,
+                  ),
+              )
+              .sort(
+                (
+                  a,
+                  b,
+                ) =>
+                  a.localeCompare(
+                    b,
+                  ),
+              );
+
+          const fins =
+            contratos
+              .map(
+                contrato =>
+                  contrato.fim_vigencia,
+              )
+              .filter(
+                (
+                  valor,
+                ): valor is string =>
+                  Boolean(
+                    valor,
+                  ),
+              )
+              .sort(
+                (
+                  a,
+                  b,
+                ) =>
+                  a.localeCompare(
+                    b,
+                  ),
+              );
+
+          return {
+            ...proposta,
+
+            cliente_nome:
+              cliente?.nome ??
+              'Cliente não identificado',
+
+            cliente_documento:
+              cliente?.documento ??
+              null,
+
+            cliente_tipo: (
+              cliente?.tipo ??
+              'PF'
+            ) as TipoClienteProposta,
+
+            corretor_nome:
+              corretor?.nome ??
+              null,
+
+            quantidade_itens:
+              Array.isArray(
+                row.itens,
+              )
+                ? row.itens.length
+                : 0,
+
+            produtos,
+
+            vigencia_inicio:
+              inicios[0] ??
+              null,
+
+            vigencia_fim:
+              fins.length >
+              0
+                ? fins[
+                    fins.length -
+                      1
+                  ]
+                : null,
+          };
+        },
+      );
+    };
+
+  /*
+   * ============================================================
+   * SEM BUSCA GLOBAL
+   * ============================================================
+   *
+   * Mantemos paginação diretamente
+   * no banco.
+   */
   if (!busca) {
     const {
       data,
       error,
       count,
-    } = await criarQuery().range(
-      inicio,
-      fim,
-    );
+    } =
+      await criarQuery().range(
+        inicio,
+        fim,
+      );
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
+
+    const rows =
+      (data ??
+        []) as unknown as PropostaRow[];
 
     const propostas =
-      mapearPropostas(
-        (data ?? []) as unknown as PropostaRow[],
+      await mapearPropostas(
+        rows,
       );
 
     const total =
-      count ?? propostas.length;
+      count ??
+      propostas.length;
 
     return {
       dados: propostas,
       total,
       pagina,
       por_pagina: porPagina,
-      total_paginas: Math.max(
-        1,
-        Math.ceil(
-          total / porPagina,
+
+      total_paginas:
+        Math.max(
+          1,
+          Math.ceil(
+            total /
+              porPagina,
+          ),
         ),
-      ),
     };
   }
 
-  const todasRows: PropostaRow[] = [];
-  const tamanhoLote = 1000;
+  /*
+   * ============================================================
+   * COM BUSCA GLOBAL
+   * ============================================================
+   *
+   * Nome/documento estão distribuídos
+   * entre PF/PJ e JSONB.
+   *
+   * Por isso preservamos o fluxo já
+   * corrigido anteriormente:
+   *
+   * 1. busca todos os lotes;
+   * 2. filtra;
+   * 3. calcula o total;
+   * 4. pagina;
+   * 5. só então busca contratos.
+   *
+   * Dessa forma a nova informação de
+   * vigência não piora a performance
+   * da busca global.
+   */
+  const todasRows:
+    PropostaRow[] = [];
+
+  const tamanhoLote =
+    1000;
+
   let offset = 0;
 
   while (true) {
     const {
       data,
       error,
-    } = await criarQuery().range(
-      offset,
-      offset + tamanhoLote - 1,
-    );
+    } =
+      await criarQuery().range(
+        offset,
+        offset +
+          tamanhoLote -
+          1,
+      );
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     const lote =
-      (data ?? []) as unknown as PropostaRow[];
+      (data ??
+        []) as unknown as PropostaRow[];
 
-    todasRows.push(...lote);
+    todasRows.push(
+      ...lote,
+    );
 
     if (
-      lote.length < tamanhoLote
+      lote.length <
+      tamanhoLote
     ) {
       break;
     }
 
-    offset += tamanhoLote;
+    offset +=
+      tamanhoLote;
   }
 
-  let propostas =
-    mapearPropostas(todasRows);
-
   const buscaNumerica =
-    busca.replace(/\D/g, '');
+    busca.replace(
+      /\D/g,
+      '',
+    );
 
-  propostas =
-    propostas.filter(
-      (proposta) => {
+  /*
+   * Filtramos ainda sobre os rows
+   * originais.
+   *
+   * Não precisamos consultar contratos
+   * de todas as propostas apenas para
+   * descobrir quais pertencem à página.
+   */
+  const rowsFiltradas =
+    todasRows.filter(
+      row => {
+        const cliente =
+          mapearClienteDaProposta(
+            row,
+          );
+
         const numeroProposta =
-          proposta.numero_proposta
+          row.numero_proposta
             ?.toLocaleLowerCase(
               'pt-BR',
             ) ?? '';
 
         const clienteNome =
-          proposta.cliente_nome
+          cliente?.nome
             ?.toLocaleLowerCase(
               'pt-BR',
             ) ?? '';
 
         const documento =
           (
-            proposta.cliente_documento ??
+            cliente?.documento ??
             ''
-          ).replace(/\D/g, '');
+          ).replace(
+            /\D/g,
+            '',
+          );
 
         return (
           numeroProposta.includes(
@@ -442,25 +851,40 @@ export async function listarPropostas(
       },
     );
 
-  const total = propostas.length;
+  const total =
+    rowsFiltradas.length;
+
+  const rowsPaginadas =
+    rowsFiltradas.slice(
+      inicio,
+      inicio +
+        porPagina,
+    );
 
   const propostasPaginadas =
-    propostas.slice(
-      inicio,
-      inicio + porPagina,
+    await mapearPropostas(
+      rowsPaginadas,
     );
 
   return {
-    dados: propostasPaginadas,
+    dados:
+      propostasPaginadas,
+
     total,
+
     pagina,
-    por_pagina: porPagina,
-    total_paginas: Math.max(
-      1,
-      Math.ceil(
-        total / porPagina,
+
+    por_pagina:
+      porPagina,
+
+    total_paginas:
+      Math.max(
+        1,
+        Math.ceil(
+          total /
+            porPagina,
+        ),
       ),
-    ),
   };
 }
 

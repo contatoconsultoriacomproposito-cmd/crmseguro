@@ -18,15 +18,25 @@ import { formatarDataHora } from '../../../utils/clienteFormatters'
 import ModalNovoCompromisso, {
   type NovoCompromissoSubmitPayload,
 } from '../../../../pages/agenda/components/ModalNovoCompromisso'
+import ModalCompromisso, {
+  type ModalCompromissoEdicao,
+  type ModalCompromissoReagendamento,
+} from '../../../../pages/agenda/components/ModalCompromisso'
+import type {
+  AgendaItem,
+} from '../../../../pages/agenda/types/agenda'
 import {
   buscarAgendaClientePorVinculo,
   type AgendaClienteResultado,
 } from '../../../../pages/agenda/services/agendaClienteService'
 import {
+  atualizarCompromisso,
+  buscarCompromissoPorId,
   cancelarCompromisso,
   concluirCompromisso,
   criarCompromisso,
   criarCompromissos,
+  reagendarCompromisso,
 } from '../../../../pages/agenda/services/agendaService'
 
 interface AgendaRow {
@@ -53,115 +63,234 @@ export default function ClienteAgendaTab({
 }: Props) {
   const { userProfile } = useAuth()
 
-  const [itens, setItens] = useState<AgendaRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [salvandoStatus, setSalvandoStatus] =
-    useState<string | null>(null)
+  const [
+    itens,
+    setItens,
+  ] = useState<AgendaRow[]>([])
 
-  const [modalAberto, setModalAberto] = useState(false)
-  const [salvandoNovo, setSalvandoNovo] = useState(false)
+  const [
+    loading,
+    setLoading,
+  ] = useState(true)
+
+  const [
+    salvandoStatus,
+    setSalvandoStatus,
+  ] = useState<string | null>(
+    null
+  )
+
+  /*
+   * Modal de novo compromisso.
+   */
+  const [
+    modalAberto,
+    setModalAberto,
+  ] = useState(false)
+
+  const [
+    salvandoNovo,
+    setSalvandoNovo,
+  ] = useState(false)
 
   const [
     clienteAgenda,
     setClienteAgenda,
-  ] = useState<AgendaClienteResultado | null>(null)
+  ] =
+    useState<AgendaClienteResultado | null>(
+      null
+    )
 
   const [
     carregandoClienteAgenda,
     setCarregandoClienteAgenda,
   ] = useState(false)
 
+  /*
+   * Modal de visualização/edição
+   * de compromisso existente.
+   */
+  const [
+    compromissoSelecionado,
+    setCompromissoSelecionado,
+  ] = useState<AgendaItem | null>(
+    null
+  )
+
+  const [
+    modalCompromissoAberto,
+    setModalCompromissoAberto,
+  ] = useState(false)
+
+  const [
+    salvandoCompromisso,
+    setSalvandoCompromisso,
+  ] = useState(false)
+
+  const [
+    abrindoCompromissoId,
+    setAbrindoCompromissoId,
+  ] = useState<string | null>(
+    null
+  )
+
   const corretoraId =
-    userProfile?.tipo_usuario === 'CORRETORA'
+    userProfile?.tipo_usuario ===
+    'CORRETORA'
       ? userProfile.id
-      : userProfile?.corretora_id || null
+      : userProfile?.corretora_id ||
+        null
 
-  const carregar = useCallback(async () => {
-    setLoading(true)
+  const carregar =
+    useCallback(async () => {
+      setLoading(true)
 
-    try {
-      const coluna =
-        cliente.tipo === 'PF'
-          ? 'crm_pessoa_id'
-          : 'crm_empresa_id'
+      try {
+        const coluna =
+          cliente.tipo === 'PF'
+            ? 'crm_pessoa_id'
+            : 'crm_empresa_id'
 
-      const { data, error } = await supabase
-        .from('crm_agenda')
-        .select(`
-          id,
-          natureza,
-          categoria,
-          titulo,
-          descricao,
-          inicio_em,
-          fim_em,
-          dia_inteiro,
-          status,
-          prioridade
-        `)
-        .eq(coluna, cliente.id)
-        .order('inicio_em', {
-          ascending: false,
-        })
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('crm_agenda')
+          .select(`
+            id,
+            natureza,
+            categoria,
+            titulo,
+            descricao,
+            inicio_em,
+            fim_em,
+            dia_inteiro,
+            status,
+            prioridade
+          `)
+          .eq(
+            coluna,
+            cliente.id
+          )
+          .order(
+            'inicio_em',
+            {
+              ascending: false,
+            }
+          )
 
-      if (error) throw error
-
-      const registros =
-        (data || []) as AgendaRow[]
-
-      /*
-       * Pendentes primeiro:
-       * - pendentes em ordem cronológica;
-       * - concluídos/cancelados mais recentes primeiro.
-       */
-      registros.sort((a, b) => {
-        const aPendente =
-          a.status === 'PENDENTE'
-        const bPendente =
-          b.status === 'PENDENTE'
-
-        if (aPendente && !bPendente) {
-          return -1
+        if (error) {
+          throw error
         }
 
-        if (!aPendente && bPendente) {
-          return 1
-        }
+        const registros =
+          (data ||
+            []) as AgendaRow[]
 
-        const dataA =
-          new Date(a.inicio_em).getTime()
+        /*
+         * Pendentes primeiro:
+         *
+         * - pendentes em ordem cronológica;
+         * - concluídos/cancelados mais
+         *   recentes primeiro.
+         */
+        registros.sort(
+          (
+            a,
+            b
+          ) => {
+            const aPendente =
+              a.status ===
+              'PENDENTE'
 
-        const dataB =
-          new Date(b.inicio_em).getTime()
+            const bPendente =
+              b.status ===
+              'PENDENTE'
 
-        if (aPendente && bPendente) {
-          return dataA - dataB
-        }
+            if (
+              aPendente &&
+              !bPendente
+            ) {
+              return -1
+            }
 
-        return dataB - dataA
-      })
+            if (
+              !aPendente &&
+              bPendente
+            ) {
+              return 1
+            }
 
-      setItens(registros)
-    } catch (error: any) {
-      toast.error(
-        error?.message ||
-          'Não foi possível carregar a agenda.'
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [
-    cliente.id,
-    cliente.tipo,
-  ])
+            const dataA =
+              new Date(
+                a.inicio_em
+              ).getTime()
+
+            const dataB =
+              new Date(
+                b.inicio_em
+              ).getTime()
+
+            if (
+              aPendente &&
+              bPendente
+            ) {
+              return (
+                dataA -
+                dataB
+              )
+            }
+
+            return (
+              dataB -
+              dataA
+            )
+          }
+        )
+
+        setItens(
+          registros
+        )
+      } catch (
+        error: any
+      ) {
+        toast.error(
+          error?.message ||
+            'Não foi possível carregar a agenda.'
+        )
+      } finally {
+        setLoading(false)
+      }
+    }, [
+      cliente.id,
+      cliente.tipo,
+    ])
 
   useEffect(() => {
     void carregar()
   }, [carregar])
 
+  /*
+   * Ao trocar o cliente, limpa todos
+   * os estados vinculados ao cliente
+   * anterior.
+   */
   useEffect(() => {
     setClienteAgenda(null)
+
     setModalAberto(false)
+
+    setCompromissoSelecionado(
+      null
+    )
+
+    setModalCompromissoAberto(
+      false
+    )
+
+    setAbrindoCompromissoId(
+      null
+    )
   }, [
     cliente.id,
     cliente.tipo,
@@ -176,17 +305,23 @@ export default function ClienteAgendaTab({
       }
 
       const resultado =
-        await buscarAgendaClientePorVinculo({
-          corretoraId,
-          crmPessoaId:
-            cliente.tipo === 'PF'
-              ? cliente.id
-              : undefined,
-          crmEmpresaId:
-            cliente.tipo === 'PJ'
-              ? cliente.id
-              : undefined,
-        })
+        await buscarAgendaClientePorVinculo(
+          {
+            corretoraId,
+
+            crmPessoaId:
+              cliente.tipo ===
+              'PF'
+                ? cliente.id
+                : undefined,
+
+            crmEmpresaId:
+              cliente.tipo ===
+              'PJ'
+                ? cliente.id
+                : undefined,
+          }
+        )
 
       if (!resultado) {
         throw new Error(
@@ -201,6 +336,10 @@ export default function ClienteAgendaTab({
       corretoraId,
     ])
 
+  /*
+   * NOVO COMPROMISSO
+   */
+
   const abrirNovoCompromisso =
     async () => {
       if (
@@ -210,28 +349,40 @@ export default function ClienteAgendaTab({
         return
       }
 
-      setCarregandoClienteAgenda(true)
+      setCarregandoClienteAgenda(
+        true
+      )
 
       try {
         const resultado =
           clienteAgenda ||
           (await carregarClienteParaAgenda())
 
-        setClienteAgenda(resultado)
-        setModalAberto(true)
-      } catch (error: any) {
+        setClienteAgenda(
+          resultado
+        )
+
+        setModalAberto(
+          true
+        )
+      } catch (
+        error: any
+      ) {
         toast.error(
           error?.message ||
             'Não foi possível abrir o novo compromisso.'
         )
       } finally {
-        setCarregandoClienteAgenda(false)
+        setCarregandoClienteAgenda(
+          false
+        )
       }
     }
 
   const salvarNovosCompromissos =
     async (
-      payload: NovoCompromissoSubmitPayload
+      payload:
+        NovoCompromissoSubmitPayload
     ) => {
       if (
         !userProfile?.id ||
@@ -249,14 +400,21 @@ export default function ClienteAgendaTab({
         toast.error(
           'Não foi possível identificar o cliente vinculado.'
         )
+
         return
       }
 
-      if (!payload.compromissos.length) {
+      if (
+        !payload
+          .compromissos
+          .length
+      ) {
         return
       }
 
-      setSalvandoNovo(true)
+      setSalvandoNovo(
+        true
+      )
 
       try {
         const payloads =
@@ -300,22 +458,29 @@ export default function ClienteAgendaTab({
                 compromisso.prioridade,
 
               crmPessoaId:
-                cliente.tipo === 'PF'
+                cliente.tipo ===
+                'PF'
                   ? cliente.id
                   : null,
 
               crmEmpresaId:
-                cliente.tipo === 'PJ'
+                cliente.tipo ===
+                'PJ'
                   ? cliente.id
                   : null,
 
-              clienteIdLegado: null,
+              clienteIdLegado:
+                null,
 
-              tipoOrigem: 'MANUAL',
+              tipoOrigem:
+                'MANUAL',
             })
           )
 
-        if (payloads.length === 1) {
+        if (
+          payloads.length ===
+          1
+        ) {
           await criarCompromisso(
             payloads[0]
           )
@@ -325,10 +490,13 @@ export default function ClienteAgendaTab({
           )
         }
 
-        setModalAberto(false)
+        setModalAberto(
+          false
+        )
 
         toast.success(
-          payloads.length === 1
+          payloads.length ===
+          1
             ? 'Compromisso criado com sucesso.'
             : `${payloads.length} compromissos criados com sucesso.`
         )
@@ -338,7 +506,9 @@ export default function ClienteAgendaTab({
         if (onUpdated) {
           await onUpdated()
         }
-      } catch (error: any) {
+      } catch (
+        error: any
+      ) {
         toast.error(
           error?.message ||
             'Não foi possível salvar o compromisso.'
@@ -346,49 +516,403 @@ export default function ClienteAgendaTab({
 
         throw error
       } finally {
-        setSalvandoNovo(false)
+        setSalvandoNovo(
+          false
+        )
       }
     }
 
-  const atualizarStatus = async (
-    id: string,
-    status:
-      | 'CONCLUIDO'
-      | 'CANCELADO'
-  ) => {
-    if (salvandoStatus) {
-      return
-    }
+  /*
+   * ABRIR COMPROMISSO EXISTENTE
+   */
 
-    setSalvandoStatus(id)
-
-    try {
-      if (status === 'CONCLUIDO') {
-        await concluirCompromisso(id)
-      } else {
-        await cancelarCompromisso(id)
+  const abrirCompromisso =
+    async (
+      item: AgendaRow
+    ) => {
+      if (
+        abrindoCompromissoId ||
+        salvandoCompromisso
+      ) {
+        return
       }
 
-      toast.success(
-        status === 'CONCLUIDO'
-          ? 'Compromisso concluído.'
-          : 'Compromisso cancelado.'
+      setAbrindoCompromissoId(
+        item.id
       )
 
+      try {
+        /*
+         * O card possui apenas os campos
+         * resumidos usados nesta aba.
+         *
+         * O ModalCompromisso trabalha com
+         * AgendaItem completo, então buscamos
+         * o registro completo pelo ID.
+         */
+        const compromisso =
+          await buscarCompromissoPorId(
+            item.id
+          )
+
+        if (!compromisso) {
+          throw new Error(
+            'Compromisso não encontrado.'
+          )
+        }
+
+        setCompromissoSelecionado(
+          compromisso
+        )
+
+        setModalCompromissoAberto(
+          true
+        )
+      } catch (error) {
+        console.error(
+          'Erro ao abrir compromisso:',
+          error
+        )
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível abrir o compromisso.'
+        )
+      } finally {
+        setAbrindoCompromissoId(
+          null
+        )
+      }
+    }
+
+  const fecharCompromisso =
+    () => {
+      if (
+        salvandoCompromisso
+      ) {
+        return
+      }
+
+      setModalCompromissoAberto(
+        false
+      )
+
+      setCompromissoSelecionado(
+        null
+      )
+    }
+
+  const atualizarAposAcaoCompromisso =
+    async () => {
       await carregar()
 
       if (onUpdated) {
         await onUpdated()
       }
-    } catch (error: any) {
-      toast.error(
-        error?.message ||
-          'Não foi possível atualizar o compromisso.'
-      )
-    } finally {
-      setSalvandoStatus(null)
     }
-  }
+
+  /*
+   * AÇÕES DO MODAL
+   */
+
+  const handleConcluirCompromisso =
+    async (
+      compromisso: AgendaItem
+    ) => {
+      if (
+        salvandoCompromisso
+      ) {
+        return
+      }
+
+      setSalvandoCompromisso(
+        true
+      )
+
+      try {
+        await concluirCompromisso(
+          compromisso.id
+        )
+
+        setModalCompromissoAberto(
+          false
+        )
+
+        setCompromissoSelecionado(
+          null
+        )
+
+        toast.success(
+          'Compromisso concluído.'
+        )
+
+        await atualizarAposAcaoCompromisso()
+      } catch (error) {
+        console.error(
+          'Erro ao concluir compromisso:',
+          error
+        )
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível concluir o compromisso.'
+        )
+
+        throw error
+      } finally {
+        setSalvandoCompromisso(
+          false
+        )
+      }
+    }
+
+  const handleReagendarCompromisso =
+    async (
+      compromisso: AgendaItem,
+      reagendamento:
+        ModalCompromissoReagendamento
+    ) => {
+      if (
+        salvandoCompromisso
+      ) {
+        return
+      }
+
+      setSalvandoCompromisso(
+        true
+      )
+
+      try {
+        await reagendarCompromisso(
+          compromisso.id,
+          {
+            inicioEm:
+              reagendamento.inicioEm,
+
+            fimEm:
+              reagendamento.fimEm,
+
+            diaInteiro:
+              reagendamento.diaInteiro,
+          }
+        )
+
+        setModalCompromissoAberto(
+          false
+        )
+
+        setCompromissoSelecionado(
+          null
+        )
+
+        toast.success(
+          'Compromisso reagendado.'
+        )
+
+        await atualizarAposAcaoCompromisso()
+      } catch (error) {
+        console.error(
+          'Erro ao reagendar compromisso:',
+          error
+        )
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível reagendar o compromisso.'
+        )
+
+        throw error
+      } finally {
+        setSalvandoCompromisso(
+          false
+        )
+      }
+    }
+
+  const handleEditarCompromisso =
+    async (
+      compromisso: AgendaItem,
+      edicao:
+        ModalCompromissoEdicao
+    ) => {
+      if (
+        salvandoCompromisso
+      ) {
+        return
+      }
+
+      setSalvandoCompromisso(
+        true
+      )
+
+      try {
+        await atualizarCompromisso(
+          compromisso.id,
+          {
+            titulo:
+              edicao.titulo,
+
+            descricao:
+              edicao.descricao,
+
+            categoria:
+              edicao.categoria,
+
+            prioridade:
+              edicao.prioridade,
+          }
+        )
+
+        setModalCompromissoAberto(
+          false
+        )
+
+        setCompromissoSelecionado(
+          null
+        )
+
+        toast.success(
+          'Compromisso atualizado.'
+        )
+
+        await atualizarAposAcaoCompromisso()
+      } catch (error) {
+        console.error(
+          'Erro ao editar compromisso:',
+          error
+        )
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível atualizar o compromisso.'
+        )
+
+        throw error
+      } finally {
+        setSalvandoCompromisso(
+          false
+        )
+      }
+    }
+
+  const handleCancelarCompromisso =
+    async (
+      compromisso: AgendaItem
+    ) => {
+      if (
+        salvandoCompromisso
+      ) {
+        return
+      }
+
+      setSalvandoCompromisso(
+        true
+      )
+
+      try {
+        await cancelarCompromisso(
+          compromisso.id
+        )
+
+        setModalCompromissoAberto(
+          false
+        )
+
+        setCompromissoSelecionado(
+          null
+        )
+
+        toast.success(
+          'Compromisso cancelado.'
+        )
+
+        await atualizarAposAcaoCompromisso()
+      } catch (error) {
+        console.error(
+          'Erro ao cancelar compromisso:',
+          error
+        )
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível cancelar o compromisso.'
+        )
+
+        throw error
+      } finally {
+        setSalvandoCompromisso(
+          false
+        )
+      }
+    }
+
+  /*
+   * BOTÕES RÁPIDOS DO CARD
+   *
+   * Mantidos para preservar exatamente
+   * o comportamento atual da ficha.
+   */
+  const atualizarStatus =
+    async (
+      id: string,
+      status:
+        | 'CONCLUIDO'
+        | 'CANCELADO'
+    ) => {
+      if (
+        salvandoStatus
+      ) {
+        return
+      }
+
+      setSalvandoStatus(
+        id
+      )
+
+      try {
+        if (
+          status ===
+          'CONCLUIDO'
+        ) {
+          await concluirCompromisso(
+            id
+          )
+        } else {
+          await cancelarCompromisso(
+            id
+          )
+        }
+
+        toast.success(
+          status ===
+          'CONCLUIDO'
+            ? 'Compromisso concluído.'
+            : 'Compromisso cancelado.'
+        )
+
+        await carregar()
+
+        if (onUpdated) {
+          await onUpdated()
+        }
+      } catch (
+        error: any
+      ) {
+        toast.error(
+          error?.message ||
+            'Não foi possível atualizar o compromisso.'
+        )
+      } finally {
+        setSalvandoStatus(
+          null
+        )
+      }
+    }
 
   if (loading) {
     return <Loading />
@@ -409,7 +933,8 @@ export default function ClienteAgendaTab({
           }
         />
 
-        {itens.length === 0 ? (
+        {itens.length ===
+        0 ? (
           <Empty
             text="Nenhum compromisso encontrado."
             onNovo={() =>
@@ -421,125 +946,264 @@ export default function ClienteAgendaTab({
             }
           />
         ) : (
-          itens.map(item => {
-            const salvando =
-              salvandoStatus === item.id
+          itens.map(
+            item => {
+              const salvando =
+                salvandoStatus ===
+                item.id
 
-            return (
-              <article
-                key={item.id}
-                className="rounded-xl border border-slate-200 bg-white p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <CalendarClock
-                        size={15}
-                        className="shrink-0 text-blue-500"
-                      />
+              const abrindo =
+                abrindoCompromissoId ===
+                item.id
 
-                      <h4 className="min-w-0 truncate text-sm font-semibold text-slate-800">
-                        {item.titulo}
-                      </h4>
+              return (
+                <article
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Abrir compromisso ${item.titulo}`}
+                  onClick={() =>
+                    void abrirCompromisso(
+                      item
+                    )
+                  }
+                  onKeyDown={
+                    event => {
+                      if (
+                        event.key ===
+                          'Enter' ||
+                        event.key ===
+                          ' '
+                      ) {
+                        event.preventDefault()
 
-                      <Badge
-                        value={
-                          item.categoria
-                        }
-                      />
+                        void abrirCompromisso(
+                          item
+                        )
+                      }
+                    }
+                  }
+                  className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 transition hover:border-blue-200 hover:bg-blue-50/20 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {abrindo ? (
+                          <Loader2
+                            size={
+                              15
+                            }
+                            className="shrink-0 animate-spin text-blue-500"
+                          />
+                        ) : (
+                          <CalendarClock
+                            size={
+                              15
+                            }
+                            className="shrink-0 text-blue-500"
+                          />
+                        )}
 
-                      {item.prioridade !==
-                        'NORMAL' && (
+                        <h4 className="min-w-0 truncate text-sm font-semibold text-slate-800">
+                          {
+                            item.titulo
+                          }
+                        </h4>
+
                         <Badge
                           value={
-                            item.prioridade
+                            item.categoria
                           }
                         />
+
+                        {item.prioridade !==
+                          'NORMAL' && (
+                          <Badge
+                            value={
+                              item.prioridade
+                            }
+                          />
+                        )}
+                      </div>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatarDataHora(
+                          item.inicio_em
+                        )}
+
+                        {item.fim_em &&
+                          ` até ${formatarDataHora(
+                            item.fim_em
+                          )}`}
+
+                        {' · '}
+
+                        {
+                          item.natureza
+                        }
+                      </p>
+
+                      {item.descricao && (
+                        <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-500">
+                          {
+                            item.descricao
+                          }
+                        </p>
                       )}
                     </div>
 
-                    <p className="mt-1 text-xs text-slate-500">
-                      {formatarDataHora(
-                        item.inicio_em
-                      )}
-
-                      {item.fim_em &&
-                        ` até ${formatarDataHora(
-                          item.fim_em
-                        )}`}
-
-                      {' · '}
-                      {item.natureza}
-                    </p>
-
-                    {item.descricao && (
-                      <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-500">
-                        {item.descricao}
-                      </p>
-                    )}
+                    <StatusBadge
+                      status={
+                        item.status
+                      }
+                    />
                   </div>
 
-                  <StatusBadge
-                    status={item.status}
-                  />
-                </div>
+                  {item.status ===
+                    'PENDENTE' && (
+                    <div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        disabled={
+                          salvando ||
+                          abrindo
+                        }
+                        onClick={
+                          event => {
+                            /*
+                             * Impede que o clique
+                             * no botão também abra
+                             * o ModalCompromisso.
+                             */
+                            event.stopPropagation()
 
-                {item.status ===
-                  'PENDENTE' && (
-                  <div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-3">
-                    <button
-                      type="button"
-                      disabled={salvando}
-                      onClick={() =>
-                        void atualizarStatus(
-                          item.id,
-                          'CONCLUIDO'
-                        )
-                      }
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {salvando ? (
-                        <Loader2
-                          size={13}
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <CheckCircle2
-                          size={13}
-                        />
-                      )}
+                            void atualizarStatus(
+                              item.id,
+                              'CONCLUIDO'
+                            )
+                          }
+                        }
+                        onKeyDown={
+                          event =>
+                            event.stopPropagation()
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {salvando ? (
+                          <Loader2
+                            size={
+                              13
+                            }
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <CheckCircle2
+                            size={
+                              13
+                            }
+                          />
+                        )}
 
-                      Concluir
-                    </button>
+                        Concluir
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={salvando}
-                      onClick={() =>
-                        void atualizarStatus(
-                          item.id,
-                          'CANCELADO'
-                        )
-                      }
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <XCircle
-                        size={13}
-                      />
-                      Cancelar
-                    </button>
-                  </div>
-                )}
-              </article>
-            )
-          })
+                      <button
+                        type="button"
+                        disabled={
+                          salvando ||
+                          abrindo
+                        }
+                        onClick={
+                          event => {
+                            /*
+                             * Impede que o clique
+                             * no botão também abra
+                             * o ModalCompromisso.
+                             */
+                            event.stopPropagation()
+
+                            void atualizarStatus(
+                              item.id,
+                              'CANCELADO'
+                            )
+                          }
+                        }
+                        onKeyDown={
+                          event =>
+                            event.stopPropagation()
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {salvando ? (
+                          <Loader2
+                            size={
+                              13
+                            }
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <XCircle
+                            size={
+                              13
+                            }
+                          />
+                        )}
+
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                </article>
+              )
+            }
+          )
         )}
       </div>
 
+      {/*
+       * MODAL DE COMPROMISSO EXISTENTE
+       *
+       * Mesmo componente utilizado pela
+       * Agenda principal.
+       */}
+      <ModalCompromisso
+        aberto={
+          modalCompromissoAberto
+        }
+        compromisso={
+          compromissoSelecionado
+        }
+        salvando={
+          salvandoCompromisso
+        }
+        onClose={
+          fecharCompromisso
+        }
+        onConcluir={
+          handleConcluirCompromisso
+        }
+        onReagendar={
+          handleReagendarCompromisso
+        }
+        onEditar={
+          handleEditarCompromisso
+        }
+        onCancelar={
+          handleCancelarCompromisso
+        }
+      />
+
+      {/*
+       * MODAL DE NOVO COMPROMISSO
+       *
+       * Fluxo existente preservado.
+       */}
       {corretoraId &&
         clienteAgenda && (
           <ModalNovoCompromisso
-            aberto={modalAberto}
+            aberto={
+              modalAberto
+            }
             corretoraId={
               corretoraId
             }
@@ -551,8 +1215,12 @@ export default function ClienteAgendaTab({
               salvandoNovo
             }
             onClose={() => {
-              if (!salvandoNovo) {
-                setModalAberto(false)
+              if (
+                !salvandoNovo
+              ) {
+                setModalAberto(
+                  false
+                )
               }
             }}
             onSubmit={
@@ -589,8 +1257,12 @@ function Header({
 
       <button
         type="button"
-        onClick={onNovo}
-        disabled={criando}
+        onClick={
+          onNovo
+        }
+        disabled={
+          criando
+        }
         className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {criando ? (
@@ -599,7 +1271,9 @@ function Header({
             className="animate-spin"
           />
         ) : (
-          <Plus size={14} />
+          <Plus
+            size={14}
+          />
         )}
 
         Novo compromisso
@@ -614,9 +1288,11 @@ function StatusBadge({
   status: string
 }) {
   const classe =
-    status === 'CONCLUIDO'
+    status ===
+    'CONCLUIDO'
       ? 'bg-emerald-50 text-emerald-700'
-      : status === 'CANCELADO'
+      : status ===
+          'CANCELADO'
         ? 'bg-rose-50 text-rose-700'
         : 'bg-amber-50 text-amber-700'
 
@@ -674,8 +1350,12 @@ function Empty({
 
       <button
         type="button"
-        onClick={onNovo}
-        disabled={criando}
+        onClick={
+          onNovo
+        }
+        disabled={
+          criando
+        }
         className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 disabled:opacity-50"
       >
         {criando ? (
@@ -684,7 +1364,9 @@ function Empty({
             className="animate-spin"
           />
         ) : (
-          <Plus size={14} />
+          <Plus
+            size={14}
+          />
         )}
 
         Criar compromisso

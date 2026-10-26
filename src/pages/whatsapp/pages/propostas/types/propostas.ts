@@ -1,9 +1,33 @@
-export type TipoNegocioProposta = 'NOVO' | 'RENOVACAO';
-export type StatusProposta = 'EM_NEGOCIACAO' | 'VENDIDA' | 'PERDIDA' | 'CANCELADA';
-export type ResultadoPropostaItem = 'PENDENTE' | 'CONTRATADO' | 'NAO_CONTRATADO';
-export type StatusContrato = 'AGUARDANDO_EMISSAO' | 'ATIVO' | 'CANCELADO' | 'ENCERRADO';
-export type PeriodicidadeContrato = 'ANUAL' | 'MENSAL' | 'PERSONALIZADO' | 'UNICO';
-export type TipoClienteProposta = 'PF' | 'PJ';
+export type TipoNegocioProposta =
+  | 'NOVO'
+  | 'RENOVACAO';
+
+export type StatusProposta =
+  | 'EM_NEGOCIACAO'
+  | 'VENDIDA'
+  | 'PERDIDA'
+  | 'CANCELADA';
+
+export type ResultadoPropostaItem =
+  | 'PENDENTE'
+  | 'CONTRATADO'
+  | 'NAO_CONTRATADO';
+
+export type StatusContrato =
+  | 'AGUARDANDO_EMISSAO'
+  | 'ATIVO'
+  | 'CANCELADO'
+  | 'ENCERRADO';
+
+export type PeriodicidadeContrato =
+  | 'ANUAL'
+  | 'MENSAL'
+  | 'PERSONALIZADO'
+  | 'UNICO';
+
+export type TipoClienteProposta =
+  | 'PF'
+  | 'PJ';
 
 export type OrigemClienteProposta =
   | 'CRM_PESSOA'
@@ -163,15 +187,38 @@ export interface ProdutoRenovacaoOrigem {
   produto_categoria: string | null;
 }
 
-export interface PropostaListaItem extends Proposta {
+export interface PropostaListaItem
+  extends Proposta {
   cliente_nome: string;
   cliente_documento: string | null;
   cliente_tipo: TipoClienteProposta;
   corretor_nome: string | null;
   quantidade_itens: number;
+
+  /*
+   * Produtos existentes nos itens
+   * da proposta.
+   *
+   * Utilizado na listagem principal
+   * para substituir a antiga coluna
+   * "Ofertado".
+   */
+  produtos: string[];
+
+  /*
+   * Vigência efetiva da venda.
+   *
+   * Estes campos são derivados dos
+   * contratos gerados para a proposta,
+   * pois a vigência pertence ao contrato
+   * e não à proposta comercial.
+   */
+  vigencia_inicio: string | null;
+  vigencia_fim: string | null;
 }
 
-export interface PropostaDetalhada extends Proposta {
+export interface PropostaDetalhada
+  extends Proposta {
   cliente: PropostaClienteResumo | null;
   corretor_nome: string | null;
   itens: PropostaItem[];
