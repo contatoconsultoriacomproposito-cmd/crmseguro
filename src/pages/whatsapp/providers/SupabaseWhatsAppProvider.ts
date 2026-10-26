@@ -402,19 +402,7 @@ async function finalizeWhatsAppMediaInStorage(
       return false
     }
 
-    console.log(
-      '✅ Central Storage → mídia WhatsApp catalogada:',
-      {
-        mediaId,
-        arquivoId: response.arquivo?.id,
-        storagePath:
-          response.arquivo?.storage_path,
-        tamanhoBytes:
-          response.arquivo?.tamanho_bytes,
-        alreadyFinalized:
-          response.alreadyFinalized === true,
-      }
-    )
+    
 
     return true
   } catch (error) {
@@ -446,6 +434,8 @@ export class SupabaseWhatsAppProvider implements WhatsAppProvider {
 
   const rows =
     (data || []) as InboxConversationRpcRow[]
+
+  
 
   return rows.map(row => {
     const mensagem = row.ultima_mensagem
@@ -1750,20 +1740,11 @@ async sendContactMessage(
   async sendMessage(
   data: SendMessageData
 ): Promise<WhatsAppMessage> {
-  const perfInicioTotal = performance.now()
+  
   const messageType = data.type || 'text'
   const messageText = data.text?.trim() || ''
 
-  console.log(
-    '🧪 SupabaseWhatsAppProvider.sendMessage → reply:',
-    {
-      conversationId: data.conversationId,
-      replyToProviderMessageId:
-        data.replyToProviderMessageId,
-      text: data.text,
-      type: data.type,
-    }
-  )
+  
 
   const {
     data: conversa,
@@ -1941,8 +1922,7 @@ async sendContactMessage(
     /*
      * 1. Prepara upload no B2.
      */
-    const perfCreateUpload =
-      performance.now()
+    
 
     const {
       data: b2Data,
@@ -1972,9 +1952,7 @@ async sendContactMessage(
         }
       )
 
-    console.log(
-      `⏱️ [WHATSAPP PERF] A create-upload: ${(performance.now() - perfCreateUpload).toFixed(0)} ms`
-    )
+    
 
     if (b2Error) {
       console.error(
@@ -2026,8 +2004,7 @@ async sendContactMessage(
     /*
      * 2. Upload físico para B2.
      */
-    const perfUploadB2 =
-      performance.now()
+    
 
     const uploadResponse =
       await fetch(
@@ -2045,9 +2022,7 @@ async sendContactMessage(
         }
       )
 
-    console.log(
-      `⏱️ [WHATSAPP PERF] B upload B2: ${(performance.now() - perfUploadB2).toFixed(0)} ms`
-    )
+   
 
     if (
       !uploadResponse.ok
@@ -2081,22 +2056,7 @@ async sendContactMessage(
      * IMPORTANTE:
      * NÃO existe mais base64 neste fluxo.
      */
-    console.log(
-      '📎 [D-API URL] fonte preparada:',
-      {
-        type:
-          messageType,
-
-        mode:
-          'signed-url',
-
-        fileBytes:
-          data.file.size,
-
-        urlChars:
-          mediaReadUrl.length,
-      }
-    )
+    
 
     const perfDapi =
       performance.now()
@@ -2131,9 +2091,7 @@ async sendContactMessage(
           }
         )
 
-      console.log(
-        `⏱️ [WHATSAPP PERF] C transport.sendMedia: ${(performance.now() - perfDapi).toFixed(0)} ms`
-      )
+      
 
       providerMessageId =
         transportResult.providerMessageId
@@ -2150,25 +2108,7 @@ async sendContactMessage(
         )
       }
 
-      console.log(
-        '📡 SupabaseWhatsAppProvider → resultado transporte de mídia:',
-        {
-          provider:
-            transportProvider,
-
-          providerMessageId:
-            providerMessageId ||
-            null,
-
-          providerCommandId:
-            providerCommandId ||
-            null,
-
-          async:
-            transportResult.async ===
-            true,
-        }
-      )
+      
     } catch (error) {
       console.error(
         `⏱️ [WHATSAPP PERF] C transport.sendMedia FALHOU após ${(performance.now() - perfDapi).toFixed(0)} ms`,
@@ -2239,8 +2179,7 @@ async sendContactMessage(
       ? 'sent'
       : 'pending'
 
-  const perfPersistencia =
-    performance.now()
+  
 
   const messageId =
     typeof crypto !==
@@ -2457,9 +2396,7 @@ async sendContactMessage(
       })
   }
 
-  console.log(
-    `⏱️ [WHATSAPP PERF] D persistência + finalize: ${(performance.now() - perfPersistencia).toFixed(0)} ms`
-  )
+  
 
   /*
    * ======================================================
@@ -2497,9 +2434,7 @@ async sendContactMessage(
   const mensagem =
     insertedMessage as SupabaseMensagem
 
-  console.log(
-    `⏱️ [WHATSAPP PERF] TOTAL sendMessage: ${(performance.now() - perfInicioTotal).toFixed(0)} ms`
-  )
+  
 
   return {
     id:
