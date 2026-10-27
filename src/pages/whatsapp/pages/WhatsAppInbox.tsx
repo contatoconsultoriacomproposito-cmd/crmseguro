@@ -17,7 +17,6 @@ import ContactPanel from '../components/ContactPanel'
 import NewConversationModal from '../components/NewConversationModal'
 import { useConversations } from '../hooks/useConversations'
 import { useWhatsApp } from '../hooks/useWhatsApp'
-//import { moveConversationToStageTop} from '../utils/kanbanUtils'
   
 
 import type {

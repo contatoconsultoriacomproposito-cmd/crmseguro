@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '../../../auth/AuthContext'
-import { buscarAgendaWhatsApp, subscribeAgendaWhatsApp  } from '../services/whatsappAgendaService'
+import { buscarAgendaWhatsApp, subscribeAgendaWhatsApp } from '../services/whatsappAgendaService'
 import type { WhatsAppAgendaCommitment, WhatsAppAgendaData } from '../services/whatsappAgendaService'
 import {
   buscarResumoClientesWhatsApp,
@@ -77,7 +77,12 @@ const EMPTY_AGENDA: WhatsAppAgendaData = {
   proximoPorConversa: {},
 }
 
-export default function ConversationList({ conversations, selectedId, loading, onSelect }: ConversationListProps) {
+export default function ConversationList({
+  conversations,
+  selectedId,
+  loading,
+  onSelect,
+}: ConversationListProps) {
   const navigate = useNavigate()
   const { userProfile } = useAuth()
   const whatsapp = useWhatsApp()
@@ -504,8 +509,7 @@ const handleCancelarCompromisso = useCallback(async (compromisso: AgendaItem) =>
     setSearch('')
     onSelect(conversationId)
   }
-
-  return (
+return (
   <>
     <aside className="flex h-full w-full min-w-0 flex-col bg-white">
       <div className="shrink-0 border-b bg-white">
@@ -526,8 +530,7 @@ const handleCancelarCompromisso = useCallback(async (compromisso: AgendaItem) =>
                     : `${agenda.todos.length} compromissos`}
               </p>
             </div>
-
-            <div className="flex shrink-0 items-center gap-1.5">
+<div className="flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
                 title="Visualização Kanban"

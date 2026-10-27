@@ -2,6 +2,7 @@ import type { WhatsAppConversation } from '../types/whatsapp'
 import type { WhatsAppAgendaCommitment } from '../services/whatsappAgendaService'
 import { CalendarDays, FileText, Image, Mic, Smartphone, UserRound, Video } from 'lucide-react'
 import { useEffect, useState } from 'react'
+const avatarsComErro = new Set<string>()
 
 interface ConversationItemProps {
   conversation: WhatsAppConversation
@@ -41,12 +42,20 @@ export default function ConversationItem({
   crmContext,
 }: ConversationItemProps) {
   const { contact, lastMessage, unreadCount } = conversation
-  const [avatarComErro, setAvatarComErro] =
-    useState(false)
+
+  const avatarUrl = contact.avatar?.trim() || ''
+
+  const [avatarComErro, setAvatarComErro] = useState(
+    () => Boolean(avatarUrl && avatarsComErro.has(avatarUrl))
+  )
 
   useEffect(() => {
-    setAvatarComErro(false)
-  }, [contact.avatar])
+    setAvatarComErro(
+      Boolean(avatarUrl && avatarsComErro.has(avatarUrl))
+    )
+  }, [avatarUrl])
+
+
   const time = formatConversationTime(lastMessage?.timestamp || conversation.updatedAt)
   const preview = getMessagePreview(lastMessage)
 
@@ -61,13 +70,16 @@ export default function ConversationItem({
       <div className="flex items-start gap-3">
         <div className="relative shrink-0">
           <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-sm font-semibold text-slate-600">
-            {contact.avatar && !avatarComErro ? (
+            
+            
+            {avatarUrl && !avatarComErro ? (
               <img
-                src={contact.avatar}
+                src={avatarUrl}
                 alt={contact.name}
-                onError={() =>
+                onError={() => {
+                  avatarsComErro.add(avatarUrl)
                   setAvatarComErro(true)
-                }
+                }}
                 className="h-full w-full object-cover"
               />
             ) : (

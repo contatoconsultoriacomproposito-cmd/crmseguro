@@ -37,6 +37,8 @@ import {
 
 import { useStorageCommercial } from '../hooks/useStorageCommercial';
 
+const avataresComErroChat = new Set<string>()
+
 interface ChatWindowProps {
     conversation?: WhatsAppConversation;
     onBack?: () => void;
@@ -47,6 +49,24 @@ type HeaderMenu = 'responsavel' | 'documentos' | null;
 
 export default function ChatWindow({ conversation, onBack, onMarkedAsRead, onOpenContactPanel, }: ChatWindowProps) {
     const whatsapp = useWhatsApp();
+
+    const avatarUrl = conversation?.contact.avatar?.trim() || ''
+
+    const [avatarComErro, setAvatarComErro] = useState(
+    () => Boolean(
+        avatarUrl &&
+        avataresComErroChat.has(avatarUrl)
+    )
+    )
+
+    useEffect(() => {
+    setAvatarComErro(
+        Boolean(
+        avatarUrl &&
+        avataresComErroChat.has(avatarUrl)
+        )
+    )
+    }, [avatarUrl])
     const handleReactMessage = async (
     message: WhatsAppMessage,
     emoji: string
@@ -1638,9 +1658,27 @@ const timelineItems =
             <ArrowLeft size={20}/>
             </button>)}
         <div className="flex min-w-0 flex-1 items-center gap-3">
+            
+            
             <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 font-semibold text-gray-600">
-            {conversation.contact.avatar ? (<img src={conversation.contact.avatar} alt={conversation.contact.name} className="h-full w-full object-cover"/>) : (conversation.contact.name.charAt(0).toUpperCase())}
+            {avatarUrl && !avatarComErro ? (
+                <img
+                src={avatarUrl}
+                alt={conversation.contact.name}
+                onError={() => {
+                    avataresComErroChat.add(avatarUrl)
+                    setAvatarComErro(true)
+                }}
+                className="h-full w-full object-cover"
+                />
+            ) : (
+                conversation.contact.name
+                .charAt(0)
+                .toUpperCase()
+            )}
             </div>
+
+
             <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
                 <h2 className="truncate text-sm font-semibold text-gray-900">
