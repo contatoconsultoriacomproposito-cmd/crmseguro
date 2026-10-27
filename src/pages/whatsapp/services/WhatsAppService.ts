@@ -4,6 +4,7 @@ import type {
   SendMessageData,
   StartConversationData,
   StartConversationResult,
+  WhatsAppConversationStatus,
   WhatsAppKanbanStage,
   WhatsAppMessage,
   WhatsAppProvider,
@@ -93,6 +94,16 @@ export class WhatsAppService {
     return this.provider.assignConversation(
       conversationId,
       attendantId
+    )
+  }
+
+  updateConversationStatus(
+    conversationId: string,
+    status: WhatsAppConversationStatus
+  ) {
+    return this.provider.updateConversationStatus(
+      conversationId,
+      status
     )
   }
 

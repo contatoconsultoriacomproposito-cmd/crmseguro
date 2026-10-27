@@ -1,6 +1,13 @@
 export type WhatsAppProviderName = 'mock' | 'zapi' | 'dapi' | 'meta'
 
-export type MessageType = 'text' | 'image' | 'audio' | 'video' | 'document'
+export type MessageType =
+  | 'text'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'document'
+  | 'contact'
+
 export type MessageDirection = 'inbound' | 'outbound'
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
 
@@ -9,7 +16,6 @@ export type CrmClientType = 'PESSOA' | 'EMPRESA'
 export type CrmClientClassification =
   | 'NAO_QUALIFICADO'
   | 'LEAD'
-
 
 export type WhatsAppConversationStatus =
   | 'novo'
@@ -49,6 +55,16 @@ export interface WhatsAppMedia {
   size?: number
 }
 
+export interface WhatsAppSharedContact {
+  name?: string
+  phone?: string
+  vcard?: string
+}
+
+export interface WhatsAppMessageMetadata {
+  contact?: WhatsAppSharedContact
+}
+
 export interface WhatsAppReaction {
   id: string
   emoji: string
@@ -73,6 +89,7 @@ export interface WhatsAppMessage {
   type: MessageType
   text?: string
   media?: WhatsAppMedia
+  metadata?: WhatsAppMessageMetadata
   timestamp: string
   status: MessageStatus
   senderName?: string
@@ -163,6 +180,11 @@ export interface WhatsAppProvider {
   assignConversation(
     conversationId: string,
     attendantId: string | null
+  ): Promise<void>
+
+  updateConversationStatus(
+    conversationId: string,
+    status: WhatsAppConversationStatus
   ): Promise<void>
 
   updateKanbanPosition(

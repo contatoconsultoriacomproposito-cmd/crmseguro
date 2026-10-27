@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { WhatsAppAttendant, WhatsAppConversation, WhatsAppMessage } from '../types/whatsapp';
+import type { WhatsAppAttendant, WhatsAppConversation, WhatsAppConversationStatus, WhatsAppMessage } from '../types/whatsapp';
 import ModalEncaminharMensagem from './ModalEncaminharMensagem';
 import ModalExcluirMensagem from './ModalExcluirMensagem';
 import { useMessages } from '../hooks/useMessages';
@@ -12,7 +12,7 @@ import DocumentosMenu from '../documentos/components/DocumentosMenu';
 import ModalAdicionarDocumento from '../documentos/components/ModalAdicionarDocumento';
 import { useAuth } from '../../../auth/AuthContext';
 import { supabase } from '../../../lib/supabaseClient';
-import { ArrowLeft, Check, ChevronDown, FolderOpen, Phone, UserRound, CalendarPlus, Loader2 } from 'lucide-react';
+import { Archive, ArrowLeft, Check, ChevronDown, FolderOpen, Phone, RotateCcw, UserRound, CalendarPlus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { startRealPreQualification } from '../automation/services/preQualificationExecutor';
 import { startRealRouting } from '../automation/services/routingExecutor';
@@ -44,10 +44,11 @@ interface ChatWindowProps {
     onBack?: () => void;
     onMarkedAsRead?: (conversationId: string) => void;
     onOpenContactPanel?: () => void;
+    onConversationStatusChanged?: () => Promise<void> | void;
 }
 type HeaderMenu = 'responsavel' | 'documentos' | null;
 
-export default function ChatWindow({ conversation, onBack, onMarkedAsRead, onOpenContactPanel, }: ChatWindowProps) {
+export default function ChatWindow({ conversation, onBack, onMarkedAsRead, onOpenContactPanel, onConversationStatusChanged, }: ChatWindowProps) {
     const whatsapp = useWhatsApp();
 
     const avatarUrl = conversation?.contact.avatar?.trim() || ''
@@ -195,6 +196,7 @@ export default function ChatWindow({ conversation, onBack, onMarkedAsRead, onOpe
     const [clienteAgenda, setClienteAgenda,] = useState<AgendaClienteResultado | null>(null);
     const [carregandoAgenda, setCarregandoAgenda,] = useState(false);
     const [salvandoAgenda, setSalvandoAgenda,] = useState(false);
+    const [alterandoStatusConversa, setAlterandoStatusConversa] = useState(false);
     useEffect(() => {
         setResponsavelId(
             conversation?.assignedUserId ?? ''
@@ -1077,6 +1079,49 @@ const timelineItems =
     const toggleMenu = (menu: HeaderMenu) => {
         setActiveMenu(current => (current === menu ? null : menu));
     };
+    const handleAlterarStatusConversa = async () => {
+        if (!conversation || alterandoStatusConversa) {
+            return;
+        }
+
+        const reabrindo = conversation.status === 'encerrada';
+        const novoStatus: WhatsAppConversationStatus = reabrindo
+            ? 'em_atendimento'
+            : 'encerrada';
+
+        setAlterandoStatusConversa(true);
+
+        try {
+            await whatsapp.updateConversationStatus(
+                conversation.id,
+                novoStatus
+            );
+
+            toast.success(
+                reabrindo
+                    ? 'Conversa reaberta.'
+                    : 'Conversa encerrada.'
+            );
+
+            await onConversationStatusChanged?.();
+        } catch (error) {
+            console.error(
+                '❌ ChatWindow → erro ao alterar status da conversa:',
+                error
+            );
+
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : reabrindo
+                        ? 'Não foi possível reabrir a conversa.'
+                        : 'Não foi possível encerrar a conversa.'
+            );
+        } finally {
+            setAlterandoStatusConversa(false);
+        }
+    };
+
     const handleAssignResponsible = async (id: string) => {
         if (!conversation || assigningResponsible)
             return;
@@ -1771,6 +1816,27 @@ const timelineItems =
                 <Phone size={18} />
             )}
             </HeaderIconButton>
+            <HeaderIconButton
+            title={
+                conversation.status === 'encerrada'
+                    ? 'Reabrir conversa'
+                    : 'Encerrar conversa'
+            }
+            onClick={() => {
+                void handleAlterarStatusConversa()
+            }}
+            >
+            {alterandoStatusConversa ? (
+                <Loader2
+                size={18}
+                className="animate-spin"
+                />
+            ) : conversation.status === 'encerrada' ? (
+                <RotateCcw size={18} />
+            ) : (
+                <Archive size={18} />
+            )}
+            </HeaderIconButton>
         </div>
         </div>
         <div className="flex items-center gap-2 border-t border-gray-100 px-4 py-2 lg:hidden">
@@ -2065,7 +2131,5 @@ function ResponsavelMenu({ attendants, responsavelId, onSelect, loading, assigni
         {!responsavelId && (<Check size={16} className="shrink-0 text-blue-600"/>)}
         </button>
     </div>
-
-    
     </div>);
 }

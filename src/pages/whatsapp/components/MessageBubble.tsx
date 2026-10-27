@@ -8,6 +8,7 @@ import MediaMessage from './MediaMessage'
 import {
   Check,
   CheckCheck,
+  ContactRound,
   Ellipsis,
   Forward,
   ListTodo,
@@ -60,6 +61,9 @@ export default function MessageBubble({
   const [menuOpen, setMenuOpen] = useState(false)
     const [reactionOpen, setReactionOpen] =
     useState(false)
+
+  const [imagemAmpliada, setImagemAmpliada] =
+    useState<string | null>(null)
 
   const [sendingReaction, setSendingReaction] =
     useState(false)
@@ -288,12 +292,52 @@ export default function MessageBubble({
               />
             )}
 
-            {message.media ? (
+            {message.type === 'contact' &&
+              message.metadata?.contact ? (
+                <div className="min-w-[240px]">
+                  <div className="flex items-center gap-3 py-1">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                      <ContactRound size={24} />
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-gray-900">
+                        {message.metadata.contact.name ||
+                          'Contato'}
+                      </div>
+
+                      {message.metadata.contact.phone && (
+                        <div className="mt-0.5 text-xs text-gray-500">
+                          {message.metadata.contact.phone}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+            ) : message.media ? (
               <>
                 <div className="relative overflow-hidden rounded-lg">
-                  <MediaMessage
-                    media={message.media}
-                  />
+                  {message.media.type === 'image' &&
+                  message.media.url ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setImagemAmpliada(
+                          message.media!.url!
+                        )
+                      }
+                      className="block w-full cursor-zoom-in"
+                      title="Clique para ampliar"
+                    >
+                      <MediaMessage
+                        media={message.media}
+                      />
+                    </button>
+                  ) : (
+                    <MediaMessage
+                      media={message.media}
+                    />
+                  )}
 
                   {showMediaSendingOverlay && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/25 backdrop-blur-[1px]">
@@ -404,7 +448,7 @@ export default function MessageBubble({
             )}
         </div>
 
-        {canUseActions && (
+                {canUseActions && (
           <div
             className={`relative flex shrink-0 items-center gap-0.5 self-center transition-opacity ${
               menuOpen || reactionOpen
@@ -416,9 +460,7 @@ export default function MessageBubble({
               title="Responder"
               onClick={handleReply}
             >
-              <MessageSquareReply
-                size={14}
-              />
+              <MessageSquareReply size={14} />
             </MessageActionButton>
 
             <MessageActionButton
@@ -429,21 +471,18 @@ export default function MessageBubble({
             </MessageActionButton>
 
             {reactionOpen && (
-            <ReactionPicker
-              sent={sent}
-              disabled={sendingReaction}
-              onSelect={handleSelectReaction}
-            />
-          )}
+              <ReactionPicker
+                sent={sent}
+                disabled={sendingReaction}
+                onSelect={handleSelectReaction}
+              />
+            )}
 
             <MessageActionButton
               title="Mais ações"
               active={menuOpen}
               onClick={() =>
-                setMenuOpen(
-                  current =>
-                    !current
-                )
+                setMenuOpen(current => !current)
               }
             >
               <Ellipsis size={15} />
@@ -451,6 +490,35 @@ export default function MessageBubble({
           </div>
         )}
       </div>
+
+      {imagemAmpliada && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4"
+          onClick={() =>
+            setImagemAmpliada(null)
+          }
+        >
+          <button
+            type="button"
+            onClick={() =>
+              setImagemAmpliada(null)
+            }
+            className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-2xl text-white transition hover:bg-white/20"
+            title="Fechar"
+          >
+            ×
+          </button>
+
+          <img
+            src={imagemAmpliada}
+            alt="Imagem ampliada"
+            onClick={event =>
+              event.stopPropagation()
+            }
+            className="max-h-[92vh] max-w-[95vw] object-contain shadow-2xl"
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -641,6 +709,7 @@ function MessageMoreMenu({
         onClick={onDelete}
         danger
       />
+      
     </div>
   )
 }

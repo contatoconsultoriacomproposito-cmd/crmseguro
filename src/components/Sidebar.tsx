@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react"
 import {
-  Bot,
+  //Bot,
   Building2,
   Cable,
   Calendar,
@@ -192,6 +192,7 @@ export default function Sidebar({
             iconClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
           />
 
+          {/*
           <SidebarItem
             to="/whatsapp/automacoes"
             icon={<Bot size={18} />}
@@ -200,6 +201,7 @@ export default function Sidebar({
             onNavigate={handleNavigate}
             iconClassName="bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-500/10 dark:text-fuchsia-400"
           />
+          */}
         </NavSection>
 
         {/* =================================================

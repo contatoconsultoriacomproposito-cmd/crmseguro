@@ -92,6 +92,9 @@ function mapearMensagem(
     text: dados.text || undefined,
     media: mapearMidia(dados),
 
+    metadata:
+      dados.metadata || undefined,
+
     timestamp:
       dados.timestamp || item.evento_em,
 

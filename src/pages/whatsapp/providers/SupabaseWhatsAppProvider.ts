@@ -14,6 +14,7 @@ import type {
   WhatsAppKanbanStage,
   WhatsAppConversationStatus,
   WhatsAppInstanceStatus,
+  WhatsAppMessageMetadata,
 } from '../types/whatsapp'
 import { getWhatsAppTransport } from './transports/getWhatsAppTransport'
 import type { WhatsAppTransportName } from './transports/WhatsAppTransport'
@@ -37,7 +38,13 @@ interface SupabaseMensagem {
   id: string
   conversa_id: string
   direction: 'inbound' | 'outbound'
-  type: 'text' | 'image' | 'audio' | 'video' | 'document'
+  type:
+    | 'text'
+    | 'image'
+    | 'audio'
+    | 'video'
+    | 'document'
+    | 'contact'
   text: string | null
   timestamp: string
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
@@ -45,6 +52,7 @@ interface SupabaseMensagem {
   provider_message_id?: string | null
   provider_command_id?: string | null
   whatsapp_midias?: SupabaseMidia[]
+  metadata?: WhatsAppMessageMetadata | null
 }
 
 interface InboxConversationRpcRow {
@@ -101,7 +109,7 @@ interface InboxConversationRpcRow {
     id: string
     conversa_id: string
     direction: 'inbound' | 'outbound'
-    type: 'text' | 'image' | 'audio' | 'video' | 'document'
+    type: 'text' | 'image' | 'audio' | 'video' | 'document' | 'contact'
     text: string | null
     timestamp: string
     status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
@@ -552,6 +560,7 @@ export class SupabaseWhatsAppProvider implements WhatsAppProvider {
         direction,
         type,
         text,
+        metadata,
         timestamp,
         status,
         sender_name,
@@ -590,6 +599,7 @@ export class SupabaseWhatsAppProvider implements WhatsAppProvider {
         mensagem.whatsapp_midias?.[0],
         readUrls
       ),
+      metadata: mensagem.metadata || undefined,
       timestamp: mensagem.timestamp,
       status: mensagem.status,
       senderName: mensagem.sender_name || undefined,
@@ -2994,6 +3004,27 @@ async sendContactMessage(
 
     }
 
+  }
+
+  async updateConversationStatus(
+    conversationId: string,
+    status: WhatsAppConversationStatus
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('whatsapp_conversas')
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversationId)
+
+    if (error) {
+      console.error(
+        '❌ SupabaseWhatsAppProvider.updateConversationStatus:',
+        error
+      )
+      throw error
+    }
   }
 
   async updateKanbanPosition(

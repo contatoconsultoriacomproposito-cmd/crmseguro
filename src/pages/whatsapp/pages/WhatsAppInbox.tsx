@@ -139,6 +139,15 @@ export default function WhatsAppInbox() {
     [reload]
   )
 
+
+  const handleConversationStatusChanged =
+    useCallback(async () => {
+      await reload()
+      setSelectedId(undefined)
+      setMobileContactPanelOpen(false)
+      setContactPanelOpen(true)
+    }, [reload])
+
   const handleChangeKanbanStage = useCallback(
   async (
     conversationId: string,
@@ -339,6 +348,9 @@ export default function WhatsAppInbox() {
                 setMobileContactPanelOpen(
                   true
                 )
+              }
+              onConversationStatusChanged={
+                handleConversationStatusChanged
               }
             />
 
