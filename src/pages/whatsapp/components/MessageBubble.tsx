@@ -46,6 +46,10 @@ interface MessageBubbleProps {
   onDelete?: (
     message: WhatsAppMessage
   ) => void
+
+  onOpenSharedContact?: (
+    message: WhatsAppMessage
+  ) => Promise<void> | void
 }
 
 export default function MessageBubble({
@@ -56,6 +60,7 @@ export default function MessageBubble({
   onCreateTask,
   onForward,
   onDelete,
+  onOpenSharedContact,
 }: MessageBubbleProps) {
 
   const [menuOpen, setMenuOpen] = useState(false)
@@ -67,6 +72,11 @@ export default function MessageBubble({
 
   const [sendingReaction, setSendingReaction] =
     useState(false)
+
+  const [
+    openingSharedContact,
+    setOpeningSharedContact,
+  ] = useState(false)
 
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -239,6 +249,28 @@ export default function MessageBubble({
     setMenuOpen(false)
   }
 
+  const handleOpenSharedContact = async () => {
+    if (
+      openingSharedContact ||
+      !onOpenSharedContact
+    ) {
+      return
+    }
+
+    try {
+      setOpeningSharedContact(true)
+
+      await onOpenSharedContact(message)
+    } catch (error) {
+      console.error(
+        'Erro ao abrir contato compartilhado:',
+        error
+      )
+    } finally {
+      setOpeningSharedContact(false)
+    }
+  }
+
   return (
     <div
       id={`message-${message.id}`}
@@ -313,6 +345,24 @@ export default function MessageBubble({
                       )}
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenSharedContact}
+                    disabled={openingSharedContact}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    {openingSharedContact && (
+                      <Loader2
+                        size={14}
+                        className="animate-spin"
+                      />
+                    )}
+
+                    {openingSharedContact
+                      ? 'Buscando contato no CRM...'
+                      : 'Mensagem'}
+                  </button>
                 </div>
             ) : message.media ? (
               <>

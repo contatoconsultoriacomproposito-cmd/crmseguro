@@ -45,10 +45,18 @@ interface ChatWindowProps {
     onMarkedAsRead?: (conversationId: string) => void;
     onOpenContactPanel?: () => void;
     onConversationStatusChanged?: () => Promise<void> | void;
+    onOpenSharedContact?: (message: WhatsAppMessage) => void
 }
 type HeaderMenu = 'responsavel' | 'documentos' | null;
 
-export default function ChatWindow({ conversation, onBack, onMarkedAsRead, onOpenContactPanel, onConversationStatusChanged, }: ChatWindowProps) {
+export default function ChatWindow({
+    conversation,
+    onBack,
+    onMarkedAsRead,
+    onOpenContactPanel,
+    onConversationStatusChanged,
+    onOpenSharedContact,
+    }: ChatWindowProps) {
     const whatsapp = useWhatsApp();
 
     const avatarUrl = conversation?.contact.avatar?.trim() || ''
@@ -1880,33 +1888,36 @@ const timelineItems =
         </div>
     )}
     {timelineItems.map(item =>
-        item.kind === 'message' ? (
+    item.kind === 'message' ? (
         <MessageBubble
-            key={item.key}
-            message={item.message}
-            onReply={setReplyMessage}
-            onNavigateToMessage={
-                handleNavigateToMessage
-            }
-            onReact={
-                handleReactMessage
-            }
-            onCreateTask={
-                handleCreateTaskFromMessage
-            }
-            onForward={
-                handleForwardMessage
-            }
-            onDelete={
-                handleDeleteMessage
-            }
+        key={item.key}
+        message={item.message}
+        onReply={setReplyMessage}
+        onNavigateToMessage={
+            handleNavigateToMessage
+        }
+        onReact={
+            handleReactMessage
+        }
+        onCreateTask={
+            handleCreateTaskFromMessage
+        }
+        onForward={
+            handleForwardMessage
+        }
+        onDelete={
+            handleDeleteMessage
+        }
+        onOpenSharedContact={
+            onOpenSharedContact
+        }
         />
-        ) : (
+    ) : (
         <CallTimelineItem
-            key={item.key}
-            call={item.call}
+        key={item.key}
+        call={item.call}
         />
-        )
+    )
     )}
     </div>
     )}

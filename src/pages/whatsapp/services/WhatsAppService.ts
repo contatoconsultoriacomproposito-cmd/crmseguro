@@ -118,4 +118,23 @@ export class WhatsAppService {
       position
     )
   }
+
+  async findActiveConversationByPhone(
+    phone: string,
+    instanceId: string
+  ): Promise<string | null> {
+    return this.provider.findActiveConversationByPhone(
+      phone,
+      instanceId
+    )
+  }
+
+  async findContactByPhone(
+    phone: string
+  ) {
+    return this.provider.findContactByPhone(
+      phone
+    )
+  }
+
 }

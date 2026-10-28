@@ -21,6 +21,7 @@ import { useWhatsApp } from '../hooks/useWhatsApp'
 
 import type {
   WhatsAppKanbanStage,
+  WhatsAppMessage,
 } from '../types/whatsapp'
 
 export default function WhatsAppInbox() {
@@ -51,6 +52,15 @@ export default function WhatsAppInbox() {
     newConversationOpen,
     setNewConversationOpen,
   ] = useState(false)
+
+  const [
+    newConversationInitialData,
+    setNewConversationInitialData,
+  ] = useState<{
+    name?: string
+    phone?: string
+    instanceId?: string
+  }>({})
 
   const kanbanSelectionAppliedRef =
     useRef(false)
@@ -138,6 +148,83 @@ export default function WhatsAppInbox() {
     },
     [reload]
   )
+
+  const handleOpenSharedContact = useCallback(
+  async (message: WhatsAppMessage) => {
+    const phone =
+      message.metadata?.contact?.phone
+
+    if (!phone) {
+      console.error(
+        '❌ Contato compartilhado sem telefone.'
+      )
+      return
+    }
+
+    if (!selectedConversation?.instanceId) {
+      console.error(
+        '❌ Conversa atual sem instância vinculada.'
+      )
+      return
+    }
+
+    try {
+      const conversationId =
+        await whatsapp.findActiveConversationByPhone(
+          phone,
+          selectedConversation.instanceId
+        )
+
+      
+
+      if (conversationId) {
+        setSelectedId(conversationId)
+        setMobileContactPanelOpen(false)
+        setContactPanelOpen(true)
+        return
+      }
+
+      /*
+      * Não existe conversa ativa deste número
+      * nesta instância.
+      *
+      * Agora verificamos se o contato já existe
+      * na base global da corretora.
+      */
+      const existingContact =
+        await whatsapp.findContactByPhone(
+          phone
+        )
+
+      
+
+      setNewConversationInitialData({
+        name:
+          existingContact?.name ||
+          message.metadata?.contact?.name ||
+          '',
+        phone:
+          existingContact?.phone ||
+          phone,
+        instanceId:
+          selectedConversation.instanceId,
+      })
+
+      setNewConversationOpen(true)
+
+
+    } catch (error) {
+      console.error(
+        '❌ Erro ao localizar conversa do contato compartilhado:',
+        error
+      )
+    }
+  },
+  [
+    whatsapp,
+    selectedConversation,
+  ]
+)
 
 
   const handleConversationStatusChanged =
@@ -299,11 +386,10 @@ export default function WhatsAppInbox() {
             <div className="shrink-0 border-b border-slate-100 p-3">
               <button
                 type="button"
-                onClick={() =>
-                  setNewConversationOpen(
-                    true
-                  )
-                }
+                onClick={() => {
+                  setNewConversationInitialData({})
+                  setNewConversationOpen(true)
+                }}
                 className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
               >
                 <MessageCirclePlus
@@ -351,6 +437,9 @@ export default function WhatsAppInbox() {
               }
               onConversationStatusChanged={
                 handleConversationStatusChanged
+              }
+              onOpenSharedContact={
+                handleOpenSharedContact
               }
             />
 
@@ -415,6 +504,18 @@ export default function WhatsAppInbox() {
         open={newConversationOpen}
         onClose={() =>
           setNewConversationOpen(false)
+        }
+        initialName={
+          newConversationInitialData.name
+        }
+        initialPhone={
+          newConversationInitialData.phone
+        }
+        initialInstanceId={
+          newConversationInitialData.instanceId
+        }
+        findContactByPhone={(phone) =>
+          whatsapp.findContactByPhone(phone)
         }
         onStartConversation={(data) =>
           whatsapp.startConversation(data)

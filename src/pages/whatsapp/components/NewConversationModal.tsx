@@ -21,18 +21,31 @@ import {
 } from '../services/novaConversaService'
 import type {
   StartConversationResult,
+  WhatsAppContactLookupResult,
 } from '../types/whatsapp'
 
 interface NewConversationModalProps {
   open: boolean
   onClose: () => void
+
+  initialName?: string
+  initialPhone?: string
+  initialInstanceId?: string
+
+  findContactByPhone: (
+    phone: string
+  ) => Promise<WhatsAppContactLookupResult | null>
+
   onStartConversation: (data: {
     name: string
     phone: string
     instanceId: string
     assignedUserId?: string | null
   }) => Promise<StartConversationResult>
-  onCreated: (conversationId: string) => Promise<void> | void
+
+  onCreated: (
+    conversationId: string
+  ) => Promise<void> | void
 }
 
 function formatPhone(value: string | null) {
@@ -102,6 +115,10 @@ function getFunctionLabel(
 export default function NewConversationModal({
   open,
   onClose,
+  initialName,
+  initialPhone,
+  initialInstanceId,
+  findContactByPhone,
   onStartConversation,
   onCreated,
 }: NewConversationModalProps) {
@@ -144,9 +161,28 @@ export default function NewConversationModal({
 
     const load = async () => {
       setLoading(true)
-      setName('')
-      setPhone('')
-      setConnectionId('')
+
+      setName(
+        initialName?.trim() ||
+        ''
+      )
+
+      setPhone(
+        initialPhone
+          ? maskPhone(
+              initialPhone.replace(
+                /^55/,
+                ''
+              )
+            )
+          : ''
+      )
+
+      setConnectionId(
+        initialInstanceId ||
+        ''
+      )
+
       setResponsibleId('')
       setResponsibles([])
 
@@ -159,7 +195,22 @@ export default function NewConversationModal({
         setContext(result)
         setConnections(result.connections)
 
-        if (result.connections.length === 1) {
+        if (initialInstanceId) {
+          const connectionExists =
+            result.connections.some(
+              connection =>
+                connection.id ===
+                initialInstanceId
+            )
+
+          if (connectionExists) {
+            setConnectionId(
+              initialInstanceId
+            )
+          }
+        } else if (
+          result.connections.length === 1
+        ) {
           setConnectionId(
             result.connections[0].id
           )
@@ -182,7 +233,12 @@ export default function NewConversationModal({
     return () => {
       active = false
     }
-  }, [open])
+    }, [
+    open,
+    initialName,
+    initialPhone,
+    initialInstanceId,
+  ])
 
   useEffect(() => {
     if (!open || !connectionId) {
@@ -246,12 +302,18 @@ export default function NewConversationModal({
   const handleSubmit = async () => {
     if (saving) return
 
-    if (!name.trim()) {
-      toast.error('Informe o nome do contato.')
+    const nameTrimmed =
+      name.trim()
+
+    if (!nameTrimmed) {
+      toast.error(
+        'Informe o nome do contato.'
+      )
       return
     }
 
-    const digits = phone.replace(/\D/g, '')
+    const digits =
+      phone.replace(/\D/g, '')
 
     if (digits.length < 10) {
       toast.error(
@@ -270,21 +332,74 @@ export default function NewConversationModal({
     setSaving(true)
 
     try {
+      /*
+      * Antes de criar qualquer coisa,
+      * verificamos se este telefone já
+      * pertence a um contato da corretora.
+      */
+      const existingContact =
+        await findContactByPhone(
+          phone
+        )
+
+      /*
+      * Contato excluído continua existindo
+      * fisicamente e está protegido pelo
+      * índice UNIQUE.
+      *
+      * Neste momento bloqueamos a operação
+      * para não gerar comportamento ambíguo.
+      */
+      if (
+        existingContact?.excluded
+      ) {
+        toast.error(
+          'Este número pertence a um contato excluído. Reative o contato antes de iniciar uma nova conversa.'
+        )
+        return
+      }
+
+      /*
+      * Se o contato já existe, usamos o nome
+      * já registrado na base.
+      *
+      * startConversation() fará o reaproveitamento
+      * do mesmo contato e criará apenas a conversa
+      * quando necessário.
+      */
+      const finalName =
+        existingContact?.name?.trim() ||
+        nameTrimmed
+
+      const finalPhone =
+        existingContact?.phone ||
+        phone
+
       const result =
         await onStartConversation({
-          name: name.trim(),
-          phone,
-          instanceId: connectionId,
+          name:
+            finalName,
+          phone:
+            finalPhone,
+          instanceId:
+            connectionId,
           assignedUserId:
-            responsibleId || null,
+            responsibleId ||
+            null,
         })
 
       if (result.created) {
-        toast.success(
+        if (
           result.contactCreated
-            ? 'Contato e conversa criados.'
-            : 'Nova conversa criada para o contato.'
-        )
+        ) {
+          toast.success(
+            'Contato e conversa criados.'
+          )
+        } else {
+          toast.success(
+            'Contato existente reutilizado e nova conversa criada.'
+          )
+        }
       } else {
         toast.info(
           'Este contato já possui uma conversa ativa nessa conexão.'

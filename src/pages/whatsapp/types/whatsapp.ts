@@ -41,6 +41,15 @@ export interface WhatsAppContact {
   temperatura?: 'FRIO' | 'MORNO' | 'QUENTE'
 }
 
+export interface WhatsAppContactLookupResult {
+  id: string
+  name: string
+  phone: string
+  whatsappId?: string
+  clienteId?: string
+  excluded: boolean
+}
+
 export interface WhatsAppAttendant {
   id: string
   name: string
@@ -211,4 +220,13 @@ export interface WhatsAppProvider {
   sendContactMessage(
     data: SendContactMessageData
   ): Promise<SendContactMessageResult>
+
+  findActiveConversationByPhone(
+    phone: string,
+    instanceId: string
+  ): Promise<string | null>
+
+  findContactByPhone(
+    phone: string
+  ): Promise<WhatsAppContactLookupResult | null>
 }

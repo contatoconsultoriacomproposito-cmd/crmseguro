@@ -7,6 +7,7 @@ import type {
   StartConversationData,
   StartConversationResult,
   WhatsAppConversation,
+  WhatsAppContactLookupResult,
   WhatsAppMedia,
   WhatsAppMessage,
   WhatsAppAttendant,
@@ -16,6 +17,7 @@ import type {
   WhatsAppInstanceStatus,
   WhatsAppMessageMetadata,
 } from '../types/whatsapp'
+
 import { getWhatsAppTransport } from './transports/getWhatsAppTransport'
 import type { WhatsAppTransportName } from './transports/WhatsAppTransport'
 import { getBrazilPhoneVariants, normalizeWhatsAppPhone } from '../utils/whatsappPhone'
@@ -424,6 +426,8 @@ async function finalizeWhatsAppMediaInStorage(
     return false
   }
 }
+
+
 
 export class SupabaseWhatsAppProvider implements WhatsAppProvider {
 
@@ -1058,6 +1062,346 @@ const {
     contactId,
     created: true,
     contactCreated,
+  }
+}
+
+async findActiveConversationByPhone(
+  phone: string,
+  instanceId: string
+): Promise<string | null> {
+  const phoneNormalized =
+    normalizeWhatsAppPhone(phone)
+
+  const instanceIdNormalized =
+    instanceId?.trim()
+
+  if (!phoneNormalized) {
+    return null
+  }
+
+  if (!instanceIdNormalized) {
+    return null
+  }
+
+  /*
+   * ======================================================
+   * CONTATOS QUE POSSUEM ESTE TELEFONE
+   * ======================================================
+   *
+   * Usamos as variantes porque o projeto já trata
+   * números brasileiros com e sem o 9 adicional.
+   */
+  const phoneVariants =
+    getBrazilPhoneVariants(
+      phoneNormalized
+    )
+
+  const {
+    data: contatos,
+    error: contatosError,
+  } = await supabase
+    .from('whatsapp_contatos')
+    .select('id')
+    .in(
+      'telefone',
+      phoneVariants
+    )
+
+  if (contatosError) {
+    console.error(
+      '❌ findActiveConversationByPhone → buscar contatos:',
+      contatosError
+    )
+
+    throw contatosError
+  }
+
+  const contactIds =
+    (contatos || [])
+      .map(contato => contato.id)
+      .filter(Boolean)
+
+  if (contactIds.length === 0) {
+    return null
+  }
+
+  /*
+   * ======================================================
+   * CONVERSA ATIVA NA MESMA INSTÂNCIA
+   * ======================================================
+   *
+   * Uma conversa existente em outra instância
+   * NÃO deve ser reaproveitada.
+   */
+  const {
+    data: conversas,
+    error: conversaError,
+  } = await supabase
+    .from('whatsapp_conversas')
+    .select(`
+      id,
+      ultima_mensagem_at,
+      updated_at
+    `)
+    .eq(
+      'instancia_id',
+      instanceIdNormalized
+    )
+    .in(
+      'contato_id',
+      contactIds
+    )
+    .neq(
+      'status',
+      'encerrada'
+    )
+    .order(
+      'ultima_mensagem_at',
+      {
+        ascending: false,
+        nullsFirst: false,
+      }
+    )
+    .order(
+      'updated_at',
+      {
+        ascending: false,
+      }
+    )
+    .limit(1)
+
+  if (conversaError) {
+    console.error(
+      '❌ findActiveConversationByPhone → buscar conversa:',
+      conversaError
+    )
+
+    throw conversaError
+  }
+
+  return (
+    conversas?.[0]?.id ||
+    null
+  )
+}
+
+async findContactByPhone(
+  phone: string
+): Promise<WhatsAppContactLookupResult | null> {
+  const phoneNormalized =
+    normalizeWhatsAppPhone(phone)
+
+  if (!phoneNormalized) {
+    return null
+  }
+
+  const phoneVariants =
+    getBrazilPhoneVariants(
+      phoneNormalized
+    )
+
+  /*
+   * O contato pertence à corretora,
+   * não a uma instância específica.
+   */
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError) {
+    console.error(
+      '❌ findContactByPhone → autenticação:',
+      authError
+    )
+
+    throw authError
+  }
+
+  if (!user?.id) {
+    throw new Error(
+      'Usuário não autenticado.'
+    )
+  }
+
+  const {
+    data: perfil,
+    error: perfilError,
+  } = await supabase
+    .from('usuarios_perfis')
+    .select(`
+      id,
+      corretora_id,
+      tipo_usuario,
+      ativo
+    `)
+    .eq('id', user.id)
+    .single()
+
+  if (
+    perfilError ||
+    !perfil
+  ) {
+    console.error(
+      '❌ findContactByPhone → perfil:',
+      perfilError
+    )
+
+    throw new Error(
+      'Perfil do usuário não encontrado.'
+    )
+  }
+
+  if (perfil.ativo !== true) {
+    throw new Error(
+      'Seu usuário está inativo.'
+    )
+  }
+
+  const corretoraId =
+    perfil.tipo_usuario === 'CORRETORA'
+      ? perfil.id
+      : perfil.corretora_id
+
+  if (!corretoraId) {
+    throw new Error(
+      'Corretora do usuário não encontrada.'
+    )
+  }
+
+  /*
+   * ======================================================
+   * 1. BUSCA PELO TELEFONE
+   * ======================================================
+   */
+  const {
+    data: contatosTelefone,
+    error: telefoneError,
+  } = await supabase
+    .from('whatsapp_contatos')
+    .select(`
+      id,
+      nome,
+      telefone,
+      whatsapp_id,
+      cliente_id,
+      excluido_em,
+      created_at
+    `)
+    .eq(
+      'corretora_id',
+      corretoraId
+    )
+    .in(
+      'telefone',
+      phoneVariants
+    )
+    .order(
+      'created_at',
+      {
+        ascending: true,
+      }
+    )
+    .limit(1)
+
+  if (telefoneError) {
+    console.error(
+      '❌ findContactByPhone → busca por telefone:',
+      telefoneError
+    )
+
+    throw telefoneError
+  }
+
+  let contato =
+    contatosTelefone?.[0] ||
+    null
+
+  /*
+   * ======================================================
+   * 2. FALLBACK PELO WHATSAPP_ID
+   * ======================================================
+   *
+   * Alguns contatos sincronizados podem possuir uma
+   * identidade WhatsApp mais confiável que o telefone.
+   */
+  if (!contato) {
+    const whatsappIds =
+      phoneVariants.map(
+        variant =>
+          `${variant}@s.whatsapp.net`
+      )
+
+    const {
+      data: contatosWhatsappId,
+      error: whatsappIdError,
+    } = await supabase
+      .from('whatsapp_contatos')
+      .select(`
+        id,
+        nome,
+        telefone,
+        whatsapp_id,
+        cliente_id,
+        excluido_em,
+        created_at
+      `)
+      .eq(
+        'corretora_id',
+        corretoraId
+      )
+      .in(
+        'whatsapp_id',
+        whatsappIds
+      )
+      .order(
+        'created_at',
+        {
+          ascending: true,
+        }
+      )
+      .limit(1)
+
+    if (whatsappIdError) {
+      console.error(
+        '❌ findContactByPhone → busca por whatsapp_id:',
+        whatsappIdError
+      )
+
+      throw whatsappIdError
+    }
+
+    contato =
+      contatosWhatsappId?.[0] ||
+      null
+  }
+
+  if (!contato) {
+    return null
+  }
+
+  return {
+    id: contato.id,
+
+    name:
+      contato.nome?.trim() ||
+      contato.telefone,
+
+    phone:
+      contato.telefone,
+
+    whatsappId:
+      contato.whatsapp_id ||
+      undefined,
+
+    clienteId:
+      contato.cliente_id ||
+      undefined,
+
+    excluded:
+      Boolean(
+        contato.excluido_em
+      ),
   }
 }
 
@@ -3286,6 +3630,8 @@ if (
   }
 
 }
+
+
 
 function getForwardMediaFileName(
   type: WhatsAppMessage['type']
