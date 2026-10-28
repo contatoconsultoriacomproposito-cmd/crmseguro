@@ -499,7 +499,9 @@ export default function MessageBubble({
                     : 'text-gray-400'
               }`}
             >
-              {sent && isPending && (
+              {sent &&
+              isPending &&
+              message.type !== 'text' && (
                 <span className="flex items-center gap-1">
                   <Loader2
                     size={10}
@@ -512,9 +514,18 @@ export default function MessageBubble({
 
               <span>{time}</span>
 
-              {sent && !isPending && (
+              {sent &&
+              (
+                !isPending ||
+                message.type === 'text'
+              ) && (
                 <MessageStatus
-                  status={message.status}
+                  status={
+                    isPending &&
+                    message.type === 'text'
+                      ? 'sent'
+                      : message.status
+                  }
                 />
               )}
             </div>

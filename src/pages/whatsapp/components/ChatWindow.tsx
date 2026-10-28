@@ -40,26 +40,31 @@ import { useStorageCommercial } from '../hooks/useStorageCommercial';
 const avataresComErroChat = new Set<string>()
 
 interface ChatWindowProps {
-    conversation?: WhatsAppConversation;
-    onBack?: () => void;
-    onMarkedAsRead?: (conversationId: string) => void;
-    onOpenContactPanel?: () => void;
-    onConversationStatusChanged?: () => Promise<void> | void;
-    onOpenSharedContact?: (
-        message: WhatsAppMessage,
-        contact: WhatsAppSharedContact
-        ) => Promise<void> | void
+  conversation?: WhatsAppConversation
+  onBack?: () => void
+  onMarkedAsRead?: (
+    conversationId: string
+  ) => void
+  onOpenContactPanel?: () => void
+  onConversationStatusChanged?:
+    () => Promise<void> | void
+  onOpenSharedContact?: (
+    message: WhatsAppMessage,
+    contact: WhatsAppSharedContact
+  ) => Promise<void> | void
+  onAgendaChanged?: () => void
 }
 type HeaderMenu = 'responsavel' | 'documentos' | null;
 
 export default function ChatWindow({
-    conversation,
-    onBack,
-    onMarkedAsRead,
-    onOpenContactPanel,
-    onConversationStatusChanged,
-    onOpenSharedContact,
-    }: ChatWindowProps) {
+  conversation,
+  onBack,
+  onMarkedAsRead,
+  onOpenContactPanel,
+  onConversationStatusChanged,
+  onOpenSharedContact,
+  onAgendaChanged,
+}: ChatWindowProps) {
     const whatsapp = useWhatsApp();
 
     const avatarUrl = conversation?.contact.avatar?.trim() || ''
@@ -1339,11 +1344,19 @@ const timelineItems =
                 origemId: conversation.id,
             }));
             if (payloads.length === 1) {
-                await criarCompromisso(payloads[0]);
+            await criarCompromisso(
+                payloads[0]
+            )
+            } else {
+            await criarCompromissos(
+                payloads
+            )
             }
-            else {
-                await criarCompromissos(payloads);
-            }
+
+            onAgendaChanged?.()
+
+            setModalAgendaAberto(false)
+            setClienteAgenda(null)
             setModalAgendaAberto(false);
             setClienteAgenda(null);
             toast.success(payloads.length === 1

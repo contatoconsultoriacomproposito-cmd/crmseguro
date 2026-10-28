@@ -45,6 +45,7 @@ interface ConversationListProps {
   conversations: WhatsAppConversation[]
   selectedId?: string
   loading?: boolean
+  agendaRefreshKey?: number
   onSelect: (id: string) => void
 }
 
@@ -81,6 +82,7 @@ export default function ConversationList({
   conversations,
   selectedId,
   loading,
+  agendaRefreshKey,
   onSelect,
 }: ConversationListProps) {
   const navigate = useNavigate()
@@ -204,6 +206,19 @@ useEffect(() => {
     void loadAgenda(true)
   })
 }, [corretoraId, loadAgenda])
+
+  useEffect(() => {
+    if (
+      agendaRefreshKey === undefined
+    ) {
+      return
+    }
+
+    void loadAgenda(true)
+  }, [
+    agendaRefreshKey,
+    loadAgenda,
+  ])
 
 const handleAbrirCompromisso = useCallback(async (commitment: WhatsAppAgendaCommitment) => {
   try {

@@ -76,6 +76,18 @@ export default function WhatsAppInbox() {
     setMobileContactPanelOpen,
   ] = useState(false)
 
+  const [
+    agendaRefreshKey,
+    setAgendaRefreshKey,
+  ] = useState(0)
+
+  const handleAgendaChanged =
+    useCallback(() => {
+      setAgendaRefreshKey(
+        current => current + 1
+      )
+    }, [])
+
   const selectedConversation =
     conversations.find(
       conversation =>
@@ -410,6 +422,9 @@ export default function WhatsAppInbox() {
                 }
                 selectedId={selectedId}
                 loading={loading}
+                agendaRefreshKey={
+                  agendaRefreshKey
+                }
                 onSelect={
                   handleSelectConversation
                 }
@@ -444,6 +459,9 @@ export default function WhatsAppInbox() {
               }
               onOpenSharedContact={
                 handleOpenSharedContact
+              }
+              onAgendaChanged={
+                handleAgendaChanged
               }
             />
 

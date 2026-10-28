@@ -190,25 +190,70 @@ export default function MessageComposer({
   }
   const send = async () => {
     const value = text.trim()
-    if (!value || sending || recording || recordedAudio) {
+
+    if (
+      !value ||
+      sending ||
+      recording ||
+      recordedAudio
+    ) {
       return
     }
-    setSending(true)
+
+    /*
+    * Guardamos o conteúdo antes de limpar o composer.
+    */
+    const textToSend =
+      value
+
+    const replyProviderMessageId =
+      replyMessage?.providerMessageId
+
+    /*
+    * UX otimista:
+    * o campo precisa ser liberado imediatamente.
+    */
+    setText('')
     setRecordingError('')
     closeComposerMenus()
+
+    requestAnimationFrame(() => {
+      resetTextareaHeight()
+      textareaRef.current?.focus()
+    })
+
+    setSending(true)
+
     try {
       await onSend({
-        text: value,
-        type: 'text',
-        replyToProviderMessageId: replyMessage?.providerMessageId,
-      })
-      setText('')
-      requestAnimationFrame(() => {
-        resetTextareaHeight()
-        textareaRef.current?.focus()
+        text:
+          textToSend,
+        type:
+          'text',
+        replyToProviderMessageId:
+          replyProviderMessageId,
       })
     } catch (error) {
-      console.error('❌ Erro ao enviar mensagem:', error)
+      console.error(
+        '❌ Erro ao enviar mensagem:',
+        error
+      )
+
+      /*
+      * Se o envio realmente falhar e o usuário ainda
+      * não tiver começado a escrever outra mensagem,
+      * restauramos o texto.
+      */
+      setText(current =>
+        current.trim()
+          ? current
+          : textToSend
+      )
+
+      requestAnimationFrame(() => {
+        resizeTextarea()
+        textareaRef.current?.focus()
+      })
     } finally {
       setSending(false)
     }
