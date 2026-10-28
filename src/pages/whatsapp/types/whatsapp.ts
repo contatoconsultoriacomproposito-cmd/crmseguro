@@ -72,6 +72,7 @@ export interface WhatsAppSharedContact {
 
 export interface WhatsAppMessageMetadata {
   contact?: WhatsAppSharedContact
+  contacts?: WhatsAppSharedContact[]
 }
 
 export interface WhatsAppReaction {

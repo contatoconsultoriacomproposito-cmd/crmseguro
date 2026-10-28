@@ -3,7 +3,10 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { WhatsAppMessage } from '../types/whatsapp'
+import type {
+  WhatsAppMessage,
+  WhatsAppSharedContact,
+} from '../types/whatsapp'
 import MediaMessage from './MediaMessage'
 import {
   Check,
@@ -48,7 +51,8 @@ interface MessageBubbleProps {
   ) => void
 
   onOpenSharedContact?: (
-    message: WhatsAppMessage
+    message: WhatsAppMessage,
+    contact: WhatsAppSharedContact
   ) => Promise<void> | void
 }
 
@@ -76,7 +80,7 @@ export default function MessageBubble({
   const [
     openingSharedContact,
     setOpeningSharedContact,
-  ] = useState(false)
+  ] = useState<string | null>(null)
 
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -93,6 +97,17 @@ export default function MessageBubble({
 
   const canUseActions =
     !isPending && !isFailed
+
+  const sharedContacts =
+  message.type === 'contact'
+    ? (
+        message.metadata?.contacts?.length
+          ? message.metadata.contacts
+          : message.metadata?.contact
+            ? [message.metadata.contact]
+            : []
+      )
+    : []
 
   const time = new Date(
     message.timestamp
@@ -249,7 +264,9 @@ export default function MessageBubble({
     setMenuOpen(false)
   }
 
-  const handleOpenSharedContact = async () => {
+  const handleOpenSharedContact = async (
+    contact: WhatsAppSharedContact
+  ) => {
     if (
       openingSharedContact ||
       !onOpenSharedContact
@@ -257,17 +274,27 @@ export default function MessageBubble({
       return
     }
 
-    try {
-      setOpeningSharedContact(true)
+    const contactKey =
+      contact.phone ||
+      contact.name ||
+      'shared-contact'
 
-      await onOpenSharedContact(message)
+    try {
+      setOpeningSharedContact(
+        contactKey
+      )
+
+      await onOpenSharedContact(
+        message,
+        contact
+      )
     } catch (error) {
       console.error(
         'Erro ao abrir contato compartilhado:',
         error
       )
     } finally {
-      setOpeningSharedContact(false)
+      setOpeningSharedContact(null)
     }
   }
 
@@ -325,46 +352,80 @@ export default function MessageBubble({
             )}
 
             {message.type === 'contact' &&
-              message.metadata?.contact ? (
-                <div className="min-w-[240px]">
-                  <div className="flex items-center gap-3 py-1">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
-                      <ContactRound size={24} />
-                    </div>
+              sharedContacts.length > 0 ? (
+                <div className="min-w-[240px] space-y-2">
+                  {sharedContacts.map(
+                    (contact, index) => {
+                      const contactKey =
+                        contact.phone ||
+                        contact.name ||
+                        `shared-contact-${index}`
 
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-gray-900">
-                        {message.metadata.contact.name ||
-                          'Contato'}
-                      </div>
+                      const isOpening =
+                        openingSharedContact ===
+                        contactKey
 
-                      {message.metadata.contact.phone && (
-                        <div className="mt-0.5 text-xs text-gray-500">
-                          {message.metadata.contact.phone}
+                      return (
+                        <div
+                          key={`${contactKey}-${index}`}
+                          className={
+                            sharedContacts.length > 1
+                              ? 'rounded-xl border border-gray-200 bg-white/60 p-2.5'
+                              : ''
+                          }
+                        >
+                          <div className="flex items-center gap-3 py-1">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                              <ContactRound
+                                size={24}
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-gray-900">
+                                {contact.name ||
+                                  'Contato'}
+                              </div>
+
+                              {contact.phone && (
+                                <div className="mt-0.5 text-xs text-gray-500">
+                                  {contact.phone}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleOpenSharedContact(
+                                contact
+                              )
+                            }
+                            disabled={
+                              Boolean(
+                                openingSharedContact
+                              )
+                            }
+                            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-70"
+                          >
+                            {isOpening && (
+                              <Loader2
+                                size={14}
+                                className="animate-spin"
+                              />
+                            )}
+
+                            {isOpening
+                              ? 'Buscando contato no CRM...'
+                              : 'Mensagem'}
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleOpenSharedContact}
-                    disabled={openingSharedContact}
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-70"
-                  >
-                    {openingSharedContact && (
-                      <Loader2
-                        size={14}
-                        className="animate-spin"
-                      />
-                    )}
-
-                    {openingSharedContact
-                      ? 'Buscando contato no CRM...'
-                      : 'Mensagem'}
-                  </button>
+                      )
+                    }
+                  )}
                 </div>
-            ) : message.media ? (
+              ) : message.media ? (
               <>
                 <div className="relative overflow-hidden rounded-lg">
                   {message.media.type === 'image' &&

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { WhatsAppAttendant, WhatsAppConversation, WhatsAppConversationStatus, WhatsAppMessage } from '../types/whatsapp';
+import type { WhatsAppAttendant, WhatsAppConversation, WhatsAppConversationStatus, WhatsAppMessage, WhatsAppSharedContact } from '../types/whatsapp';
 import ModalEncaminharMensagem from './ModalEncaminharMensagem';
 import ModalExcluirMensagem from './ModalExcluirMensagem';
 import { useMessages } from '../hooks/useMessages';
@@ -45,7 +45,10 @@ interface ChatWindowProps {
     onMarkedAsRead?: (conversationId: string) => void;
     onOpenContactPanel?: () => void;
     onConversationStatusChanged?: () => Promise<void> | void;
-    onOpenSharedContact?: (message: WhatsAppMessage) => void
+    onOpenSharedContact?: (
+        message: WhatsAppMessage,
+        contact: WhatsAppSharedContact
+        ) => Promise<void> | void
 }
 type HeaderMenu = 'responsavel' | 'documentos' | null;
 

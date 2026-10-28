@@ -22,6 +22,7 @@ import { useWhatsApp } from '../hooks/useWhatsApp'
 import type {
   WhatsAppKanbanStage,
   WhatsAppMessage,
+  WhatsAppSharedContact,
 } from '../types/whatsapp'
 
 export default function WhatsAppInbox() {
@@ -150,16 +151,19 @@ export default function WhatsAppInbox() {
   )
 
   const handleOpenSharedContact = useCallback(
-  async (message: WhatsAppMessage) => {
-    const phone =
-      message.metadata?.contact?.phone
+    async (
+      _message: WhatsAppMessage,
+      sharedContact: WhatsAppSharedContact
+    ) => {
+      const phone =
+        sharedContact.phone
 
-    if (!phone) {
-      console.error(
-        '❌ Contato compartilhado sem telefone.'
-      )
-      return
-    }
+      if (!phone) {
+        console.error(
+          '❌ Contato compartilhado sem telefone.'
+        )
+        return
+      }
 
     if (!selectedConversation?.instanceId) {
       console.error(
@@ -201,7 +205,7 @@ export default function WhatsAppInbox() {
       setNewConversationInitialData({
         name:
           existingContact?.name ||
-          message.metadata?.contact?.name ||
+          sharedContact.name ||
           '',
         phone:
           existingContact?.phone ||
