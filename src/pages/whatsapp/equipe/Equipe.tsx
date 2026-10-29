@@ -29,7 +29,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabaseClient";
 import { useAuth } from "../../../auth/AuthContext";
-import ModalPermissoes from "./ModalPermissoes";
 
 type FuncaoEquipe =
   | "CORRETOR"
@@ -267,7 +266,6 @@ export default function Equipe() {
 
   const [modalEditar, setModalEditar] = useState(false);
   const [modalSenha, setModalSenha] = useState(false);
-  const [modalPermissoes, setModalPermissoes] = useState(false);
   const [modalRemover, setModalRemover] = useState(false);
   const [modalRemovidos, setModalRemovidos] = useState(false);
 
@@ -473,16 +471,6 @@ export default function Equipe() {
     setMostrarSenha(false);
     setMostrarConfirmacao(false);
     setModalSenha(true);
-  }
-
-  function abrirPermissoes(
-    membro: MembroEquipe
-  ) {
-    setMembroSelecionado(membro);
-    setMenuAbertoId(null);
-    setErro("");
-    setMensagem("");
-    setModalPermissoes(true);
   }
 
   function abrirRemover(membro: MembroEquipe) {
@@ -1073,17 +1061,6 @@ export default function Equipe() {
                               Alterar senha
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                abrirPermissoes(membro)
-                              }
-                              className="w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                            >
-                              <SlidersHorizontal size={16} />
-                              Permissões
-                            </button>
-
                             <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
 
                             <button
@@ -1160,22 +1137,6 @@ export default function Equipe() {
           </>
         )}
       </div>
-
-      {/* PERMISSÕES */}
-      <ModalPermissoes
-        aberto={modalPermissoes}
-        membro={membroSelecionado}
-        onClose={() => {
-          setModalPermissoes(false);
-          setMembroSelecionado(null);
-          setErro("");
-        }}
-        onSaved={() => {
-          setMensagem(
-            "Permissões atualizadas com sucesso."
-          );
-        }}
-      />
 
       {/* EDITAR */}
       <ModalBase
