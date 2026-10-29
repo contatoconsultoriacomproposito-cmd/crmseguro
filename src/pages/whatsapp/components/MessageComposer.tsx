@@ -72,7 +72,7 @@ export default function MessageComposer({
 }: MessageComposerProps) {
   const { userProfile } = useAuth()
   const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
+  const sending = false
   const [recording, setRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [recordingError, setRecordingError] = useState('')
@@ -188,75 +188,55 @@ export default function MessageComposer({
     setAutomationMenuOpen(false)
     setQuickReplyMenuOpen(false)
   }
-  const send = async () => {
+  const send = () => {
     const value = text.trim()
 
     if (
       !value ||
-      sending ||
       recording ||
       recordedAudio
     ) {
       return
     }
 
-    /*
-    * Guardamos o conteúdo antes de limpar o composer.
-    */
-    const textToSend =
-      value
-
-    const replyProviderMessageId =
-      replyMessage?.providerMessageId
-
-    /*
-    * UX otimista:
-    * o campo precisa ser liberado imediatamente.
-    */
-    setText('')
     setRecordingError('')
     closeComposerMenus()
+
+    /**
+     * O useMessages já cria a mensagem otimista
+     * imediatamente.
+     *
+     * Portanto não precisamos bloquear o compose
+     * enquanto D-API + persistência terminam.
+     */
+    const envio = onSend({
+      text: value,
+      type: 'text',
+      replyToProviderMessageId:
+        replyMessage?.providerMessageId,
+    })
+
+    /**
+     * Libera o campo imediatamente.
+     */
+    setText('')
 
     requestAnimationFrame(() => {
       resetTextareaHeight()
       textareaRef.current?.focus()
     })
 
-    setSending(true)
-
-    try {
-      await onSend({
-        text:
-          textToSend,
-        type:
-          'text',
-        replyToProviderMessageId:
-          replyProviderMessageId,
-      })
-    } catch (error) {
+    /**
+     * O envio continua em segundo plano.
+     * Erros continuam sendo tratados sem bloquear
+     * a próxima mensagem.
+     */
+    void envio.catch(error => {
       console.error(
         '❌ Erro ao enviar mensagem:',
         error
       )
-
-      /*
-      * Se o envio realmente falhar e o usuário ainda
-      * não tiver começado a escrever outra mensagem,
-      * restauramos o texto.
-      */
-      setText(current =>
-        current.trim()
-          ? current
-          : textToSend
-      )
-
-      requestAnimationFrame(() => {
-        resizeTextarea()
-        textareaRef.current?.focus()
-      })
-    } finally {
-      setSending(false)
-    }
+    })
   }
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setText(event.target.value)
@@ -281,61 +261,92 @@ export default function MessageComposer({
     requestAnimationFrame(() => fileInput.current?.click())
   }
 
-  const sendAttachmentFile = async (
-    file: File
-  ) => {
-    if (
-      !file ||
-      sending ||
-      recording ||
-      recordedAudio
-    ) {
-      return
-    }
-
-    const type =
-      getMessageTypeFromFile(
-        file,
-        'document'
-      )
-
-    const objectUrl =
-      URL.createObjectURL(file)
-
-    const media = {
-      url: objectUrl,
-      type,
-      name: file.name,
-      size: file.size,
-    }
-
-    setSending(true)
-    setRecordingError('')
-    closeComposerMenus()
-
-    try {
-      await onSend({
-        type,
-        media,
-        file,
-        replyToProviderMessageId:
-          replyMessage?.providerMessageId,
-      })
-    } catch (error) {
-      console.error(
-        '❌ Erro ao enviar arquivo:',
-        error
-      )
-    } finally {
-      setSending(false)
-      URL.revokeObjectURL(
-        objectUrl
-      )
-    }
+  const sendAttachmentFile = (
+  file: File
+) => {
+  if (
+    !file ||
+    recording ||
+    recordedAudio
+  ) {
+    return
   }
 
+  const type =
+    getMessageTypeFromFile(
+      file,
+      'document'
+    )
 
-  const handleFile = async (
+  const objectUrl =
+    URL.createObjectURL(file)
+
+  const media = {
+    url: objectUrl,
+    type,
+    name: file.name,
+    size: file.size,
+  }
+
+  setRecordingError('')
+  closeComposerMenus()
+
+  /**
+   * Captura a resposta antes de limpar
+   * o estado visual.
+   */
+  const replyToProviderMessageId =
+    replyMessage?.providerMessageId
+
+  /**
+   * O useMessages cria imediatamente
+   * a mensagem otimista e uma object URL
+   * própria para o bubble.
+   *
+   * Não precisamos aguardar B2 + D-API.
+   */
+  const envio = onSend({
+    type,
+    media,
+    file,
+    replyToProviderMessageId,
+  })
+
+  /**
+   * Libera a resposta selecionada
+   * imediatamente após disparar o envio.
+   */
+  onCancelReply?.()
+
+  /**
+   * Esta object URL pertence somente
+   * ao composer.
+   *
+   * O preview otimista já possui sua
+   * própria URL dentro do useMessages.
+   */
+  URL.revokeObjectURL(
+    objectUrl
+  )
+
+  requestAnimationFrame(() => {
+    textareaRef.current?.focus()
+  })
+
+  /**
+   * Upload, envio e persistência continuam
+   * em segundo plano.
+   */
+  void envio.catch(error => {
+    console.error(
+      '❌ Erro ao enviar arquivo:',
+      error
+    )
+  })
+}
+
+
+  const handleFile = (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file =
@@ -346,9 +357,14 @@ export default function MessageComposer({
       return
     }
 
-    await sendAttachmentFile(file)
-
+    /**
+     * Limpa o input imediatamente para
+     * permitir selecionar outro arquivo,
+     * inclusive o mesmo arquivo novamente.
+     */
     event.target.value = ''
+
+    sendAttachmentFile(file)
   }
 
   const handlePaste = (
@@ -555,49 +571,73 @@ export default function MessageComposer({
     setRecordingError('')
     requestAnimationFrame(() => textareaRef.current?.focus())
   }
-  const sendRecordedAudio = async () => {
-  const draft = recordedAudioRef.current
+  const sendRecordedAudio = () => {
+  const draft =
+    recordedAudioRef.current
 
-  if (!draft || sending) {
+  if (!draft) {
     return
   }
 
-  setSending(true)
   setRecordingError('')
 
-  try {
-    await onSend({
+  const file = draft.file
+
+  const replyToProviderMessageId =
+    replyMessage?.providerMessageId
+
+  /**
+   * Dispara o envio.
+   *
+   * O useMessages cria imediatamente
+   * o bubble otimista e uma object URL
+   * própria para ele.
+   */
+  const envio = onSend({
+    type: 'audio',
+    media: {
+      url: draft.url,
       type: 'audio',
-      media: {
-        url: draft.url,
-        type: 'audio',
-        name: draft.file.name,
-        size: draft.file.size,
-      },
-      file: draft.file,
-      replyToProviderMessageId:
-        replyMessage?.providerMessageId,
-    })
+      name: file.name,
+      size: file.size,
+    },
+    file,
+    replyToProviderMessageId,
+  })
 
-    URL.revokeObjectURL(draft.url)
-    recordedAudioRef.current = null
-    setRecordedAudio(null)
+  /**
+   * O draft visual do gravador não é mais
+   * necessário depois que o envio foi
+   * entregue ao useMessages.
+   */
+  URL.revokeObjectURL(
+    draft.url
+  )
 
-    requestAnimationFrame(() =>
-      textareaRef.current?.focus()
-    )
-  } catch (error) {
+  recordedAudioRef.current = null
+
+  setRecordedAudio(null)
+
+  onCancelReply?.()
+
+  requestAnimationFrame(() => {
+    textareaRef.current?.focus()
+  })
+
+  /**
+   * Upload + DAPI + persistência continuam
+   * sem bloquear o composer.
+   */
+  void envio.catch(error => {
     console.error(
       '❌ Erro ao enviar áudio gravado:',
       error
     )
 
     setRecordingError(
-      'Não foi possível enviar o áudio. Você pode tentar novamente ou descartá-lo.'
+      'Não foi possível enviar o áudio.'
     )
-  } finally {
-    setSending(false)
-  }
+  })
 }
   const handleQuickReply = async () => {
     if (sending || recording || recordedAudio || !userProfile) return

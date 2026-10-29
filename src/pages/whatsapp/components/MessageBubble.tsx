@@ -500,34 +500,38 @@ export default function MessageBubble({
               }`}
             >
               {sent &&
-              isPending &&
-              message.type !== 'text' && (
-                <span className="flex items-center gap-1">
-                  <Loader2
-                    size={10}
-                    className="animate-spin"
-                  />
+                isPending &&
+                message.type !== 'text' &&
+                isOptimistic && (
+                  <span className="flex items-center gap-1">
+                    <Loader2
+                      size={10}
+                      className="animate-spin"
+                    />
 
-                  Enviando...
-                </span>
-              )}
+                    Enviando...
+                  </span>
+                )}
 
-              <span>{time}</span>
+            <span>{time}</span>
 
-              {sent &&
-              (
-                !isPending ||
-                message.type === 'text'
-              ) && (
-                <MessageStatus
-                  status={
-                    isPending &&
-                    message.type === 'text'
-                      ? 'sent'
-                      : message.status
-                  }
-                />
-              )}
+            {sent &&
+            (
+              !isPending ||
+              !isOptimistic
+            ) && (
+              <MessageStatus
+                status={
+                  isPending
+                    ? 'sent'
+                    : message.status
+                }
+              />
+            )}
+
+
+
+
             </div>
             {message.reactions &&
           message.reactions.length > 0 && (

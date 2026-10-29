@@ -157,6 +157,14 @@ export function useMessages(
   const onMarkedAsReadRef =
     useRef(onMarkedAsRead)
 
+  const activeConversationIdRef =
+    useRef<string | undefined>(
+      conversationId
+    )
+
+  activeConversationIdRef.current =
+    conversationId
+
   const optimisticMessagesRef =
     useRef<
       Map<string, WhatsAppMessage>
@@ -305,12 +313,15 @@ export function useMessages(
     > => {
       if (!conversationId) return
 
+      const sendConversationId =
+        conversationId
+
       setError(null)
 
       const optimisticMessage =
         createOptimisticMessage(
           data,
-          conversationId
+          sendConversationId
         )
 
       optimisticMessagesRef.current.set(
@@ -331,13 +342,37 @@ export function useMessages(
         const message =
           await whatsapp.sendMessage({
             ...data,
-            conversationId,
+            conversationId:
+              sendConversationId,
           })
 
         if (!message) {
           throw new Error(
             'O envio não retornou uma mensagem válida.'
           )
+        }
+
+        /**
+         * O envio pode ter começado em uma conversa
+         * e terminado depois que o usuário abriu outra.
+         *
+         * O backend continua normalmente, mas o retorno
+         * antigo não pode alterar a conversa atualmente
+         * exibida.
+         */
+        if (
+          activeConversationIdRef.current !==
+          sendConversationId
+        ) {
+          optimisticMessagesRef.current.delete(
+            optimisticMessage.id
+          )
+
+          revokeObjectUrl(
+            optimisticMessage.id
+          )
+
+          return message
         }
 
         optimisticMessagesRef.current.delete(
@@ -380,12 +415,26 @@ export function useMessages(
         }
 
         optimisticMessagesRef.current.set(
-          optimisticMessage.id,
-          failedMessage
-        )
+            optimisticMessage.id,
+            failedMessage
+          )
 
-        setMessages(current =>
-          current.map(
+          /**
+           * Se o usuário já mudou de conversa,
+           * não contaminamos o estado visual da
+           * conversa atual com a falha do envio anterior.
+           */
+          if (
+            activeConversationIdRef.current !==
+            sendConversationId
+          ) {
+            setError(currentError)
+
+            throw currentError
+          }
+
+          setMessages(current =>
+            current.map(
             currentMessage =>
               currentMessage.id ===
               optimisticMessage.id

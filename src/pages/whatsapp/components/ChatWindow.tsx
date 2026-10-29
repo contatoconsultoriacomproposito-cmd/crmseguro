@@ -712,15 +712,23 @@ const timelineItems =
           )
 
         /*
-         * O envio de mídia pode levar alguns
-         * segundos. Mantemos uma margem segura
-         * para reconciliar a mensagem correta.
-         */
+        * Envios de mídia podem demorar bastante
+        * por causa de upload B2 + provider +
+        * persistência/finalização.
+        *
+        * Para texto mantemos uma janela curta.
+        * Para mídia permitimos até 5 minutos.
+        */
+        const limiteReconciliacao =
+        mensagemReal.type === 'text'
+            ? 30000
+            : 5 * 60 * 1000
+
         if (
-          diferencaTempo >
-          30000
+        diferencaTempo >
+        limiteReconciliacao
         ) {
-          continue
+        continue
         }
 
         /*
