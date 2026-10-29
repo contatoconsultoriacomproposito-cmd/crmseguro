@@ -63,6 +63,7 @@ import type {
 
 import {
   buscarComissaoContratoDetalhada,
+  buscarMinhaComissaoContratoCorretor,
   buscarCorretoresComissao,
   buscarSupervisoresComissao,
   salvarComissaoContrato,
@@ -77,6 +78,7 @@ import type {
   ComissaoContratoDetalhada,
   ContextoPermissaoComissao,
   CriarComissaoPayload,
+  ItemMinhaComissaoCorretor,
 } from "../../comissoes/types/comissoes";
 
 import {
@@ -221,6 +223,11 @@ export default function PropostaDetalhes() {
   const [comissoesPorContrato, setComissoesPorContrato] =
   useState<Record<string, ComissaoContratoDetalhada | null>>({});
 
+  const [
+    minhasComissoesPorContrato,
+    setMinhasComissoesPorContrato,
+  ] = useState<Record<string, ItemMinhaComissaoCorretor | null>>({});
+
   const [carregandoComissoes, setCarregandoComissoes] =
     useState<Record<string, boolean>>({});
 
@@ -343,7 +350,7 @@ export default function PropostaDetalhes() {
 
   const carregarComissaoContrato = useCallback(
   async (contratoId: string) => {
-    if (!contratoId) return;
+    if (!contratoId || !userProfile) return;
 
     setCarregandoComissoes((atual) => ({
       ...atual,
@@ -351,14 +358,52 @@ export default function PropostaDetalhes() {
     }));
 
     try {
-      const resultado =
-        await buscarComissaoContratoDetalhada(
-          contratoId
-        );
+      if (userProfile.tipo_usuario === "CORRETOR") {
+        const resultado =
+          await buscarMinhaComissaoContratoCorretor(
+            contratoId
+          );
+
+        setMinhasComissoesPorContrato((atual) => ({
+          ...atual,
+          [contratoId]: resultado,
+        }));
+
+        setComissoesPorContrato((atual) => ({
+          ...atual,
+          [contratoId]: null,
+        }));
+
+        return;
+      }
+
+      if (userProfile.tipo_usuario === "CORRETORA") {
+        const resultado =
+          await buscarComissaoContratoDetalhada(
+            contratoId
+          );
+
+        setComissoesPorContrato((atual) => ({
+          ...atual,
+          [contratoId]: resultado,
+        }));
+
+        setMinhasComissoesPorContrato((atual) => ({
+          ...atual,
+          [contratoId]: null,
+        }));
+
+        return;
+      }
 
       setComissoesPorContrato((atual) => ({
         ...atual,
-        [contratoId]: resultado,
+        [contratoId]: null,
+      }));
+
+      setMinhasComissoesPorContrato((atual) => ({
+        ...atual,
+        [contratoId]: null,
       }));
     } catch (error) {
       console.error(
@@ -370,6 +415,11 @@ export default function PropostaDetalhes() {
         ...atual,
         [contratoId]: null,
       }));
+
+      setMinhasComissoesPorContrato((atual) => ({
+        ...atual,
+        [contratoId]: null,
+      }));
     } finally {
       setCarregandoComissoes((atual) => ({
         ...atual,
@@ -377,7 +427,7 @@ export default function PropostaDetalhes() {
       }));
     }
   },
-  []
+  [userProfile]
 );
 
   const carregarProposta = useCallback(async () => {
@@ -2086,6 +2136,9 @@ useEffect(() => {
                               }
                               comissao={
                                 comissoesPorContrato[contrato.id] ?? null
+                              }
+                              minhaComissao={
+                                minhasComissoesPorContrato[contrato.id] ?? null
                               }
                               podeOperar={
                                 usuarioPodeConfigurarComissao &&

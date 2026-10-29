@@ -1147,6 +1147,23 @@ export async function buscarMinhasComissoesCorretor(
   }
 }
 
+export async function buscarMinhaComissaoContratoCorretor(
+  contratoId: string
+): Promise<ItemMinhaComissaoCorretor | null> {
+  if (!contratoId) {
+    throw new Error("Contrato não informado.");
+  }
+
+  const resultado =
+    await buscarMinhasComissoesCorretor({
+      contrato_id: contratoId,
+      pagina: 1,
+      limite: 1,
+    });
+
+  return resultado.itens[0] ?? null;
+}
+
 export async function buscarMeusSplitsComissao(): Promise<
   ComissaoSplit[]
 > {
