@@ -62,6 +62,10 @@ export default function Sidebar({
   const navigate = useNavigate()
   const location = useLocation()
 
+  const podeVerCorretor =
+  userProfile?.tipo_usuario === "CORRETORA" ||
+  userProfile?.tipo_usuario === "ADMIN"
+
   const [mobileOpen, setMobileOpen] =
     useState(false)
 
@@ -214,14 +218,16 @@ export default function Sidebar({
           title="Operação"
           collapsed={isCollapsed}
         >
-          <SidebarItem
-            to="/whatsapp/equipe"
-            icon={<UserRoundCog size={18} />}
-            label="Equipe"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
-          />
+          {podeVerCorretor && (
+            <SidebarItem
+              to="/whatsapp/equipe"
+              icon={<UserRoundCog size={18} />}
+              label="Equipe"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
+            />
+          )}
 
           <SidebarItem
             to="/whatsapp/clientes"
@@ -273,36 +279,40 @@ export default function Sidebar({
             FINANCEIRO
         ================================================= */}
 
-        <NavSection
+       <NavSection
           title="Financeiro"
           collapsed={isCollapsed}
         >
-          <SidebarItem
-            to="/whatsapp/financeiro/contas-pagar"
-            icon={<ReceiptText size={18} />}
-            label="Contas a Pagar"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
-          />
+          {podeVerCorretor && (
+            <>
+              <SidebarItem
+                to="/whatsapp/financeiro/contas-pagar"
+                icon={<ReceiptText size={18} />}
+                label="Contas a Pagar"
+                collapsed={isCollapsed}
+                onNavigate={handleNavigate}
+                iconClassName="bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
+              />
 
-          <SidebarItem
-            to="/whatsapp/financeiro/contas-receber"
-            icon={<CircleDollarSign size={18} />}
-            label="Contas a Receber"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-          />
+              <SidebarItem
+                to="/whatsapp/financeiro/contas-receber"
+                icon={<CircleDollarSign size={18} />}
+                label="Contas a Receber"
+                collapsed={isCollapsed}
+                onNavigate={handleNavigate}
+                iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+              />
 
-          <SidebarItem
-            to="/whatsapp/financeiro/fluxo-caixa"
-            icon={<ChartNoAxesCombined size={18} />}
-            label="Fluxo de Caixa"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
-          />
+              <SidebarItem
+                to="/whatsapp/financeiro/fluxo-caixa"
+                icon={<ChartNoAxesCombined size={18} />}
+                label="Fluxo de Caixa"
+                collapsed={isCollapsed}
+                onNavigate={handleNavigate}
+                iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
+              />
+            </>
+          )}
 
           <SidebarItem
             to="/whatsapp/financeiro/controle-parcelas"
@@ -322,14 +332,16 @@ export default function Sidebar({
           title="Gestão"
           collapsed={isCollapsed}
         >
-          <SidebarItem
-            to="/whatsapp/conexoes"
-            icon={<Cable size={18} />}
-            label="Conexões WhatsApp"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-          />
+          {podeVerCorretor && (
+            <SidebarItem
+              to="/whatsapp/conexoes"
+              icon={<Cable size={18} />}
+              label="Conexões WhatsApp"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+            />
+          )}
 
           <SidebarItem
             to="/whatsapp/armazenamento"
@@ -340,23 +352,27 @@ export default function Sidebar({
             iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
           />
 
-          <SidebarItem
-            to="/whatsapp/seguradoras"
-            icon={<Building2 size={18} />}
-            label="Seguradoras"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
-          />
+          {podeVerCorretor && (
+            <SidebarItem
+              to="/whatsapp/seguradoras"
+              icon={<Building2 size={18} />}
+              label="Seguradoras"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
+            />
+          )}
 
-          <SidebarItem
-            to="/whatsapp/configuracao/perfil"
-            icon={<Settings size={18} />}
-            label="Configurações"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
-          />
+          {podeVerCorretor && (
+            <SidebarItem
+              to="/whatsapp/configuracao/perfil"
+              icon={<Settings size={18} />}
+              label="Configurações"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
+            />
+          )}
         </NavSection>
       </div>
     )
@@ -372,15 +388,8 @@ export default function Sidebar({
       return (
         <div className="border-t border-slate-200 px-3 py-4 dark:border-zinc-800">
           <div className="flex flex-col items-center gap-3">
-            <button
-              type="button"
-              title="Configurações"
-              onClick={() =>
-                navigate(
-                  "/whatsapp/configuracao/perfil"
-                )
-              }
-              className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-blue-300 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800"
+            <div
+              className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
             >
               {corretoraLogo ? (
                 <img
@@ -397,7 +406,7 @@ export default function Sidebar({
                   className="text-blue-600"
                 />
               )}
-            </button>
+            </div>
 
             <LogoutButton>
               <div
@@ -416,17 +425,7 @@ export default function Sidebar({
       <div className="border-t border-slate-200 p-3 dark:border-zinc-800">
         <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                navigate(
-                  "/whatsapp/configuracao/perfil"
-                )
-
-                if (isMobile) {
-                  setMobileOpen(false)
-                }
-              }}
+            <div
               className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
             >
               {corretoraLogo ? (
@@ -444,7 +443,7 @@ export default function Sidebar({
                   className="text-blue-600"
                 />
               )}
-            </button>
+            </div>
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">
@@ -459,22 +458,24 @@ export default function Sidebar({
               </p>
             </div>
 
-            <button
-              type="button"
-              title="Configurações"
-              onClick={() => {
-                navigate(
-                  "/whatsapp/configuracao/perfil"
-                )
+            {podeVerCorretor && (
+              <button
+                type="button"
+                title="Configurações"
+                onClick={() => {
+                  navigate(
+                    "/whatsapp/configuracao/perfil"
+                  )
 
-                if (isMobile) {
-                  setMobileOpen(false)
-                }
-              }}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-white hover:text-blue-600 hover:shadow-sm dark:hover:bg-zinc-800"
-            >
-              <Settings size={15} />
-            </button>
+                  if (isMobile) {
+                    setMobileOpen(false)
+                  }
+                }}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-white hover:text-blue-600 hover:shadow-sm dark:hover:bg-zinc-800"
+              >
+                <Settings size={15} />
+              </button>
+            )}
           </div>
 
           <div className="my-3 h-px bg-slate-200/70 dark:bg-zinc-800" />
@@ -530,12 +531,15 @@ export default function Sidebar({
 
         <button
           type="button"
-          onClick={() =>
-            navigate(
-              "/whatsapp/configuracao/perfil"
-            )
-          }
-          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
+          onClick={() => {
+            if (podeVerCorretor) {
+              navigate(
+                "/whatsapp/configuracao/perfil"
+              )
+            }
+          }}
+          disabled={!podeVerCorretor}
+          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm disabled:cursor-default dark:border-zinc-700 dark:bg-zinc-800"
         >
           {corretoraLogo ? (
             <img
