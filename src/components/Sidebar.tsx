@@ -307,7 +307,7 @@ export default function Sidebar({
           <SidebarItem
             to="/whatsapp/financeiro/controle-parcelas"
             icon={<FileClock size={18} />}
-            label="Controle de Parcelas dos Contratos"
+            label="Parcelas Clientes"
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
             iconClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
