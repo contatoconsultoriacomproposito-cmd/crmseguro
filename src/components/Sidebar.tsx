@@ -6,13 +6,14 @@ import {
   type ReactNode,
 } from "react"
 import {
-  //Bot,
   Building2,
   Cable,
   Calendar,
+  ChartNoAxesCombined,
   ChevronLeft,
   ChevronRight,
-  DollarSign,
+  CircleDollarSign,
+  FileClock,
   FileText,
   HandCoins,
   HardDrive,
@@ -20,6 +21,7 @@ import {
   LogOut,
   Menu,
   MessagesSquare,
+  ReceiptText,
   Settings,
   ShieldCheck,
   User,
@@ -212,7 +214,6 @@ export default function Sidebar({
           title="Operação"
           collapsed={isCollapsed}
         >
-
           <SidebarItem
             to="/whatsapp/equipe"
             icon={<UserRoundCog size={18} />}
@@ -241,15 +242,6 @@ export default function Sidebar({
           />
 
           <SidebarItem
-            to="/whatsapp/financeiro"
-            icon={<DollarSign size={18} />}
-            label="Financeiro"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-          />
-
-          <SidebarItem
             to="/whatsapp/comissoes"
             icon={<HandCoins size={18} />}
             label="Comissões"
@@ -274,6 +266,51 @@ export default function Sidebar({
             collapsed={isCollapsed}
             onNavigate={handleNavigate}
             iconClassName="bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400"
+          />
+        </NavSection>
+
+        {/* =================================================
+            FINANCEIRO
+        ================================================= */}
+
+        <NavSection
+          title="Financeiro"
+          collapsed={isCollapsed}
+        >
+          <SidebarItem
+            to="/whatsapp/financeiro/contas-pagar"
+            icon={<ReceiptText size={18} />}
+            label="Contas a Pagar"
+            collapsed={isCollapsed}
+            onNavigate={handleNavigate}
+            iconClassName="bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
+          />
+
+          <SidebarItem
+            to="/whatsapp/financeiro/contas-receber"
+            icon={<CircleDollarSign size={18} />}
+            label="Contas a Receber"
+            collapsed={isCollapsed}
+            onNavigate={handleNavigate}
+            iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+          />
+
+          <SidebarItem
+            to="/whatsapp/financeiro/fluxo-caixa"
+            icon={<ChartNoAxesCombined size={18} />}
+            label="Fluxo de Caixa"
+            collapsed={isCollapsed}
+            onNavigate={handleNavigate}
+            iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
+          />
+
+          <SidebarItem
+            to="/whatsapp/financeiro/controle-parcelas"
+            icon={<FileClock size={18} />}
+            label="Controle de Parcelas dos Contratos"
+            collapsed={isCollapsed}
+            onNavigate={handleNavigate}
+            iconClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
           />
         </NavSection>
 
@@ -771,3 +808,4 @@ function SidebarItem({
     </NavLink>
   )
 }
+

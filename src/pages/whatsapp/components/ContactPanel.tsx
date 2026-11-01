@@ -11,7 +11,6 @@ import {
   ChevronDown,
   ChevronRight,
   CircleCheck,
-  Database,
   Flame,
   Heart,
   ListTodo,
@@ -42,7 +41,6 @@ import {
 import {
   buscarClienteCrmPorContatoWhatsApp,
   buscarClientesParaVinculo,
-  importarClienteLegadoEVincular,
   vincularClienteExistenteAoWhatsApp,
   desvincularClienteDoWhatsApp,
   type ClienteBuscaVinculo,
@@ -883,22 +881,10 @@ export default function ContactPanel({
             chaveCliente
           )
 
-          if (
-            cliente.origem ===
-            'LEGADO'
-          ) {
-            await importarClienteLegadoEVincular(
-              cliente,
-              conversation
-                .contact.id
-            )
-          } else {
-            await vincularClienteExistenteAoWhatsApp(
-              cliente,
-              conversation
-                .contact.id
-            )
-          }
+          await vincularClienteExistenteAoWhatsApp(
+            cliente,
+            conversation.contact.id
+          )
 
           fecharBuscaCliente()
 
@@ -2499,9 +2485,7 @@ function ResultadoCliente({
   bloqueado: boolean
   onVincular: () => void
 }) {
-  const legado =
-    resultado.origem ===
-    'LEGADO'
+  
 
   const documento =
     resultado.documento
@@ -2514,22 +2498,8 @@ function ResultadoCliente({
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:shadow-sm">
       <div className="flex items-start gap-3">
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-            legado
-              ? 'bg-amber-50 text-amber-600'
-              : 'bg-blue-50 text-blue-600'
-          }`}
-        >
-          {legado ? (
-            <Database
-              size={18}
-            />
-          ) : (
-            <UserRound
-              size={18}
-            />
-          )}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+          <UserRound size={18} />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -2549,16 +2519,8 @@ function ResultadoCliente({
               </p>
             </div>
 
-            <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
-                legado
-                  ? 'bg-amber-50 text-amber-700'
-                  : 'bg-blue-50 text-blue-700'
-              }`}
-            >
-              {legado
-                ? 'Base histórica'
-                : 'Novo CRM'}
+            <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">
+              Novo CRM
             </span>
           </div>
 

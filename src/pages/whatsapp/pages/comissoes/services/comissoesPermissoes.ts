@@ -16,8 +16,6 @@ const PERMISSOES_COMISSAO: Record<
     "RECEBER",
     "ESTORNAR_RECEBIMENTO",
     "GERENCIAR_SPLITS",
-    "PAGAR_SPLIT",
-    "ESTORNAR_PAGAMENTO",
     "CANCELAR_PROVISAO",
     "REVERTER_CANCELAMENTO_PROVISAO",
   ],
@@ -30,8 +28,6 @@ const PERMISSOES_COMISSAO: Record<
     "RECEBER",
     "ESTORNAR_RECEBIMENTO",
     "GERENCIAR_SPLITS",
-    "PAGAR_SPLIT",
-    "ESTORNAR_PAGAMENTO",
     "CANCELAR_PROVISAO",
     "REVERTER_CANCELAMENTO_PROVISAO",
   ],
@@ -118,23 +114,9 @@ export function podeGerenciarSplitsComissao(
   );
 }
 
-export function podePagarSplitComissao(
-  contexto: ContextoPermissaoComissao
-): boolean {
-  return podeExecutarAcaoComissao(
-    contexto,
-    "PAGAR_SPLIT"
-  );
-}
 
-export function podeEstornarPagamentoComissao(
-  contexto: ContextoPermissaoComissao
-): boolean {
-  return podeExecutarAcaoComissao(
-    contexto,
-    "ESTORNAR_PAGAMENTO"
-  );
-}
+
+
 
 export function podeCancelarProvisaoComissao(
   contexto: ContextoPermissaoComissao
@@ -164,8 +146,6 @@ export function usuarioPodeOperarComissoes(
     podeReceberComissao(contexto) ||
     podeEstornarRecebimentoComissao(contexto) ||
     podeGerenciarSplitsComissao(contexto) ||
-    podePagarSplitComissao(contexto) ||
-    podeEstornarPagamentoComissao(contexto) ||
     podeCancelarProvisaoComissao(contexto) ||
     podeReverterCancelamentoProvisaoComissao(contexto)
   );

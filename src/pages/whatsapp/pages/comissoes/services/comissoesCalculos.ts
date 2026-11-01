@@ -802,7 +802,10 @@ export function obterSituacaoRecebimento(
 export function obterSituacaoPagamento(
   pagamento: Pick<
     ComissaoPagamento,
-    "status" | "data_prevista"
+    | "status"
+    | "data_prevista"
+    | "valor_previsto"
+    | "valor_pago"
   >,
   dataReferencia = hojeISO()
 ): SituacaoPagamentoComissao {
@@ -812,6 +815,21 @@ export function obterSituacaoPagamento(
 
   if (pagamento.status === "CANCELADA") {
     return "CANCELADA";
+  }
+
+  const valorPrevisto = arredondarMoeda(
+    Number(pagamento.valor_previsto ?? 0)
+  );
+
+  const valorPago = arredondarMoeda(
+    Number(pagamento.valor_pago ?? 0)
+  );
+
+  if (
+    valorPago > 0 &&
+    valorPago < valorPrevisto
+  ) {
+    return "PARCIAL";
   }
 
   const comparacao = compararDatasISO(
@@ -950,59 +968,119 @@ export function calcularResumoPagamentos(
   };
 
   for (const pagamento of pagamentos) {
-    resumo.valor_total_previsto += pagamento.valor_previsto;
+    const valorPrevisto = arredondarMoeda(
+      Number(pagamento.valor_previsto ?? 0)
+    );
 
-    if (pagamento.status === "PAGA") {
-      resumo.quantidade_pagas += 1;
-      resumo.valor_pago +=
-        pagamento.valor_pago ??
-        pagamento.valor_previsto;
-      continue;
-    }
+    const valorPago = arredondarMoeda(
+      Math.min(
+        valorPrevisto,
+        Math.max(
+          0,
+          Number(pagamento.valor_pago ?? 0)
+        )
+      )
+    );
+
+    resumo.valor_total_previsto +=
+      valorPrevisto;
 
     if (pagamento.status === "CANCELADA") {
       resumo.quantidade_canceladas += 1;
-      resumo.valor_cancelado += pagamento.valor_previsto;
+      resumo.valor_cancelado +=
+        valorPrevisto;
+
       continue;
     }
 
+    if (pagamento.status === "PAGA") {
+      resumo.quantidade_pagas += 1;
+
+      resumo.valor_pago +=
+        valorPago > 0
+          ? valorPago
+          : valorPrevisto;
+
+      continue;
+    }
+
+    const saldoPendente = arredondarMoeda(
+      Math.max(
+        0,
+        valorPrevisto - valorPago
+      )
+    );
+
     resumo.quantidade_pendentes += 1;
-    resumo.valor_pendente += pagamento.valor_previsto;
 
-    if (pagamento.situacao === "A_PAGAR") {
-      resumo.valor_a_pagar += pagamento.valor_previsto;
+    resumo.valor_pago += valorPago;
+
+    resumo.valor_pendente +=
+      saldoPendente;
+
+    /*
+     * Se estiver PARCIAL, ainda precisamos saber
+     * se o saldo restante está futuro, vence hoje
+     * ou atrasado.
+     */
+    const comparacao = compararDatasISO(
+      pagamento.data_prevista,
+      hojeISO()
+    );
+
+    if (comparacao > 0) {
+      resumo.valor_a_pagar +=
+        saldoPendente;
     }
 
-    if (pagamento.situacao === "VENCE_HOJE") {
-      resumo.valor_vence_hoje += pagamento.valor_previsto;
+    if (comparacao === 0) {
+      resumo.valor_vence_hoje +=
+        saldoPendente;
     }
 
-    if (pagamento.situacao === "ATRASADA") {
-      resumo.valor_atrasado += pagamento.valor_previsto;
+    if (comparacao < 0) {
+      resumo.valor_atrasado +=
+        saldoPendente;
     }
   }
 
   return {
     ...resumo,
-    valor_total_previsto: arredondarMoeda(
-      resumo.valor_total_previsto
-    ),
-    valor_pago: arredondarMoeda(resumo.valor_pago),
-    valor_pendente: arredondarMoeda(
-      resumo.valor_pendente
-    ),
-    valor_a_pagar: arredondarMoeda(
-      resumo.valor_a_pagar
-    ),
-    valor_vence_hoje: arredondarMoeda(
-      resumo.valor_vence_hoje
-    ),
-    valor_atrasado: arredondarMoeda(
-      resumo.valor_atrasado
-    ),
-    valor_cancelado: arredondarMoeda(
-      resumo.valor_cancelado
-    ),
+
+    valor_total_previsto:
+      arredondarMoeda(
+        resumo.valor_total_previsto
+      ),
+
+    valor_pago:
+      arredondarMoeda(
+        resumo.valor_pago
+      ),
+
+    valor_pendente:
+      arredondarMoeda(
+        resumo.valor_pendente
+      ),
+
+    valor_a_pagar:
+      arredondarMoeda(
+        resumo.valor_a_pagar
+      ),
+
+    valor_vence_hoje:
+      arredondarMoeda(
+        resumo.valor_vence_hoje
+      ),
+
+    valor_atrasado:
+      arredondarMoeda(
+        resumo.valor_atrasado
+      ),
+
+    valor_cancelado:
+      arredondarMoeda(
+        resumo.valor_cancelado
+      ),
   };
 }
 

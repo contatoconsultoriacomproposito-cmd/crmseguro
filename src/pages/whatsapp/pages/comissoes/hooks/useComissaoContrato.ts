@@ -3,9 +3,7 @@ import type {
   CancelarProvisaoComissaoPayload,
   ComissaoContratoDetalhada,
   CriarComissaoPayload,
-  EstornarPagamentoComissaoPayload,
   EstornarRecebimentoComissaoPayload,
-  PagarComissaoSplitPayload,
   ReceberComissaoPayload,
   ReverterCancelamentoProvisaoComissaoPayload,
   ResultadoCriarComissao,
@@ -14,9 +12,7 @@ import type {
 import {
   buscarComissaoContratoDetalhada,
   cancelarProvisaoComissao,
-  estornarPagamentoComissao,
   estornarRecebimentoComissao,
-  pagarComissaoSplit,
   receberComissao,
   reverterCancelamentoProvisaoComissao,
   salvarComissaoContrato,
@@ -32,8 +28,6 @@ interface EstadoOperacao {
   salvando: boolean;
   recebendo: boolean;
   estornandoRecebimento: boolean;
-  pagando: boolean;
-  estornandoPagamento: boolean;
   cancelandoProvisao: boolean;
   revertendoCancelamento: boolean;
 }
@@ -42,8 +36,6 @@ const ESTADO_OPERACAO_INICIAL: EstadoOperacao = {
   salvando: false,
   recebendo: false,
   estornandoRecebimento: false,
-  pagando: false,
-  estornandoPagamento: false,
   cancelandoProvisao: false,
   revertendoCancelamento: false,
 };
@@ -301,83 +293,9 @@ export function useComissaoContrato(
       ]
     );
 
-  const pagar = useCallback(
-    async (
-      payload: PagarComissaoSplitPayload
-    ): Promise<ResultadoOperacaoComissao> => {
-      definirOperacao("pagando", true);
-      setErro(null);
+  
 
-      try {
-        const resultado =
-          await pagarComissaoSplit(
-            payload
-          );
-
-        await carregar();
-
-        return resultado;
-      } catch (error) {
-        const mensagem =
-          error instanceof Error
-            ? error.message
-            : "Não foi possível registrar o pagamento.";
-
-        setErro(mensagem);
-
-        throw error;
-      } finally {
-        definirOperacao("pagando", false);
-      }
-    },
-    [
-      carregar,
-      definirOperacao,
-    ]
-  );
-
-  const estornarPagamento =
-    useCallback(
-      async (
-        payload: EstornarPagamentoComissaoPayload
-      ): Promise<ResultadoOperacaoComissao> => {
-        definirOperacao(
-          "estornandoPagamento",
-          true
-        );
-
-        setErro(null);
-
-        try {
-          const resultado =
-            await estornarPagamentoComissao(
-              payload
-            );
-
-          await carregar();
-
-          return resultado;
-        } catch (error) {
-          const mensagem =
-            error instanceof Error
-              ? error.message
-              : "Não foi possível estornar o pagamento.";
-
-          setErro(mensagem);
-
-          throw error;
-        } finally {
-          definirOperacao(
-            "estornandoPagamento",
-            false
-          );
-        }
-      },
-      [
-        carregar,
-        definirOperacao,
-      ]
-    );
+  
 
   const cancelarProvisao =
     useCallback(
@@ -536,6 +454,16 @@ export function useComissaoContrato(
       [dados?.pagamentos]
     );
 
+  const pagamentosParciais =
+  useMemo(
+    () =>
+      dados?.pagamentos.filter(
+        (item) =>
+          item.situacao === "PARCIAL"
+      ) ?? [],
+    [dados?.pagamentos]
+  );
+
   const pagamentosPagos =
     useMemo(
       () =>
@@ -594,6 +522,7 @@ export function useComissaoContrato(
     recebimentosRecebidos,
     recebimentosCancelados,
     pagamentosPendentes,
+    pagamentosParciais,
     pagamentosPagos,
     pagamentosCancelados,
 
@@ -602,8 +531,6 @@ export function useComissaoContrato(
     salvar,
     receber,
     estornarRecebimento,
-    pagar,
-    estornarPagamento,
     cancelarProvisao,
     reverterCancelamento,
   };

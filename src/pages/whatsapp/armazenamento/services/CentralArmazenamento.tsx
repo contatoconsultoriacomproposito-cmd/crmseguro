@@ -49,6 +49,8 @@ const ORIGENS: Array<{ value: StorageOrigem; label: string }> = [
   { value: 'ASSISTENCIA', label: 'Assistências' },
   { value: 'CLIENTE', label: 'Clientes' },
   { value: 'EMPRESA', label: 'Empresas' },
+  { value: 'CONTAS_PAGAR', label: 'Contas a Pagar' },
+  { value: 'CONTAS_RECEBER', label: 'Contas a Receber' },
   { value: 'OUTRO', label: 'Outros' },
 ]
 

@@ -42,6 +42,15 @@ export type SituacaoPagamentoComissao =
   | "A_PAGAR"
   | "VENCE_HOJE"
   | "ATRASADA"
+  | "PARCIAL"
+  | "PAGA"
+  | "CANCELADA";
+
+export type SituacaoFinanceiraPagamentoComissao =
+  | "NAO_INTEGRADO"
+  | "PENDENTE"
+  | "VENCIDA"
+  | "PARCIAL"
   | "PAGA"
   | "CANCELADA";
 
@@ -66,16 +75,12 @@ export type AcaoPermissaoComissao =
   | "RECEBER"
   | "ESTORNAR_RECEBIMENTO"
   | "GERENCIAR_SPLITS"
-  | "PAGAR_SPLIT"
-  | "ESTORNAR_PAGAMENTO"
   | "CANCELAR_PROVISAO"
   | "REVERTER_CANCELAMENTO_PROVISAO";
 
 export type AcaoComissao =
   | "RECEBER"
   | "ESTORNAR_RECEBIMENTO"
-  | "PAGAR_SPLIT"
-  | "ESTORNAR_PAGAMENTO"
   | "CANCELAR_PROVISAO"
   | "REVERSAO_CANCELAMENTO_PROVISAO";
 
@@ -221,6 +226,88 @@ export interface ComissaoPagamento {
   updated_at: string;
   valor_base_referencia: number;
   percentual_previsto: number;
+}
+
+export interface ComissaoPagamentoFinanceiro {
+  pagamento_comissao_id: string;
+
+  corretora_id: string;
+
+  comissao_id: string;
+
+  split_id: string;
+
+  contrato_id: string;
+
+  numero_provisao: number;
+
+  descricao_comissao: string | null;
+
+  valor_previsto_comissao: number;
+
+  data_prevista: string;
+
+  status_comissao_legado: StatusPagamentoComissao;
+
+  tipo_participante: TipoParticipanteComissao;
+
+  participante_usuario_id: string | null;
+
+  participante_nome: string | null;
+
+  participante_documento: string | null;
+
+  residual_corretora: boolean;
+
+  lancamento_id: string | null;
+
+  plano_conta_id: string | null;
+
+  plano_codigo: string | null;
+
+  plano_nome: string | null;
+
+  plano_caminho: string | null;
+
+  data_vencimento: string | null;
+
+  valor_previsto: number | null;
+
+  valor_pago: number;
+
+  saldo_pendente: number;
+
+  quantidade_baixas: number;
+
+  ultima_data_pagamento: string | null;
+
+  status_contas_pagar:
+    | "PENDENTE"
+    | "PAGA"
+    | "CANCELADA"
+    | null;
+
+  situacao_contas_pagar:
+    | "PENDENTE"
+    | "VENCIDA"
+    | "PAGA"
+    | "CANCELADA"
+    | null;
+
+  vencida: boolean | null;
+
+  parcialmente_paga: boolean | null;
+
+  situacao_financeira:
+    SituacaoFinanceiraPagamentoComissao;
+
+  integrado_contas_pagar: boolean;
+
+  criado_por_id: string | null;
+
+  created_at: string;
+
+  updated_at: string;
 }
 
 export interface ComissaoPagamentoComSituacao
@@ -433,16 +520,6 @@ export interface EstornarRecebimentoComissaoPayload {
   justificativa: string;
 }
 
-export interface PagarComissaoSplitPayload {
-  pagamento_id: string;
-  data_pagamento?: string | null;
-  valor_pago?: number | null;
-}
-
-export interface EstornarPagamentoComissaoPayload {
-  pagamento_id: string;
-  justificativa: string;
-}
 
 export interface ResultadoOperacaoComissao {
   sucesso: boolean;

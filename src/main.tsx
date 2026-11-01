@@ -5,6 +5,9 @@ import App from "./App"
 import { AuthProvider } from "./auth/AuthContext"
 import "./index.css"
 
+
+
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   // Removido o <React.StrictMode> para evitar renderizações duplas que quebram o Auth
   <BrowserRouter 

@@ -6,7 +6,10 @@ import type {
   ComissaoDeducao,
   ComissaoMovimentacao,
   ComissaoPagamento,
+  ComissaoPagamentoComSituacao,
+  ComissaoPagamentoFinanceiro,
   ComissaoRecebimento,
+  ResumoPagamentosComissao,
   ComissaoSplit,
   ComissaoSplitDeducao,
   FiltrosComissoes,
@@ -18,8 +21,7 @@ import type {
   ResultadoCriarComissao,
   ReceberComissaoPayload,
   EstornarRecebimentoComissaoPayload,
-  PagarComissaoSplitPayload,
-  EstornarPagamentoComissaoPayload,
+  
   CancelarProvisaoComissaoPayload,
   ReverterCancelamentoProvisaoComissaoPayload,
   ResultadoOperacaoComissao,
@@ -31,7 +33,6 @@ import {
   adicionarSituacaoPagamentos,
   adicionarSituacaoRecebimentos,
   arredondarMoeda,
-  calcularResumoPagamentos,
   calcularResumoRecebimentos,
   calcularResumoSplits,
 } from "./comissoesCalculos";
@@ -116,6 +117,302 @@ function mensagemErro(
 function normalizarNumero(valor: unknown): number {
   const numero = Number(valor ?? 0);
   return Number.isFinite(numero) ? numero : 0;
+}
+
+function situacaoTemporalPagamento(
+  pagamento: ComissaoPagamento
+): "A_PAGAR" | "VENCE_HOJE" | "ATRASADA" {
+  const pagamentoPendente: ComissaoPagamento = {
+    ...pagamento,
+    status: "PENDENTE",
+  };
+
+  const [resultado] =
+    adicionarSituacaoPagamentos([
+      pagamentoPendente,
+    ]);
+
+  if (
+    resultado.situacao === "VENCE_HOJE" ||
+    resultado.situacao === "ATRASADA"
+  ) {
+    return resultado.situacao;
+  }
+
+  return "A_PAGAR";
+}
+
+async function aplicarFinanceiroContasPagar(
+  pagamentos: ComissaoPagamento[]
+): Promise<ComissaoPagamentoComSituacao[]> {
+  if (!pagamentos.length) {
+    return [];
+  }
+
+  const ids = pagamentos.map(
+    (pagamento) => pagamento.id
+  );
+
+  const { data, error } = await supabase
+    .from("crm_comissao_pagamentos_financeiro")
+    .select("*")
+    .in("pagamento_comissao_id", ids);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const financeiros =
+    (data ?? []) as ComissaoPagamentoFinanceiro[];
+
+  const mapaFinanceiro = new Map(
+    financeiros.map((financeiro) => [
+      financeiro.pagamento_comissao_id,
+      financeiro,
+    ])
+  );
+
+  return pagamentos.map((pagamento) => {
+    const financeiro =
+      mapaFinanceiro.get(pagamento.id);
+
+    /*
+     * Enquanto uma provisão ainda não estiver integrada
+     * ao Contas a Pagar, preservamos temporariamente
+     * o comportamento legado.
+     */
+    if (
+      !financeiro ||
+      !financeiro.integrado_contas_pagar
+    ) {
+      return adicionarSituacaoPagamentos([
+        pagamento,
+      ])[0];
+    }
+
+    let status: ComissaoPagamento["status"] =
+      "PENDENTE";
+
+    if (
+      financeiro.situacao_financeira ===
+      "PAGA"
+    ) {
+      status = "PAGA";
+    } else if (
+      financeiro.situacao_financeira ===
+      "CANCELADA"
+    ) {
+      status = "CANCELADA";
+    }
+
+    let situacao:
+      ComissaoPagamentoComSituacao["situacao"];
+
+    switch (
+      financeiro.situacao_financeira
+    ) {
+      case "PAGA":
+        situacao = "PAGA";
+        break;
+
+      case "CANCELADA":
+        situacao = "CANCELADA";
+        break;
+
+      case "PARCIAL":
+        situacao = "PARCIAL";
+        break;
+
+      case "VENCIDA":
+        situacao = "ATRASADA";
+        break;
+
+      case "PENDENTE":
+      case "NAO_INTEGRADO":
+      default:
+        situacao =
+          situacaoTemporalPagamento(
+            pagamento
+          );
+        break;
+    }
+
+    return {
+      ...pagamento,
+
+      /*
+       * A partir daqui, status e valores financeiros
+       * vêm do Contas a Pagar.
+       */
+      status,
+
+      valor_pago: normalizarNumero(
+        financeiro.valor_pago
+      ),
+
+      data_pagamento:
+        financeiro.ultima_data_pagamento,
+
+      /*
+       * pago_por_id / pago_em pertenciam à baixa
+       * legada da comissão. Não usamos mais esses
+       * campos como fonte financeira.
+       */
+      pago_por_id: null,
+      pago_em: null,
+
+      situacao,
+    };
+  });
+}
+
+function calcularResumoPagamentosIntegrado(
+  pagamentos: ComissaoPagamentoComSituacao[]
+): ResumoPagamentosComissao {
+  const resumo: ResumoPagamentosComissao = {
+    valor_total_previsto: 0,
+    valor_pago: 0,
+    valor_pendente: 0,
+    valor_a_pagar: 0,
+    valor_vence_hoje: 0,
+    valor_atrasado: 0,
+    valor_cancelado: 0,
+    quantidade_total: pagamentos.length,
+    quantidade_pagas: 0,
+    quantidade_pendentes: 0,
+    quantidade_canceladas: 0,
+  };
+
+  for (const pagamento of pagamentos) {
+    const valorPrevisto = arredondarMoeda(
+      normalizarNumero(
+        pagamento.valor_previsto
+      )
+    );
+
+    const valorPago = arredondarMoeda(
+      Math.min(
+        valorPrevisto,
+        Math.max(
+          0,
+          normalizarNumero(
+            pagamento.valor_pago
+          )
+        )
+      )
+    );
+
+    resumo.valor_total_previsto +=
+      valorPrevisto;
+
+    if (
+      pagamento.status === "CANCELADA"
+    ) {
+      resumo.quantidade_canceladas += 1;
+
+      resumo.valor_cancelado +=
+        valorPrevisto;
+
+      continue;
+    }
+
+    if (pagamento.status === "PAGA") {
+      resumo.quantidade_pagas += 1;
+
+      resumo.valor_pago +=
+        valorPago > 0
+          ? valorPago
+          : valorPrevisto;
+
+      continue;
+    }
+
+    /*
+     * PENDENTE ou PARCIAL.
+     */
+    const saldo = arredondarMoeda(
+      Math.max(
+        0,
+        valorPrevisto - valorPago
+      )
+    );
+
+    resumo.quantidade_pendentes += 1;
+
+    resumo.valor_pago += valorPago;
+
+    resumo.valor_pendente += saldo;
+
+    /*
+     * PARCIAL continua sendo uma obrigação
+     * pendente quanto ao saldo restante.
+     *
+     * Para saber se o saldo está vencido,
+     * vence hoje ou é futuro, usamos a data.
+     */
+    const situacaoTemporal =
+      situacaoTemporalPagamento(
+        pagamento
+      );
+
+    if (
+      situacaoTemporal === "A_PAGAR"
+    ) {
+      resumo.valor_a_pagar += saldo;
+    }
+
+    if (
+      situacaoTemporal === "VENCE_HOJE"
+    ) {
+      resumo.valor_vence_hoje +=
+        saldo;
+    }
+
+    if (
+      situacaoTemporal === "ATRASADA"
+    ) {
+      resumo.valor_atrasado += saldo;
+    }
+  }
+
+  return {
+    ...resumo,
+
+    valor_total_previsto:
+      arredondarMoeda(
+        resumo.valor_total_previsto
+      ),
+
+    valor_pago:
+      arredondarMoeda(
+        resumo.valor_pago
+      ),
+
+    valor_pendente:
+      arredondarMoeda(
+        resumo.valor_pendente
+      ),
+
+    valor_a_pagar:
+      arredondarMoeda(
+        resumo.valor_a_pagar
+      ),
+
+    valor_vence_hoje:
+      arredondarMoeda(
+        resumo.valor_vence_hoje
+      ),
+
+    valor_atrasado:
+      arredondarMoeda(
+        resumo.valor_atrasado
+      ),
+
+    valor_cancelado:
+      arredondarMoeda(
+        resumo.valor_cancelado
+      ),
+  };
 }
 
 function normalizarPagina(
@@ -453,21 +750,30 @@ export async function buscarDeducoesSplitsComissao(
 
 export async function buscarPagamentosComissao(
   comissaoId: string
-): Promise<ComissaoPagamento[]> {
+): Promise<ComissaoPagamentoComSituacao[]> {
   if (!comissaoId) return [];
 
   const { data, error } = await supabase
     .from("crm_comissao_pagamentos")
     .select("*")
     .eq("comissao_id", comissaoId)
-    .order("data_prevista", { ascending: true })
-    .order("numero_provisao", { ascending: true });
+    .order("data_prevista", {
+      ascending: true,
+    })
+    .order("numero_provisao", {
+      ascending: true,
+    });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return (data ?? []) as ComissaoPagamento[];
+  const pagamentos =
+    (data ?? []) as ComissaoPagamento[];
+
+  return aplicarFinanceiroContasPagar(
+    pagamentos
+  );
 }
 
 export async function buscarMovimentacoesComissao(
@@ -561,8 +867,7 @@ export async function buscarComissaoContratoDetalhada(
   const recebimentos =
     adicionarSituacaoRecebimentos(recebimentosBrutos);
 
-  const pagamentos =
-    adicionarSituacaoPagamentos(pagamentosBrutos);
+  const pagamentos = pagamentosBrutos;
 
   return {
     comissao,
@@ -577,7 +882,9 @@ export async function buscarComissaoContratoDetalhada(
     resumo_recebimentos:
       calcularResumoRecebimentos(recebimentos),
     resumo_pagamentos:
-      calcularResumoPagamentos(pagamentos),
+      calcularResumoPagamentosIntegrado(
+        pagamentos
+      ),
     resumo_splits: calcularResumoSplits({
       valor_comissao_bruta:
         comissao.valor_comissao_bruta,
@@ -729,9 +1036,14 @@ export async function buscarMinhasComissoesCorretor(
       (deducoesResult.data ??
         []) as ComissaoSplitDeducao[];
 
-    const pagamentos =
+    const pagamentosBrutos =
       (pagamentosResult.data ??
         []) as ComissaoPagamento[];
+
+    const pagamentos =
+      await aplicarFinanceiroContasPagar(
+        pagamentosBrutos
+      );
 
     /*
      * Segunda barreira:
@@ -849,12 +1161,10 @@ export async function buscarMinhasComissoesCorretor(
           );
 
         const pagamentosSplit =
-          adicionarSituacaoPagamentos(
-            pagamentos.filter(
-              (pagamento) =>
-                pagamento.split_id ===
-                split.id
-            )
+          pagamentos.filter(
+            (pagamento) =>
+              pagamento.split_id ===
+              split.id
           );
 
         return [
@@ -904,7 +1214,7 @@ export async function buscarMinhasComissoesCorretor(
               pagamentosSplit,
 
             resumo_pagamentos:
-              calcularResumoPagamentos(
+              calcularResumoPagamentosIntegrado(
                 pagamentosSplit
               ),
           },
@@ -1187,7 +1497,7 @@ export async function buscarMeusSplitsComissao(): Promise<
 }
 
 export async function buscarMeusPagamentosComissao(): Promise<
-  ComissaoPagamento[]
+  ComissaoPagamentoComSituacao[]
 > {
   const perfil = await buscarPerfilAtualComissao();
 
@@ -1210,14 +1520,19 @@ export async function buscarMeusPagamentosComissao(): Promise<
     throw new Error(error.message);
   }
 
-  return (data ?? []).map((item) => {
-    const {
-      crm_comissao_splits: _split,
-      ...pagamento
-    } = item;
+  const pagamentos =
+    (data ?? []).map((item) => {
+      const {
+        crm_comissao_splits: _split,
+        ...pagamento
+      } = item;
 
-    return pagamento as ComissaoPagamento;
-  });
+      return pagamento as ComissaoPagamento;
+    });
+
+  return aplicarFinanceiroContasPagar(
+    pagamentos
+  );
 }
 
 export async function buscarMinhasDeducoesSplits(): Promise<
@@ -1683,9 +1998,7 @@ async function buscarResumosComissoes(
       recebimentos: ReturnType<
         typeof calcularResumoRecebimentos
       >;
-      pagamentos: ReturnType<
-        typeof calcularResumoPagamentos
-      >;
+      pagamentos: ResumoPagamentosComissao;
       splits: ReturnType<typeof calcularResumoSplits>;
       correspondeParticipante: boolean;
     }
@@ -1707,7 +2020,14 @@ async function buscarResumosComissoes(
   if (splitsResult.error) throw new Error(splitsResult.error.message);
 
   const recebimentos = (recebimentosResult.data ?? []) as ComissaoRecebimento[];
-  const pagamentos = (pagamentosResult.data ?? []) as ComissaoPagamento[];
+  const pagamentosBrutos =
+    (pagamentosResult.data ??
+      []) as ComissaoPagamento[];
+
+  const pagamentos =
+    await aplicarFinanceiroContasPagar(
+      pagamentosBrutos
+    );
   const splits = (splitsResult.data ?? []) as ComissaoSplit[];
 
   const possuiFiltroParticipante = Boolean(
@@ -1717,8 +2037,10 @@ async function buscarResumosComissoes(
   const mapa = new Map<
     string,
     {
-      recebimentos: ReturnType<typeof calcularResumoRecebimentos>;
-      pagamentos: ReturnType<typeof calcularResumoPagamentos>;
+      recebimentos: ReturnType<
+        typeof calcularResumoRecebimentos
+      >;
+      pagamentos: ResumoPagamentosComissao;
       splits: ReturnType<typeof calcularResumoSplits>;
       correspondeParticipante: boolean;
     }
@@ -1755,17 +2077,21 @@ async function buscarResumosComissoes(
       (item) => item.comissao_id === comissao.id
     );
 
-    const pagamentosComissao = adicionarSituacaoPagamentos(
+    const pagamentosComissao =
       possuiFiltroParticipante
         ? pagamentosBase.filter((item) =>
-            idsSplitsEscopo.has(item.split_id)
+            idsSplitsEscopo.has(
+              item.split_id
+            )
           )
-        : pagamentosBase
-    );
+        : pagamentosBase;
 
     mapa.set(comissao.id, {
       recebimentos: calcularResumoRecebimentos(recebimentosComissao),
-      pagamentos: calcularResumoPagamentos(pagamentosComissao),
+      pagamentos:
+      calcularResumoPagamentosIntegrado(
+        pagamentosComissao
+      ),
       splits: calcularResumoSplits({
         valor_comissao_bruta: comissao.valor_comissao_bruta,
         splits: splitsComissao,
@@ -2390,59 +2716,6 @@ export async function estornarRecebimentoComissao(
   } catch (erro) {
     throw new Error(
       mensagemErro(erro, "Não foi possível estornar o recebimento.")
-    );
-  }
-}
-
-export async function pagarComissaoSplit(
-  payload: PagarComissaoSplitPayload
-): Promise<ResultadoOperacaoComissao> {
-  try {
-    if (!payload.pagamento_id) throw new Error("Pagamento não informado.");
-
-    const { data, error } = await supabase.rpc("crm_executar_acao_comissao", {
-      p_acao: "PAGAR_SPLIT",
-      p_recebimento_id: null,
-      p_pagamento_id: payload.pagamento_id,
-      p_data: payload.data_pagamento ?? null,
-      p_valor: payload.valor_pago ?? null,
-      p_justificativa: null,
-    });
-
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error("A operação não retornou o pagamento atualizado.");
-
-    return data as ResultadoOperacaoComissao;
-  } catch (erro) {
-    throw new Error(
-      mensagemErro(erro, "Não foi possível registrar o pagamento da comissão.")
-    );
-  }
-}
-
-export async function estornarPagamentoComissao(
-  payload: EstornarPagamentoComissaoPayload
-): Promise<ResultadoOperacaoComissao> {
-  try {
-    if (!payload.pagamento_id) throw new Error("Pagamento não informado.");
-    if (!payload.justificativa?.trim()) throw new Error("Informe a justificativa do estorno.");
-
-    const { data, error } = await supabase.rpc("crm_executar_acao_comissao", {
-      p_acao: "ESTORNAR_PAGAMENTO",
-      p_recebimento_id: null,
-      p_pagamento_id: payload.pagamento_id,
-      p_data: null,
-      p_valor: null,
-      p_justificativa: payload.justificativa.trim(),
-    });
-
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error("A operação não retornou o pagamento atualizado.");
-
-    return data as ResultadoOperacaoComissao;
-  } catch (erro) {
-    throw new Error(
-      mensagemErro(erro, "Não foi possível estornar o pagamento da comissão.")
     );
   }
 }

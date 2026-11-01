@@ -8,14 +8,73 @@ import type { WhatsAppConversation } from '../types/whatsapp'
 import { useWhatsApp } from './useWhatsApp'
 import { supabase } from '../../../lib/supabaseClient'
 
+const CONVERSATIONS_CACHE_TTL_MS =
+  11 * 60 * 60 * 1000
+
+interface ConversationsCacheEntry {
+  conversations: WhatsAppConversation[]
+  expiresAt: number
+}
+
+let conversationsCache:
+  ConversationsCacheEntry | null = null
+
+function obterCacheConversas():
+  | ConversationsCacheEntry
+  | null {
+  if (!conversationsCache) {
+    return null
+  }
+
+  if (
+    conversationsCache.expiresAt <=
+    Date.now()
+  ) {
+    conversationsCache = null
+    return null
+  }
+
+  return conversationsCache
+}
+
+function salvarCacheConversas(
+  conversations: WhatsAppConversation[]
+): void {
+  conversationsCache = {
+    conversations,
+    expiresAt:
+      Date.now() +
+      CONVERSATIONS_CACHE_TTL_MS,
+  }
+}
+
 export function useConversations() {
   const whatsapp = useWhatsApp()
-  const [conversations, setConversations] = useState<WhatsAppConversation[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+
+  const cacheInicial =
+    obterCacheConversas()
+
+  const [conversations, setConversations] =
+    useState<WhatsAppConversation[]>(
+      () =>
+        cacheInicial?.conversations ??
+        []
+    )
+
+  const [loading, setLoading] =
+    useState(
+      () =>
+        !cacheInicial
+    )
+
+  const [error, setError] =
+    useState<Error | null>(null)
 
   const conversationsRef =
-    useRef<WhatsAppConversation[]>([])
+    useRef<WhatsAppConversation[]>(
+      cacheInicial?.conversations ??
+      []
+    )
 
   const reloadTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -40,6 +99,8 @@ export function useConversations() {
 
         conversationsRef.current = data
         setConversations(data)
+
+        salvarCacheConversas(data)
 
         return data
       } catch (err) {
@@ -191,6 +252,30 @@ export function useConversations() {
   )
 
   useEffect(() => {
+    const cached =
+      obterCacheConversas()
+
+    if (cached) {
+      /*
+       * O estado já nasceu com o cache no primeiro render.
+       * Aqui apenas garantimos a referência e fazemos
+       * a atualização silenciosa dos dados atuais.
+       */
+      conversationsRef.current =
+        cached.conversations
+
+      setLoading(false)
+      setError(null)
+
+      void fetchConversations(true)
+
+      return
+    }
+
+    /*
+     * Primeira entrada na sessão:
+     * comportamento normal com loading.
+     */
     void fetchConversations(false)
   }, [fetchConversations])
 

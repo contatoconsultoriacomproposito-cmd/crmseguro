@@ -7,6 +7,8 @@ export type StorageOrigem =
   | 'ASSISTENCIA'
   | 'CLIENTE'
   | 'EMPRESA'
+  | 'CONTAS_PAGAR'
+  | 'CONTAS_RECEBER'
   | 'OUTRO'
 
 export type StorageTipoArquivo =
@@ -74,6 +76,8 @@ export interface StorageResumo {
   documentos_bytes: number
   sinistros_bytes: number
   assistencias_bytes: number
+  contas_pagar_bytes: number
+  contas_receber_bytes: number
   imagens_bytes: number
   audios_bytes: number
   videos_bytes: number
@@ -186,6 +190,8 @@ const ORIGENS: StorageOrigem[] = [
   'ASSISTENCIA',
   'CLIENTE',
   'EMPRESA',
+  'CONTAS_PAGAR',
+  'CONTAS_RECEBER',
   'OUTRO',
 ]
 
@@ -228,6 +234,8 @@ function normalizarResumo(
     documentos_bytes: numeroSeguro(data?.documentos_bytes),
     sinistros_bytes: numeroSeguro(data?.sinistros_bytes),
     assistencias_bytes: numeroSeguro(data?.assistencias_bytes),
+    contas_pagar_bytes: numeroSeguro(data?.contas_pagar_bytes),
+    contas_receber_bytes: numeroSeguro(data?.contas_receber_bytes),
     imagens_bytes: numeroSeguro(data?.imagens_bytes),
     audios_bytes: numeroSeguro(data?.audios_bytes),
     videos_bytes: numeroSeguro(data?.videos_bytes),

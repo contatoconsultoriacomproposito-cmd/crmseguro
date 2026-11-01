@@ -4,20 +4,12 @@ import {
   atualizarEmpresa,
   atualizarPessoa,
   buscarVinculosDaPessoa,
-  criarEmpresa,
-  criarPessoa,
   obterSessaoCrm,
   type CrmEmpresa,
-  type CrmEmpresaDados,
   type CrmPessoa,
-  type CrmPessoaDados,
   type CrmPessoaEmpresaVinculo,
   type CrmKanbanStage,
 } from '../services/crmClienteService'
-
-
-
-import { buscarCnpjCrm } from './crmBrasilApi'
 
 
 export type CrmWhatsAppVinculo =
@@ -41,7 +33,6 @@ export type CrmWhatsAppVinculo =
 export type OrigemBuscaCliente =
   | 'CRM_PESSOA'
   | 'CRM_EMPRESA'
-  | 'LEGADO'
 
 export interface ClienteBuscaVinculo {
   id: string
@@ -52,7 +43,7 @@ export interface ClienteBuscaVinculo {
   telefone: string | null
   email: string | null
   cliente_id_legado: string | null
-  registro: CrmPessoa | CrmEmpresa | Record<string, any>
+  registro: CrmPessoa | CrmEmpresa
 }
 
 interface RpcClienteBuscaVinculo {
@@ -69,7 +60,7 @@ interface RpcClienteBuscaVinculo {
 
 export interface ResultadoVinculoWhatsApp {
   tipo: 'PF' | 'PJ'
-  origem: 'CRM_EXISTENTE' | 'LEGADO_IMPORTADO'
+  origem: 'CRM_EXISTENTE'
   pessoa: CrmPessoa | null
   empresa: CrmEmpresa | null
 }
@@ -138,96 +129,6 @@ export interface CrmHistoricoComercial {
   produtos: CrmHistoricoProduto[]
 }
 
-const somenteNumeros = (valor?: unknown) =>
-  String(valor ?? '').replace(/\D/g, '')
-
-const texto = (valor?: unknown): string | null => {
-  if (valor === undefined || valor === null) return null
-
-  const resultado = String(valor).trim()
-
-  return resultado || null
-}
-
-const booleano = (valor?: unknown): boolean | null => {
-  if (typeof valor === 'boolean') return valor
-
-  if (typeof valor === 'number') {
-    return valor !== 0
-  }
-
-  if (typeof valor === 'string') {
-    const normalizado = valor.trim().toLowerCase()
-
-    if (['true', '1', 'sim', 's', 'yes'].includes(normalizado)) {
-      return true
-    }
-
-    if (['false', '0', 'não', 'nao', 'n', 'no'].includes(normalizado)) {
-      return false
-    }
-  }
-
-  return null
-}
-
-const numero = (valor?: unknown): number | null => {
-  if (
-    valor === undefined ||
-    valor === null ||
-    valor === ''
-  ) {
-    return null
-  }
-
-  if (typeof valor === 'number') {
-    return Number.isFinite(valor) ? valor : null
-  }
-
-  const convertido = Number(
-    String(valor)
-      .trim()
-      .replace(/\./g, '')
-      .replace(',', '.')
-  )
-
-  return Number.isFinite(convertido)
-    ? convertido
-    : null
-}
-
-const parseJsonSeguro = <T>(
-  valor: unknown,
-  fallback: T
-): T => {
-  if (valor === undefined || valor === null) {
-    return fallback
-  }
-
-  if (typeof valor === 'string') {
-    try {
-      return JSON.parse(valor) as T
-    } catch {
-      return fallback
-    }
-  }
-
-  return valor as T
-}
-
-const obterArray = (
-  valor: unknown
-): Record<string, any>[] => {
-  const convertido = parseJsonSeguro<any>(valor, [])
-
-  return Array.isArray(convertido)
-    ? convertido.filter(
-        (item) =>
-          item &&
-          typeof item === 'object'
-      )
-    : []
-}
 
 const filtroWhatsApp = (contatoId: string) => ({
   campos_adicionais: {
@@ -248,381 +149,7 @@ const camposAdicionaisComWhatsApp = (
   },
 })
 
-const montarTelefone = (
-  numeroTelefone: unknown,
-  principal = false
-) => {
-  const valor = texto(numeroTelefone)
 
-  if (!valor) return null
-
-  return {
-    numero: valor,
-    tipo: 'CELULAR',
-    whatsapp: true,
-    principal,
-  }
-}
-
-const montarEmail = (
-  email: unknown,
-  principal = false
-) => {
-  const valor = texto(email)
-
-  if (!valor) return null
-
-  return {
-    email: valor.toLowerCase(),
-    tipo: 'PESSOAL',
-    principal,
-  }
-}
-
-const obterContatoPrincipalLegado = (
-  registro: Record<string, any>
-): Record<string, any> | null => {
-  const contatos = obterArray(registro.contatos)
-
-  if (!contatos.length) return null
-
-  return (
-    contatos.find(
-      (contato) =>
-        contato.principal === true ||
-        String(contato.principal).toLowerCase() === 'true'
-    ) ||
-    contatos[0] ||
-    null
-  )
-}
-
-const montarDadosPessoaLegado = (
-  registro: Record<string, any>,
-  contatoId: string
-): CrmPessoaDados => {
-  const contatoPrincipal =
-    obterContatoPrincipalLegado(registro)
-
-  const complementares =
-    parseJsonSeguro<Record<string, any>>(
-      registro.dados_complementares_pf,
-      {}
-    )
-
-  const nome =
-    texto(registro.nome_razao_social) ||
-    texto(contatoPrincipal?.nome) ||
-    'Cliente sem nome'
-
-  const telefone =
-    texto(contatoPrincipal?.telefone) ||
-    texto(contatoPrincipal?.celular)
-
-  const email =
-    texto(contatoPrincipal?.email)
-
-  const telefones = telefone
-    ? [montarTelefone(telefone, true)!]
-    : []
-
-  const emails = email
-    ? [montarEmail(email, true)!]
-    : []
-
-  const possuiEndereco = Boolean(
-    texto(registro.cep) ||
-    texto(registro.logradouro) ||
-    texto(registro.numero) ||
-    texto(registro.bairro) ||
-    texto(registro.municipio) ||
-    texto(registro.uf)
-  )
-
-  return {
-    nome,
-    modo_cadastro: 'COMPLETO',
-
-    data_nascimento:
-      texto(complementares.data_nascimento) ||
-      texto(contatoPrincipal?.data_nascimento),
-
-    sexo:
-      texto(complementares.sexo) ||
-      texto(contatoPrincipal?.sexo),
-
-    estado_civil:
-      texto(complementares.estado_civil) ||
-      texto(contatoPrincipal?.estado_civil),
-
-    naturalidade:
-      texto(complementares.naturalidade) ||
-      texto(contatoPrincipal?.naturalidade),
-
-    ocupacao:
-      texto(complementares.ocupacao) ||
-      texto(contatoPrincipal?.ocupacao),
-
-    pep:
-      booleano(
-        complementares.pep ??
-        contatoPrincipal?.pep
-      ) || false,
-
-    documentos: {
-      rg_numero:
-        texto(complementares.rg_numero) ||
-        texto(contatoPrincipal?.rg),
-
-      rg_orgao:
-        texto(complementares.rg_orgao) ||
-        texto(contatoPrincipal?.orgao_emissor),
-
-      data_emissao_rg:
-        texto(complementares.data_emissao_rg),
-
-      cnh_numero:
-        texto(complementares.cnh_numero),
-
-      cnh_categoria:
-        texto(complementares.cnh_categoria),
-
-      cnh_validade:
-        texto(complementares.cnh_validade),
-    },
-
-    telefones,
-    emails,
-
-    enderecos: possuiEndereco
-      ? [
-          {
-            tipo: 'PRINCIPAL',
-            principal: true,
-            cep: somenteNumeros(registro.cep) || null,
-            logradouro:
-              texto(registro.logradouro),
-            numero:
-              texto(registro.numero),
-            complemento:
-              texto(registro.complemento),
-            bairro:
-              texto(registro.bairro),
-            municipio:
-              texto(registro.municipio),
-            uf:
-              texto(registro.uf)?.toUpperCase() || null,
-          },
-        ]
-      : [],
-
-    origem:
-      texto(registro.origem) ||
-      'IMPORTACAO_LEGADO',
-
-    canal_entrada: 'WHATSAPP',
-
-    fase_atendimento: null,
-    temperatura: null,
-
-    observacoes:
-      texto(complementares.observacoes) ||
-      texto(registro.observacoes),
-
-    tags: [],
-    produtos_interesse: [],
-
-    campos_adicionais: {
-      whatsapp: {
-        contato_id: contatoId,
-      },
-
-      importacao_legado: {
-        origem: 'tab_clientes',
-        importado_em: new Date().toISOString(),
-      },
-    },
-  }
-}
-
-const montarDadosEmpresaBrasilApi = (
-  raw: Record<string, any>,
-  contatoId: string
-): CrmEmpresaDados => {
-  const telefones = [
-    raw.ddd_telefone_1,
-    raw.ddd_telefone_2,
-  ]
-    .map((telefone, index) =>
-      telefone
-        ? {
-            numero: String(telefone).trim(),
-            tipo: 'COMERCIAL',
-            whatsapp: false,
-            principal: index === 0,
-          }
-        : null
-    )
-    .filter(
-      (
-        telefone
-      ): telefone is NonNullable<typeof telefone> =>
-        Boolean(telefone?.numero)
-    )
-
-  const emails = raw.email
-    ? [
-        {
-          email: String(raw.email)
-            .trim()
-            .toLowerCase(),
-          tipo: 'COMERCIAL',
-          principal: true,
-        },
-      ]
-    : []
-
-  const possuiEndereco = Boolean(
-    raw.cep ||
-    raw.logradouro ||
-    raw.numero ||
-    raw.bairro ||
-    raw.municipio ||
-    raw.uf
-  )
-
-  const cnaesSecundarios = Array.isArray(
-    raw.cnaes_secundarios
-  )
-    ? raw.cnaes_secundarios
-        .map((cnae: any) => ({
-          codigo:
-            texto(
-              cnae.codigo ??
-              cnae.code
-            ) || '',
-          descricao:
-            texto(
-              cnae.descricao ??
-              cnae.text
-            ),
-          principal: false,
-        }))
-        .filter(
-          (cnae: { codigo: string }) =>
-            Boolean(cnae.codigo)
-        )
-    : []
-
-  return {
-    razao_social:
-      texto(raw.razao_social) ||
-      'Empresa sem razão social',
-
-    nome_fantasia:
-      texto(raw.nome_fantasia),
-
-    modo_cadastro: 'COMPLETO',
-
-    situacao_cadastral:
-      texto(
-        raw.descricao_situacao_cadastral ??
-        raw.situacao_cadastral
-      ),
-
-    data_abertura:
-      texto(
-        raw.data_inicio_atividade ??
-        raw.data_abertura
-      ),
-
-    porte:
-      texto(raw.porte),
-
-    matriz_filial:
-      texto(
-        raw.descricao_identificador_matriz_filial ??
-        raw.identificador_matriz_filial
-      ),
-
-    natureza_juridica:
-      texto(raw.natureza_juridica),
-
-    capital_social:
-      numero(raw.capital_social),
-
-    cnae_principal:
-      texto(
-        raw.cnae_fiscal ??
-        raw.cnae_principal
-      ),
-
-    cnae_principal_descricao:
-      texto(
-        raw.cnae_fiscal_descricao ??
-        raw.cnae_principal_descricao
-      ),
-
-    cnaes_secundarios: cnaesSecundarios,
-
-    opcao_pelo_mei:
-      booleano(raw.opcao_pelo_mei),
-
-    opcao_pelo_simples:
-      booleano(raw.opcao_pelo_simples),
-
-    telefones,
-    emails,
-
-    enderecos: possuiEndereco
-      ? [
-          {
-            tipo: 'COMERCIAL',
-            principal: true,
-            cep:
-              somenteNumeros(raw.cep) || null,
-            logradouro:
-              texto(raw.logradouro),
-            numero:
-              texto(raw.numero),
-            complemento:
-              texto(raw.complemento),
-            bairro:
-              texto(raw.bairro),
-            municipio:
-              texto(raw.municipio),
-            uf:
-              texto(raw.uf)?.toUpperCase() || null,
-          },
-        ]
-      : [],
-
-    contatos: [],
-
-    origem: 'IMPORTACAO_LEGADO',
-    canal_entrada: 'WHATSAPP',
-
-    fase_atendimento: null,
-    temperatura: null,
-
-    observacoes: null,
-
-    tags: [],
-    produtos_interesse: [],
-
-    campos_adicionais: {
-      whatsapp: {
-        contato_id: contatoId,
-      },
-
-      importacao_legado: {
-        origem: 'tab_clientes',
-        atualizado_por: 'BRASIL_API',
-        importado_em: new Date().toISOString(),
-      },
-    },
-  }
-}
 export async function buscarContatosLeadWhatsApp(): Promise<Set<string>> {
   const [
     { data: pessoas, error: pessoasError },
@@ -919,7 +446,9 @@ export async function buscarClientesParaVinculo(
         null,
 
       registro:
-        item.registro || {},
+        item.origem === 'CRM_PESSOA'
+          ? (item.registro as CrmPessoa)
+          : (item.registro as CrmEmpresa),
     })
   )
 }
@@ -987,12 +516,6 @@ export async function vincularClienteExistenteAoWhatsApp(
     )
   }
 
-  if (cliente.origem === 'LEGADO') {
-    throw new Error(
-      'Cliente legado deve ser importado antes do vínculo.'
-    )
-  }
-
   if (cliente.origem === 'CRM_PESSOA') {
     const pessoa =
       cliente.registro as CrmPessoa
@@ -1050,125 +573,6 @@ export async function vincularClienteExistenteAoWhatsApp(
   throw new Error(
     'Origem do cliente inválida.'
   )
-}
-
-export async function importarClienteLegadoEVincular(
-  cliente: ClienteBuscaVinculo,
-  contatoId: string
-): Promise<ResultadoVinculoWhatsApp> {
-  if (!contatoId) {
-    throw new Error(
-      'Contato do WhatsApp não informado.'
-    )
-  }
-
-  if (cliente.origem !== 'LEGADO') {
-    throw new Error(
-      'O cliente informado não pertence à base histórica.'
-    )
-  }
-
-  const legado =
-    cliente.registro as Record<string, any>
-
-  const clienteIdLegado =
-    cliente.cliente_id_legado ||
-    cliente.id
-
-  if (!clienteIdLegado) {
-    throw new Error(
-      'ID do cliente legado não encontrado.'
-    )
-  }
-
-  if (cliente.tipo === 'PF') {
-    const cpf =
-      somenteNumeros(
-        legado.cpf_cnpj ||
-        cliente.documento
-      )
-
-    const dados =
-      montarDadosPessoaLegado(
-        legado,
-        contatoId
-      )
-
-    const pessoa =
-      await criarPessoa({
-        corretor_id:
-          legado.corretor_id ||
-          undefined,
-
-        cpf:
-          cpf.length === 11
-            ? cpf
-            : null,
-
-        cliente_id_legado:
-          clienteIdLegado,
-
-        dados,
-
-        classificacao:
-          'NAO_QUALIFICADO',
-      })
-
-    return {
-      tipo: 'PF',
-      origem: 'LEGADO_IMPORTADO',
-      pessoa,
-      empresa: null,
-    }
-  }
-
-  const cnpj =
-    somenteNumeros(
-      legado.cpf_cnpj ||
-      cliente.documento
-    )
-
-  if (cnpj.length !== 14) {
-    throw new Error(
-      'O cliente legado não possui um CNPJ válido para atualização cadastral.'
-    )
-  }
-
-  const consulta =
-    await buscarCnpjCrm(cnpj)
-
-  const dados =
-    montarDadosEmpresaBrasilApi(
-      consulta.dados_api_cnpj,
-      contatoId
-    )
-
-  const empresa =
-    await criarEmpresa({
-      corretor_id:
-        legado.corretor_id ||
-        undefined,
-
-      cnpj,
-
-      cliente_id_legado:
-        clienteIdLegado,
-
-      dados,
-
-      dados_api_cnpj:
-        consulta.dados_api_cnpj,
-
-      classificacao:
-        'NAO_QUALIFICADO',
-    })
-
-  return {
-    tipo: 'PJ',
-    origem: 'LEGADO_IMPORTADO',
-    pessoa: null,
-    empresa,
-  }
 }
 
 const jsonParaTexto = (

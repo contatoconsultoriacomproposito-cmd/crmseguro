@@ -306,15 +306,168 @@ export function useWhatsAppTimeline(
        * já visitada.
        */
       if (cached) {
-        setItems(cached.items)
-        setHasMore(cached.hasMore)
-        cursorRef.current =
-          cached.cursor
-        setLoading(false)
-      } else {
-        setLoading(true)
+  /*
+   * Primeiro restauramos imediatamente
+   * tudo que já estava carregado.
+   *
+   * Nenhum loading é exibido.
+   */
+  setItems(cached.items)
+  setHasMore(cached.hasMore)
+  cursorRef.current =
+    cached.cursor
+
+  setLoading(false)
+  setError(null)
+
+  /*
+   * Depois fazemos uma atualização
+   * silenciosa dos eventos recentes.
+   *
+   * Isso cobre mensagens que possam ter
+   * chegado enquanto o usuário estava
+   * navegando em outra página do CRM.
+   */
+  void (async () => {
+    try {
+      const pagina =
+        await buscarTimelineWhatsApp(
+          conversationId,
+          null,
+          PAGE_SIZE
+        )
+
+      /*
+       * Se o usuário trocou de conversa
+       * enquanto a requisição estava em voo,
+       * ignoramos a resposta antiga.
+       */
+      if (
+        requestSequence !==
+        requestSequenceRef.current
+      ) {
+        return
       }
 
+      /*
+       * Pegamos novamente o snapshot mais
+       * atual do cache, porque ele pode ter
+       * sido atualizado por Realtime nesse meio-tempo.
+       */
+      const snapshotAtual =
+        obterCacheTimeline(
+          conversationId
+        )?.items ?? cached.items
+
+      const chavesAntes =
+        new Set(
+          snapshotAtual.map(
+            item =>
+              item.cursor_chave
+          )
+        )
+
+      /*
+       * Banco vence para status/textos/reação,
+       * mas preservamos mídia já resolvida.
+       */
+      const merged =
+        mesclarPreservandoAtual(
+          snapshotAtual,
+          pagina.items
+        )
+
+      setItems(merged)
+
+      /*
+       * IMPORTANTE:
+       *
+       * Mantemos hasMore e cursor do cache.
+       *
+       * O usuário pode já ter carregado várias
+       * páginas antigas, então não podemos
+       * substituir o cursor pelo cursor da
+       * primeira página recém-consultada.
+       */
+      salvarCacheTimeline(
+        conversationId,
+        merged,
+        cached.hasMore,
+        cached.cursor
+      )
+
+      /*
+       * Descobrimos somente quais eventos
+       * realmente não existiam antes.
+       */
+      const itensNovos =
+        pagina.items.filter(
+          item =>
+            !chavesAntes.has(
+              item.cursor_chave
+            )
+        )
+
+      if (
+        itensNovos.length === 0
+      ) {
+        return
+      }
+
+      /*
+       * Só mídias dos eventos novos precisam
+       * ter suas URLs resolvidas.
+       *
+       * Nada das mídias antigas é solicitado
+       * novamente ao B2.
+       */
+      const itemsComUrls =
+        await resolverUrlsMidias(
+          itensNovos
+        )
+
+      if (
+        requestSequence !==
+        requestSequenceRef.current
+      ) {
+        return
+      }
+
+      setItems(current => {
+        const mergedComUrls =
+          mesclarResolvidos(
+            current,
+            itemsComUrls
+          )
+
+        salvarCacheTimeline(
+          conversationId,
+          mergedComUrls,
+          cached.hasMore,
+          cached.cursor
+        )
+
+        return mergedComUrls
+      })
+    } catch (err) {
+      /*
+       * É uma atualização silenciosa.
+       *
+       * Se falhar, não destruímos a conversa
+       * já carregada e nem mostramos erro
+       * bloqueando o usuário.
+       */
+      console.error(
+        '❌ Timeline → erro na atualização silenciosa:',
+        err
+      )
+    }
+  })()
+
+  return
+}
+
+      setLoading(true)
       setError(null)
 
       try {
@@ -332,8 +485,7 @@ export function useWhatsAppTimeline(
           return
         }
 
-        const atuais =
-          cached?.items ?? []
+        const atuais: WhatsAppTimelineItem[] = []
 
         /**
          * Atualizamos textos/status/eventos sem
@@ -373,23 +525,8 @@ export function useWhatsAppTimeline(
          * as signed URLs antigas continuam sendo
          * reutilizadas em vez de serem recriadas.
          */
-        const chavesCache =
-          new Set(
-            atuais.map(
-              item =>
-                item.cursor_chave
-            )
-          )
-
         const itensParaResolver =
-          cached
-            ? pagina.items.filter(
-                item =>
-                  !chavesCache.has(
-                    item.cursor_chave
-                  )
-              )
-            : pagina.items
+         pagina.items
 
         if (
           itensParaResolver.length === 0

@@ -39,22 +39,16 @@ import type {
 import { ModalLancamentoComissao } from "../components/ModalLancamentoComissao";
 import type {
   CancelarProvisaoComissaoPayload,
-  ComissaoPagamentoComSituacao,
   ComissaoRecebimentoComSituacao,
-  ComissaoSplit,
   CriarComissaoPayload,
   ContextoContratoComissao,
-  EstornarPagamentoComissaoPayload,
   EstornarRecebimentoComissaoPayload,
-  PagarComissaoSplitPayload,
   ReceberComissaoPayload,
   ReverterCancelamentoProvisaoComissaoPayload,
   ContextoPermissaoComissao,
 } from "../types/comissoes";
 import { ModalReceberComissao } from "../components/ModalReceberComissao";
 import { ModalEstornarRecebimento } from "../components/ModalEstornarRecebimento";
-import { ModalPagarComissaoSplit } from "../components/ModalPagarComissaoSplit";
-import { ModalEstornarPagamento } from "../components/ModalEstornarPagamento";
 import { ModalCancelarProvisao } from "../components/ModalCancelarProvisao";
 import { ModalReverterCancelamento } from "../components/ModalReverterCancelamento";
 import { useAuth } from "../../../../../auth/AuthContext";
@@ -63,9 +57,7 @@ import {
   podeCancelarProvisaoComissao,
   podeCriarComissao,
   podeEditarComissao,
-  podeEstornarPagamentoComissao,
   podeEstornarRecebimentoComissao,
-  podePagarSplitComissao,
   podeReceberComissao,
   podeReverterCancelamentoProvisaoComissao,
 } from "../services/comissoesPermissoes";
@@ -173,8 +165,6 @@ export default function ComissaoContrato() {
     salvar,
     receber,
     estornarRecebimento,
-    pagar,
-    estornarPagamento,
     cancelarProvisao,
     reverterCancelamento,
     } = useComissaoContrato({
@@ -192,12 +182,8 @@ export default function ComissaoContrato() {
   type ModalOperacao =
   | "RECEBER"
   | "ESTORNAR_RECEBIMENTO"
-  | "PAGAR"
-  | "ESTORNAR_PAGAMENTO"
   | "CANCELAR_RECEBIMENTO"
-  | "CANCELAR_PAGAMENTO"
   | "REVERTER_RECEBIMENTO"
-  | "REVERTER_PAGAMENTO"
   | null;
 
   const [
@@ -209,16 +195,6 @@ export default function ComissaoContrato() {
     recebimentoSelecionado,
     setRecebimentoSelecionado,
   ] = useState<ComissaoRecebimentoComSituacao | null>(null);
-
-  const [
-    pagamentoSelecionado,
-    setPagamentoSelecionado,
-  ] = useState<ComissaoPagamentoComSituacao | null>(null);
-
-  const [
-    splitSelecionado,
-    setSplitSelecionado,
-  ] = useState<ComissaoSplit | null>(null);
 
   const [
     opcoesCorretores,
@@ -306,20 +282,6 @@ const podeReceber =
 const podeEstornarRecebimento =
   contextoPermissao
     ? podeEstornarRecebimentoComissao(
-        contextoPermissao
-      )
-    : false;
-
-const podePagar =
-  contextoPermissao
-    ? podePagarSplitComissao(
-        contextoPermissao
-      )
-    : false;
-
-const podeEstornarPagamento =
-  contextoPermissao
-    ? podeEstornarPagamentoComissao(
         contextoPermissao
       )
     : false;
@@ -583,36 +545,16 @@ useEffect(() => {
     setModalLancamentoAberto(false);
     }
   
-    function fecharModalOperacao() {
+  function fecharModalOperacao() {
     setModalOperacao(null);
     setRecebimentoSelecionado(null);
-    setPagamentoSelecionado(null);
-    setSplitSelecionado(null);
   }
 
   function abrirOperacaoRecebimento(
     operacao: ModalOperacao,
     recebimento: ComissaoRecebimentoComSituacao
   ) {
-    setPagamentoSelecionado(null);
-    setSplitSelecionado(null);
     setRecebimentoSelecionado(recebimento);
-    setModalOperacao(operacao);
-  }
-
-  function abrirOperacaoPagamento(
-    operacao: ModalOperacao,
-    pagamento: ComissaoPagamentoComSituacao
-  ) {
-    const split =
-      splits.find(
-        (item) =>
-          item.id === pagamento.split_id
-      ) ?? null;
-
-    setRecebimentoSelecionado(null);
-    setPagamentoSelecionado(pagamento);
-    setSplitSelecionado(split);
     setModalOperacao(operacao);
   }
 
@@ -627,20 +569,6 @@ useEffect(() => {
     payload: EstornarRecebimentoComissaoPayload
   ) {
     await estornarRecebimento(payload);
-    fecharModalOperacao();
-  }
-
-  async function handlePagar(
-    payload: PagarComissaoSplitPayload
-  ) {
-    await pagar(payload);
-    fecharModalOperacao();
-  }
-
-  async function handleEstornarPagamento(
-    payload: EstornarPagamentoComissaoPayload
-  ) {
-    await estornarPagamento(payload);
     fecharModalOperacao();
   }
 
@@ -1605,7 +1533,7 @@ useEffect(() => {
                     </h2>
 
                     <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      Corretora → Participantes
+                      Corretora → Participantes · Liquidação controlada pelo Contas a Pagar
                     </p>
                   </div>
                 </div>
@@ -1620,18 +1548,23 @@ useEffect(() => {
                       </th>
 
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Data prevista
+                        Vencimento
                       </th>
 
                       <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Valor
+                        Previsto
+                      </th>
+
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Pago
+                      </th>
+
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Saldo
                       </th>
 
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Ações
+                        Situação
                       </th>
                     </tr>
                   </thead>
@@ -1640,7 +1573,7 @@ useEffect(() => {
                     {pagamentos.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           className="px-4 py-8 text-center text-sm text-slate-500"
                         >
                           Nenhum pagamento provisionado.
@@ -1667,84 +1600,53 @@ useEffect(() => {
                             )}
                           </td>
 
-                          <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
-                            {item.situacao ??
-                              item.status}
+                          <td className="px-4 py-3 text-right text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                            {formatarMoedaComissao(
+                              item.valor_pago ?? 0
+                            )}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex justify-center gap-2">
-                              {item.status === "PENDENTE" &&
-                                (podePagar ||
-                                  podeCancelarProvisao) && (
-                                <>
-                                  {podePagar && (
-                                  <button
-                                    type="button"
-                                    disabled={operando}
-                                    onClick={() =>
-                                      abrirOperacaoPagamento(
-                                        "PAGAR",
-                                        item
-                                      )
-                                    }
-                                    className="rounded-lg border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-900/60 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-                                  >
-                                    Pagar
-                                  </button>
-                                  )}
 
-                                  {podeCancelarProvisao && (
-                                  <button
-                                    type="button"
-                                    disabled={operando}
-                                    onClick={() =>
-                                      abrirOperacaoPagamento(
-                                        "CANCELAR_PAGAMENTO",
-                                        item
-                                      )
-                                    }
-                                    className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
-                                  >
-                                    Cancelar
-                                  </button>
-                                  )}
-                                </>
-                              )}
+                          <td className="px-4 py-3 text-right text-sm font-semibold text-slate-800 dark:text-slate-200">
+                            {formatarMoedaComissao(
+                              Math.max(
+                                0,
+                                Number(item.valor_previsto ?? 0) -
+                                  Number(item.valor_pago ?? 0)
+                              )
+                            )}
+                          </td>
 
-                              {item.status === "PAGA" &&
-                                podeEstornarPagamento && (
-                                <button
-                                  type="button"
-                                  disabled={operando}
-                                  onClick={() =>
-                                    abrirOperacaoPagamento(
-                                      "ESTORNAR_PAGAMENTO",
-                                      item
-                                    )
-                                  }
-                                  className="rounded-lg border border-amber-200 px-2.5 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:opacity-50 dark:border-amber-900/60 dark:text-amber-300 dark:hover:bg-amber-950/30"
-                                >
-                                  Estornar
-                                </button>
-                              )}
-
-                              {item.status === "CANCELADA" &&
-                                podeReverterCancelamento && (
-                                <button
-                                  type="button"
-                                  disabled={operando}
-                                  onClick={() =>
-                                    abrirOperacaoPagamento(
-                                      "REVERTER_PAGAMENTO",
-                                      item
-                                    )
-                                  }
-                                  className="rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-50 disabled:opacity-50 dark:border-blue-900/60 dark:text-blue-300 dark:hover:bg-blue-950/30"
-                                >
-                                  Reverter
-                                </button>
-                              )}
-                            </div>
+                          <td className="px-4 py-3 text-sm">
+                            <span
+                              className={[
+                                "inline-flex rounded-full px-2.5 py-1 text-xs font-medium",
+                                item.situacao === "PAGA"
+                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                  : item.situacao === "PARCIAL"
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                                  : item.situacao === "ATRASADA"
+                                  ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                                  : item.situacao === "VENCE_HOJE"
+                                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                                  : item.situacao === "CANCELADA"
+                                  ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                  : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+                              ].join(" ")}
+                            >
+                              {item.situacao === "A_PAGAR"
+                                ? "A pagar"
+                                : item.situacao === "VENCE_HOJE"
+                                ? "Vence hoje"
+                                : item.situacao === "ATRASADA"
+                                ? "Vencida"
+                                : item.situacao === "PARCIAL"
+                                ? "Parcial"
+                                : item.situacao === "PAGA"
+                                ? "Paga"
+                                : item.situacao === "CANCELADA"
+                                ? "Cancelada"
+                                : item.situacao ?? item.status}
+                            </span>
                           </td>
                         </tr>
                       ))
@@ -1849,56 +1751,19 @@ useEffect(() => {
   }
 />
 
-<ModalPagarComissaoSplit
-  aberto={
-    modalOperacao === "PAGAR"
-  }
-  pagamento={
-    pagamentoSelecionado
-  }
-  split={splitSelecionado}
-  salvando={operacoes.pagando}
-  onFechar={fecharModalOperacao}
-  onConfirmar={handlePagar}
-/>
 
-<ModalEstornarPagamento
-  aberto={
-    modalOperacao ===
-    "ESTORNAR_PAGAMENTO"
-  }
-  pagamento={
-    pagamentoSelecionado
-  }
-  split={splitSelecionado}
-  salvando={
-    operacoes.estornandoPagamento
-  }
-  onFechar={fecharModalOperacao}
-  onConfirmar={
-    handleEstornarPagamento
-  }
-/>
+
+
 
 <ModalCancelarProvisao
   aberto={
     modalOperacao ===
-      "CANCELAR_RECEBIMENTO" ||
-    modalOperacao ===
-      "CANCELAR_PAGAMENTO"
+    "CANCELAR_RECEBIMENTO"
   }
   recebimento={
-    modalOperacao ===
-    "CANCELAR_RECEBIMENTO"
-      ? recebimentoSelecionado
-      : null
+    recebimentoSelecionado
   }
-  pagamento={
-    modalOperacao ===
-    "CANCELAR_PAGAMENTO"
-      ? pagamentoSelecionado
-      : null
-  }
+  pagamento={null}
   salvando={
     operacoes.cancelandoProvisao
   }
@@ -1911,22 +1776,12 @@ useEffect(() => {
   <ModalReverterCancelamento
     aberto={
       modalOperacao ===
-        "REVERTER_RECEBIMENTO" ||
-      modalOperacao ===
-        "REVERTER_PAGAMENTO"
+      "REVERTER_RECEBIMENTO"
     }
     recebimento={
-      modalOperacao ===
-      "REVERTER_RECEBIMENTO"
-        ? recebimentoSelecionado
-        : null
+      recebimentoSelecionado
     }
-    pagamento={
-      modalOperacao ===
-      "REVERTER_PAGAMENTO"
-        ? pagamentoSelecionado
-        : null
-    }
+    pagamento={null}
     salvando={
       operacoes.revertendoCancelamento
     }

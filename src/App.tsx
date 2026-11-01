@@ -41,6 +41,15 @@ import PropostaDetalhes from "./pages/whatsapp/pages/propostas/pages/PropostaDet
 import Financeiro from "./pages/whatsapp/pages/financeiro/pages/Financeiro"
 import FinanceiroContrato from "./pages/whatsapp/pages/financeiro/pages/FinanceiroContrato"
 
+// Contas a Receber
+import ContasReceber from "./pages/whatsapp/contas-receber/pages/ContasReceber"
+
+// Contas a Pagar
+import ContasPagar from "./pages/whatsapp/contas-pagar/pages/ContasPagar"
+
+// Fluxo de Caixa
+import FluxoCaixa from "./pages/whatsapp/fluxo-caixa/pages/FluxoCaixa";
+
 // Comissões
 import Comissoes from "./pages/whatsapp/pages/comissoes/pages/Comissoes"
 import ComissaoContrato from "./pages/whatsapp/pages/comissoes/pages/ComissaoContrato"
@@ -250,15 +259,75 @@ export default function App() {
             ================================================ */}
 
             <Route
-              path="/whatsapp/financeiro"
+              path="/whatsapp/financeiro/contas-pagar"
+              element={<ContasPagar />}
+            />
+
+            <Route
+              path="/whatsapp/financeiro/contas-receber"
+              element={<ContasReceber />}
+            />
+
+            <Route
+              path="/whatsapp/financeiro/fluxo-caixa"
+              element={<FluxoCaixa />}
+            />
+
+            <Route
+              path="/whatsapp/financeiro/controle-parcelas"
               element={<Financeiro />}
+            />
+
+            <Route
+              path="/whatsapp/financeiro/controle-parcelas/contratos/:contratoId"
+              element={<FinanceiroContrato />}
+            />
+
+            {/* COMPATIBILIDADE TEMPORÁRIA COM ROTAS ANTIGAS */}
+            <Route
+              path="/whatsapp/financeiro"
+              element={
+                <Navigate
+                  to="/whatsapp/financeiro/controle-parcelas"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/whatsapp/contas-pagar"
+              element={
+                <Navigate
+                  to="/whatsapp/financeiro/contas-pagar"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/whatsapp/contas-receber"
+              element={
+                <Navigate
+                  to="/whatsapp/financeiro/contas-receber"
+                  replace
+                />
+              }
+            />
+
+            <Route
+              path="/whatsapp/fluxo-caixa"
+              element={
+                <Navigate
+                  to="/whatsapp/financeiro/fluxo-caixa"
+                  replace
+                />
+              }
             />
 
             <Route
               path="/whatsapp/financeiro/contratos/:contratoId"
               element={<FinanceiroContrato />}
             />
-
             {/* ================================================
                 COMISSÕES
             ================================================ */}
