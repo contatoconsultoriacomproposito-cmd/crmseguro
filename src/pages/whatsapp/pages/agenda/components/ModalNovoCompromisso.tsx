@@ -105,10 +105,7 @@ const categorias: Array<{
     value: 'COMERCIAL',
     label: 'Comercial',
   },
-  {
-    value: 'RENOVACAO',
-    label: 'Renovação',
-  },
+  
   {
     value: 'SINISTRO',
     label: 'Sinistro',
@@ -121,22 +118,7 @@ const categorias: Array<{
     value: 'ANIVERSARIO',
     label: 'Aniversário',
   },
-  {
-    value: 'MARKETING',
-    label: 'Marketing',
-  },
-  {
-    value: 'TAREFA',
-    label: 'Tarefa',
-  },
-  {
-    value: 'TREINAMENTO',
-    label: 'Treinamento',
-  },
-  {
-    value: 'REUNIAO',
-    label: 'Reunião',
-  },
+  
   {
     value: 'OUTRO',
     label: 'Outro',

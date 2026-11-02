@@ -37,6 +37,7 @@ import {
   criarCompromisso,
   criarCompromissos,
   reagendarCompromisso,
+  type CriarCompromissoPayload,
 } from '../../../../pages/agenda/services/agendaService'
 
 interface AgendaRow {
@@ -417,7 +418,7 @@ export default function ClienteAgendaTab({
       )
 
       try {
-        const payloads =
+        const payloads: CriarCompromissoPayload[] =
           payload.compromissos.map(
             compromisso => ({
               corretoraId,
@@ -468,9 +469,6 @@ export default function ClienteAgendaTab({
                 'PJ'
                   ? cliente.id
                   : null,
-
-              clienteIdLegado:
-                null,
 
               tipoOrigem:
                 'MANUAL',

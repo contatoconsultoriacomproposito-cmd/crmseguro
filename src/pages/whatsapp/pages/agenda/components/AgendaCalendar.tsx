@@ -96,11 +96,7 @@ const categoriaConfig: Record<
       'agenda-evento-comercial',
   },
 
-  RENOVACAO: {
-    label: 'Renovação',
-    className:
-      'agenda-evento-renovacao',
-  },
+  
 
   SINISTRO: {
     label: 'Sinistro',
@@ -118,30 +114,6 @@ const categoriaConfig: Record<
     label: 'Aniversário',
     className:
       'agenda-evento-aniversario',
-  },
-
-  MARKETING: {
-    label: 'Marketing',
-    className:
-      'agenda-evento-marketing',
-  },
-
-  TAREFA: {
-    label: 'Tarefa',
-    className:
-      'agenda-evento-tarefa',
-  },
-
-  TREINAMENTO: {
-    label: 'Treinamento',
-    className:
-      'agenda-evento-treinamento',
-  },
-
-  REUNIAO: {
-    label: 'Reunião',
-    className:
-      'agenda-evento-reuniao',
   },
 
   OUTRO: {
