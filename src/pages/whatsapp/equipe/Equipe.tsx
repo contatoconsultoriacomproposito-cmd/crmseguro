@@ -29,6 +29,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabaseClient";
 import { useAuth } from "../../../auth/AuthContext";
+import ModalPermissoesUsuario from "./ModalPermissoesUsuario";
 
 type FuncaoEquipe =
   | "CORRETOR"
@@ -268,6 +269,7 @@ export default function Equipe() {
   const [modalSenha, setModalSenha] = useState(false);
   const [modalRemover, setModalRemover] = useState(false);
   const [modalRemovidos, setModalRemovidos] = useState(false);
+  const [modalPermissoes, setModalPermissoes] = useState(false);
 
   const [formEdicao, setFormEdicao] = useState<FormEdicao>({
     nome: "",
@@ -479,6 +481,14 @@ export default function Equipe() {
     setErro("");
     setMensagem("");
     setModalRemover(true);
+  }
+
+  function abrirPermissoes(membro: MembroEquipe) {
+    setMembroSelecionado(membro);
+    setMenuAbertoId(null);
+    setErro("");
+    setMensagem("");
+    setModalPermissoes(true);
   }
 
   async function salvarEdicao() {
@@ -804,7 +814,7 @@ export default function Equipe() {
           </div>
         )}
 
-        {erro && !modalEditar && !modalSenha && !modalRemover && (
+        {erro && !modalEditar && !modalSenha && !modalRemover && !modalPermissoes && (
           <div className="mb-5 p-4 rounded-2xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 font-medium flex items-center justify-between gap-3">
             <span>{erro}</span>
 
@@ -1054,6 +1064,15 @@ export default function Equipe() {
 
                             <button
                               type="button"
+                              onClick={() => abrirPermissoes(membro)}
+                              className="w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                            >
+                              <Shield size={16} />
+                              Permissões do usuário
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() => abrirSenha(membro)}
                               className="w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
@@ -1137,6 +1156,21 @@ export default function Equipe() {
           </>
         )}
       </div>
+
+      <ModalPermissoesUsuario
+        open={modalPermissoes}
+        usuarioId={membroSelecionado?.id ?? null}
+        corretoraId={membroSelecionado?.corretora_id ?? null}
+        nomeUsuario={membroSelecionado?.nome ?? null}
+        emailUsuario={membroSelecionado?.email ?? null}
+        onClose={() => {
+          setModalPermissoes(false);
+          setMembroSelecionado(null);
+        }}
+        onSaved={() => {
+          setMensagem("Permissões atualizadas com sucesso.");
+        }}
+      />
 
       {/* EDITAR */}
       <ModalBase

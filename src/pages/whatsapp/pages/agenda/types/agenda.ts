@@ -3,16 +3,11 @@ export type AgendaNatureza =
   | 'INFORMATIVO'
 
 export type AgendaCategoria =
-  | 'COMERCIAL'
-  | 'RENOVACAO'
-  | 'SINISTRO'
-  | 'ASSISTENCIA'
   | 'ANIVERSARIO'
-  | 'MARKETING'
-  | 'TAREFA'
-  | 'TREINAMENTO'
-  | 'REUNIAO'
+  | 'ASSISTENCIA'
+  | 'COMERCIAL'
   | 'OUTRO'
+  | 'SINISTRO'
 
 export type AgendaStatus =
   | 'PENDENTE'
@@ -30,6 +25,14 @@ export type AgendaRecorrenciaTipo =
   | 'SEMANAL'
   | 'MENSAL'
   | 'ANUAL'
+
+export type AgendaTipoOrigem =
+  | 'MANUAL'
+  | 'WHATSAPP'
+  | 'SINISTRO'
+  | 'SINISTRO_OCORRENCIA'
+  | 'ASSISTENCIA'
+  | 'ASSISTENCIA_OCORRENCIA'
 
 export interface AgendaItem {
   id: string
@@ -58,9 +61,8 @@ export interface AgendaItem {
 
   crmPessoaId: string | null
   crmEmpresaId: string | null
-  clienteIdLegado: string | null
 
-  tipoOrigem: string
+  tipoOrigem: AgendaTipoOrigem
   origemId: string | null
 
   recorrente: boolean
@@ -68,8 +70,6 @@ export interface AgendaItem {
   recorrenciaIntervalo: number | null
   recorrenciaFimEm: string | null
   eventoPaiId: string | null
-
-  googleEventId: string | null
 
   metadata: Record<string, unknown>
 

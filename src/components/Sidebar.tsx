@@ -38,6 +38,7 @@ import {
 import { useAuth } from "../auth/AuthContext"
 import { supabase } from "../lib/supabaseClient"
 import LogoutButton from "./LogoutButton"
+import { usePermissoes } from "../pages/whatsapp/hooks/usePermissoes"
 
 type Props = {
   collapsed: boolean
@@ -61,6 +62,16 @@ export default function Sidebar({
   const { user, userProfile } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const { escopo } = usePermissoes()
+
+  const podeVerContatos =
+    escopo("atendimento.contatos", "read") !== "none"
+
+  const podeVerConversas =
+    escopo("atendimento.conversas", "read") !== "none"
+
+  const podeVerAgenda =
+    escopo("atendimento.agenda", "read") !== "none"  
 
   const podeVerCorretor =
   userProfile?.tipo_usuario === "CORRETORA" ||
@@ -170,33 +181,39 @@ export default function Sidebar({
           collapsed={isCollapsed}
         >
 
-          <SidebarItem
-            to="/whatsapp/contatos"
-            icon={<Users size={18} />}
-            label="Contatos"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
-          />
+          {podeVerContatos && (
+            <SidebarItem
+              to="/whatsapp/contatos"
+              icon={<Users size={18} />}
+              label="Contatos"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
+            />
+          )}
 
-          <SidebarItem
-            to="/whatsapp"
-            icon={<MessagesSquare size={18} />}
-            label="Conversas"
-            collapsed={isCollapsed}
-            end
-            onNavigate={handleNavigate}
-            iconClassName="bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
-          />
+          {podeVerConversas && (
+            <SidebarItem
+              to="/whatsapp"
+              icon={<MessagesSquare size={18} />}
+              label="Conversas"
+              collapsed={isCollapsed}
+              end
+              onNavigate={handleNavigate}
+              iconClassName="bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
+            />
+          )}
 
-          <SidebarItem
-            to="/whatsapp/agenda"
-            icon={<Calendar size={18} />}
-            label="Agenda"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
-          />
+          {podeVerAgenda && (
+            <SidebarItem
+              to="/whatsapp/agenda"
+              icon={<Calendar size={18} />}
+              label="Agenda"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
+            />
+          )}
 
           {/*
           <SidebarItem

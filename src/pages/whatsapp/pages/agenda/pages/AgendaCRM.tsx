@@ -1,12 +1,14 @@
-import { useCallback, useMemo, useRef, useState, } from 'react';
-import { AlertCircle, CalendarDays, CheckCircle2, Plus, RefreshCw, } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, } from 'react';
+import { AlertCircle, CalendarDays, CalendarSync, CheckCircle2, Plus, RefreshCw, } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../../../auth/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../../../../lib/supabaseClient';
+import { usePermissoes } from '../../../hooks/usePermissoes';
 import AgendaCalendar, { type AgendaCalendarNovoHorario, type AgendaCalendarPeriodo, type AgendaCalendarReagendamento, type AgendaCalendarRef, type AgendaCalendarView, } from '../components/AgendaCalendar';
 import ModalNovoCompromisso, { type NovoCompromissoSubmitPayload, } from '../components/ModalNovoCompromisso';
 import ModalCompromisso, { type ModalCompromissoEdicao, type ModalCompromissoReagendamento, } from '../components/ModalCompromisso';
-import { atualizarCompromisso, buscarCompromissos, buscarResumoAgenda, buscarFilaOperacional, cancelarCompromisso, concluirCompromisso, criarCompromisso, criarCompromissos, reagendarCompromisso, type ResumoAgenda, } from '../services/agendaService';
+import { atualizarCompromisso, buscarCompromissos, buscarResumoAgenda, buscarFilaOperacional, cancelarCompromisso, concluirCompromisso, criarCompromisso, criarCompromissos, reagendarCompromisso, type CriarCompromissoPayload, type ResumoAgenda, } from '../services/agendaService';
 import type { AgendaCategoria, AgendaItem, AgendaNatureza, AgendaPrioridade, AgendaStatus, } from '../types/agenda';
 interface AgendaPeriodo {
     inicio: string;
@@ -49,6 +51,7 @@ const FILA_OPERACIONAL_CONFIG: Record<FilaOperacionalTipo, {
 export default function AgendaCRM() {
     const navigate = useNavigate();
     const { userProfile } = useAuth();
+    const { loading: loadingPermissoes, escopo } = usePermissoes();
     const agendaCalendarRef = useRef<AgendaCalendarRef | null>(null);
     const [visualizacao, setVisualizacao] = useState<AgendaCalendarView>('dayGridMonth');
     const [periodo, setPeriodo] = useState<AgendaPeriodo | null>(null);
@@ -74,10 +77,54 @@ export default function AgendaCRM() {
     const [carregandoFilaOperacional, setCarregandoFilaOperacional] = useState<FilaOperacionalTipo | null>(null);
     const [salvandoNovoCompromisso, setSalvandoNovoCompromisso,] = useState(false);
     const [salvandoCompromisso, setSalvandoCompromisso,] = useState(false);
+    const [carregandoGoogleStatus, setCarregandoGoogleStatus] = useState(true);
+    const [conectandoGoogle, setConectandoGoogle] = useState(false);
+    const [googleConectado, setGoogleConectado] = useState(false);
+    const [googleEmail, setGoogleEmail] = useState<string | null>(null);
     const [compromissoSelecionado, setCompromissoSelecionado,] = useState<AgendaItem | null>(null);
     const [modalCompromissoAberto, setModalCompromissoAberto,] = useState(false);
     const [modalNovoCompromissoAberto, setModalNovoCompromissoAberto,] = useState(false);
     const [novoCompromissoHorario, setNovoCompromissoHorario,] = useState<AgendaCalendarNovoHorario | null>(null);
+    const agendaReadScope = escopo(
+        'atendimento.agenda',
+        'read'
+    );
+    const agendaManageScope = escopo(
+        'atendimento.agenda',
+        'manage'
+    );
+    const agendaGoogleScope = escopo(
+        'atendimento.agenda',
+        'google'
+    );
+
+    const podeVisualizarAgenda =
+        agendaReadScope !== 'none';
+
+    const podeUsarGoogle =
+        agendaGoogleScope === 'own';
+
+    const podeGerenciarCompromisso = useCallback(
+        (compromisso: AgendaItem | null | undefined) => {
+            if (!compromisso || agendaManageScope === 'none') {
+                return false;
+            }
+
+            if (agendaManageScope === 'tenant') {
+                return true;
+            }
+
+            return (
+                agendaManageScope === 'own' &&
+                compromisso.responsavelId === userProfile?.id
+            );
+        },
+        [
+            agendaManageScope,
+            userProfile?.id,
+        ]
+    );
+
     const corretoraId = useMemo(() => {
         if (!userProfile) {
             return null;
@@ -90,9 +137,10 @@ export default function AgendaCRM() {
     }, [userProfile]);
     const isCorretor = userProfile?.tipo_usuario ===
         'CORRETOR';
-    const responsavelEfetivoId = isCorretor
-        ? userProfile?.id ?? null
-        : filtros.responsavelId;
+    const responsavelEfetivoId =
+        agendaReadScope === 'own' || isCorretor
+            ? userProfile?.id ?? null
+            : filtros.responsavelId;
     const carregarResumo = useCallback(async () => {
         if (!corretoraId) {
             setResumo({
@@ -237,6 +285,7 @@ export default function AgendaCRM() {
         periodo,
         carregarCompromissos,
         atualizarCamadaOperacional,
+        podeGerenciarCompromisso,
     ]);
     const handleAnterior = useCallback(() => {
         agendaCalendarRef.current?.anterior();
@@ -252,6 +301,231 @@ export default function AgendaCRM() {
         agendaCalendarRef.current
             ?.alterarVisualizacao(novaVisualizacao);
     }, []);
+    const carregarStatusGoogle = useCallback(async () => {
+        if (!podeUsarGoogle) {
+            setGoogleConectado(false);
+            setGoogleEmail(null);
+            setCarregandoGoogleStatus(false);
+            return;
+        }
+
+        setCarregandoGoogleStatus(true);
+
+        try {
+            const { data, error } = await supabase.functions.invoke(
+                'google-calendar-status',
+                {
+                    body: {},
+                }
+            );
+
+            if (error) {
+                throw error;
+            }
+
+            setGoogleConectado(data?.conectado === true);
+            setGoogleEmail(
+                typeof data?.google_email === 'string'
+                    ? data.google_email
+                    : null
+            );
+        }
+        catch (error) {
+            console.error(
+                'Erro ao consultar status do Google Calendar:',
+                error
+            );
+
+            setGoogleConectado(false);
+            setGoogleEmail(null);
+        }
+        finally {
+            setCarregandoGoogleStatus(false);
+        }
+    }, [podeUsarGoogle]);
+
+    useEffect(() => {
+        if (!loadingPermissoes) {
+            void carregarStatusGoogle();
+        }
+    }, [
+        loadingPermissoes,
+        carregarStatusGoogle,
+    ]);
+
+    const handleConectarGoogle = useCallback(async () => {
+        if (!podeUsarGoogle) {
+            toast.error(
+                'Você não possui permissão para gerenciar o Google Calendar.'
+            );
+            return;
+        }
+
+        if (googleConectado) {
+            const confirmou = window.confirm(
+                googleEmail
+                    ? `Desconectar a conta ${googleEmail} do Google Calendar?`
+                    : 'Desconectar a conta Google Calendar?'
+            );
+
+            if (!confirmou) {
+                return;
+            }
+
+            setConectandoGoogle(true);
+
+            try {
+                const { data, error } = await supabase.functions.invoke(
+                    'google-calendar-disconnect',
+                    {
+                        body: {},
+                    }
+                );
+
+                if (error) {
+                    throw error;
+                }
+
+                if (data?.error) {
+                    throw new Error(data.error);
+                }
+
+                setGoogleConectado(false);
+                setGoogleEmail(null);
+
+                toast.success(
+                    'Google Calendar desconectado com sucesso.'
+                );
+            }
+            catch (error) {
+                console.error(
+                    'Erro ao desconectar Google Calendar:',
+                    error
+                );
+
+                toast.error(
+                    'Não foi possível desconectar o Google Calendar.'
+                );
+            }
+            finally {
+                setConectandoGoogle(false);
+            }
+
+            return;
+        }
+
+        const popup = window.open(
+            '',
+            'segurocrm-google-calendar',
+            'width=560,height=720,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes'
+        );
+
+        if (!popup) {
+            toast.error(
+                'O navegador bloqueou a janela do Google. Permita pop-ups para o SeguroCRM e tente novamente.'
+            );
+            return;
+        }
+
+        setConectandoGoogle(true);
+
+        try {
+            popup.document.title = 'Conectando Google Calendar';
+            popup.document.body.innerHTML =
+                '<div style="font-family:Arial,sans-serif;padding:32px;color:#334155">Preparando conexão com o Google Calendar...</div>';
+
+            const { data, error } = await supabase.functions.invoke(
+                'google-calendar-oauth-start',
+                {
+                    body: {},
+                }
+            );
+
+            if (error) {
+                throw error;
+            }
+
+            const authorizationUrl =
+                typeof data?.authorization_url === 'string'
+                    ? data.authorization_url
+                    : null;
+
+            if (!authorizationUrl) {
+                throw new Error(
+                    'A Edge google-calendar-oauth-start não retornou authorization_url.'
+                );
+            }
+
+            popup.location.href = authorizationUrl;
+
+            const monitorarPopup = window.setInterval(async () => {
+            if (popup.closed) {
+                window.clearInterval(monitorarPopup);
+                await carregarStatusGoogle();
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.functions.invoke(
+                'google-calendar-status',
+                {
+                    body: {},
+                }
+                );
+
+                if (error) {
+                return;
+                }
+
+                if (data?.conectado === true) {
+                window.clearInterval(monitorarPopup);
+
+                popup.close();
+
+                setGoogleConectado(true);
+                setGoogleEmail(
+                    typeof data?.google_email === 'string'
+                    ? data.google_email
+                    : null
+                );
+
+                toast.success(
+                    'Google Calendar conectado com sucesso.'
+                );
+                }
+            }
+            catch (error) {
+                console.error(
+                'Erro ao verificar conexão Google:',
+                error
+                );
+            }
+            }, 750);
+        }
+        catch (error) {
+            console.error(
+                'Erro ao iniciar conexão com Google Calendar:',
+                error
+            );
+
+            if (!popup.closed) {
+                popup.close();
+            }
+
+            toast.error(
+                'Não foi possível iniciar a conexão com o Google Calendar.'
+            );
+        }
+        finally {
+            setConectandoGoogle(false);
+        }
+    }, [
+        googleConectado,
+        googleEmail,
+        podeUsarGoogle,
+        carregarStatusGoogle,
+    ]);
+
     const abrirCompromisso = useCallback((compromisso: AgendaItem) => {
         setCompromissoSelecionado(compromisso);
         setModalCompromissoAberto(true);
@@ -282,6 +556,13 @@ export default function AgendaCRM() {
         setCompromissoSelecionado(compromissoAtualizado);
     }, []);
     const handleConcluirCompromisso = useCallback(async (compromisso: AgendaItem) => {
+        if (!podeGerenciarCompromisso(compromisso)) {
+            toast.error(
+                'Você não possui permissão para gerenciar este compromisso.'
+            );
+            return;
+        }
+
         setSalvandoCompromisso(true);
         try {
             const atualizado = await concluirCompromisso(compromisso.id);
@@ -304,13 +585,27 @@ export default function AgendaCRM() {
         atualizarCamadaOperacional,
     ]);
     const abrirNovoCompromisso = useCallback(() => {
+        if (agendaManageScope === 'none') {
+            toast.error(
+                'Você não possui permissão para criar compromissos.'
+            );
+            return;
+        }
+
         setNovoCompromissoHorario(null);
         setModalNovoCompromissoAberto(true);
-    }, []);
+    }, [agendaManageScope]);
     const handleNovoHorario = useCallback((horario: AgendaCalendarNovoHorario) => {
+        if (agendaManageScope === 'none') {
+            toast.error(
+                'Você não possui permissão para criar compromissos.'
+            );
+            return;
+        }
+
         setNovoCompromissoHorario(horario);
         setModalNovoCompromissoAberto(true);
-    }, []);
+    }, [agendaManageScope]);
     const fecharNovoCompromisso = useCallback(() => {
         setModalNovoCompromissoAberto(false);
         setNovoCompromissoHorario(null);
@@ -327,10 +622,13 @@ export default function AgendaCRM() {
         }
         setSalvandoNovoCompromisso(true);
         try {
-            const payloads = novosCompromissos.map(compromisso => ({
+            const payloads: CriarCompromissoPayload[] = novosCompromissos.map(compromisso => ({
                 corretoraId,
-                responsavelId: responsavelEfetivoId ??
-                    userProfile.id,
+                responsavelId:
+                    agendaManageScope === 'own'
+                        ? userProfile.id
+                        : responsavelEfetivoId ??
+                          userProfile.id,
                 criadoPorId: userProfile.id,
                 natureza: compromisso.natureza,
                 categoria: compromisso.categoria,
@@ -344,9 +642,6 @@ export default function AgendaCRM() {
                     ? vinculo.id
                     : null,
                 crmEmpresaId: vinculo?.tipo === 'EMPRESA'
-                    ? vinculo.id
-                    : null,
-                clienteIdLegado: vinculo?.tipo === 'LEGADO'
                     ? vinculo.id
                     : null,
                 tipoOrigem: 'MANUAL',
@@ -379,11 +674,19 @@ export default function AgendaCRM() {
         corretoraId,
         userProfile?.id,
         responsavelEfetivoId,
+        agendaManageScope,
         periodo,
         carregarCompromissos,
         atualizarCamadaOperacional,
     ]);
     const handleReagendar = useCallback(async (reagendamento: AgendaCalendarReagendamento) => {
+        if (!podeGerenciarCompromisso(reagendamento.compromisso)) {
+            toast.error(
+                'Você não possui permissão para reagendar este compromisso.'
+            );
+            return;
+        }
+
         const compromissoAtualizado = await reagendarCompromisso(reagendamento.compromisso.id, {
             inicioEm: reagendamento.inicioEm,
             fimEm: reagendamento.fimEm,
@@ -395,7 +698,7 @@ export default function AgendaCRM() {
             : compromisso));
         await atualizarCamadaOperacional();
         toast.success('Compromisso reagendado.');
-    }, [atualizarCamadaOperacional]);
+    }, [atualizarCamadaOperacional, podeGerenciarCompromisso]);
     const tituloPeriodo = useMemo(() => {
         if (visualizacao === 'dayGridMonth') {
             const texto = new Intl.DateTimeFormat('pt-BR', {
@@ -424,6 +727,13 @@ export default function AgendaCRM() {
         visualizacao,
     ]);
     const handleReagendarCompromissoModal = useCallback(async (compromisso: AgendaItem, reagendamento: ModalCompromissoReagendamento) => {
+        if (!podeGerenciarCompromisso(compromisso)) {
+            toast.error(
+                'Você não possui permissão para reagendar este compromisso.'
+            );
+            return;
+        }
+
         setSalvandoCompromisso(true);
         try {
             const atualizado = await reagendarCompromisso(compromisso.id, {
@@ -448,8 +758,16 @@ export default function AgendaCRM() {
     }, [
         sincronizarCompromisso,
         atualizarCamadaOperacional,
+        podeGerenciarCompromisso,
     ]);
     const handleEditarCompromisso = useCallback(async (compromisso: AgendaItem, edicao: ModalCompromissoEdicao) => {
+        if (!podeGerenciarCompromisso(compromisso)) {
+            toast.error(
+                'Você não possui permissão para editar este compromisso.'
+            );
+            return;
+        }
+
         setSalvandoCompromisso(true);
         try {
             const atualizado = await atualizarCompromisso(compromisso.id, {
@@ -471,8 +789,15 @@ export default function AgendaCRM() {
         finally {
             setSalvandoCompromisso(false);
         }
-    }, [sincronizarCompromisso]);
+    }, [sincronizarCompromisso, podeGerenciarCompromisso]);
     const handleCancelarCompromisso = useCallback(async (compromisso: AgendaItem) => {
+        if (!podeGerenciarCompromisso(compromisso)) {
+            toast.error(
+                'Você não possui permissão para cancelar este compromisso.'
+            );
+            return;
+        }
+
         setSalvandoCompromisso(true);
         try {
             const atualizado = await cancelarCompromisso(compromisso.id);
@@ -493,7 +818,36 @@ export default function AgendaCRM() {
     }, [
         sincronizarCompromisso,
         atualizarCamadaOperacional,
+        podeGerenciarCompromisso,
     ]);
+
+    if (loadingPermissoes) {
+        return (
+          <div className="flex min-h-[320px] items-center justify-center text-sm font-medium text-slate-500">
+            Carregando permissões da agenda...
+          </div>
+        );
+    }
+
+    if (!podeVisualizarAgenda) {
+        return (
+          <div className="flex min-h-[320px] items-center justify-center p-6">
+            <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+              <AlertCircle
+                size={28}
+                className="mx-auto text-slate-400"
+              />
+              <h2 className="mt-3 text-lg font-bold text-slate-900">
+                Agenda sem acesso
+              </h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Seu usuário não possui permissão para visualizar este módulo.
+              </p>
+            </div>
+          </div>
+        );
+    }
+
     return (<div className="min-h-full bg-slate-50">
       <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-4 p-4 lg:p-6">
         <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:flex-row xl:items-center xl:justify-between">
@@ -510,16 +864,60 @@ export default function AgendaCRM() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {podeUsarGoogle && (
+            <button
+              type="button"
+              onClick={() => void handleConectarGoogle()}
+              disabled={
+                carregandoGoogleStatus ||
+                conectandoGoogle
+              }
+              title={
+                googleConectado && googleEmail
+                  ? `Conta conectada: ${googleEmail}. Clique para desconectar.`
+                  : 'Conectar Google Calendar'
+              }
+              className={`flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
+                googleConectado
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {googleConectado ? (
+                <CheckCircle2 size={16} />
+              ) : (
+                <CalendarSync
+                  size={16}
+                  className={
+                    carregandoGoogleStatus || conectandoGoogle
+                      ? 'animate-spin'
+                      : ''
+                  }
+                />
+              )}
+
+              {carregandoGoogleStatus
+                ? 'Verificando Google...'
+                : conectandoGoogle
+                  ? 'Conectando...'
+                  : googleConectado
+                    ? 'Google conectado'
+                    : 'Conectar Google'}
+            </button>
+            )}
+
             <button type="button" onClick={handleAtualizar} disabled={recarregando || !periodo} className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
               <RefreshCw size={16} className={recarregando
             ? 'animate-spin'
             : ''}/>
               Atualizar
             </button>
-            <button type="button" onClick={abrirNovoCompromisso} className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
-              <Plus size={17}/>
-              Novo compromisso
-            </button>
+            {agendaManageScope !== 'none' && (
+              <button type="button" onClick={abrirNovoCompromisso} className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+                <Plus size={17}/>
+                Novo compromisso
+              </button>
+            )}
           </div>
         </header>
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">

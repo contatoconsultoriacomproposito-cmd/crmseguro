@@ -6,6 +6,7 @@ import type {
   AgendaPrioridade,
   AgendaRecorrenciaTipo,
   AgendaStatus,
+  AgendaTipoOrigem,
 } from '../types/agenda'
 
 type AgendaRow = {
@@ -27,15 +28,13 @@ type AgendaRow = {
   cancelado_em: string | null
   crm_pessoa_id: string | null
   crm_empresa_id: string | null
-  cliente_id_legado: string | null
-  tipo_origem: string
+  tipo_origem: AgendaTipoOrigem
   origem_id: string | null
   recorrente: boolean
   recorrencia_tipo: AgendaRecorrenciaTipo | null
   recorrencia_intervalo: number | null
   recorrencia_fim_em: string | null
   evento_pai_id: string | null
-  google_event_id: string | null
   metadata: Record<string, unknown> | null
   created_at: string
   updated_at: string
@@ -52,7 +51,6 @@ export interface BuscarCompromissosFiltros {
   prioridades?: AgendaPrioridade[]
   crmPessoaId?: string
   crmEmpresaId?: string
-  clienteIdLegado?: string
   tipoOrigem?: string
 }
 
@@ -72,15 +70,13 @@ export interface CriarCompromissoPayload {
   prioridade?: AgendaPrioridade
   crmPessoaId?: string | null
   crmEmpresaId?: string | null
-  clienteIdLegado?: string | null
-  tipoOrigem?: string
+  tipoOrigem?: AgendaTipoOrigem
   origemId?: string | null
   recorrente?: boolean
   recorrenciaTipo?: AgendaRecorrenciaTipo | null
   recorrenciaIntervalo?: number | null
   recorrenciaFimEm?: string | null
   eventoPaiId?: string | null
-  googleEventId?: string | null
   metadata?: Record<string, unknown>
 }
 
@@ -98,15 +94,13 @@ export interface AtualizarCompromissoPayload {
   prioridade?: AgendaPrioridade
   crmPessoaId?: string | null
   crmEmpresaId?: string | null
-  clienteIdLegado?: string | null
-  tipoOrigem?: string
+  tipoOrigem?: AgendaTipoOrigem
   origemId?: string | null
   recorrente?: boolean
   recorrenciaTipo?: AgendaRecorrenciaTipo | null
   recorrenciaIntervalo?: number | null
   recorrenciaFimEm?: string | null
   eventoPaiId?: string | null
-  googleEventId?: string | null
   metadata?: Record<string, unknown>
 }
 
@@ -140,6 +134,41 @@ export interface BuscarFilaOperacionalFiltros {
   tipo: AgendaFilaOperacionalTipo
 }
 
+async function sincronizarGoogleCalendar(
+  agendaId: string
+): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      'google-calendar-sync',
+      {
+        body: {
+          agenda_id: agendaId,
+        },
+      }
+    )
+
+    if (error) {
+      console.warn(
+        'Agenda salva, mas não foi possível sincronizar com Google Calendar:',
+        error
+      )
+      return
+    }
+
+    if (data?.error) {
+      console.warn(
+        'Agenda salva, mas o Google Calendar não foi sincronizado:',
+        data.error
+      )
+    }
+  } catch (error) {
+    console.warn(
+      'Agenda salva, mas ocorreu erro ao chamar google-calendar-sync:',
+      error
+    )
+  }
+}
+
 function mapAgendaRow(row: AgendaRow): AgendaItem {
   return {
     id: row.id,
@@ -160,7 +189,6 @@ function mapAgendaRow(row: AgendaRow): AgendaItem {
     canceladoEm: row.cancelado_em,
     crmPessoaId: row.crm_pessoa_id,
     crmEmpresaId: row.crm_empresa_id,
-    clienteIdLegado: row.cliente_id_legado,
     tipoOrigem: row.tipo_origem,
     origemId: row.origem_id,
     recorrente: row.recorrente,
@@ -168,7 +196,6 @@ function mapAgendaRow(row: AgendaRow): AgendaItem {
     recorrenciaIntervalo: row.recorrencia_intervalo,
     recorrenciaFimEm: row.recorrencia_fim_em,
     eventoPaiId: row.evento_pai_id,
-    googleEventId: row.google_event_id,
     metadata: row.metadata ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -206,8 +233,6 @@ function buildInsertPayload(
       payload.crmPessoaId ?? null,
     crm_empresa_id:
       payload.crmEmpresaId ?? null,
-    cliente_id_legado:
-      payload.clienteIdLegado ?? null,
     tipo_origem:
       payload.tipoOrigem ?? 'MANUAL',
     origem_id:
@@ -228,8 +253,6 @@ function buildInsertPayload(
         : null,
     evento_pai_id:
       payload.eventoPaiId ?? null,
-    google_event_id:
-      payload.googleEventId ?? null,
     metadata:
       payload.metadata ?? {},
   }
@@ -296,10 +319,6 @@ function buildUpdatePayload(
     update.crm_empresa_id =
       payload.crmEmpresaId
   }
-  if (payload.clienteIdLegado !== undefined) {
-    update.cliente_id_legado =
-      payload.clienteIdLegado
-  }
   if (payload.tipoOrigem !== undefined) {
     update.tipo_origem =
       payload.tipoOrigem
@@ -336,10 +355,6 @@ function buildUpdatePayload(
   if (payload.eventoPaiId !== undefined) {
     update.evento_pai_id =
       payload.eventoPaiId
-  }
-  if (payload.googleEventId !== undefined) {
-    update.google_event_id =
-      payload.googleEventId
   }
   if (payload.metadata !== undefined) {
     update.metadata = payload.metadata
@@ -413,12 +428,6 @@ export async function buscarCompromissos(
     query = query.eq(
       'crm_empresa_id',
       filtros.crmEmpresaId
-    )
-  }
-  if (filtros.clienteIdLegado) {
-    query = query.eq(
-      'cliente_id_legado',
-      filtros.clienteIdLegado
     )
   }
   if (filtros.tipoOrigem) {
@@ -700,7 +709,11 @@ export async function criarCompromisso(
     )
     throw error
   }
-  return mapAgendaRow(data as AgendaRow)
+  const compromisso = mapAgendaRow(data as AgendaRow)
+
+  await sincronizarGoogleCalendar(compromisso.id)
+
+  return compromisso
 }
 
 export async function criarCompromissos(
@@ -732,9 +745,17 @@ export async function criarCompromissos(
     )
     throw error
   }
-  return ((data ?? []) as AgendaRow[]).map(
+  const compromissos = ((data ?? []) as AgendaRow[]).map(
     mapAgendaRow
   )
+
+  await Promise.all(
+    compromissos.map((compromisso) =>
+      sincronizarGoogleCalendar(compromisso.id)
+    )
+  )
+
+  return compromissos
 }
 
 export async function atualizarCompromisso(
@@ -776,7 +797,11 @@ export async function atualizarCompromisso(
     )
     throw error
   }
-  return mapAgendaRow(data as AgendaRow)
+  const compromisso = mapAgendaRow(data as AgendaRow)
+
+  await sincronizarGoogleCalendar(compromisso.id)
+
+  return compromisso
 }
 
 export async function reagendarCompromisso(
@@ -810,7 +835,11 @@ export async function reagendarCompromisso(
     )
     throw error
   }
-  return mapAgendaRow(data as AgendaRow)
+  const compromisso = mapAgendaRow(data as AgendaRow)
+
+  await sincronizarGoogleCalendar(compromisso.id)
+
+  return compromisso
 }
 
 export async function concluirCompromisso(
@@ -858,5 +887,9 @@ export async function cancelarCompromisso(
     )
     throw error
   }
-  return mapAgendaRow(data as AgendaRow)
+  const compromisso = mapAgendaRow(data as AgendaRow)
+
+  await sincronizarGoogleCalendar(compromisso.id)
+
+  return compromisso
 }

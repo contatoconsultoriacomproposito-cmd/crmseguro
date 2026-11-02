@@ -5,9 +5,11 @@ import {
   useState,
 } from 'react'
 import {
+  Loader2,
   MessageCirclePlus,
   PanelRightClose,
   PanelRightOpen,
+  ShieldAlert,
 } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 
@@ -17,6 +19,7 @@ import ContactPanel from '../components/ContactPanel'
 import NewConversationModal from '../components/NewConversationModal'
 import { useConversations } from '../hooks/useConversations'
 import { useWhatsApp } from '../hooks/useWhatsApp'
+import { usePermissoes } from '../hooks/usePermissoes'
   
 
 import type {
@@ -45,6 +48,28 @@ export default function WhatsAppInbox() {
   } = useConversations()
 
   const whatsapp = useWhatsApp()
+  const {
+    escopo,
+    loading: loadingPermissoes,
+  } = usePermissoes()
+
+  const escopoRead =
+    escopo(
+      'atendimento.conversas',
+      'read'
+    )
+
+  const escopoStart =
+    escopo(
+      'atendimento.conversas',
+      'start'
+    )
+
+  const podeVisualizarConversas =
+    escopoRead !== 'none'
+
+  const podeIniciarConversa =
+    escopoStart !== 'none'
 
   const [selectedId, setSelectedId] =
     useState<string>()
@@ -184,6 +209,10 @@ export default function WhatsAppInbox() {
       return
     }
 
+    if (!podeIniciarConversa) {
+      return
+    }
+
     try {
       const conversationId =
         await whatsapp.findActiveConversationByPhone(
@@ -239,6 +268,7 @@ export default function WhatsAppInbox() {
   [
     whatsapp,
     selectedConversation,
+    podeIniciarConversa,
   ]
 )
 
@@ -388,6 +418,39 @@ export default function WhatsAppInbox() {
     conversations,
   ])
 
+  if (loadingPermissoes) {
+    return (
+      <div className="flex h-full min-h-[420px] items-center justify-center bg-slate-100">
+        <div className="flex items-center gap-3 text-sm text-slate-500">
+          <Loader2
+            size={20}
+            className="animate-spin"
+          />
+          Carregando permissões...
+        </div>
+      </div>
+    )
+  }
+
+  if (!podeVisualizarConversas) {
+    return (
+      <div className="flex h-full min-h-[420px] items-center justify-center bg-slate-100 p-6">
+        <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <ShieldAlert
+            size={34}
+            className="mx-auto mb-4 text-slate-400"
+          />
+          <h1 className="text-lg font-semibold text-slate-900">
+            Acesso restrito
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Seu usuário não possui permissão para visualizar as conversas do atendimento.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="absolute inset-0 flex min-h-0 flex-col overflow-hidden bg-slate-100 pt-[72px] md:p-3 lg:p-4">
@@ -399,21 +462,23 @@ export default function WhatsAppInbox() {
                 : 'flex w-full'
             }`}
           >
-            <div className="shrink-0 border-b border-slate-100 p-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setNewConversationInitialData({})
-                  setNewConversationOpen(true)
-                }}
-                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
-              >
-                <MessageCirclePlus
-                  size={17}
-                />
-                Novo contato
-              </button>
-            </div>
+            {podeIniciarConversa && (
+              <div className="shrink-0 border-b border-slate-100 p-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewConversationInitialData({})
+                    setNewConversationOpen(true)
+                  }}
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                >
+                  <MessageCirclePlus
+                    size={17}
+                  />
+                  Novo contato
+                </button>
+              </div>
+            )}
 
             <div className="min-h-0 flex-1">
               <ConversationList
@@ -522,8 +587,14 @@ export default function WhatsAppInbox() {
         </div>
       </div>
 
+      {podeIniciarConversa && (
       <NewConversationModal
         open={newConversationOpen}
+        accessScope={
+          escopoStart === 'tenant'
+            ? 'tenant'
+            : 'assigned'
+        }
         onClose={() =>
           setNewConversationOpen(false)
         }
@@ -546,6 +617,7 @@ export default function WhatsAppInbox() {
           handleConversationCreated
         }
       />
+      )}
     </>
   )
 }

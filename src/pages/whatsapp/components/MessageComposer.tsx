@@ -6,6 +6,8 @@ import { Bot, CheckCircle2, FileText, Image, Loader2, Mic, Paperclip, Route, Sen
 import { applyQuickReplyVariables, createQuickReply, deleteQuickReply, listQuickReplies, updateQuickReply, type QuickReply, type QuickReplyScope } from '../services/quickReplyService'
 interface MessageComposerProps {
   onSend: (data: Omit<SendMessageData, 'conversationId'>) => Promise<void>
+  interactionEnabled?: boolean
+  automationEnabled?: boolean
   replyMessage?: WhatsAppMessage | null
   onCancelReply?: () => void
   automationState?: AutomationMachineState | null
@@ -61,6 +63,8 @@ function formatRecordingTime(seconds: number): string {
 }
 export default function MessageComposer({
   onSend,
+  interactionEnabled = true,
+  automationEnabled = true,
   replyMessage,
   onCancelReply,
   automationState,
@@ -640,6 +644,7 @@ export default function MessageComposer({
   })
 }
   const handleQuickReply = async () => {
+    if (!interactionEnabled) return
     if (sending || recording || recordedAudio || !userProfile) return
 
     if (quickReplyMenuOpen) {
@@ -783,6 +788,7 @@ const canManageQuickReply = (reply: QuickReply) => {
   
  
   const toggleAttachmentMenu = () => {
+    if (!interactionEnabled) return
     if (sending || recording || recordedAudio) return
 
     setQuickReplyMenuOpen(false)
@@ -792,6 +798,7 @@ const canManageQuickReply = (reply: QuickReply) => {
   }
 
   const toggleAutomationMenu = () => {
+    if (!automationEnabled) return
     if (sending || recording || recordedAudio) return
 
     setAttachmentMenuOpen(false)
@@ -879,8 +886,8 @@ const canManageQuickReply = (reply: QuickReply) => {
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Digite uma mensagem..."
-            disabled={sending}
+            placeholder={interactionEnabled ? "Digite uma mensagem..." : "Sem permissão para interagir nesta conversa"}
+            disabled={sending || !interactionEnabled}
             className="block max-h-[120px] min-h-[44px] w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-2 pt-3 text-sm leading-5 text-slate-800 outline-none placeholder:text-slate-400 disabled:bg-slate-50"
           />
           <div className="flex min-h-[40px] items-center gap-1 border-t border-slate-100 px-2 py-1.5">
@@ -888,7 +895,7 @@ const canManageQuickReply = (reply: QuickReply) => {
               <ComposerButton
                 title="Anexar"
                 active={ attachmentMenuOpen }
-                disabled={sending}
+                disabled={sending || !interactionEnabled}
                 onClick={ toggleAttachmentMenu }
               >
                 <Paperclip
@@ -908,7 +915,7 @@ const canManageQuickReply = (reply: QuickReply) => {
             <ComposerButton
               title="Respostas rápidas"
               active={quickReplyMenuOpen}
-              disabled={sending}
+              disabled={sending || !interactionEnabled}
               onClick={() => void handleQuickReply()}
             >
               <Zap size={16} />
@@ -1111,28 +1118,30 @@ const canManageQuickReply = (reply: QuickReply) => {
                 </div>
               )}
             </div>
-            <div ref={automationMenuRef} className="relative">
-              <ComposerButton
-                title="Automações"
-                active={ automationMenuOpen }
-                disabled={sending}
-                onClick={ toggleAutomationMenu }
-              >
-                <Bot size={17} />
-              </ComposerButton>
-              {automationMenuOpen && (
-                <AutomationMenu
-                  state={automationState}
-                  history={automationHistory}
-                  onStartPreQualification={handleStartPreQualification}
-                  onStartRouting={handleStartRouting}
-                  onTakeOver={handleTakeOverAutomation}
-                  onClose={() => setAutomationMenuOpen(false)}
-                />
-              )}
-            </div>
+            {automationEnabled && (
+              <div ref={automationMenuRef} className="relative">
+                <ComposerButton
+                  title="Automações"
+                  active={ automationMenuOpen }
+                  disabled={sending}
+                  onClick={ toggleAutomationMenu }
+                >
+                  <Bot size={17} />
+                </ComposerButton>
+                {automationMenuOpen && (
+                  <AutomationMenu
+                    state={automationState}
+                    history={automationHistory}
+                    onStartPreQualification={handleStartPreQualification}
+                    onStartRouting={handleStartRouting}
+                    onTakeOver={handleTakeOverAutomation}
+                    onClose={() => setAutomationMenuOpen(false)}
+                  />
+                )}
+              </div>
+            )}
             <div className="flex-1" />
-            {!text.trim() && (
+            {interactionEnabled && !text.trim() && (
               <ComposerButton
                 title="Gravar áudio"
                 disabled={sending}
@@ -1141,7 +1150,7 @@ const canManageQuickReply = (reply: QuickReply) => {
                 <Mic size={18} />
               </ComposerButton>
             )}
-            {text.trim() && (
+            {interactionEnabled && text.trim() && (
               <button
                 type="button"
                 onClick={() =>
@@ -1174,7 +1183,7 @@ const canManageQuickReply = (reply: QuickReply) => {
           selectedAttachmentType
         )}
         onChange={handleFile}
-        disabled={sending}
+        disabled={sending || !interactionEnabled}
       />
     </div>
   )

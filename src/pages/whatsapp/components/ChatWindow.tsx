@@ -11,13 +11,18 @@ import MessageComposer from './MessageComposer';
 import DocumentosMenu from '../documentos/components/DocumentosMenu';
 import ModalAdicionarDocumento from '../documentos/components/ModalAdicionarDocumento';
 import { useAuth } from '../../../auth/AuthContext';
+import { usePermissoes } from '../hooks/usePermissoes';
 import { supabase } from '../../../lib/supabaseClient';
 import { Archive, ArrowLeft, Check, ChevronDown, FolderOpen, Phone, RotateCcw, UserRound, CalendarPlus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { startRealPreQualification } from '../automation/services/preQualificationExecutor';
 import { startRealRouting } from '../automation/services/routingExecutor';
 import ModalNovoCompromisso, { type NovoCompromissoSubmitPayload } from '../pages/agenda/components/ModalNovoCompromisso';
-import { criarCompromisso, criarCompromissos } from '../pages/agenda/services/agendaService';
+import {
+  criarCompromisso,
+  criarCompromissos,
+  type CriarCompromissoPayload,
+} from '../pages/agenda/services/agendaService';
 import type { AgendaClienteResultado } from '../pages/agenda/services/agendaClienteService';
 import { buscarClienteCrmPorContatoWhatsApp } from '../services/crmWhatsAppClienteService';
 import { iniciarChamadaDapi } from '../services/dapiCallService';
@@ -88,7 +93,7 @@ export default function ChatWindow({
     message: WhatsAppMessage,
     emoji: string
     ) => {
-    if (!conversation) {
+    if (!conversation || !podeInteragir) {
         return
     }
     try {
@@ -116,8 +121,29 @@ export default function ChatWindow({
     const storageCommercial =
         useStorageCommercial();
     const { userProfile } = useAuth();
-    const podeAlterarResponsavel = userProfile?.tipo_usuario === 'CORRETORA' ||
-        userProfile?.tipo_usuario === 'ADMIN';
+    const { escopo } = usePermissoes();
+
+    const escopoInteract = escopo(
+        'atendimento.conversas',
+        'interact'
+    );
+    const escopoAssign = escopo(
+        'atendimento.conversas',
+        'assign'
+    );
+    const escopoManage = escopo(
+        'atendimento.conversas',
+        'manage'
+    );
+    const escopoCall = escopo(
+        'atendimento.conversas',
+        'call'
+    );
+    const escopoAutomation = escopo(
+        'atendimento.conversas',
+        'automation'
+    );
+
     const corretoraId = userProfile?.tipo_usuario ===
         'CORRETORA'
         ? userProfile.id
@@ -213,6 +239,89 @@ export default function ChatWindow({
     const [carregandoAgenda, setCarregandoAgenda,] = useState(false);
     const [salvandoAgenda, setSalvandoAgenda,] = useState(false);
     const [alterandoStatusConversa, setAlterandoStatusConversa] = useState(false);
+    const [
+        acessoInstanciaAtribuida,
+        setAcessoInstanciaAtribuida,
+    ] = useState(false);
+
+    useEffect(() => {
+        let ativo = true;
+
+        const verificarAcessoInstancia = async () => {
+            if (!conversation?.instanceId) {
+                if (ativo) {
+                    setAcessoInstanciaAtribuida(false);
+                }
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.rpc(
+                    'crm_whatsapp_usuario_opera_instancia',
+                    {
+                        p_instancia_id: conversation.instanceId,
+                    }
+                );
+
+                if (error) {
+                    throw error;
+                }
+
+                if (ativo) {
+                    setAcessoInstanciaAtribuida(data === true);
+                }
+            } catch (error) {
+                console.error(
+                    'Erro ao validar acesso à conexão da conversa:',
+                    error
+                );
+
+                if (ativo) {
+                    setAcessoInstanciaAtribuida(false);
+                }
+            }
+        };
+
+        void verificarAcessoInstancia();
+
+        return () => {
+            ativo = false;
+        };
+    }, [conversation?.instanceId]);
+
+    const podeExecutarEscopoConversa = (
+        scope: string
+    ) =>
+        scope === 'tenant' ||
+        (
+            scope === 'assigned' &&
+            acessoInstanciaAtribuida
+        );
+
+    const podeInteragir =
+        podeExecutarEscopoConversa(
+            escopoInteract
+        );
+
+    const podeAlterarResponsavel =
+        podeExecutarEscopoConversa(
+            escopoAssign
+        );
+
+    const podeGerenciarConversa =
+        podeExecutarEscopoConversa(
+            escopoManage
+        );
+
+    const podeRealizarLigacao =
+        podeExecutarEscopoConversa(
+            escopoCall
+        );
+
+    const podeExecutarAutomacoes =
+        podeExecutarEscopoConversa(
+            escopoAutomation
+        );
     useEffect(() => {
         setResponsavelId(
             conversation?.assignedUserId ?? ''
@@ -1104,7 +1213,11 @@ const timelineItems =
         setActiveMenu(current => (current === menu ? null : menu));
     };
     const handleAlterarStatusConversa = async () => {
-        if (!conversation || alterandoStatusConversa) {
+        if (
+            !conversation ||
+            !podeGerenciarConversa ||
+            alterandoStatusConversa
+        ) {
             return;
         }
 
@@ -1147,6 +1260,12 @@ const timelineItems =
     };
 
     const handleAssignResponsible = async (id: string) => {
+        if (!podeAlterarResponsavel) {
+            toast.error(
+                'Você não possui permissão para alterar o responsável desta conversa.'
+            );
+            return;
+        }
         if (!conversation || assigningResponsible)
             return;
         const previousResponsibleId = responsavelId;
@@ -1165,6 +1284,12 @@ const timelineItems =
         }
     };
     const handleStartPreQualification = async () => {
+        if (!podeExecutarAutomacoes) {
+            toast.error(
+                'Você não possui permissão para executar automações nesta conversa.'
+            );
+            return;
+        }
     if (!conversation?.id) {
         toast.error('Conversa não encontrada.')
         return
@@ -1190,6 +1315,12 @@ const timelineItems =
     }
     }
     const handleStartRouting = async () => {
+        if (!podeExecutarAutomacoes) {
+            toast.error(
+                'Você não possui permissão para executar automações nesta conversa.'
+            );
+            return;
+        }
     if (!conversation?.id) {
         toast.error('Conversa não encontrada.')
         return
@@ -1218,6 +1349,12 @@ const timelineItems =
     }
     }
     const handleTakeOver = async () => {
+        if (!podeExecutarAutomacoes) {
+            toast.error(
+                'Você não possui permissão para assumir automações nesta conversa.'
+            );
+            return;
+        }
         if (!conversation?.id || !corretoraId || takingOverAutomation) return;
         setTakingOverAutomation(true);
         try {
@@ -1323,7 +1460,8 @@ const timelineItems =
         setSalvandoAgenda(true);
         try {
             const { vinculo, compromissos, } = payload;
-            const payloads = compromissos.map(compromisso => ({
+            const payloads: CriarCompromissoPayload[] =
+                compromissos.map(compromisso => ({
                 corretoraId,
                 responsavelId: conversation.assignedUserId ??
                     userProfile.id,
@@ -1459,6 +1597,12 @@ const timelineItems =
     )
     }
     const handleLigar = async () => {
+        if (!podeRealizarLigacao) {
+            toast.error(
+                'Você não possui permissão para realizar ligações nesta conversa.'
+            );
+            return;
+        }
         if (!conversation || !corretoraId) return
         if (callSocketRef.current) {
         const ws = callSocketRef.current
@@ -1829,6 +1973,7 @@ const timelineItems =
                 setModalDocumentoAberto(true);
             }} refreshKey={documentosRefreshKey}/>)}
             </div>
+            {podeRealizarLigacao && (
             <HeaderIconButton
             title={
                 chamadaStatus === 'idle'
@@ -1848,6 +1993,8 @@ const timelineItems =
                 <Phone size={18} />
             )}
             </HeaderIconButton>
+            )}
+            {podeGerenciarConversa && (
             <HeaderIconButton
             title={
                 conversation.status === 'encerrada'
@@ -1869,6 +2016,7 @@ const timelineItems =
                 <Archive size={18} />
             )}
             </HeaderIconButton>
+            )}
         </div>
         </div>
         <div className="flex items-center gap-2 border-t border-gray-100 px-4 py-2 lg:hidden">
@@ -1878,12 +2026,25 @@ const timelineItems =
         <span className="rounded-full bg-orange-50 px-2 py-1 text-[10px] font-medium text-orange-700">
             🔥 Quente
         </span>
-        <button type="button" onClick={() => toggleMenu('responsavel')} className="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100">
+        <button
+            type="button"
+            disabled={!podeAlterarResponsavel}
+            onClick={() => {
+                if (podeAlterarResponsavel) {
+                    toggleMenu('responsavel')
+                }
+            }}
+            className={`ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+                podeAlterarResponsavel
+                    ? 'text-gray-600 hover:bg-gray-100'
+                    : 'cursor-default text-gray-400'
+            }`}
+        >
             <UserRound size={13}/>
             {responsavel?.name || 'Não atribuído'}
-            <ChevronDown size={12}/>
+            {podeAlterarResponsavel && <ChevronDown size={12}/>}
         </button>
-        {activeMenu === 'responsavel' && (<ResponsavelMenu attendants={attendants} responsavelId={responsavelId} loading={loadingAttendants} assigning={assigningResponsible} mobile onSelect={handleAssignResponsible}/>)}
+        {podeAlterarResponsavel && activeMenu === 'responsavel' && (<ResponsavelMenu attendants={attendants} responsavelId={responsavelId} loading={loadingAttendants} assigning={assigningResponsible} mobile onSelect={handleAssignResponsible}/>)}
         </div>
     </header>
     <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -1916,6 +2077,7 @@ const timelineItems =
         <MessageBubble
         key={item.key}
         message={item.message}
+        actionsEnabled={podeInteragir}
         onReply={setReplyMessage}
         onNavigateToMessage={
             handleNavigateToMessage
@@ -1947,6 +2109,8 @@ const timelineItems =
     )}
     </div>
     <MessageComposer
+        interactionEnabled={podeInteragir}
+        automationEnabled={podeExecutarAutomacoes}
         replyMessage={replyMessage}
         onCancelReply={() => setReplyMessage(null)}
         automationState={automationStatePersisted}
@@ -1955,6 +2119,13 @@ const timelineItems =
         onStartRouting={handleStartRouting}
         onTakeOverAutomation={handleTakeOver}
         onSend={async data => {
+        if (!podeInteragir) {
+            toast.error(
+                'Você não possui permissão para interagir nesta conversa.'
+            )
+            return
+        }
+
         try {
             await send(data)
 

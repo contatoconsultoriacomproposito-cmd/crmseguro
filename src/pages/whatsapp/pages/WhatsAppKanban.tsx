@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   BriefcaseBusiness,
@@ -41,6 +41,8 @@ import { CSS } from '@dnd-kit/utilities'
 
 import { useConversations } from '../hooks/useConversations'
 import { useWhatsApp } from '../hooks/useWhatsApp'
+import { usePermissoes } from '../hooks/usePermissoes'
+import { supabase } from '../../../lib/supabaseClient'
 
 import {
   getStageItems,
@@ -149,6 +151,32 @@ export default function WhatsAppKanban() {
   } = useConversations()
 
   const whatsapp = useWhatsApp()
+  const {
+    escopo,
+    loading: loadingPermissoes,
+  } = usePermissoes()
+
+  const escopoRead =
+    escopo(
+      'atendimento.conversas',
+      'read'
+    )
+
+  const escopoManage =
+    escopo(
+      'atendimento.conversas',
+      'manage'
+    )
+
+  const podeVisualizarKanban =
+    escopoRead !== 'none'
+
+  const [
+    instanciasAtribuidas,
+    setInstanciasAtribuidas,
+  ] = useState<Set<string>>(
+    () => new Set()
+  )
 
   const [activeConversationId, setActiveConversationId] =
     useState<string | null>(null)
@@ -233,6 +261,114 @@ export default function WhatsAppKanban() {
 
   const workingConversations =
     localConversations ?? kanbanConversations
+
+  useEffect(() => {
+    let ativo = true
+
+    const carregarInstanciasAtribuidas =
+      async () => {
+        const ids = Array.from(
+          new Set(
+            conversations
+              .map(
+                conversation =>
+                  conversation.instanceId
+              )
+              .filter(
+                (
+                  id
+                ): id is string =>
+                  Boolean(id)
+              )
+          )
+        )
+
+        if (
+          ids.length === 0 ||
+          escopoManage !== 'assigned'
+        ) {
+          if (ativo) {
+            setInstanciasAtribuidas(
+              new Set()
+            )
+          }
+          return
+        }
+
+        const resultados =
+          await Promise.all(
+            ids.map(async id => {
+              const {
+                data,
+                error,
+              } =
+                await supabase.rpc(
+                  'crm_whatsapp_usuario_opera_instancia',
+                  {
+                    p_instancia_id:
+                      id,
+                  }
+                )
+
+              if (error) {
+                console.error(
+                  'Erro ao validar conexão do Kanban:',
+                  error
+                )
+                return null
+              }
+
+              return data === true
+                ? id
+                : null
+            })
+          )
+
+        if (ativo) {
+          setInstanciasAtribuidas(
+            new Set(
+              resultados.filter(
+                (
+                  id
+                ): id is string =>
+                  Boolean(id)
+              )
+            )
+          )
+        }
+      }
+
+    void carregarInstanciasAtribuidas()
+
+    return () => {
+      ativo = false
+    }
+  }, [
+    conversations,
+    escopoManage,
+  ])
+
+  const podeGerenciarConversa =
+    useCallback(
+      (
+        conversation: WhatsAppConversation
+      ) =>
+        escopoManage === 'tenant' ||
+        (
+          escopoManage ===
+            'assigned' &&
+          Boolean(
+            conversation.instanceId &&
+            instanciasAtribuidas.has(
+              conversation.instanceId
+            )
+          )
+        ),
+      [
+        escopoManage,
+        instanciasAtribuidas,
+      ]
+    )
 
   const filteredConversations = useMemo(() => {
     const termo = normalizeSearch(busca)
@@ -327,6 +463,20 @@ export default function WhatsAppKanban() {
     event: DragStartEvent
   ) => {
     const conversationId = String(event.active.id)
+    const conversation =
+      workingConversations.find(
+        item =>
+          item.id === conversationId
+      )
+
+    if (
+      !conversation ||
+      !podeGerenciarConversa(
+        conversation
+      )
+    ) {
+      return
+    }
 
     setSnapshot(
       workingConversations.map(conversation => ({
@@ -589,6 +739,36 @@ export default function WhatsAppKanban() {
     setActiveConversationId(null)
   }
 
+  if (loadingPermissoes) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center bg-slate-100">
+        <div className="flex items-center gap-3 text-sm text-slate-500">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+          Carregando permissões...
+        </div>
+      </div>
+    )
+  }
+
+  if (!podeVisualizarKanban) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center bg-slate-100 p-6">
+        <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <ShieldAlert
+            size={34}
+            className="mx-auto mb-4 text-slate-400"
+          />
+          <h1 className="text-lg font-semibold text-slate-900">
+            Acesso restrito
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Seu usuário não possui permissão para visualizar as conversas do atendimento.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center bg-slate-100">
@@ -733,6 +913,9 @@ export default function WhatsAppKanban() {
                         ) ?? []
                     }
                     onOpenConversation={handleOpenConversation}
+                    canManageConversation={
+                      podeGerenciarConversa
+                    }
                 />
               ))}
             </div>
@@ -760,10 +943,14 @@ function KanbanColumnComponent({
   column,
   conversations,
   onOpenConversation,
+  canManageConversation,
 }: {
   column: KanbanColumn
   conversations: WhatsAppConversation[]
   onOpenConversation: (conversationId: string) => void
+  canManageConversation: (
+    conversation: WhatsAppConversation
+  ) => boolean
 }) {
   const {
     setNodeRef,
@@ -854,6 +1041,11 @@ function KanbanColumnComponent({
                 key={conversation.id}
                 conversation={conversation}
                 onOpenConversation={onOpenConversation}
+                disabled={
+                  !canManageConversation(
+                    conversation
+                  )
+                }
                 />
             ))
           )}
@@ -866,9 +1058,11 @@ function KanbanColumnComponent({
 function SortableConversationCard({
   conversation,
   onOpenConversation,
+  disabled,
 }: {
   conversation: WhatsAppConversation
   onOpenConversation: (conversationId: string) => void
+  disabled: boolean
 }) {
   const {
     attributes,
@@ -879,6 +1073,7 @@ function SortableConversationCard({
     isDragging,
   } = useSortable({
     id: conversation.id,
+    disabled,
   })
 
   const style = {
@@ -898,8 +1093,16 @@ function SortableConversationCard({
     >
       <ConversationKanbanCardContent
         conversation={conversation}
-        dragAttributes={attributes}
-        dragListeners={listeners}
+        dragAttributes={
+          disabled
+            ? undefined
+            : attributes
+        }
+        dragListeners={
+          disabled
+            ? undefined
+            : listeners
+        }
         onOpenConversation={onOpenConversation}
       />
     </div>

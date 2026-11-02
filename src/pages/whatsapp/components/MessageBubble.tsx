@@ -24,6 +24,7 @@ import {
 
 interface MessageBubbleProps {
   message: WhatsAppMessage
+  actionsEnabled?: boolean
 
   onReply?: (
     message: WhatsAppMessage
@@ -58,6 +59,7 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({
   message,
+  actionsEnabled = true,
   onReply,
   onNavigateToMessage,
   onReact,
@@ -96,7 +98,9 @@ export default function MessageBubble({
     !!message.media
 
   const canUseActions =
-    !isPending && !isFailed
+    actionsEnabled &&
+    !isPending &&
+    !isFailed
 
   const sharedContacts =
   message.type === 'contact'

@@ -27,6 +27,7 @@ import type {
 interface NewConversationModalProps {
   open: boolean
   onClose: () => void
+  accessScope?: 'assigned' | 'tenant'
 
   initialName?: string
   initialPhone?: string
@@ -115,6 +116,7 @@ function getFunctionLabel(
 export default function NewConversationModal({
   open,
   onClose,
+  accessScope = 'assigned',
   initialName,
   initialPhone,
   initialInstanceId,
@@ -188,7 +190,9 @@ export default function NewConversationModal({
 
       try {
         const result =
-          await buscarContextoNovaConversa()
+          await buscarContextoNovaConversa(
+            accessScope
+          )
 
         if (!active) return
 
@@ -238,6 +242,7 @@ export default function NewConversationModal({
     initialName,
     initialPhone,
     initialInstanceId,
+    accessScope,
   ])
 
   useEffect(() => {

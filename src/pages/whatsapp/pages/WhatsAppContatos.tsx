@@ -27,6 +27,7 @@ import {
   sincronizarContatosDapi,
   type WhatsAppContato,
   type WhatsAppInstanciaResumo,
+  type EscopoContatos,
 } from '../services/whatsappContatosService'
 
 import {
@@ -40,9 +41,18 @@ import WhatsAppContatoModal from '../components/WhatsAppContatoModal'
 
 import { useNavigate } from 'react-router-dom'
 import { useWhatsApp } from '../hooks/useWhatsApp'
+import { usePermissoes } from '../hooks/usePermissoes'
 import WhatsAppContatoMensagemModal from '../components/WhatsAppContatoMensagemModal'
 
 const ITENS_POR_PAGINA = 20
+
+function normalizarEscopoContatos(value: string): EscopoContatos {
+  if (value === 'assigned' || value === 'tenant') {
+    return value
+  }
+
+  return 'none'
+}
 
 function somenteNumeros(value: string) {
   return value.replace(/\D/g, '')
@@ -111,10 +121,36 @@ function formatarData(value: string) {
 }
 
 export default function WhatsAppContatos() {
-  const { userProfile } = useAuth()
+  const { user, userProfile } = useAuth()
 
   const navigate = useNavigate()
   const whatsapp = useWhatsApp()
+  const {
+    escopo,
+    loading: loadingPermissoes,
+  } = usePermissoes()
+
+  const escopoRead = normalizarEscopoContatos(
+    escopo('atendimento.contatos', 'read')
+  )
+  const escopoCreate = normalizarEscopoContatos(
+    escopo('atendimento.contatos', 'create')
+  )
+  const escopoUpdate = normalizarEscopoContatos(
+    escopo('atendimento.contatos', 'update')
+  )
+  const escopoDelete = normalizarEscopoContatos(
+    escopo('atendimento.contatos', 'delete')
+  )
+  const escopoRestore = normalizarEscopoContatos(
+    escopo('atendimento.contatos', 'restore')
+  )
+  const escopoSync = normalizarEscopoContatos(
+    escopo('atendimento.contatos', 'sync')
+  )
+  const escopoSend = normalizarEscopoContatos(
+    escopo('atendimento.contatos', 'send')
+  )
 
   const [
     contatoMensagem,
@@ -223,18 +259,66 @@ const [
 ] =
   useState(false)
 
+
+  const [
+    mostrarSelecaoCadastro,
+    setMostrarSelecaoCadastro,
+  ] = useState(false)
+
+  const [
+    instanciasCadastro,
+    setInstanciasCadastro,
+  ] = useState<WhatsAppInstanciaResumo[]>([])
+
+  const [
+    instanciaCadastroId,
+    setInstanciaCadastroId,
+  ] = useState('')
+
+  const [
+    carregandoInstanciasCadastro,
+    setCarregandoInstanciasCadastro,
+  ] = useState(false)
+
   const corretoraId =
-    userProfile?.tipo_usuario ===
-    'CORRETORA'
-      ? userProfile.id
-      : userProfile?.corretora_id
+    userProfile?.corretora_id ||
+    userProfile?.id ||
+    null
+
+  const usuarioId = user?.id || userProfile?.id || null
+
+  const contextoAcesso = (
+    scope: EscopoContatos
+  ) =>
+    usuarioId
+      ? {
+          usuarioId,
+          escopo: scope,
+        }
+      : undefined
+
+  const podeExecutarNoContato = (
+    scope: EscopoContatos,
+    contato: WhatsAppContato
+  ) =>
+    scope === 'tenant' ||
+    (scope === 'assigned' &&
+      contato.acesso_atribuido === true)
 
   const carregarContatos =
     useCallback(
       async (
         silencioso = false
       ) => {
-        if (!corretoraId) {
+        if (loadingPermissoes) {
+          return
+        }
+
+        if (
+          !corretoraId ||
+          !usuarioId ||
+          escopoRead === 'none'
+        ) {
           setContatos([])
           setTotal(0)
           setTotalPaginas(0)
@@ -261,6 +345,10 @@ const [
                   ITENS_POR_PAGINA,
                 situacao:
                   situacaoContatos,
+              },
+              {
+                usuarioId,
+                escopo: escopoRead,
               }
             )
 
@@ -296,6 +384,9 @@ const [
         buscaAplicada,
         pagina,
         situacaoContatos,
+        usuarioId,
+        escopoRead,
+        loadingPermissoes,
       ]
     )
 
@@ -377,7 +468,71 @@ const [
     setMenuContatoId(null)
   }
 
-  const handleNovoContato = () => {
+  const handleNovoContato = async () => {
+    if (
+      !corretoraId ||
+      !usuarioId ||
+      escopoCreate === 'none'
+    ) {
+      toast.error('Você não possui permissão para criar contatos.')
+      return
+    }
+
+    try {
+      setCarregandoInstanciasCadastro(true)
+
+      const resultado =
+        await listarInstanciasDapiAtivas(
+          corretoraId,
+          {
+            usuarioId,
+            escopo: escopoCreate,
+          }
+        )
+
+      if (resultado.length === 0) {
+        toast.error(
+          'Nenhuma conexão WhatsApp disponível para cadastrar o contato.'
+        )
+        return
+      }
+
+      setContatoEditando(null)
+      setInstanciasCadastro(resultado)
+
+      const padrao = resultado.find(
+        (item) => item.padrao_envio
+      )
+
+      const selecionada =
+        padrao?.id ?? resultado[0].id
+
+      setInstanciaCadastroId(selecionada)
+
+      if (resultado.length === 1) {
+        setContatoModalOpen(true)
+        return
+      }
+
+      setMostrarSelecaoCadastro(true)
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível carregar as conexões disponíveis.'
+      )
+    } finally {
+      setCarregandoInstanciasCadastro(false)
+    }
+  }
+
+  const confirmarConexaoCadastro = () => {
+    if (!instanciaCadastroId) {
+      toast.error('Selecione uma conexão WhatsApp.')
+      return
+    }
+
+    setMostrarSelecaoCadastro(false)
     setContatoEditando(null)
     setContatoModalOpen(true)
   }
@@ -385,6 +540,11 @@ const [
   const handleEditarContato = (
     contato: WhatsAppContato
   ) => {
+    if (!podeExecutarNoContato(escopoUpdate, contato)) {
+      toast.error('Você não possui permissão para editar este contato.')
+      return
+    }
+
     setMenuContatoId(null)
     setContatoEditando(contato)
     setContatoModalOpen(true)
@@ -402,19 +562,33 @@ const [
     }
 
     if (contatoEditando) {
+      if (!podeExecutarNoContato(escopoUpdate, contatoEditando)) {
+        throw new Error('Você não possui permissão para editar este contato.')
+      }
+
       await atualizarWhatsAppContato(
         corretoraId,
         contatoEditando,
-        dados
+        dados,
+        contextoAcesso(escopoUpdate)
       )
 
       toast.success(
         'Contato atualizado.'
       )
     } else {
+      if (
+        escopoCreate === 'none' ||
+        !instanciaCadastroId
+      ) {
+        throw new Error('Selecione uma conexão permitida para criar o contato.')
+      }
+
       await criarWhatsAppContato(
         corretoraId,
-        dados
+        dados,
+        instanciaCadastroId,
+        contextoAcesso(escopoCreate)
       )
 
       toast.success(
@@ -429,9 +603,13 @@ const [
 
   const abrirSincronizacao =
   async () => {
-    if (!corretoraId) {
+    if (
+      !corretoraId ||
+      !usuarioId ||
+      escopoSync === 'none'
+    ) {
       toast.error(
-        'Corretora não identificada.'
+        'Você não possui permissão para sincronizar contatos.'
       )
       return
     }
@@ -439,7 +617,11 @@ const [
     try {
       const resultado =
         await listarInstanciasDapiAtivas(
-          corretoraId
+          corretoraId,
+          {
+            usuarioId,
+            escopo: escopoSync,
+          }
         )
 
       setInstancias(
@@ -541,6 +723,11 @@ const [
   const handleEnviarMensagem = (
     contato: WhatsAppContato
   ) => {
+    if (!podeExecutarNoContato(escopoSend, contato)) {
+      toast.error('Você não possui permissão para enviar mensagem para este contato.')
+      return
+    }
+
     setContatoMensagem(
       contato
     )
@@ -553,6 +740,11 @@ const [
   const handleSolicitarExclusao = (
   contato: WhatsAppContato
 ) => {
+  if (!podeExecutarNoContato(escopoDelete, contato)) {
+    toast.error('Você não possui permissão para excluir este contato.')
+    return
+  }
+
   setMenuContatoId(null)
   setContatoParaExcluir(
     contato
@@ -574,7 +766,8 @@ const handleConfirmarExclusao =
 
       await excluirWhatsAppContato(
         corretoraId,
-        contatoParaExcluir.id
+        contatoParaExcluir.id,
+        contextoAcesso(escopoDelete)
       )
 
       toast.success(
@@ -623,6 +816,11 @@ const handleRestaurarContato =
   async (
     contato: WhatsAppContato
   ) => {
+    if (!podeExecutarNoContato(escopoRestore, contato)) {
+      toast.error('Você não possui permissão para restaurar este contato.')
+      return
+    }
+
     if (
       !corretoraId ||
       restaurandoContatoId
@@ -637,7 +835,8 @@ const handleRestaurarContato =
 
       await restaurarWhatsAppContato(
         corretoraId,
-        contato.id
+        contato.id,
+        contextoAcesso(escopoRestore)
       )
 
       toast.success(
@@ -676,6 +875,33 @@ const handleRestaurarContato =
         null
       )
     }
+  }
+
+  if (loadingPermissoes) {
+    return (
+      <div className="flex min-h-[420px] items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+          <Loader2 size={20} className="animate-spin" />
+          Carregando permissões...
+        </div>
+      </div>
+    )
+  }
+
+  if (escopoRead === 'none') {
+    return (
+      <div className="flex min-h-[420px] items-center justify-center bg-slate-50 p-6 dark:bg-slate-950">
+        <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <UsersRound size={34} className="mx-auto mb-4 text-slate-400" />
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            Acesso restrito
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            Seu usuário não possui permissão para visualizar os contatos do atendimento.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -730,6 +956,7 @@ const handleRestaurarContato =
               />
               Atualizar
             </button>
+            {escopoSync !== 'none' && (
 
             <button
               type="button"
@@ -741,6 +968,8 @@ const handleRestaurarContato =
               <RefreshCw  size={16} />
               Sincronizar contatos
             </button>
+            )}
+            {escopoCreate !== 'none' && (
 
             <button
               type="button"
@@ -752,6 +981,7 @@ const handleRestaurarContato =
               <Plus size={17} />
               Novo contato
             </button>
+            )}
           </div>
         </div>
 
@@ -988,6 +1218,8 @@ const handleRestaurarContato =
                             {situacaoContatos ===
                             'excluidos' ? (
                               <div className="flex justify-end">
+                                {podeExecutarNoContato(escopoRestore, contato) ? (
+
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1018,10 +1250,15 @@ const handleRestaurarContato =
                                     ? 'Restaurando...'
                                     : 'Restaurar'}
                                 </button>
+                              
+                                ) : (
+                                  <span className="text-sm text-slate-400">Sem permissão</span>
+                                )}
                               </div>
                             ) : (
                               <div className="relative flex items-center justify-end gap-2">
-                                <button
+                                {podeExecutarNoContato(escopoSend, contato) && (
+<button
                                   type="button"
                                   title="Enviar mensagem"
                                   onClick={() =>
@@ -1036,58 +1273,55 @@ const handleRestaurarContato =
                                   />
                                   Mensagem
                                 </button>
+                                )}
 
-                                <button
-                                  type="button"
-                                  title="Mais ações"
-                                  onClick={() =>
-                                    setMenuContatoId(
-                                      atual =>
-                                        atual === contato.id
-                                          ? null
-                                          : contato.id
-                                    )
-                                  }
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                                >
-                                  <MoreVertical
-                                    size={16}
-                                  />
-                                </button>
-
-                                {menuContatoId ===
-                                  contato.id && (
-                                  <div className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                {(
+                                  podeExecutarNoContato(escopoUpdate, contato) ||
+                                  podeExecutarNoContato(escopoDelete, contato)
+                                ) && (
+                                  <>
                                     <button
                                       type="button"
+                                      title="Mais ações"
                                       onClick={() =>
-                                        handleEditarContato(
-                                          contato
+                                        setMenuContatoId(
+                                          atual =>
+                                            atual === contato.id
+                                              ? null
+                                              : contato.id
                                         )
                                       }
-                                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                                     >
-                                      <Pencil
-                                        size={15}
-                                      />
-                                      Editar contato
+                                      <MoreVertical size={16} />
                                     </button>
 
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleSolicitarExclusao(
-                                          contato
-                                        )
-                                      }
-                                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                                    >
-                                      <Trash2
-                                        size={15}
-                                      />
-                                      Excluir contato
-                                    </button>
-                                  </div>
+                                    {menuContatoId === contato.id && (
+                                      <div className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                        {podeExecutarNoContato(escopoUpdate, contato) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleEditarContato(contato)}
+                                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                          >
+                                            <Pencil size={15} />
+                                            Editar contato
+                                          </button>
+                                        )}
+
+                                        {podeExecutarNoContato(escopoDelete, contato) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSolicitarExclusao(contato)}
+                                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                                          >
+                                            <Trash2 size={15} />
+                                            Excluir contato
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             )}
@@ -1180,6 +1414,57 @@ const handleRestaurarContato =
           )}
         </div>
       </div>
+      {mostrarSelecaoCadastro && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-950">
+            <div className="mb-4">
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Conexão do contato
+              </h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Escolha a conexão WhatsApp à qual este contato ficará vinculado.
+              </p>
+            </div>
+
+            <select
+              value={instanciaCadastroId}
+              onChange={(e) => setInstanciaCadastroId(e.target.value)}
+              disabled={carregandoInstanciasCadastro}
+              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+            >
+              {instanciasCadastro.map((instancia) => (
+                <option key={instancia.id} value={instancia.id}>
+                  {instancia.nome}
+                  {instancia.telefone
+                    ? ` — ${formatarTelefone(instancia.telefone)}`
+                    : ''}
+                  {instancia.padrao_envio ? ' — Padrão' : ''}
+                </option>
+              ))}
+            </select>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMostrarSelecaoCadastro(false)}
+                className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmarConexaoCadastro}
+                disabled={!instanciaCadastroId}
+                className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {mostrarSincronizacao && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
     <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-950">
@@ -1278,6 +1563,8 @@ const handleRestaurarContato =
   onClose={() => {
     setContatoModalOpen(false)
     setContatoEditando(null)
+    setInstanciaCadastroId('')
+    setInstanciasCadastro([])
   }}
   onSave={
     handleSalvarContato

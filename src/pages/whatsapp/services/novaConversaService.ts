@@ -29,7 +29,9 @@ interface PerfilLogado {
   ativo: boolean
 }
 
-export async function buscarContextoNovaConversa(): Promise<NovaConversaContext> {
+export async function buscarContextoNovaConversa(
+  escopo: 'assigned' | 'tenant' = 'assigned'
+): Promise<NovaConversaContext> {
   const {
     data: { user },
     error: authError,
@@ -60,6 +62,7 @@ export async function buscarContextoNovaConversa(): Promise<NovaConversaContext>
   }
 
   if (
+    escopo === 'tenant' ||
     perfilLogado.tipo_usuario === 'CORRETORA' ||
     perfilLogado.tipo_usuario === 'ADMIN'
   ) {
