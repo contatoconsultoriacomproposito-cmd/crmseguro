@@ -103,6 +103,8 @@ export default function ConversationList({
   const [responsibleFilter, setResponsibleFilter] = useState<ResponsibleFilter>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('conversations')
   const [commitmentFilter, setCommitmentFilter] = useState<CommitmentFilter>('all')
+  const [commitmentDateStart, setCommitmentDateStart] = useState('')
+  const [commitmentDateEnd, setCommitmentDateEnd] = useState('')
   const [agenda, setAgenda] = useState<WhatsAppAgendaData>(EMPTY_AGENDA)
   const [agendaLoading, setAgendaLoading] = useState(false)
   const [agendaError, setAgendaError] = useState<string | null>(null)
@@ -460,12 +462,62 @@ const handleCancelarCompromisso = useCallback(async (compromisso: AgendaItem) =>
     crmClientsByContactId,
   ])
 
+  const dateFilteredCommitments = useMemo(() => {
+    if (!commitmentDateStart && !commitmentDateEnd) {
+      return agenda.todos
+    }
+
+    const inicioPeriodo = commitmentDateStart
+      ? new Date(`${commitmentDateStart}T00:00:00`)
+      : null
+
+    const fimPeriodo = commitmentDateEnd
+      ? new Date(`${commitmentDateEnd}T23:59:59.999`)
+      : null
+
+    return agenda.todos.filter(commitment => {
+      const dataCompromisso = new Date(commitment.inicioEm)
+
+      if (Number.isNaN(dataCompromisso.getTime())) {
+        return false
+      }
+
+      if (inicioPeriodo && dataCompromisso < inicioPeriodo) {
+        return false
+      }
+
+      if (fimPeriodo && dataCompromisso > fimPeriodo) {
+        return false
+      }
+
+      return true
+    })
+  }, [agenda.todos, commitmentDateStart, commitmentDateEnd])
+
+  const commitmentCounts = useMemo(() => {
+    return {
+      total: dateFilteredCommitments.length,
+      overdue: dateFilteredCommitments.filter(item => item.situacao === 'ATRASADO').length,
+      today: dateFilteredCommitments.filter(item => item.situacao === 'HOJE').length,
+      upcoming: dateFilteredCommitments.filter(item => item.situacao === 'PROXIMO').length,
+    }
+  }, [dateFilteredCommitments])
+
   const commitmentsByFilter = useMemo(() => {
-    if (commitmentFilter === 'overdue') return agenda.atrasados
-    if (commitmentFilter === 'today') return agenda.hoje
-    if (commitmentFilter === 'upcoming') return agenda.proximos
-    return agenda.todos
-  }, [agenda, commitmentFilter])
+    if (commitmentFilter === 'overdue') {
+      return dateFilteredCommitments.filter(item => item.situacao === 'ATRASADO')
+    }
+
+    if (commitmentFilter === 'today') {
+      return dateFilteredCommitments.filter(item => item.situacao === 'HOJE')
+    }
+
+    if (commitmentFilter === 'upcoming') {
+      return dateFilteredCommitments.filter(item => item.situacao === 'PROXIMO')
+    }
+
+    return dateFilteredCommitments
+  }, [commitmentFilter, dateFilteredCommitments])
 
   const filteredCommitments = useMemo(() => {
     const normalizedSearch = normalizeText(search)
@@ -485,14 +537,12 @@ const handleCancelarCompromisso = useCallback(async (compromisso: AgendaItem) =>
   const groupedCommitments = useMemo(() => {
     if (commitmentFilter !== 'all') return null
 
-    const filteredIds = new Set(filteredCommitments.map(item => item.id))
-
     return {
-      atrasados: agenda.atrasados.filter(item => filteredIds.has(item.id)),
-      hoje: agenda.hoje.filter(item => filteredIds.has(item.id)),
-      proximos: agenda.proximos.filter(item => filteredIds.has(item.id)),
+      atrasados: filteredCommitments.filter(item => item.situacao === 'ATRASADO'),
+      hoje: filteredCommitments.filter(item => item.situacao === 'HOJE'),
+      proximos: filteredCommitments.filter(item => item.situacao === 'PROXIMO'),
     }
-  }, [agenda, commitmentFilter, filteredCommitments])
+  }, [commitmentFilter, filteredCommitments])
 
   const activeAdvancedFilters =
     Number(registrationFilter !== 'all') +
@@ -540,9 +590,9 @@ return (
                   ? filteredConversations.length === 1
                     ? '1 conversa'
                     : `${filteredConversations.length} conversas`
-                  : agenda.todos.length === 1
+                  : commitmentCounts.total === 1
                     ? '1 compromisso'
-                    : `${agenda.todos.length} compromissos`}
+                    : `${commitmentCounts.total} compromissos`}
               </p>
             </div>
 <div className="flex shrink-0 items-center gap-1.5">
@@ -688,14 +738,67 @@ return (
             )}
           </>
         ) : (
-          <CommitmentTabs
-            active={commitmentFilter}
-            total={agenda.todos.length}
-            overdue={agenda.atrasados.length}
-            today={agenda.hoje.length}
-            upcoming={agenda.proximos.length}
-            onChange={setCommitmentFilter}
-          />
+          <>
+            <CommitmentTabs
+              active={commitmentFilter}
+              total={commitmentCounts.total}
+              overdue={commitmentCounts.overdue}
+              today={commitmentCounts.today}
+              upcoming={commitmentCounts.upcoming}
+              onChange={setCommitmentFilter}
+            />
+
+            <div className="border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Período
+                </span>
+
+                {(commitmentDateStart || commitmentDateEnd) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCommitmentDateStart('')
+                      setCommitmentDateEnd('')
+                    }}
+                    className="text-[9px] font-semibold text-blue-600 transition hover:text-blue-700"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="min-w-0">
+                  <label className="mb-1 block text-[9px] font-medium text-slate-400">
+                    De
+                  </label>
+
+                  <input
+                    type="date"
+                    value={commitmentDateStart}
+                    onChange={event => setCommitmentDateStart(event.target.value)}
+                    max={commitmentDateEnd || undefined}
+                    className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-600 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-50"
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <label className="mb-1 block text-[9px] font-medium text-slate-400">
+                    Até
+                  </label>
+
+                  <input
+                    type="date"
+                    value={commitmentDateEnd}
+                    onChange={event => setCommitmentDateEnd(event.target.value)}
+                    min={commitmentDateStart || undefined}
+                    className="h-8 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-600 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-50"
+                  />
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -1324,7 +1427,11 @@ function formatCommitmentWhen(commitment: WhatsAppAgendaCommitment) {
       return commitment.diaInteiro ? 'Ontem' : `Ontem ${time}`
     }
 
-    const formattedDate = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    const formattedDate = date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
     return commitment.diaInteiro ? formattedDate : `${formattedDate} ${time}`
   }
 
@@ -1342,7 +1449,11 @@ function formatCommitmentWhen(commitment: WhatsAppAgendaCommitment) {
     return commitment.diaInteiro ? 'Amanhã' : `Amanhã ${time}`
   }
 
-  const formattedDate = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  const formattedDate = date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
   return commitment.diaInteiro ? formattedDate : `${formattedDate} ${time}`
 }
 

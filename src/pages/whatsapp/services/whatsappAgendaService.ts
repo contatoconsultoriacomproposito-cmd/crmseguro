@@ -1,7 +1,10 @@
 import { supabase } from '../../../lib/supabaseClient'
 import type { WhatsAppConversation } from '../types/whatsapp'
 
-export type WhatsAppCommitmentSituation = 'ATRASADO' | 'HOJE' | 'PROXIMO'
+export type WhatsAppCommitmentSituation =
+  | 'ATRASADO'
+  | 'HOJE'
+  | 'PROXIMO'
 
 export interface WhatsAppAgendaCommitment {
   id: string
@@ -19,7 +22,6 @@ export interface WhatsAppAgendaCommitment {
   responsavelId: string | null
   crmPessoaId: string | null
   crmEmpresaId: string | null
-  clienteIdLegado: string | null
   tipoOrigem: string
   origemId: string | null
   situacao: WhatsAppCommitmentSituation
@@ -30,25 +32,20 @@ export interface WhatsAppAgendaData {
   hoje: WhatsAppAgendaCommitment[]
   proximos: WhatsAppAgendaCommitment[]
   todos: WhatsAppAgendaCommitment[]
-  proximoPorConversa: Record<string, WhatsAppAgendaCommitment>
-}
-
-interface CrmLink {
-  crmPessoaId?: string
-  crmEmpresaId?: string
-  clienteIdLegado?: string
+  proximoPorConversa: Record<
+    string,
+    WhatsAppAgendaCommitment
+  >
 }
 
 interface CrmPessoaLinkRow {
   id: string
-  cliente_id_legado: string | null
   dados: unknown
   created_at: string
 }
 
 interface CrmEmpresaLinkRow {
   id: string
-  cliente_id_legado: string | null
   dados: unknown
   created_at: string
 }
@@ -65,22 +62,24 @@ interface AgendaRow {
   prioridade: string
   crm_pessoa_id: string | null
   crm_empresa_id: string | null
-  cliente_id_legado: string | null
   tipo_origem: string
   origem_id: string | null
 }
 
 const CRM_LOOKUP_BATCH_SIZE = 10
 
-const emptyAgendaData = (): WhatsAppAgendaData => ({
-  atrasados: [],
-  hoje: [],
-  proximos: [],
-  todos: [],
-  proximoPorConversa: {},
-})
+const emptyAgendaData =
+  (): WhatsAppAgendaData => ({
+    atrasados: [],
+    hoje: [],
+    proximos: [],
+    todos: [],
+    proximoPorConversa: {},
+  })
 
-const filtroWhatsApp = (contatoId: string) => ({
+const filtroWhatsApp = (
+  contatoId: string
+) => ({
   campos_adicionais: {
     whatsapp: {
       contato_id: contatoId,
@@ -88,78 +87,220 @@ const filtroWhatsApp = (contatoId: string) => ({
   },
 })
 
-function getWhatsAppContactId(dados: unknown): string | null {
-  if (!dados || typeof dados !== 'object') return null
+function getWhatsAppContactId(
+  dados: unknown
+): string | null {
+  if (
+    !dados ||
+    typeof dados !== 'object'
+  ) {
+    return null
+  }
 
-  const camposAdicionais = (dados as Record<string, unknown>).campos_adicionais
-  if (!camposAdicionais || typeof camposAdicionais !== 'object') return null
+  const camposAdicionais =
+    (
+      dados as Record<
+        string,
+        unknown
+      >
+    ).campos_adicionais
 
-  const whatsapp = (camposAdicionais as Record<string, unknown>).whatsapp
-  if (!whatsapp || typeof whatsapp !== 'object') return null
+  if (
+    !camposAdicionais ||
+    typeof camposAdicionais !==
+      'object'
+  ) {
+    return null
+  }
 
-  const contatoId = (whatsapp as Record<string, unknown>).contato_id
-  return typeof contatoId === 'string' && contatoId.trim() ? contatoId : null
+  const whatsapp =
+    (
+      camposAdicionais as Record<
+        string,
+        unknown
+      >
+    ).whatsapp
+
+  if (
+    !whatsapp ||
+    typeof whatsapp !== 'object'
+  ) {
+    return null
+  }
+
+  const contatoId =
+    (
+      whatsapp as Record<
+        string,
+        unknown
+      >
+    ).contato_id
+
+  return (
+    typeof contatoId === 'string' &&
+    contatoId.trim()
+      ? contatoId
+      : null
+  )
 }
 
-function getSituation(inicioEm: string, inicioHoje: Date, inicioAmanha: Date): WhatsAppCommitmentSituation {
-  const inicio = new Date(inicioEm)
-  if (inicio < inicioHoje) return 'ATRASADO'
-  if (inicio < inicioAmanha) return 'HOJE'
+function getSituation(
+  inicioEm: string,
+  inicioHoje: Date,
+  inicioAmanha: Date
+): WhatsAppCommitmentSituation {
+  const inicio =
+    new Date(inicioEm)
+
+  if (inicio < inicioHoje) {
+    return 'ATRASADO'
+  }
+
+  if (inicio < inicioAmanha) {
+    return 'HOJE'
+  }
+
   return 'PROXIMO'
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
+function chunk<T>(
+  items: T[],
+  size: number
+): T[][] {
   const chunks: T[][] = []
-  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size))
+
+  for (
+    let index = 0;
+    index < items.length;
+    index += size
+  ) {
+    chunks.push(
+      items.slice(
+        index,
+        index + size
+      )
+    )
+  }
+
   return chunks
 }
 
-async function buscarPessoasPorContatos(corretoraId: string, contactIds: string[]): Promise<CrmPessoaLinkRow[]> {
-  const results: CrmPessoaLinkRow[] = []
+async function buscarPessoasPorContatos(
+  corretoraId: string,
+  contactIds: string[]
+): Promise<CrmPessoaLinkRow[]> {
+  const results:
+    CrmPessoaLinkRow[] = []
 
-  for (const batch of chunk(contactIds, CRM_LOOKUP_BATCH_SIZE)) {
-    const responses = await Promise.all(
-      batch.map(contatoId =>
-        supabase
-          .from('crm_pessoas')
-          .select('id, cliente_id_legado, dados, created_at')
-          .eq('corretora_id', corretoraId)
-          .contains('dados', filtroWhatsApp(contatoId))
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      )
+  for (
+    const batch of chunk(
+      contactIds,
+      CRM_LOOKUP_BATCH_SIZE
     )
+  ) {
+    const responses =
+      await Promise.all(
+        batch.map(contatoId =>
+          supabase
+            .from('crm_pessoas')
+            .select(
+              'id, dados, created_at'
+            )
+            .eq(
+              'corretora_id',
+              corretoraId
+            )
+            .contains(
+              'dados',
+              filtroWhatsApp(
+                contatoId
+              )
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false,
+              }
+            )
+            .limit(1)
+            .maybeSingle()
+        )
+      )
 
-    for (const response of responses) {
-      if (response.error) throw response.error
-      if (response.data) results.push(response.data as CrmPessoaLinkRow)
+    for (
+      const response of responses
+    ) {
+      if (response.error) {
+        throw response.error
+      }
+
+      if (response.data) {
+        results.push(
+          response.data as
+            CrmPessoaLinkRow
+        )
+      }
     }
   }
 
   return results
 }
 
-async function buscarEmpresasPorContatos(corretoraId: string, contactIds: string[]): Promise<CrmEmpresaLinkRow[]> {
-  const results: CrmEmpresaLinkRow[] = []
+async function buscarEmpresasPorContatos(
+  corretoraId: string,
+  contactIds: string[]
+): Promise<CrmEmpresaLinkRow[]> {
+  const results:
+    CrmEmpresaLinkRow[] = []
 
-  for (const batch of chunk(contactIds, CRM_LOOKUP_BATCH_SIZE)) {
-    const responses = await Promise.all(
-      batch.map(contatoId =>
-        supabase
-          .from('crm_empresas')
-          .select('id, cliente_id_legado, dados, created_at')
-          .eq('corretora_id', corretoraId)
-          .contains('dados', filtroWhatsApp(contatoId))
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      )
+  for (
+    const batch of chunk(
+      contactIds,
+      CRM_LOOKUP_BATCH_SIZE
     )
+  ) {
+    const responses =
+      await Promise.all(
+        batch.map(contatoId =>
+          supabase
+            .from('crm_empresas')
+            .select(
+              'id, dados, created_at'
+            )
+            .eq(
+              'corretora_id',
+              corretoraId
+            )
+            .contains(
+              'dados',
+              filtroWhatsApp(
+                contatoId
+              )
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false,
+              }
+            )
+            .limit(1)
+            .maybeSingle()
+        )
+      )
 
-    for (const response of responses) {
-      if (response.error) throw response.error
-      if (response.data) results.push(response.data as CrmEmpresaLinkRow)
+    for (
+      const response of responses
+    ) {
+      if (response.error) {
+        throw response.error
+      }
+
+      if (response.data) {
+        results.push(
+          response.data as
+            CrmEmpresaLinkRow
+        )
+      }
     }
   }
 
@@ -168,212 +309,469 @@ async function buscarEmpresasPorContatos(corretoraId: string, contactIds: string
 
 export async function buscarAgendaWhatsApp(
   corretoraId: string,
-  conversations: WhatsAppConversation[],
-  responsavelId?: string | null
+  conversations:
+    WhatsAppConversation[],
+  responsavelId?:
+    | string
+    | null
 ): Promise<WhatsAppAgendaData> {
-  if (!corretoraId || conversations.length === 0) return emptyAgendaData()
-
-  const conversationById = new Map<string, WhatsAppConversation>()
-  const conversationByContactId = new Map<string, WhatsAppConversation>()
-
-  for (const conversation of conversations) {
-    conversationById.set(conversation.id, conversation)
-    if (conversation.contact?.id) conversationByContactId.set(conversation.contact.id, conversation)
+  if (
+    !corretoraId ||
+    conversations.length === 0
+  ) {
+    return emptyAgendaData()
   }
 
-  const contactIds = Array.from(conversationByContactId.keys())
-  if (contactIds.length === 0) return emptyAgendaData()
+  /*
+   * Índices de conversas.
+   *
+   * 1. conversationById:
+   *    vínculo direto quando o compromisso
+   *    nasceu da conversa do WhatsApp.
+   *
+   * 2. conversationByContactId:
+   *    utilizado para resolver o contato
+   *    para Pessoa/Empresa do CRM.
+   */
+  const conversationById =
+    new Map<
+      string,
+      WhatsAppConversation
+    >()
 
-  const [pessoas, empresas] = await Promise.all([
-    buscarPessoasPorContatos(corretoraId, contactIds),
-    buscarEmpresasPorContatos(corretoraId, contactIds),
+  const conversationByContactId =
+    new Map<
+      string,
+      WhatsAppConversation
+    >()
+
+  for (
+    const conversation of
+      conversations
+  ) {
+    conversationById.set(
+      conversation.id,
+      conversation
+    )
+
+    if (conversation.contact?.id) {
+      conversationByContactId.set(
+        conversation.contact.id,
+        conversation
+      )
+    }
+  }
+
+  const contactIds =
+    Array.from(
+      conversationByContactId.keys()
+    )
+
+  if (
+    contactIds.length === 0
+  ) {
+    return emptyAgendaData()
+  }
+
+  /*
+   * Descobre quais Pessoas/Empresas
+   * do novo CRM estão vinculadas aos
+   * contatos presentes no WhatsApp.
+   */
+  const [
+    pessoas,
+    empresas,
+  ] = await Promise.all([
+    buscarPessoasPorContatos(
+      corretoraId,
+      contactIds
+    ),
+
+    buscarEmpresasPorContatos(
+      corretoraId,
+      contactIds
+    ),
   ])
 
-  const crmByContactId = new Map<string, CrmLink>()
-  const conversationByPessoaId = new Map<string, WhatsAppConversation>()
-  const conversationByEmpresaId = new Map<string, WhatsAppConversation>()
-  const conversationByLegadoId = new Map<string, WhatsAppConversation>()
+  const conversationByPessoaId =
+    new Map<
+      string,
+      WhatsAppConversation
+    >()
 
-  for (const pessoa of pessoas) {
-    const contactId = getWhatsAppContactId(pessoa.dados)
-    if (!contactId) continue
-
-    const conversation = conversationByContactId.get(contactId)
-    if (!conversation) continue
-
-    const current = crmByContactId.get(contactId) || {}
-    crmByContactId.set(contactId, {
-      ...current,
-      crmPessoaId: pessoa.id,
-      clienteIdLegado: pessoa.cliente_id_legado || current.clienteIdLegado,
-    })
-
-    conversationByPessoaId.set(pessoa.id, conversation)
-    if (pessoa.cliente_id_legado) conversationByLegadoId.set(pessoa.cliente_id_legado, conversation)
-  }
-
-  for (const empresa of empresas) {
-    const contactId = getWhatsAppContactId(empresa.dados)
-    if (!contactId) continue
-
-    const conversation = conversationByContactId.get(contactId)
-    if (!conversation) continue
-
-    const current = crmByContactId.get(contactId) || {}
-    crmByContactId.set(contactId, {
-      ...current,
-      crmEmpresaId: empresa.id,
-      clienteIdLegado: empresa.cliente_id_legado || current.clienteIdLegado,
-    })
-
-    conversationByEmpresaId.set(empresa.id, conversation)
-    if (empresa.cliente_id_legado) conversationByLegadoId.set(empresa.cliente_id_legado, conversation)
-  }
+  const conversationByEmpresaId =
+    new Map<
+      string,
+      WhatsAppConversation
+    >()
 
   /*
-   * Compatibilidade adicional com o cliente legado já exposto pelo contato,
-   * caso o tipo WhatsAppConversation possua clienteId/clientId.
+   * Pessoa CRM -> conversa.
    */
-  for (const conversation of conversations) {
-    const contact = conversation.contact as typeof conversation.contact & {
-      clienteId?: string | null
-      clientId?: string | null
+  for (
+    const pessoa of pessoas
+  ) {
+    const contactId =
+      getWhatsAppContactId(
+        pessoa.dados
+      )
+
+    if (!contactId) {
+      continue
     }
 
-    const legacyId = contact.clienteId || contact.clientId
-    if (legacyId && !conversationByLegadoId.has(legacyId)) {
-      conversationByLegadoId.set(legacyId, conversation)
+    const conversation =
+      conversationByContactId.get(
+        contactId
+      )
+
+    if (!conversation) {
+      continue
     }
+
+    conversationByPessoaId.set(
+      pessoa.id,
+      conversation
+    )
   }
 
   /*
-   * A agenda é a fonte de verdade.
-   * Carregamos apenas COMPROMISSOS PENDENTES da corretora.
+   * Empresa CRM -> conversa.
+   */
+  for (
+    const empresa of empresas
+  ) {
+    const contactId =
+      getWhatsAppContactId(
+        empresa.dados
+      )
+
+    if (!contactId) {
+      continue
+    }
+
+    const conversation =
+      conversationByContactId.get(
+        contactId
+      )
+
+    if (!conversation) {
+      continue
+    }
+
+    conversationByEmpresaId.set(
+      empresa.id,
+      conversation
+    )
+  }
+
+  /*
+   * crm_agenda é a fonte de verdade.
    *
-   * Não limitamos por data aqui porque o modo compacto precisa mostrar:
+   * Carregamos somente:
+   *
+   * - compromissos;
+   * - pendentes;
+   * - pertencentes à corretora;
+   * - opcionalmente de um responsável.
+   *
+   * Não limitamos por data porque a
+   * visualização compacta do WhatsApp
+   * precisa montar:
+   *
    * ATRASADOS + HOJE + PRÓXIMOS.
    */
-  let agendaQuery = supabase
-    .from('crm_agenda')
-    .select(`
-      id,
-      responsavel_id,
-      categoria,
-      titulo,
-      descricao,
-      inicio_em,
-      fim_em,
-      dia_inteiro,
-      prioridade,
-      crm_pessoa_id,
-      crm_empresa_id,
-      cliente_id_legado,
-      tipo_origem,
-      origem_id
-    `)
-    .eq('corretora_id', corretoraId)
-    .eq('status', 'PENDENTE')
-    .eq('natureza', 'COMPROMISSO')
-    .order('inicio_em', { ascending: true })
+  let agendaQuery =
+    supabase
+      .from('crm_agenda')
+      .select(`
+        id,
+        responsavel_id,
+        categoria,
+        titulo,
+        descricao,
+        inicio_em,
+        fim_em,
+        dia_inteiro,
+        prioridade,
+        crm_pessoa_id,
+        crm_empresa_id,
+        tipo_origem,
+        origem_id
+      `)
+      .eq(
+        'corretora_id',
+        corretoraId
+      )
+      .eq(
+        'status',
+        'PENDENTE'
+      )
+      .eq(
+        'natureza',
+        'COMPROMISSO'
+      )
+      .order(
+        'inicio_em',
+        {
+          ascending: true,
+        }
+      )
 
-  if (responsavelId) agendaQuery = agendaQuery.eq('responsavel_id', responsavelId)
+  if (responsavelId) {
+    agendaQuery =
+      agendaQuery.eq(
+        'responsavel_id',
+        responsavelId
+      )
+  }
 
-  const { data: agendaData, error: agendaError } = await agendaQuery
-  if (agendaError) throw agendaError
+  const {
+    data: agendaData,
+    error: agendaError,
+  } = await agendaQuery
 
-  const inicioHoje = new Date()
-  inicioHoje.setHours(0, 0, 0, 0)
+  if (agendaError) {
+    throw agendaError
+  }
 
-  const inicioAmanha = new Date(inicioHoje)
-  inicioAmanha.setDate(inicioAmanha.getDate() + 1)
+  const inicioHoje =
+    new Date()
 
-  const commitments: WhatsAppAgendaCommitment[] = []
-  const commitmentIds = new Set<string>()
+  inicioHoje.setHours(
+    0,
+    0,
+    0,
+    0
+  )
 
-  for (const row of (agendaData ?? []) as AgendaRow[]) {
-    let conversation: WhatsAppConversation | undefined
+  const inicioAmanha =
+    new Date(inicioHoje)
+
+  inicioAmanha.setDate(
+    inicioAmanha.getDate() + 1
+  )
+
+  const commitments:
+    WhatsAppAgendaCommitment[] = []
+
+  const commitmentIds =
+    new Set<string>()
+
+  const agendaRows =
+  (agendaData ?? []) as AgendaRow[]
+
+  for (const row of agendaRows) {
+    let conversation:
+      | WhatsAppConversation
+      | undefined
 
     /*
-     * 1. Vínculo direto.
-     * Compromisso originado naquela conversa do WhatsApp.
+     * 1. Origem direta WhatsApp.
+     *
+     * O compromisso foi criado a partir
+     * daquela conversa específica.
      */
-    if (row.tipo_origem === 'WHATSAPP' && row.origem_id) {
-      conversation = conversationById.get(row.origem_id)
+    if (
+      row.tipo_origem ===
+        'WHATSAPP' &&
+      row.origem_id
+    ) {
+      conversation =
+        conversationById.get(
+          row.origem_id
+        )
     }
 
     /*
-     * 2. CRM novo - Pessoa.
-     * Permite que compromissos criados diretamente na Agenda também
-     * apareçam na conversa correspondente.
+     * 2. Pessoa do novo CRM.
+     *
+     * Permite exibir na conversa um
+     * compromisso criado diretamente
+     * pela Agenda ou ficha do cliente.
      */
-    if (!conversation && row.crm_pessoa_id) {
-      conversation = conversationByPessoaId.get(row.crm_pessoa_id)
+    if (
+      !conversation &&
+      row.crm_pessoa_id
+    ) {
+      conversation =
+        conversationByPessoaId.get(
+          row.crm_pessoa_id
+        )
     }
 
     /*
-     * 3. CRM novo - Empresa.
+     * 3. Empresa do novo CRM.
      */
-    if (!conversation && row.crm_empresa_id) {
-      conversation = conversationByEmpresaId.get(row.crm_empresa_id)
+    if (
+      !conversation &&
+      row.crm_empresa_id
+    ) {
+      conversation =
+        conversationByEmpresaId.get(
+          row.crm_empresa_id
+        )
     }
 
     /*
-     * 4. Compatibilidade com o CRM legado.
+     * Se o compromisso não puder ser
+     * relacionado a uma conversa atual,
+     * ele não pertence à visualização
+     * compacta do WhatsApp.
      */
-    if (!conversation && row.cliente_id_legado) {
-      conversation = conversationByLegadoId.get(row.cliente_id_legado)
+    if (
+      !conversation ||
+      commitmentIds.has(
+        row.id
+      )
+    ) {
+      continue
     }
 
-    if (!conversation || commitmentIds.has(row.id)) continue
     commitmentIds.add(row.id)
 
     commitments.push({
       id: row.id,
-      conversationId: conversation.id,
-      contactId: conversation.contact.id,
-      contactName: conversation.contact.name,
-      contactPhone: conversation.contact.phone || undefined,
-      titulo: row.titulo,
-      descricao: row.descricao,
-      inicioEm: row.inicio_em,
-      fimEm: row.fim_em,
-      diaInteiro: row.dia_inteiro,
-      categoria: row.categoria,
-      prioridade: row.prioridade,
-      responsavelId: row.responsavel_id,
-      crmPessoaId: row.crm_pessoa_id,
-      crmEmpresaId: row.crm_empresa_id,
-      clienteIdLegado: row.cliente_id_legado,
-      tipoOrigem: row.tipo_origem,
-      origemId: row.origem_id,
-      situacao: getSituation(row.inicio_em, inicioHoje, inicioAmanha),
+
+      conversationId:
+        conversation.id,
+
+      contactId:
+        conversation.contact.id,
+
+      contactName:
+        conversation.contact.name,
+
+      contactPhone:
+        conversation.contact.phone ||
+        undefined,
+
+      titulo:
+        row.titulo,
+
+      descricao:
+        row.descricao,
+
+      inicioEm:
+        row.inicio_em,
+
+      fimEm:
+        row.fim_em,
+
+      diaInteiro:
+        row.dia_inteiro,
+
+      categoria:
+        row.categoria,
+
+      prioridade:
+        row.prioridade,
+
+      responsavelId:
+        row.responsavel_id,
+
+      crmPessoaId:
+        row.crm_pessoa_id,
+
+      crmEmpresaId:
+        row.crm_empresa_id,
+
+      tipoOrigem:
+        row.tipo_origem,
+
+      origemId:
+        row.origem_id,
+
+      situacao:
+        getSituation(
+          row.inicio_em,
+          inicioHoje,
+          inicioAmanha
+        ),
     })
   }
 
-  commitments.sort((a, b) => new Date(a.inicioEm).getTime() - new Date(b.inicioEm).getTime())
+  commitments.sort(
+    (
+      a,
+      b
+    ) =>
+      new Date(
+        a.inicioEm
+      ).getTime() -
+      new Date(
+        b.inicioEm
+      ).getTime()
+  )
 
-  const atrasados: WhatsAppAgendaCommitment[] = []
-  const hoje: WhatsAppAgendaCommitment[] = []
-  const proximos: WhatsAppAgendaCommitment[] = []
+  const atrasados:
+    WhatsAppAgendaCommitment[] = []
 
-  for (const commitment of commitments) {
-    if (commitment.situacao === 'ATRASADO') atrasados.push(commitment)
-    else if (commitment.situacao === 'HOJE') hoje.push(commitment)
-    else proximos.push(commitment)
+  const hoje:
+    WhatsAppAgendaCommitment[] = []
+
+  const proximos:
+    WhatsAppAgendaCommitment[] = []
+
+  for (
+    const commitment of
+      commitments
+  ) {
+    if (
+      commitment.situacao ===
+      'ATRASADO'
+    ) {
+      atrasados.push(
+        commitment
+      )
+
+      continue
+    }
+
+    if (
+      commitment.situacao ===
+      'HOJE'
+    ) {
+      hoje.push(
+        commitment
+      )
+
+      continue
+    }
+
+    proximos.push(
+      commitment
+    )
   }
 
   /*
-   * Badge da conversa:
+   * Badge mostrado ao lado da conversa:
    *
-   * 1º atraso mais antigo;
-   * senão 1º compromisso de hoje;
-   * senão próximo compromisso futuro.
+   * 1. atraso mais antigo;
+   * 2. compromisso de hoje;
+   * 3. próximo compromisso futuro.
    */
-  const proximoPorConversa: Record<string, WhatsAppAgendaCommitment> = {}
+  const proximoPorConversa:
+    Record<
+      string,
+      WhatsAppAgendaCommitment
+    > = {}
 
-  for (const commitment of [...atrasados, ...hoje, ...proximos]) {
-    if (!proximoPorConversa[commitment.conversationId]) {
-      proximoPorConversa[commitment.conversationId] = commitment
+  for (
+    const commitment of [
+      ...atrasados,
+      ...hoje,
+      ...proximos,
+    ]
+  ) {
+    if (
+      !proximoPorConversa[
+        commitment.conversationId
+      ]
+    ) {
+      proximoPorConversa[
+        commitment.conversationId
+      ] = commitment
     }
   }
 
@@ -381,7 +779,13 @@ export async function buscarAgendaWhatsApp(
     atrasados,
     hoje,
     proximos,
-    todos: [...atrasados, ...hoje, ...proximos],
+
+    todos: [
+      ...atrasados,
+      ...hoje,
+      ...proximos,
+    ],
+
     proximoPorConversa,
   }
 }
@@ -390,25 +794,34 @@ export function subscribeAgendaWhatsApp(
   corretoraId: string,
   onChange: () => void
 ) {
-  if (!corretoraId) return () => {}
+  if (!corretoraId) {
+    return () => {}
+  }
 
-  const channel = supabase
-    .channel(`whatsapp-agenda-${corretoraId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'crm_agenda',
-        filter: `corretora_id=eq.${corretoraId}`,
-      },
-      () => {
-        onChange()
-      }
-    )
-    .subscribe()
+  const channel =
+    supabase
+      .channel(
+        `whatsapp-agenda-${corretoraId}`
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table:
+            'crm_agenda',
+          filter:
+            `corretora_id=eq.${corretoraId}`,
+        },
+        () => {
+          onChange()
+        }
+      )
+      .subscribe()
 
   return () => {
-    void supabase.removeChannel(channel)
+    void supabase.removeChannel(
+      channel
+    )
   }
 }
