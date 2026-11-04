@@ -174,6 +174,23 @@ const attendantById = useMemo(
   [attendants]
 )
 
+const agendaConversationsSignature =
+  useMemo(
+    () =>
+      conversations
+        .map(
+          conversation =>
+            [
+              conversation.id,
+              conversation.contact?.id ?? '',
+              conversation.contact?.name ?? '',
+              conversation.contact?.phone ?? '',
+            ].join(':')
+        )
+        .join('|'),
+    [conversations]
+  )
+
   const loadAgenda = useCallback(async (silent = false) => {
   if (!corretoraId || conversations.length === 0) {
     setAgenda(EMPTY_AGENDA)
@@ -195,7 +212,10 @@ const attendantById = useMemo(
   } finally {
     if (!silent) setAgendaLoading(false)
   }
-}, [corretoraId, conversations])
+}, [
+  corretoraId,
+  agendaConversationsSignature,
+])
 
 useEffect(() => {
   void loadAgenda()
