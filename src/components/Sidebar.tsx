@@ -77,6 +77,19 @@ export default function Sidebar({
   userProfile?.tipo_usuario === "CORRETORA" ||
   userProfile?.tipo_usuario === "ADMIN"
 
+  const podeVerEquipe =
+  podeVerCorretor ||
+  [
+    "create",
+    "delete",
+    "update",
+    "password",
+    "permissions",
+  ].some(
+    (acao) =>
+      escopo("operacoes.equipe", acao) === "tenant"
+  )
+
   const [mobileOpen, setMobileOpen] =
     useState(false)
 
@@ -235,7 +248,7 @@ export default function Sidebar({
           title="Operação"
           collapsed={isCollapsed}
         >
-          {podeVerCorretor && (
+          {podeVerEquipe && (
             <SidebarItem
               to="/whatsapp/equipe"
               icon={<UserRoundCog size={18} />}

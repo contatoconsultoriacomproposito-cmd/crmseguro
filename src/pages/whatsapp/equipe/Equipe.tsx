@@ -43,7 +43,7 @@ interface MembroEquipe {
   id: string;
   nome: string;
   email: string;
-  tipo_usuario: "CORRETORA" | "CORRETOR";
+  tipo_usuario: "CORRETORA" | "CORRETOR" | "ADMIN";
   funcao_equipe: FuncaoEquipe | null;
   telefone_corretor: string | null;
   registro_susep: string | null;
@@ -55,7 +55,7 @@ interface MembroEquipe {
 interface PerfilLogado {
   id: string;
   corretora_id: string;
-  tipo_usuario: "CORRETORA" | "CORRETOR";
+  tipo_usuario: "CORRETORA" | "CORRETOR" | "ADMIN";
   ativo: boolean;
 }
 
@@ -252,6 +252,19 @@ export default function Equipe() {
   const [processando, setProcessando] = useState(false);
 
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  type AcaoEquipe = "create" | "delete" | "update" | "password" | "permissions";
+  const ACOES_EQUIPE: AcaoEquipe[] = ["create", "delete", "update", "password", "permissions"];
+  const [permissoes, setPermissoes] = useState<Record<AcaoEquipe, boolean>>({
+    create: false,
+    delete: false,
+    update: false,
+    password: false,
+    permissions: false,
+  });
+  const pode = (acao: AcaoEquipe) => permissoes[acao];
+  const podeGerenciarMembros = permissoes.delete || permissoes.update ||
+    permissoes.password || permissoes.permissions;
+
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
 
@@ -319,87 +332,76 @@ export default function Equipe() {
     try {
       setLoading(true);
       setErro("");
-
+      setIsAuthorized(null);
       const perfil = await obterPerfilLogado();
-
-      if (
-        perfil.tipo_usuario !== "CORRETORA" ||
-        perfil.ativo !== true
-      ) {
+      if (!perfil.ativo) {
         setIsAuthorized(false);
         return;
       }
 
-      setIsAuthorized(true);
+      const administrativo = perfil.tipo_usuario === "CORRETORA" || perfil.tipo_usuario === "ADMIN";
+      const novasPermissoes: Record<AcaoEquipe, boolean> = {
+        create: administrativo,
+        delete: administrativo,
+        update: administrativo,
+        password: administrativo,
+        permissions: administrativo,
+      };
 
-      const { data, error } = await supabase
-        .from("usuarios_perfis")
-        .select(`
-          id,
-          nome,
-          email,
-          tipo_usuario,
-          funcao_equipe,
-          telefone_corretor,
-          registro_susep,
-          cpf_corretor,
-          ativo,
-          corretora_id
-        `)
-        .eq("corretora_id", perfil.corretora_id)
-        .eq("tipo_usuario", "CORRETOR")
-        .eq("ativo", true)
-        .order("nome", { ascending: true });
+      if (!administrativo) {
+        // A consulta é feita com o JWT atual e não com service_role.
+        const resultados = await Promise.all(
+          ACOES_EQUIPE.map(async (acao) => {
+            const { data, error } = await supabase.rpc("crm_escopo_permissao", {
+              p_recurso: "operacoes.equipe",
+              p_acao: acao,
+            });
+            if (error) throw error;
+            return [acao, data === "tenant"] as const;
+          })
+        );
+        for (const [acao, autorizado] of resultados) {
+          novasPermissoes[acao] = autorizado;
+        }
+      }
 
-      if (error) throw error;
+      setPermissoes(novasPermissoes);
+      const autorizado = Object.values(novasPermissoes).some(Boolean);
+      setIsAuthorized(autorizado);
+      if (!autorizado) {
+        setMembros([]);
+        return;
+      }
 
-      setMembros((data || []) as MembroEquipe[]);
+      const podeListar = novasPermissoes.delete || novasPermissoes.update ||
+        novasPermissoes.password || novasPermissoes.permissions;
+      if (!podeListar) {
+        // Somente "create": nenhuma listagem de outros membros.
+        setMembros([]);
+        return;
+      }
+
+      const resposta = await chamarEquipe({ action: "LISTAR" });
+      setMembros((resposta.membros || []) as MembroEquipe[]);
     } catch (error: any) {
       console.error("Erro ao carregar equipe:", error);
-      setErro(
-        error?.message ||
-          "Não foi possível carregar os membros da equipe."
-      );
+      setIsAuthorized(false);
+      setErro(error?.message || "Não foi possível carregar a equipe.");
     } finally {
       setLoading(false);
     }
   }
 
   async function carregarRemovidos() {
+    if (!pode("delete")) return;
     try {
       setLoadingRemovidos(true);
       setErro("");
-
-      const perfil = await obterPerfilLogado();
-
-      const { data, error } = await supabase
-        .from("usuarios_perfis")
-        .select(`
-          id,
-          nome,
-          email,
-          tipo_usuario,
-          funcao_equipe,
-          telefone_corretor,
-          registro_susep,
-          cpf_corretor,
-          ativo,
-          corretora_id
-        `)
-        .eq("corretora_id", perfil.corretora_id)
-        .eq("tipo_usuario", "CORRETOR")
-        .eq("ativo", false)
-        .order("nome", { ascending: true });
-
-      if (error) throw error;
-
-      setRemovidos((data || []) as MembroEquipe[]);
+      const resposta = await chamarEquipe({ action: "LISTAR", inativos: true });
+      setRemovidos((resposta.membros || []) as MembroEquipe[]);
     } catch (error: any) {
       console.error("Erro ao carregar membros removidos:", error);
-      setErro(
-        error?.message ||
-          "Não foi possível carregar os membros removidos."
-      );
+      setErro(error?.message || "Não foi possível carregar os membros removidos.");
     } finally {
       setLoadingRemovidos(false);
     }
@@ -445,6 +447,7 @@ export default function Equipe() {
   }
 
   function abrirEditar(membro: MembroEquipe) {
+    if (!pode("update")) return;
     setMembroSelecionado(membro);
     setMenuAbertoId(null);
     setErro("");
@@ -464,6 +467,7 @@ export default function Equipe() {
   }
 
   function abrirSenha(membro: MembroEquipe) {
+    if (!pode("password")) return;
     setMembroSelecionado(membro);
     setMenuAbertoId(null);
     setErro("");
@@ -476,6 +480,7 @@ export default function Equipe() {
   }
 
   function abrirRemover(membro: MembroEquipe) {
+    if (!pode("delete")) return;
     setMembroSelecionado(membro);
     setMenuAbertoId(null);
     setErro("");
@@ -484,6 +489,7 @@ export default function Equipe() {
   }
 
   function abrirPermissoes(membro: MembroEquipe) {
+    if (!pode("permissions")) return;
     setMembroSelecionado(membro);
     setMenuAbertoId(null);
     setErro("");
@@ -492,7 +498,7 @@ export default function Equipe() {
   }
 
   async function salvarEdicao() {
-    if (!membroSelecionado || processando) return;
+    if (!membroSelecionado || processando || !pode("update")) return;
 
     const nome = formEdicao.nome.trim();
     const telefone = somenteNumeros(formEdicao.telefone);
@@ -558,7 +564,7 @@ export default function Equipe() {
   }
 
   async function alterarSenha() {
-    if (!membroSelecionado || processando) return;
+    if (!membroSelecionado || processando || !pode("password")) return;
 
     if (novaSenha.length < 6) {
       setErro(
@@ -602,7 +608,7 @@ export default function Equipe() {
   }
 
   async function removerMembro() {
-    if (!membroSelecionado || processando) return;
+    if (!membroSelecionado || processando || !pode("delete")) return;
 
     try {
       setProcessando(true);
@@ -638,7 +644,7 @@ export default function Equipe() {
   }
 
   async function reativarMembro(membro: MembroEquipe) {
-    if (processando) return;
+    if (processando || !pode("delete")) return;
 
     try {
       setProcessando(true);
@@ -671,6 +677,7 @@ export default function Equipe() {
   }
 
   async function abrirRemovidos() {
+    if (!pode("delete")) return;
     setErro("");
     setMensagem("");
     setModalRemovidos(true);
@@ -721,6 +728,10 @@ export default function Equipe() {
     [membros]
   );
 
+  if (loading || isAuthorized === null) {
+    return <div className="flex min-h-[60vh] items-center justify-center gap-3 text-zinc-500"><Loader2 size={24} className="animate-spin text-purple-600" /> Validando acesso à equipe...</div>;
+  }
+
   if (isAuthorized === false) {
     return (
       <div className="flex flex-col items-center justify-center p-20 text-center">
@@ -732,8 +743,8 @@ export default function Equipe() {
           Acesso Restrito
         </h1>
 
-        <p className="text-zinc-500 max-w-md">
-          Esta página é destinada à administração da equipe pela corretora.
+       <p className="text-zinc-500 max-w-md">
+          Você não possui permissão para gerenciar membros da equipe.
         </p>
 
         <button
@@ -746,6 +757,57 @@ export default function Equipe() {
       </div>
     );
   }
+
+  // Usuário com apenas permissão de criar não acessa a listagem.
+  if (isAuthorized === true && !podeGerenciarMembros && pode("create")) {
+  return (
+    <div className="max-w-7xl mx-auto p-4 pb-20">
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-purple-100 dark:bg-purple-500/10 text-purple-600 flex items-center justify-center">
+            <Users size={24} />
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-black text-zinc-900 dark:text-white uppercase italic tracking-tighter">
+              Equipe
+            </h1>
+
+            <p className="text-zinc-500 font-medium">
+              Cadastro de membros da corretora
+            </p>
+          </div>
+        </div>
+
+        <div className="max-w-xl rounded-[28px] border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-8 shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-purple-100 dark:bg-purple-500/10 text-purple-600 flex items-center justify-center mb-5">
+            <UserCog size={28} />
+          </div>
+
+          <h2 className="text-xl font-black text-zinc-900 dark:text-white mb-2">
+            Adicionar novo membro
+          </h2>
+
+          <p className="text-sm text-zinc-500 leading-relaxed mb-6">
+            Você possui autorização para cadastrar novos
+            membros na equipe da sua corretora.
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/equipe/cadastro")
+            }
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-bold transition-all flex items-center justify-center gap-2"
+          >
+            <Plus size={19} />
+            Novo membro
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
   return (
@@ -773,26 +835,26 @@ export default function Equipe() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <button
+            {pode("delete") && <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                abrirRemovidos();
+                void abrirRemovidos();
               }}
               className="px-5 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 font-bold hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2"
             >
               <Archive size={18} />
               Membros removidos
-            </button>
+            </button>}
 
-            <button
+            {pode("create") && <button
               type="button"
               onClick={() => navigate("/equipe/cadastro")}
               className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 flex items-center justify-center gap-2"
             >
               <Plus size={19} />
               Novo membro
-            </button>           
+            </button>}           
           </div>
         </div>
 
@@ -942,21 +1004,21 @@ export default function Equipe() {
             />
 
             <h3 className="font-bold text-zinc-700 dark:text-zinc-200 mb-1">
-              Sua equipe ainda está vazia
+              Nenhum membro ativo encontrado
             </h3>
 
             <p className="text-zinc-500 text-sm mb-6">
-              Cadastre o primeiro membro da sua equipe.
+              {pode("create") ? "Cadastre o primeiro membro da equipe." : "Não há membros disponíveis para gerenciar."}
             </p>
 
-            <button
+            {pode("create") && <button
               type="button"
               onClick={() => navigate("/equipe/cadastro")}
               className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-3 rounded-2xl font-bold transition-colors"
             >
               <Plus size={18} />
               Novo membro
-            </button>
+            </button>}
           </div>
         ) : membrosFiltrados.length === 0 ? (
           <div className="text-center p-16 bg-zinc-50 dark:bg-zinc-900/50 rounded-[32px] border-2 border-dashed border-zinc-200 dark:border-zinc-800">
@@ -994,6 +1056,7 @@ export default function Equipe() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {membrosFiltrados.map((membro) => {
                 const funcao = obterFuncao(membro);
+                const membroGerenciavel = membro.id !== user?.id;
 
                 const funcaoInferida =
                   !membro.funcao_equipe &&
@@ -1032,6 +1095,7 @@ export default function Equipe() {
                         </div>
                       </div>
 
+                      {membroGerenciavel && (pode("update") || pode("permissions") || pode("password") || pode("delete")) && (
                       <div
                         className="relative"
                         onClick={(e) => e.stopPropagation()}
@@ -1053,46 +1117,47 @@ export default function Equipe() {
 
                         {menuAbertoId === membro.id && (
                           <div className="absolute right-0 top-11 z-30 w-220px min-w-[220px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl p-2">
-                            <button
+                            {pode("update") && <button
                               type="button"
                               onClick={() => abrirEditar(membro)}
                               className="w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <Pencil size={16} />
                               Editar membro
-                            </button>
+                            </button>}
 
-                            <button
+                            {pode("permissions") && <button
                               type="button"
                               onClick={() => abrirPermissoes(membro)}
                               className="w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <Shield size={16} />
                               Permissões do usuário
-                            </button>
+                            </button>}
 
-                            <button
+                            {pode("password") && <button
                               type="button"
                               onClick={() => abrirSenha(membro)}
                               className="w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <KeyRound size={16} />
                               Alterar senha
-                            </button>
+                            </button>}
 
-                            <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+                            {pode("delete") && <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />}
 
-                            <button
+                            {pode("delete") && <button
                               type="button"
                               onClick={() => abrirRemover(membro)}
                               className="w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                             >
                               <Trash2 size={16} />
                               Remover da equipe
-                            </button>
+                            </button>}
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
 
                     <div className="space-y-3">
@@ -1158,7 +1223,7 @@ export default function Equipe() {
       </div>
 
       <ModalPermissoesUsuario
-        open={modalPermissoes}
+        open={modalPermissoes && pode("permissions")}
         usuarioId={membroSelecionado?.id ?? null}
         corretoraId={membroSelecionado?.corretora_id ?? null}
         nomeUsuario={membroSelecionado?.nome ?? null}
@@ -1174,7 +1239,7 @@ export default function Equipe() {
 
       {/* EDITAR */}
       <ModalBase
-        aberto={modalEditar}
+        aberto={modalEditar && pode("update")}
         titulo="Editar membro"
         descricao={
           membroSelecionado
@@ -1354,7 +1419,7 @@ export default function Equipe() {
 
       {/* SENHA */}
       <ModalBase
-        aberto={modalSenha}
+        aberto={modalSenha && pode("password")}
         titulo="Alterar senha"
         descricao={
           membroSelecionado
@@ -1480,7 +1545,7 @@ export default function Equipe() {
 
       {/* REMOVER */}
       <ModalBase
-        aberto={modalRemover}
+        aberto={modalRemover && pode("delete")}
         titulo="Remover da equipe"
         descricao={membroSelecionado?.nome}
         onClose={() => {
@@ -1545,7 +1610,7 @@ export default function Equipe() {
 
       {/* REMOVIDOS */}
       <ModalBase
-        aberto={modalRemovidos}
+        aberto={modalRemovidos && pode("delete")}
         titulo="Membros removidos"
         descricao="Usuários preservados no histórico e atualmente sem acesso ao CRM."
         onClose={() => {

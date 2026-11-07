@@ -9,6 +9,7 @@ import {
   Save,
   ShieldCheck,
   UsersRound,
+  UserRoundCog,
   X,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabaseClient";
@@ -17,6 +18,15 @@ type EscopoContato = "none" | "assigned" | "tenant";
 type EscopoConversa = "none" | "assigned";
 type EscopoAgenda = "none" | "own" | "tenant";
 type EscopoAgendaGoogle = "none" | "own";
+type EscopoEquipe = "none" | "tenant";
+
+interface PermissoesEquipe {
+  create: EscopoEquipe;
+  delete: EscopoEquipe;
+  update: EscopoEquipe;
+  password: EscopoEquipe;
+  permissions: EscopoEquipe;
+}
 
 interface PermissoesAgenda {
   read: EscopoAgenda;
@@ -79,6 +89,43 @@ const PERMISSOES_AGENDA_PADRAO: PermissoesAgenda = {
   manage: "none",
   google: "none",
 };
+
+const PERMISSOES_EQUIPE_PADRAO: PermissoesEquipe = {
+  create: "none",
+  delete: "none",
+  update: "none",
+  password: "none",
+  permissions: "none",
+};
+
+const OPCOES_ESCOPO_EQUIPE: Array<{
+  value: EscopoEquipe;
+  label: string;
+  descricao: string;
+}> = [
+  {
+    value: "none",
+    label: "Sem acesso",
+    descricao: "Não permite executar esta operação.",
+  },
+  {
+    value: "tenant",
+    label: "Toda a corretora",
+    descricao: "Permite gerenciar membros da própria corretora conforme a ação.",
+  },
+];
+
+const ACOES_EQUIPE: Array<{
+  key: keyof PermissoesEquipe;
+  label: string;
+  descricao: string;
+}> = [
+  { key: "create", label: "Adicionar novo membro", descricao: "Cadastrar usuários vinculados à corretora." },
+  { key: "delete", label: "Remover membros", descricao: "Desativar e reativar membros, preservando o histórico." },
+  { key: "update", label: "Editar membros", descricao: "Alterar os dados cadastrais e a função dos membros." },
+  { key: "password", label: "Alterar senha", descricao: "Redefinir a senha de acesso de outro membro." },
+  { key: "permissions", label: "Editar permissões", descricao: "Consultar e alterar as permissões de outros membros." },
+];
 
 const OPCOES_ESCOPO_CONTATOS: Array<{
   value: EscopoContato;
@@ -367,6 +414,39 @@ function normalizarPermissoesAgenda(
   };
 }
 
+function normalizarPermissoesEquipe(value: any): PermissoesEquipe {
+  const equipe = value?.operacoes?.equipe;
+  return {
+    create: equipe?.create === "tenant" ? "tenant" : "none",
+    delete: equipe?.delete === "tenant" ? "tenant" : "none",
+    update: equipe?.update === "tenant" ? "tenant" : "none",
+    password: equipe?.password === "tenant" ? "tenant" : "none",
+    permissions: equipe?.permissions === "tenant" ? "tenant" : "none",
+  };
+}
+
+async function chamarEquipe(body: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke("cadastrar-usuario", { body });
+
+  if (error) {
+    let mensagem = error.message;
+    try {
+      const context = (error as any).context;
+      if (context && typeof context.json === "function") {
+        const resposta = await context.json();
+        if (typeof resposta?.error === "string") mensagem = resposta.error;
+      }
+    } catch {
+      // Mantemos a mensagem da função.
+    }
+    throw new Error(mensagem);
+  }
+
+  if (data?.error) throw new Error(data.error);
+  if (!data?.success) throw new Error("A operação não retornou confirmação de sucesso.");
+  return data;
+}
+
 export default function ModalPermissoesUsuario({
   open,
   usuarioId,
@@ -397,12 +477,15 @@ export default function ModalPermissoesUsuario({
     ...PERMISSOES_AGENDA_PADRAO,
   });
 
-  const [
-    permissoesOriginais,
-    setPermissoesOriginais,
-  ] = useState<any>({});
+  const [permissoesEquipe, setPermissoesEquipe] =
+    useState<PermissoesEquipe>({ ...PERMISSOES_EQUIPE_PADRAO });
+
+  const [permissoesOriginais, setPermissoesOriginais] = useState<any>({});
 
   const [loading, setLoading] =
+    useState(false);
+
+  const [permissoesCarregadas, setPermissoesCarregadas] =
     useState(false);
 
   const [saving, setSaving] =
@@ -431,80 +514,54 @@ export default function ModalPermissoesUsuario({
   ]);
 
   async function carregarPermissoes() {
-    if (
-      !usuarioId ||
-      !corretoraId
-    ) {
-      return;
-    }
+    if (!usuarioId || !corretoraId) return;
 
     try {
       setLoading(true);
+      setPermissoesCarregadas(false);
       setErro("");
       setSucesso("");
 
-      const { data, error } =
-        await supabase
-          .from(
-            "crm_usuario_permissoes",
-          )
-          .select("permissoes")
-          .eq(
-            "usuario_id",
-            usuarioId,
-          )
-          .eq(
-            "corretora_id",
-            corretoraId,
-          )
-          .maybeSingle();
-
-      if (error) {
-        throw error;
-      }
+      const resposta = await chamarEquipe({
+        action: "CONSULTAR_PERMISSOES",
+        membro_id: usuarioId,
+      });
 
       const jsonAtual =
-        data?.permissoes &&
-        typeof data.permissoes ===
-          "object"
-          ? data.permissoes
+        resposta?.permissoes &&
+        typeof resposta.permissoes === "object" &&
+        !Array.isArray(resposta.permissoes)
+          ? resposta.permissoes
           : {};
 
-      setPermissoesOriginais(
-        jsonAtual,
-      );
-
-      setPermissoesContatos(
-        normalizarPermissoesContatos(
-          jsonAtual,
-        ),
-      );
-
-      setPermissoesConversas(
-        normalizarPermissoesConversas(
-          jsonAtual,
-        ),
-      );
-
-      setPermissoesAgenda(
-        normalizarPermissoesAgenda(
-          jsonAtual,
-        ),
-      );
+      setPermissoesOriginais(jsonAtual);
+      setPermissoesContatos(normalizarPermissoesContatos(jsonAtual));
+      setPermissoesConversas(normalizarPermissoesConversas(jsonAtual));
+      setPermissoesAgenda(normalizarPermissoesAgenda(jsonAtual));
+      setPermissoesEquipe(normalizarPermissoesEquipe(jsonAtual));
+      setPermissoesCarregadas(true);
     } catch (error) {
-      console.error(
-        "Erro ao carregar permissões:",
-        error,
-      );
-
-      setErro(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível carregar as permissões do usuário.",
-      );
+      console.error("Erro ao carregar permissões:", error);
+      setErro(error instanceof Error ? error.message : "Não foi possível carregar as permissões do usuário.");
     } finally {
       setLoading(false);
     }
+  }
+
+  function alterarPermissaoEquipe(acao: keyof PermissoesEquipe, escopo: EscopoEquipe) {
+    setPermissoesEquipe((prev) => ({ ...prev, [acao]: escopo }));
+    setSucesso("");
+  }
+
+  function aplicarTodasEquipe(escopo: EscopoEquipe) {
+    setPermissoesEquipe({
+      create: escopo,
+      delete: escopo,
+      update: escopo,
+      password: escopo,
+      permissions: escopo,
+    });
+    setSucesso("");
   }
 
   function alterarPermissaoContato(
@@ -592,100 +649,53 @@ export default function ModalPermissoesUsuario({
   }
 
   async function salvarPermissoes() {
-    if (
-      !usuarioId ||
-      !corretoraId ||
-      saving
-    ) {
-      return;
-    }
+    if (!usuarioId || !corretoraId || saving || loading || !permissoesCarregadas) return;
 
     try {
       setSaving(true);
       setErro("");
       setSucesso("");
 
-      /*
-       * IMPORTANTE:
-       *
-       * Não substituímos o JSON inteiro.
-       *
-       * Preservamos todos os módulos
-       * já existentes e alteramos
-       * somente:
-       *
-       * atendimento.contatos
-       * atendimento.conversas
-       * atendimento.agenda
-       */
-      const proximoJson = {
-        ...(permissoesOriginais ||
-          {}),
-
+      // Enviamos somente os módulos editáveis. O servidor faz a mesclagem
+      // com o JSON atual, preservando os demais módulos da corretora.
+      const alteracoes = {
         atendimento: {
-          ...(
-            permissoesOriginais
-              ?.atendimento || {}
-          ),
-
-          contatos: {
-            ...permissoesContatos,
-          },
-
-          conversas: {
-            ...permissoesConversas,
-          },
-
-          agenda: {
-            ...permissoesAgenda,
-          },
+          contatos: { ...permissoesContatos },
+          conversas: { ...permissoesConversas },
+          agenda: { ...permissoesAgenda },
+        },
+        operacoes: {
+          equipe: { ...permissoesEquipe },
         },
       };
 
-      const { error } =
-        await supabase
-          .from(
-            "crm_usuario_permissoes",
-          )
-          .upsert(
-            {
-              corretora_id:
-                corretoraId,
-              usuario_id:
-                usuarioId,
-              permissoes:
-                proximoJson,
+      const resposta = await chamarEquipe({
+        action: "ALTERAR_PERMISSOES",
+        membro_id: usuarioId,
+        permissoes: alteracoes,
+      });
+
+      const jsonSalvo = resposta?.permissoes && typeof resposta.permissoes === "object"
+        ? resposta.permissoes
+        : {
+            ...permissoesOriginais,
+            atendimento: {
+              ...(permissoesOriginais?.atendimento || {}),
+              ...alteracoes.atendimento,
             },
-            {
-              onConflict:
-                "usuario_id",
+            operacoes: {
+              ...(permissoesOriginais?.operacoes || {}),
+              ...alteracoes.operacoes,
             },
-          );
+          };
 
-      if (error) {
-        throw error;
-      }
-
-      setPermissoesOriginais(
-        proximoJson,
-      );
-
-      setSucesso(
-        "Permissões atualizadas com sucesso.",
-      );
-
+      setPermissoesOriginais(jsonSalvo);
+      setPermissoesEquipe(normalizarPermissoesEquipe(jsonSalvo));
+      setSucesso("Permissões atualizadas com sucesso.");
       onSaved?.();
     } catch (error) {
-      console.error(
-        "Erro ao salvar permissões:",
-        error,
-      );
-
-      setErro(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível salvar as permissões.",
-      );
+      console.error("Erro ao salvar permissões:", error);
+      setErro(error instanceof Error ? error.message : "Não foi possível salvar as permissões.");
     } finally {
       setSaving(false);
     }
@@ -1013,6 +1023,63 @@ export default function ModalPermissoesUsuario({
                       }
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* GRUPO: OPERAÇÕES */}
+              <div className="mb-3 mt-8 flex items-center gap-2">
+                <UserRoundCog size={18} className="text-purple-600" />
+                <h3 className="text-sm font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
+                  Operações
+                </h3>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                <div className="border-b border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-500/10 dark:text-purple-400">
+                        <UsersRound size={19} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-zinc-900 dark:text-white">Equipe</p>
+                        <p className="mt-0.5 text-xs text-zinc-500">
+                          Administração dos membros vinculados à corretora.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={saving || loading}
+                        onClick={() => aplicarTodasEquipe("tenant")}
+                        className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      >
+                        Toda corretora
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving || loading}
+                        onClick={() => aplicarTodasEquipe("none")}
+                        className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:bg-zinc-900 dark:text-red-400 dark:hover:bg-red-950/30"
+                      >
+                        Remover acessos
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {ACOES_EQUIPE.map((acao) => (
+                    <LinhaPermissao
+                      key={acao.key}
+                      label={acao.label}
+                      descricao={acao.descricao}
+                      value={permissoesEquipe[acao.key]}
+                      disabled={saving || loading}
+                      opcoes={OPCOES_ESCOPO_EQUIPE}
+                      onChange={(escopo) => alterarPermissaoEquipe(acao.key, escopo)}
+                    />
+                  ))}
                 </div>
               </div>
 
