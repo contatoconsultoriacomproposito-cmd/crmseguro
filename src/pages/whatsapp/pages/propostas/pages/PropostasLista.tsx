@@ -29,6 +29,8 @@ import {
 } from "react-router-dom";
 
 import ModalNovaProposta from "../components/ModalNovaProposta";
+import { useAuth } from "../../../../../auth/AuthContext";
+import { usePermissoes } from "../../../hooks/usePermissoes";
 import PropostaStatusBadge from "../components/PropostaStatusBadge";
 import {
   listarCorretoresFiltroPropostas,
@@ -223,6 +225,26 @@ interface PropostasLocationState {
 }
 
 export default function PropostasLista() {
+  const { user, userProfile } = useAuth();
+  const { escopo } = usePermissoes();
+
+  const acessoAdministrativo =
+    userProfile?.tipo_usuario === "CORRETORA" ||
+    userProfile?.tipo_usuario === "ADMIN";
+
+  const escopoVisualizacao = acessoAdministrativo
+    ? "tenant"
+    : escopo("operacoes.propostas", "read");
+  const escopoCriacao = acessoAdministrativo
+    ? "tenant"
+    : escopo("operacoes.propostas", "create");
+
+  const podeVisualizar =
+    escopoVisualizacao === "tenant" || escopoVisualizacao === "own";
+  const podeCriar =
+    escopoCriacao === "tenant" || escopoCriacao === "own";
+  const apenasProprias = escopoVisualizacao === "own";
+  const corretorLogadoId = user?.id ?? null;
   const navigate =
     useNavigate();
 
@@ -326,6 +348,11 @@ export default function PropostasLista() {
 
   const carregarOpcoesFiltros =
     useCallback(async () => {
+      if (!podeVisualizar || (apenasProprias && !corretorLogadoId)) {
+        setCorretoresFiltro([]);
+        setProdutosFiltro([]);
+        return;
+      }
       setCarregandoOpcoesFiltro(true);
       setErroOpcoesFiltro(null);
 
@@ -338,7 +365,11 @@ export default function PropostasLista() {
           listarProdutosFiltroPropostas(),
         ]);
 
-        setCorretoresFiltro(corretores);
+        setCorretoresFiltro(
+          apenasProprias
+            ? corretores.filter((corretor) => corretor.id === corretorLogadoId)
+            : corretores
+        );
         setProdutosFiltro(produtos);
       } catch (error) {
         console.error(
@@ -357,7 +388,7 @@ export default function PropostasLista() {
       } finally {
         setCarregandoOpcoesFiltro(false);
       }
-    }, []);
+    }, [podeVisualizar, apenasProprias, corretorLogadoId]);
 
   useEffect(() => {
     void carregarOpcoesFiltros();
@@ -387,6 +418,7 @@ export default function PropostasLista() {
 
   useEffect(() => {
     if (
+      !podeCriar ||
       !locationState?.abrirNovaProposta ||
       !locationState
         .clienteInicial?.id
@@ -406,6 +438,7 @@ export default function PropostasLista() {
       true
     );
   }, [
+    podeCriar,
     locationState?.abrirNovaProposta,
     locationState
       ?.clienteInicial?.id,
@@ -416,6 +449,13 @@ export default function PropostasLista() {
   const carregarPropostas =
     useCallback(
       async () => {
+        if (!podeVisualizar || (apenasProprias && !corretorLogadoId)) {
+          setPropostas([]);
+          setTotal(0);
+          setTotalPaginas(1);
+          setLoading(false);
+          return;
+        }
         setLoading(true);
         setErro(null);
 
@@ -435,8 +475,11 @@ export default function PropostasLista() {
                 ? filtros.tipo_negocio
                 : undefined,
 
-            corretor_ids:
-              filtros.corretor_ids.length
+            // Para escopo own, o corretor responsável é obrigatório.
+            // O filtro informado pela interface nunca amplia esse escopo.
+            corretor_ids: apenasProprias
+              ? [corretorLogadoId!]
+              : filtros.corretor_ids.length
                 ? filtros.corretor_ids
                 : undefined,
 
@@ -506,6 +549,9 @@ export default function PropostasLista() {
         }
       },
       [
+        podeVisualizar,
+        apenasProprias,
+        corretorLogadoId,
         buscaAplicada,
         filtros.status,
         filtros.tipo_negocio,
@@ -559,6 +605,7 @@ export default function PropostasLista() {
 
   const abrirModalNovaProposta =
     useCallback(() => {
+      if (!podeCriar) return;
       setClienteInicialModal(
         null
       );
@@ -570,7 +617,7 @@ export default function PropostasLista() {
       setModalNovaPropostaAberto(
         true
       );
-    }, []);
+    }, [podeCriar]);
 
   const metricasPagina =
     useMemo(() => {
@@ -758,6 +805,40 @@ export default function PropostasLista() {
       total
     );
 
+  if (!podeVisualizar) {
+    return (
+      <div className="min-h-full bg-slate-50 p-6 dark:bg-slate-950">
+        <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
+          <FileText size={36} className="mx-auto mb-4 text-blue-600" />
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Propostas</h1>
+          <p className="mt-2 text-sm text-slate-500">
+            {podeCriar
+              ? "Você pode adicionar propostas, mas não possui permissão para consultar a listagem."
+              : "Você não possui permissão para visualizar ou criar propostas."}
+          </p>
+          {podeCriar && (
+            <button
+              type="button"
+              onClick={abrirModalNovaProposta}
+              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              <Plus size={17} /> Nova Proposta
+            </button>
+          )}
+        </div>
+        {podeCriar && (
+          <ModalNovaProposta
+            open={modalNovaPropostaAberto}
+            clienteInicial={clienteInicialModal ?? null}
+            bloquearClienteInicial={bloquearClienteInicial}
+            onClose={fecharModalNovaProposta}
+            onCreated={handlePropostaCriada}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-full bg-slate-50 p-4 dark:bg-slate-950 sm:p-6">
       <div className="mx-auto max-w-[1600px]">
@@ -803,7 +884,7 @@ export default function PropostasLista() {
               Atualizar
             </button>
 
-            <button
+            {podeCriar && <button
               type="button"
               onClick={
                 abrirModalNovaProposta
@@ -815,7 +896,7 @@ export default function PropostasLista() {
               />
 
               Nova Proposta
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -1226,7 +1307,8 @@ export default function PropostasLista() {
                 Não existem propostas correspondentes aos filtros selecionados.
               </p>
 
-              {total === 0 &&
+              {podeCriar &&
+                total === 0 &&
                 !buscaAplicada &&
                 quantidadeFiltrosAtivos ===
                   0 && (

@@ -29,7 +29,7 @@ import type { EmitirContratoPayload } from '../types/propostas';
 type UsuarioPerfilMinimo = {
   id: string;
   nome: string | null;
-  tipo_usuario: 'CORRETORA' | 'CORRETOR';
+  tipo_usuario: 'CORRETORA' | 'CORRETOR' | 'ADMIN';
   corretora_id: string;
 };
 
@@ -64,6 +64,83 @@ type ContratoListaRow = Pick<
   | 'inicio_vigencia'
   | 'fim_vigencia'
 >;
+
+/**
+ * Verificação preventiva no cliente. A autorização definitiva deve existir
+ * nas policies RLS e nas RPCs executadas pelo Supabase.
+ * Não consultar a tabela de permissões diretamente para decidir acesso:
+ * a RPC usa auth.uid() e o tenant da sessão autenticada.
+ */
+type AcaoPermissaoProposta =
+  | 'create' | 'read' | 'update' | 'delete' | 'lose'
+  | 'reverse' | 'close' | 'issue' | 'financial'
+  | 'commissions' | 'renew';
+type EscopoProposta = 'none' | 'own' | 'tenant';
+
+async function escopoProposta(
+  perfil: UsuarioPerfilMinimo,
+  acao: AcaoPermissaoProposta,
+): Promise<EscopoProposta> {
+  if (perfil.tipo_usuario === 'CORRETORA' || perfil.tipo_usuario === 'ADMIN') {
+    return 'tenant';
+  }
+  const { data, error } = await supabase.rpc('crm_escopo_permissao', {
+    p_recurso: 'operacoes.propostas',
+    p_acao: acao,
+  });
+  if (error) throw error;
+  return data === 'own' || data === 'tenant' ? data : 'none';
+}
+
+async function exigirPermissaoProposta(
+  perfil: UsuarioPerfilMinimo,
+  acao: AcaoPermissaoProposta,
+  corretorResponsavelId?: string | null,
+): Promise<EscopoProposta> {
+  const escopo = await escopoProposta(perfil, acao);
+  if (escopo === 'none') {
+    throw new Error(`Sem permissão para ${acao} em Propostas.`);
+  }
+  if (escopo === 'own' && corretorResponsavelId !== undefined &&
+      corretorResponsavelId !== perfil.id) {
+    throw new Error('Esta operação está restrita às próprias propostas.');
+  }
+  return escopo;
+}
+
+async function obterPropostaAutorizada(
+  perfil: UsuarioPerfilMinimo,
+  propostaId: string,
+  acao: AcaoPermissaoProposta,
+): Promise<{ id: string; corretor_id: string; status: string; tipo_negocio: string }> {
+  const corretoraId = obterCorretoraId(perfil);
+  const { data, error } = await supabase
+    .from('crm_propostas')
+    .select('id, corretor_id, status, tipo_negocio')
+    .eq('id', propostaId)
+    .eq('corretora_id', corretoraId)
+    .single();
+  if (error) throw error;
+  if (!data) throw new Error('Proposta não encontrada.');
+  await exigirPermissaoProposta(perfil, acao, data.corretor_id);
+  return data;
+}
+
+async function obterPropostaDoItemAutorizada(
+  perfil: UsuarioPerfilMinimo,
+  itemId: string,
+  acao: 'update',
+): Promise<{ item_id: string; proposta_id: string }> {
+  const { data, error } = await supabase.from('crm_proposta_itens')
+    .select('id, proposta_id')
+    .eq('id', itemId)
+    .eq('corretora_id', obterCorretoraId(perfil))
+    .single();
+  if (error) throw error;
+  if (!data) throw new Error('Item não encontrado.');
+  await obterPropostaAutorizada(perfil, data.proposta_id, acao);
+  return { item_id: data.id, proposta_id: data.proposta_id };
+}
 
 function normalizarRelacao<T>(valor: T | T[] | null | undefined): T | null {
   if (Array.isArray(valor)) return valor[0] ?? null;
@@ -212,20 +289,10 @@ export async function listarCorretoresFiltroPropostas(): Promise<
   const perfil =
     await buscarPerfilAtual();
 
-  const corretoraId =
-    obterCorretoraId(perfil);
+  const corretoraId = obterCorretoraId(perfil);
+  const escopo = await exigirPermissaoProposta(perfil, 'read');
 
-  /*
-   * Corretor logado só pode visualizar
-   * as próprias propostas.
-   *
-   * Portanto não faz sentido oferecer
-   * outros responsáveis no filtro.
-   */
-  if (
-    perfil.tipo_usuario ===
-    'CORRETOR'
-  ) {
+  if (escopo === 'own') {
     return [
       {
         id: perfil.id,
@@ -284,8 +351,8 @@ export async function listarProdutosFiltroPropostas(): Promise<
   const perfil =
     await buscarPerfilAtual();
 
-  const corretoraId =
-    obterCorretoraId(perfil);
+  const corretoraId = obterCorretoraId(perfil);
+  await exigirPermissaoProposta(perfil, 'read');
 
   /*
    * Buscamos somente produtos que
@@ -372,8 +439,8 @@ export async function listarPropostas(
   const perfil =
     await buscarPerfilAtual();
 
-  const corretoraId =
-    obterCorretoraId(perfil);
+  const corretoraId = obterCorretoraId(perfil);
+  const escopoLeitura = await exigirPermissaoProposta(perfil, 'read');
 
   const pagina =
     Math.max(
@@ -724,14 +791,8 @@ export async function listarPropostas(
         );
 
 
-    /*
-     * CORRETOR nunca pode enxergar
-     * propostas de outro responsável.
-     */
-    if (
-      perfil.tipo_usuario ===
-      'CORRETOR'
-    ) {
+    /* Escopo own é obrigatório, independentemente dos filtros da tela. */
+    if (escopoLeitura === 'own') {
       query =
         query.eq(
           'corretor_id',
@@ -1354,7 +1415,7 @@ export async function listarPropostas(
   };
 }
 
-export async function buscarPropostaPorId(
+async function buscarPropostaPorIdInterna(
   propostaId: string,
 ): Promise<PropostaDetalhada> {
   const { data, error } = await supabase
@@ -1429,23 +1490,13 @@ export async function buscarPropostaPorId(
   };
 }
 
-export async function criarProposta(
+// Inserção compartilhada: a renovação exige "renew", não "create".
+// A função é privada e somente é chamada após validação da ação.
+async function inserirPropostaAutorizada(
   payload: CriarPropostaPayload,
+  perfil: UsuarioPerfilMinimo,
+  corretoraId: string,
 ): Promise<Proposta> {
-  const perfil = await buscarPerfilAtual();
-  const corretoraId = obterCorretoraId(perfil);
-
-  if (!!payload.crm_pessoa_id === !!payload.crm_empresa_id) {
-    throw new Error('Informe uma pessoa ou uma empresa para a proposta.');
-  }
-
-  if (
-    perfil.tipo_usuario === 'CORRETOR' &&
-    payload.corretor_id !== perfil.id
-  ) {
-    throw new Error('Corretor não pode criar proposta para outro responsável.');
-  }
-
   const { data, error } = await supabase
     .from('crm_propostas')
     .insert({
@@ -1472,11 +1523,41 @@ export async function criarProposta(
   return normalizarProposta(data as PropostaRow);
 }
 
+export async function buscarPropostaPorId(
+  propostaId: string,
+): Promise<PropostaDetalhada> {
+  const perfil = await buscarPerfilAtual();
+  await obterPropostaAutorizada(perfil, propostaId, 'read');
+  return buscarPropostaPorIdInterna(propostaId);
+}
+
+export async function criarProposta(
+  payload: CriarPropostaPayload,
+): Promise<Proposta> {
+  const perfil = await buscarPerfilAtual();
+  const corretoraId = obterCorretoraId(perfil);
+  await exigirPermissaoProposta(perfil, 'create', payload.corretor_id);
+
+  if (!!payload.crm_pessoa_id === !!payload.crm_empresa_id) {
+    throw new Error('Informe uma pessoa ou uma empresa para a proposta.');
+  }
+
+  if (
+    perfil.tipo_usuario === 'CORRETOR' &&
+    payload.corretor_id !== perfil.id
+  ) {
+    throw new Error('Corretor não pode criar proposta para outro responsável.');
+  }
+
+  return inserirPropostaAutorizada(payload, perfil, corretoraId);
+}
+
 export async function atualizarProposta(
   propostaId: string,
   payload: AtualizarPropostaPayload,
 ): Promise<Proposta> {
   const perfil = await buscarPerfilAtual();
+  await obterPropostaAutorizada(perfil, propostaId, 'update');
 
   const alteracoes: Record<string, unknown> = {
     atualizado_por_id: perfil.id,
@@ -1491,6 +1572,27 @@ export async function atualizarProposta(
     }
 
     alteracoes.corretor_id = payload.corretor_id;
+  }
+
+  if (payload.data_emissao !== undefined) {
+    // Não ampliar a edição de emissão para negócios novos.
+    const corretoraId = obterCorretoraId(perfil);
+    const { data: propostaAtual, error: consultaError } = await supabase
+      .from('crm_propostas')
+      .select('id, tipo_negocio, status, corretora_id')
+      .eq('id', propostaId)
+      .eq('corretora_id', corretoraId)
+      .single();
+
+    if (consultaError) throw consultaError;
+    if (propostaAtual.tipo_negocio !== 'RENOVACAO' ||
+        propostaAtual.status !== 'EM_NEGOCIACAO') {
+      throw new Error('A emissão só pode ser editada em renovações em negociação.');
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.data_emissao)) {
+      throw new Error('Informe uma data de emissão válida.');
+    }
+    alteracoes.data_emissao = payload.data_emissao;
   }
 
   if (payload.data_validade !== undefined) {
@@ -1610,6 +1712,7 @@ export async function adicionarItemProposta(
 ): Promise<PropostaItem> {
   const perfil = await buscarPerfilAtual();
   const corretoraId = obterCorretoraId(perfil);
+  await obterPropostaAutorizada(perfil, payload.proposta_id, 'update');
 
   if (payload.valor_premio < 0) {
     throw new Error(
@@ -1665,6 +1768,7 @@ export async function atualizarItemProposta(
   payload: AtualizarPropostaItemPayload,
 ): Promise<PropostaItem> {
   const perfil = await buscarPerfilAtual();
+  await obterPropostaDoItemAutorizada(perfil, itemId, 'update');
   const corretoraId = obterCorretoraId(perfil);
 
   const { data: itemAtual, error: itemAtualError } =
@@ -1761,6 +1865,8 @@ export async function atualizarItemProposta(
 }
 
 export async function excluirItemProposta(itemId: string): Promise<void> {
+  const perfil = await buscarPerfilAtual();
+  await obterPropostaDoItemAutorizada(perfil, itemId, 'update');
   const { error } = await supabase
     .from('crm_proposta_itens')
     .delete()
@@ -1772,6 +1878,8 @@ export async function excluirItemProposta(itemId: string): Promise<void> {
 export async function fecharProposta(
   payload: FecharPropostaPayload,
 ): Promise<ResultadoFechamentoProposta> {
+  const perfil = await buscarPerfilAtual();
+  await obterPropostaAutorizada(perfil, payload.proposta_id, 'close');
   if (!payload.itens_contratados.length) {
     throw new Error('Selecione pelo menos um item para fechar a proposta.');
   }
@@ -1821,6 +1929,7 @@ export async function buscarContratoPorId(
   if (!data) {
     throw new Error('Contrato não encontrado.');
   }
+  await obterPropostaAutorizada(perfil, data.proposta_id, 'read');
 
   return {
     ...(data as ContratoResumo),
@@ -1837,48 +1946,38 @@ export async function emitirContrato(
   }
 
   const numeroApolice = payload.numero_apolice.trim();
-
   if (!numeroApolice) {
     throw new Error('Informe o número da apólice.');
   }
-
   if (!payload.inicio_vigencia) {
     throw new Error('Informe o início da vigência.');
   }
-
   if (!payload.fim_vigencia) {
     throw new Error('Informe o fim da vigência.');
   }
-
-  if (
-    payload.fim_vigencia <
-    payload.inicio_vigencia
-  ) {
-    throw new Error(
-      'O fim da vigência não pode ser anterior ao início.',
-    );
+  if (payload.fim_vigencia < payload.inicio_vigencia) {
+    throw new Error('O fim da vigência não pode ser anterior ao início.');
   }
 
-  const { data, error } = await supabase
-    .from('crm_contratos')
-    .update({
-      numero_apolice: numeroApolice,
-      inicio_vigencia: payload.inicio_vigencia,
-      fim_vigencia: payload.fim_vigencia,
-      periodicidade: payload.periodicidade,
-      status: 'ATIVO',
-    })
-    .eq('id', payload.contrato_id)
-    .eq('status', 'AGUARDANDO_EMISSAO')
-    .select('*')
-    .single();
+  // A autorização definitiva (inclusive issue=tenant) acontece na RPC.
+  // Não consultar crm_contratos antes: a policy SELECT atual limita
+  // corretores aos próprios contratos e bloquearia o escopo tenant.
+  const { data, error } = await supabase.rpc('crm_emitir_contrato', {
+    p_contrato_id: payload.contrato_id,
+    p_numero_apolice: numeroApolice,
+    p_inicio_vigencia: payload.inicio_vigencia,
+    p_fim_vigencia: payload.fim_vigencia,
+    p_periodicidade: payload.periodicidade,
+  });
 
   if (error) throw error;
+  if (!data) throw new Error('A emissão não retornou o contrato.');
 
+  const contrato = data as ContratoResumo;
   return {
-    ...(data as ContratoResumo),
-    valor_aceito: numero(data.valor_aceito),
-    valor_atual: numero(data.valor_atual),
+    ...contrato,
+    valor_aceito: numero(contrato.valor_aceito),
+    valor_atual: numero(contrato.valor_atual),
   };
 }
 
@@ -1890,194 +1989,41 @@ export async function iniciarRenovacaoContrato(
   }
 
   if (!payload.corretor_id) {
-    throw new Error(
-      'Selecione o corretor responsável pela renovação.',
-    );
+    throw new Error('Selecione o corretor responsável pela renovação.');
   }
 
-  const perfil = await buscarPerfilAtual();
-  const corretoraId = obterCorretoraId(perfil);
-
-  // 1. Busca e valida o contrato de origem.
-  const { data: contrato, error: contratoError } = await supabase
-    .from('crm_contratos')
-    .select(`
-      id,
-      corretora_id,
-      proposta_id,
-      proposta_item_id,
-      status,
-      numero_apolice,
-      inicio_vigencia,
-      fim_vigencia,
-      valor_aceito,
-      valor_atual
-    `)
-    .eq('id', payload.contrato_id)
-    .eq('corretora_id', corretoraId)
-    .single();
-
-  if (contratoError) throw contratoError;
-
-  if (!contrato) {
-    throw new Error(
-      'Contrato de origem não encontrado.',
-    );
-  }
-
-  if (contrato.status !== 'ATIVO') {
-    throw new Error(
-      'Somente contratos ativos podem iniciar uma renovação.',
-    );
-  }
-
-  // 2. Busca a proposta que originou o contrato.
-  const { data: propostaOrigem, error: propostaOrigemError } =
-    await supabase
-      .from('crm_propostas')
-      .select(`
-        id,
-        corretora_id,
-        corretor_id,
-        crm_pessoa_id,
-        crm_empresa_id,
-        numero_proposta,
-        tipo_negocio,
-        status
-      `)
-      .eq('id', contrato.proposta_id)
-      .eq('corretora_id', corretoraId)
-      .single();
-
-  if (propostaOrigemError) {
-    throw propostaOrigemError;
-  }
-
-  if (!propostaOrigem) {
-    throw new Error(
-      'A proposta de origem do contrato não foi encontrada.',
-    );
-  }
-
-  if (
-    !propostaOrigem.crm_pessoa_id &&
-    !propostaOrigem.crm_empresa_id
-  ) {
-    throw new Error(
-      'O contrato de origem não possui cliente vinculado.',
-    );
-  }
-
-  if (
-    propostaOrigem.crm_pessoa_id &&
-    propostaOrigem.crm_empresa_id
-  ) {
-    throw new Error(
-      'A proposta de origem possui vínculo de cliente inválido.',
-    );
-  }
-
-  // 3. Valida se o corretor escolhido pertence à corretora.
-  const { data: corretor, error: corretorError } = await supabase
-    .from('usuarios_perfis')
-    .select(`
-      id,
-      nome,
-      tipo_usuario,
-      corretora_id,
-      ativo
-    `)
-    .eq('id', payload.corretor_id)
-    .eq('ativo', true)
-    .maybeSingle();
-
-  if (corretorError) throw corretorError;
-
-  if (!corretor) {
-    throw new Error(
-      'Corretor responsável não encontrado ou inativo.',
-    );
-  }
-
-  const corretorPertenceCorretora =
-    corretor.id === corretoraId ||
-    corretor.corretora_id === corretoraId;
-
-  if (!corretorPertenceCorretora) {
-    throw new Error(
-      'O responsável selecionado não pertence a esta corretora.',
-    );
-  }
-
-  // 4. Impede outra renovação aberta para o mesmo contrato.
-  const { data: renovacaoExistente, error: renovacaoExistenteError } =
-    await supabase
-      .from('crm_propostas')
-      .select('id')
-      .eq('corretora_id', corretoraId)
-      .eq(
-        'contrato_origem_renovacao_id',
-        contrato.id,
-      )
-      .eq('tipo_negocio', 'RENOVACAO')
-      .eq('status', 'EM_NEGOCIACAO')
-      .maybeSingle();
-
-  if (renovacaoExistenteError) {
-    throw renovacaoExistenteError;
-  }
-
-  if (renovacaoExistente) {
-    const proposta = await buscarPropostaPorId(
-      renovacaoExistente.id,
-    );
-
-    return {
-      proposta,
-      renovacao_existente: true,
-    };
-  }
-
-  // 5. Cria a nova proposta de renovação.
-//
-// Não copiamos os itens antigos.
-// As novas cotações serão cadastradas normalmente
-// na nova proposta.
-const novaProposta = await criarProposta({
-  corretor_id: payload.corretor_id,
-  crm_pessoa_id:
-    propostaOrigem.crm_pessoa_id ?? null,
-  crm_empresa_id:
-    propostaOrigem.crm_empresa_id ?? null,
-  tipo_negocio: 'RENOVACAO',
-  data_emissao: new Date()
-    .toISOString()
-    .slice(0, 10),
-  data_validade: null,
-  observacoes:
-    contrato.numero_apolice
-      ? `Renovação da apólice ${contrato.numero_apolice}.`
-      : 'Renovação de contrato.',
-  contrato_origem_renovacao_id:
-    contrato.id,
-});
-
-if (!novaProposta) {
-  throw new Error(
-    'Não foi possível criar a proposta de renovação.',
+  // A autorização, a validação do contrato e a criação da proposta
+  // são executadas atomicamente pela RPC no banco.
+  // A permissão "renew" é independente de "create".
+  const { data, error } = await supabase.rpc(
+    'crm_iniciar_renovacao_contrato',
+    {
+      p_contrato_id: payload.contrato_id,
+      p_corretor_id: payload.corretor_id,
+    },
   );
-}
 
-// 6. Retorna a proposta já no formato utilizado pelo frontend.
-const proposta = await buscarPropostaPorId(
-  novaProposta.id,
-);
+  if (error) throw error;
 
-return {
-  proposta,
-  renovacao_existente: false,
-};
+  const resultado = data as {
+    proposta_id?: string;
+    renovacao_existente?: boolean;
+  } | null;
 
+  if (!resultado?.proposta_id) {
+    throw new Error('A renovação não retornou uma proposta válida.');
+  }
+
+  // Preserva a assinatura e o formato de retorno anteriores.
+  // Observação: este SELECT continua sujeito às policies RLS de
+  // crm_propostas e tabelas relacionadas. O acesso "tenant" a
+  // propostas de terceiros requer ajuste posterior dessas policies.
+  const proposta = await buscarPropostaPorIdInterna(resultado.proposta_id);
+
+  return {
+    proposta,
+    renovacao_existente: resultado.renovacao_existente === true,
+  };
 }
 
 export async function buscarProdutoRenovacaoOrigem(
@@ -2110,6 +2056,7 @@ export async function buscarProdutoRenovacaoOrigem(
   if (!proposta) {
     throw new Error("Proposta não encontrada.");
   }
+  await obterPropostaAutorizada(perfil, propostaId, 'read');
 
   // Negócio NOVO não possui produto fixo de renovação.
   if (proposta.tipo_negocio !== "RENOVACAO") {
@@ -2181,6 +2128,20 @@ export async function buscarProdutoRenovacaoOrigem(
 export async function executarAcaoProposta(
   payload: ExecutarAcaoPropostaPayload,
 ): Promise<ResultadoAcaoProposta> {
+  const perfil = await buscarPerfilAtual();
+  if (!['EXCLUIR', 'MARCAR_PERDIDA', 'REABRIR', 'REVERTER_VENDA'].includes(payload.acao)) {
+    throw new Error('Ação de proposta não disponível.');
+  }
+  const acaoPermissao: AcaoPermissaoProposta =
+    payload.acao === 'EXCLUIR' ? 'delete'
+    : payload.acao === 'MARCAR_PERDIDA' ? 'lose'
+    : payload.acao === 'REVERTER_VENDA' ? 'reverse'
+    : payload.acao === 'REABRIR' ? 'lose'
+    : 'update';
+  await obterPropostaAutorizada(perfil, payload.proposta_id, acaoPermissao);
+  if (payload.acao === 'REABRIR') {
+    await obterPropostaAutorizada(perfil, payload.proposta_id, 'update');
+  }
   const { data, error } = await supabase.rpc(
     'crm_executar_acao_proposta',
     {

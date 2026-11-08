@@ -51,6 +51,7 @@ import ModalEmitirContrato from "../components/ModalEmitirContrato";
 import ModalIniciarRenovacao from "../components/ModalIniciarRenovacao";
 import ModalAcoesProposta from "../components/ModalAcoesProposta";
 import { useAuth } from "../../../../../auth/AuthContext";
+import { usePermissoes } from "../../../hooks/usePermissoes";
 
 import FinanceiroContratoCard from "../../financeiro/components/FinanceiroContratoCard";
 import ModalLancamentoFinanceiro from "../../financeiro/components/ModalLancamentoFinanceiro";
@@ -91,6 +92,7 @@ import ComissaoContratoCard from "../../comissoes/components/ComissaoContratoCar
 import { ModalLancamentoComissao } from "../../comissoes/components/ModalLancamentoComissao";
 
 interface EdicaoCabecalhoState {
+  data_emissao: string;
   data_validade: string;
   observacoes: string;
 }
@@ -179,10 +181,30 @@ function ordenarItens(
   );
 }
 
+// Normaliza os valores retornados pelo hook para o contrato do serviço.
+function normalizarEscopoAcao(valor: string): "none" | "own" | "tenant" {
+  return valor === "own" || valor === "tenant" ? valor : "none";
+}
+
 export default function PropostaDetalhes() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { userProfile } = useAuth();
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+
+  // As permissões são independentes das permissões dos módulos Financeiro e Comissões.
+  // Escopo own = corretor responsável da proposta, não necessariamente quem a criou.
+  const podeExecutarAcao = useCallback(
+    (acao: string, propostaAtual: PropostaDetalhada | null): boolean => {
+      if (!userProfile || !propostaAtual || carregandoPermissoes) return false;
+      const escopoAcao = escopo("operacoes.propostas", acao);
+      if (escopoAcao === "tenant") return true;
+      return escopoAcao === "own" && propostaAtual.corretor_id === userProfile.id;
+    },
+    [escopo, carregandoPermissoes, userProfile],
+  );
+
+  const escopoLeitura = escopo("operacoes.propostas", "read");
 
   const [proposta, setProposta] =
     useState<PropostaDetalhada | null>(null);
@@ -252,6 +274,7 @@ export default function PropostaDetalhes() {
 
   const [cabecalho, setCabecalho] =
     useState<EdicaoCabecalhoState>({
+      data_emissao: "",
       data_validade: "",
       observacoes: "",
     });
@@ -273,6 +296,28 @@ export default function PropostaDetalhes() {
 
   const [loadingProdutoRenovacao, setLoadingProdutoRenovacao] =
     useState(false);
+
+  const podeEditar =
+    proposta?.status === "EM_NEGOCIACAO" && podeExecutarAcao("update", proposta);
+  const podeFecharVenda =
+    proposta?.status === "EM_NEGOCIACAO" && podeExecutarAcao("close", proposta);
+  const podeEmitirApolice = podeExecutarAcao("issue", proposta);
+  const podeRenovar = podeExecutarAcao("renew", proposta);
+  const podeLancarFinanceiro = podeExecutarAcao("financial", proposta);
+  const podeLancarComissoes = podeExecutarAcao("commissions", proposta);
+
+  const permissoesAcoes = {
+    delete: podeExecutarAcao("delete", proposta),
+    lose: podeExecutarAcao("lose", proposta),
+    reverse: podeExecutarAcao("reverse", proposta),
+    update: podeExecutarAcao("update", proposta),
+  };
+  // Reabrir uma proposta perdida requer update + lose, além das regras legadas.
+  const podeAbrirAcoes =
+    permissoesAcoes.delete ||
+    permissoesAcoes.lose ||
+    permissoesAcoes.reverse;
+
 
   const carregarProdutoRenovacao = useCallback(
     async (propostaAtual: PropostaDetalhada) => {
@@ -437,12 +482,27 @@ export default function PropostaDetalhes() {
       return;
     }
 
+    if (carregandoPermissoes) return;
+
+    if (escopoLeitura === "none") {
+      setProposta(null);
+      setErro("Você não possui permissão para abrir o detalhamento de propostas.");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setErro(null);
 
     try {
       const resultado =
         await buscarPropostaPorId(id);
+
+      if (!podeExecutarAcao("read", resultado)) {
+        setProposta(null);
+        setErro("Você não possui permissão para visualizar esta proposta.");
+        return;
+      }
 
       const propostaOrdenada: PropostaDetalhada = {
         ...resultado,
@@ -468,6 +528,7 @@ export default function PropostaDetalhes() {
       );
 
       setCabecalho({
+        data_emissao: resultado.data_emissao ?? "",
         data_validade:
           resultado.data_validade ?? "",
         observacoes:
@@ -496,6 +557,9 @@ export default function PropostaDetalhes() {
     carregarProdutoRenovacao,
     carregarFinanceiroContrato,
     carregarComissaoContrato,
+    carregandoPermissoes,
+    escopoLeitura,
+    podeExecutarAcao,
   ]);
 
   const handleFechamentoConcluido = useCallback(
@@ -545,6 +609,8 @@ export default function PropostaDetalhes() {
 
   const abrirEmissaoContrato = useCallback(
     async (contrato: ContratoResumo) => {
+      if (!podeEmitirApolice || !userProfile ||
+        (userProfile.tipo_usuario === "CORRETOR" && contrato.corretor_id !== userProfile.id)) return;
       setContratoAnteriorEmissao(null);
       setContratoParaEmitir(contrato);
 
@@ -578,7 +644,7 @@ export default function PropostaDetalhes() {
         setCarregandoContratoAnterior(false);
       }
     },
-    []
+    [podeEmitirApolice, userProfile]
   );
 
   const handleContratoEmitido = useCallback(
@@ -593,9 +659,6 @@ export default function PropostaDetalhes() {
   useEffect(() => {
     void carregarProposta();
   }, [carregarProposta]);
-
-  const podeEditar =
-  proposta?.status === "EM_NEGOCIACAO";
 
     const contextoAcoesProposta = useMemo(() => {
     if (!userProfile) {
@@ -613,8 +676,16 @@ export default function PropostaDetalhes() {
     return {
       tipoUsuario: userProfile.tipo_usuario,
       usuarioId: userProfile.id,
+      // Mesmo escopo efetivo utilizado pelos botões do detalhamento.
+      // O serviço recebe as quatro chaves e nega por padrão as ausentes.
+      escopos: {
+        delete: carregandoPermissoes ? "none" as const : normalizarEscopoAcao(escopo("operacoes.propostas", "delete")),
+        lose: carregandoPermissoes ? "none" as const : normalizarEscopoAcao(escopo("operacoes.propostas", "lose")),
+        update: carregandoPermissoes ? "none" as const : normalizarEscopoAcao(escopo("operacoes.propostas", "update")),
+        reverse: carregandoPermissoes ? "none" as const : normalizarEscopoAcao(escopo("operacoes.propostas", "reverse")),
+      },
     };
-  }, [userProfile]);
+  }, [userProfile, escopo, carregandoPermissoes]);
 
   const contextoFinanceiro = useMemo<ContextoPermissaoFinanceiro | null>(() => {
   if (!userProfile) {
@@ -673,7 +744,7 @@ const usuarioPodeOperarFinanceiro =
 
 const podeOperarContrato = useCallback(
   (contrato: ContratoResumo): boolean => {
-    if (!userProfile) return false;
+    if (!userProfile || !proposta) return false;
 
     if (userProfile.tipo_usuario === "CORRETORA") {
       return true;
@@ -685,7 +756,7 @@ const podeOperarContrato = useCallback(
 
     return false;
   },
-  [userProfile],
+  [userProfile, proposta],
 );
 
 useEffect(() => {
@@ -806,10 +877,18 @@ useEffect(() => {
       return;
     }
 
+    const emissaoEfetiva = proposta.tipo_negocio === "RENOVACAO"
+      ? cabecalho.data_emissao
+      : proposta.data_emissao;
+
+    if (!emissaoEfetiva) {
+      setErro("Informe a data de emissão.");
+      return;
+    }
+
     if (
       cabecalho.data_validade &&
-      cabecalho.data_validade <
-        proposta.data_emissao
+      cabecalho.data_validade < emissaoEfetiva
     ) {
       setErro(
         "A validade não pode ser anterior à emissão da proposta."
@@ -824,6 +903,9 @@ useEffect(() => {
       await atualizarProposta(
         proposta.id,
         {
+          ...(proposta.tipo_negocio === "RENOVACAO"
+            ? { data_emissao: cabecalho.data_emissao }
+            : {}),
           data_validade:
             cabecalho.data_validade || null,
           observacoes:
@@ -986,6 +1068,7 @@ useEffect(() => {
     if (!proposta) return;
 
     setCabecalho({
+      data_emissao: proposta.data_emissao ?? "",
       data_validade:
         proposta.data_validade ?? "",
       observacoes:
@@ -1010,6 +1093,9 @@ useEffect(() => {
   ) {
     if (
       !contratoComissao ||
+      !podeLancarComissoes ||
+      !usuarioPodeConfigurarComissao ||
+      !podeOperarContrato(contratoComissao) ||
       salvandoComissao
     ) {
       return;
@@ -1047,7 +1133,7 @@ useEffect(() => {
     }
   }
 
-  if (loading) {
+  if (loading || carregandoPermissoes) {
     return (
       <div className="flex min-h-full items-center justify-center bg-slate-50 p-6 dark:bg-slate-950">
         <div className="text-center">
@@ -1086,7 +1172,7 @@ useEffect(() => {
 
               <div>
                 <p className="font-semibold">
-                  Proposta não encontrada
+                  Acesso à proposta indisponível
                 </p>
 
                 <p className="mt-1 text-sm">
@@ -1158,7 +1244,7 @@ useEffect(() => {
               Atualizar
             </button>
 
-            {contextoAcoesProposta && (
+            {contextoAcoesProposta && podeAbrirAcoes && (
               <button
                 type="button"
                 onClick={() =>
@@ -1171,7 +1257,7 @@ useEffect(() => {
               </button>
             )}
 
-            {podeEditar && (
+            {podeFecharVenda && (
               <button
                 type="button"
                 onClick={() =>
@@ -1749,6 +1835,29 @@ useEffect(() => {
               <div className="p-5">
                 {editandoCabecalho ? (
                   <div className="space-y-4">
+                    {proposta.tipo_negocio === "RENOVACAO" && (
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Data de emissão
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={cabecalho.data_emissao}
+                          disabled={salvandoCabecalho}
+                          onChange={(event) =>
+                            setCabecalho((atual) => ({
+                              ...atual,
+                              data_emissao: event.target.value,
+                            }))
+                          }
+                          className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Na renovação, a data da venda será igual à emissão informada.
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Validade
@@ -1760,7 +1869,9 @@ useEffect(() => {
                           cabecalho.data_validade
                         }
                         min={
-                          proposta.data_emissao
+                          proposta.tipo_negocio === "RENOVACAO"
+                            ? cabecalho.data_emissao
+                            : proposta.data_emissao
                         }
                         onChange={(event) =>
                           setCabecalho(
@@ -2025,8 +2136,9 @@ useEffect(() => {
                               : contrato.status}
                           </span>
 
-                          {contrato.status ===
-                            "AGUARDANDO_EMISSAO" && (
+                          {podeEmitirApolice &&
+                            podeOperarContrato(contrato) &&
+                            contrato.status === "AGUARDANDO_EMISSAO" && (
                             <button
                               type="button"
                               onClick={() =>
@@ -2041,7 +2153,9 @@ useEffect(() => {
                             </button>
                           )}
 
-                          {contrato.status === "ATIVO" && (
+                          {podeRenovar &&
+                            podeOperarContrato(contrato) &&
+                            contrato.status === "ATIVO" && (
                             <button
                               type="button"
                               onClick={() =>
@@ -2117,10 +2231,14 @@ useEffect(() => {
                                 financeirosPorContrato[contrato.id] ?? null
                               }
                               podeOperar={
+                                podeLancarFinanceiro &&
                                 usuarioPodeOperarFinanceiro &&
                                 podeOperarContrato(contrato)
                               }
                               onLancarFinanceiro={() =>
+                                podeLancarFinanceiro &&
+                                usuarioPodeOperarFinanceiro &&
+                                podeOperarContrato(contrato) &&
                                 setContratoFinanceiro(contrato)
                               }
                               onVerFinanceiro={() =>
@@ -2141,10 +2259,14 @@ useEffect(() => {
                                 minhasComissoesPorContrato[contrato.id] ?? null
                               }
                               podeOperar={
+                                podeLancarComissoes &&
                                 usuarioPodeConfigurarComissao &&
                                 podeOperarContrato(contrato)
                               }
                               onConfigurarComissao={() =>
+                                podeLancarComissoes &&
+                                usuarioPodeConfigurarComissao &&
+                                podeOperarContrato(contrato) &&
                                 setContratoComissao(contrato)
                               }
                               onVerComissao={() =>
@@ -2193,7 +2315,7 @@ useEffect(() => {
 
 
       <ModalFecharProposta
-        open={modalFechamentoAberto}
+        open={modalFechamentoAberto && Boolean(podeFecharVenda)}
         proposta={proposta}
         onClose={() =>
           setModalFechamentoAberto(false)
@@ -2206,6 +2328,7 @@ useEffect(() => {
       <ModalEmitirContrato
         open={
           Boolean(contratoParaEmitir) &&
+          podeEmitirApolice &&
           !carregandoContratoAnterior
         }
         contrato={contratoParaEmitir}
@@ -2221,7 +2344,7 @@ useEffect(() => {
       />
 
       <ModalIniciarRenovacao
-        open={Boolean(contratoParaRenovar)}
+        open={Boolean(contratoParaRenovar) && podeRenovar}
         contrato={contratoParaRenovar}
         cliente={proposta?.cliente ?? null}
         item={itemContratoParaRenovar}
@@ -2234,11 +2357,12 @@ useEffect(() => {
         onSuccess={handleRenovacaoIniciada}
       />
 
-      {contextoAcoesProposta && (
+      {contextoAcoesProposta && podeAbrirAcoes && (
         <ModalAcoesProposta
-          open={modalAcoesAberto}
+          open={modalAcoesAberto && podeAbrirAcoes}
           proposta={proposta}
           contexto={contextoAcoesProposta}
+          permissoes={permissoesAcoes}
           onClose={() =>
             setModalAcoesAberto(false)
           }
@@ -2251,7 +2375,7 @@ useEffect(() => {
         />
       )}
 
-      {contratoFinanceiro && (
+      {contratoFinanceiro && podeLancarFinanceiro && usuarioPodeOperarFinanceiro && podeOperarContrato(contratoFinanceiro) && (
         <ModalLancamentoFinanceiro
           open={Boolean(contratoFinanceiro)}
           contratoId={contratoFinanceiro.id}
@@ -2269,7 +2393,7 @@ useEffect(() => {
         />
       )}
 
-      {contratoComissao && (
+      {contratoComissao && podeLancarComissoes && usuarioPodeConfigurarComissao && podeOperarContrato(contratoComissao) && (
       <ModalLancamentoComissao
         aberto={Boolean(contratoComissao)}
         contratoId={contratoComissao.id}

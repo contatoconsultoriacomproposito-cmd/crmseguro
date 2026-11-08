@@ -624,6 +624,10 @@ export interface AtualizarPropostaPayload {
   corretor_id?:
     string;
 
+  // Permitido para renovação ainda em negociação.
+  data_emissao?:
+    string;
+
   data_validade?:
     | string
     | null;

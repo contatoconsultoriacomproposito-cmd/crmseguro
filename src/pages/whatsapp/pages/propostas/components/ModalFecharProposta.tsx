@@ -143,7 +143,11 @@ export default function ModalFecharProposta({
       criarEstadoItens(itensPendentes)
     );
 
-    setDataVenda(hojeLocal());
+    setDataVenda(
+      proposta.tipo_negocio === "RENOVACAO"
+        ? proposta.data_emissao
+        : hojeLocal()
+    );
     setErro(null);
     setSalvando(false);
   }, [open, itensPendentes]);
@@ -295,8 +299,8 @@ export default function ModalFecharProposta({
     }
 
     if (
-      dataVenda <
-      proposta.data_emissao
+      proposta.tipo_negocio !== "RENOVACAO" &&
+      dataVenda < proposta.data_emissao
     ) {
       return "A data da venda não pode ser anterior à emissão da proposta.";
     }
@@ -645,10 +649,8 @@ export default function ModalFecharProposta({
                 <input
                   type="date"
                   value={dataVenda}
-                  min={
-                    proposta.data_emissao
-                  }
-                  disabled={salvando}
+                  min={proposta.tipo_negocio === "RENOVACAO" ? undefined : proposta.data_emissao}
+                  disabled={salvando || proposta.tipo_negocio === "RENOVACAO"}
                   onChange={(event) => {
                     setDataVenda(
                       event.target.value
@@ -658,6 +660,12 @@ export default function ModalFecharProposta({
                   }}
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 />
+                {proposta.tipo_negocio === "RENOVACAO" && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Na renovação, a venda utiliza a data de emissão da proposta.
+                    Para alterá-la, edite a emissão antes do fechamento.
+                  </p>
+                )}
               </div>
 
               <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">

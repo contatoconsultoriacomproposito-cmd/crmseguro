@@ -34,9 +34,18 @@ interface ModalAcoesPropostaProps {
   open: boolean;
   proposta: PropostaDetalhada;
   contexto: ContextoAcoesProposta;
+  permissoes: PermissoesAcoesProposta;
   onClose: () => void;
   onUpdated: () => void | Promise<void>;
   onDeleted: () => void | Promise<void>;
+}
+
+/** Autorizações já calculadas para a proposta específica no componente pai. */
+export interface PermissoesAcoesProposta {
+  delete: boolean;
+  lose: boolean;
+  reverse: boolean;
+  update: boolean;
 }
 
 type EtapaModal =
@@ -214,6 +223,7 @@ export function ModalAcoesProposta({
   open,
   proposta,
   contexto,
+  permissoes,
   onClose,
   onUpdated,
   onDeleted,
@@ -247,20 +257,26 @@ export function ModalAcoesProposta({
     [proposta, contexto],
   );
 
-  const acoesPermitidas = useMemo(
-    () =>
-      acoes.filter(
-        acao => acao.permitido,
-      ),
-    [acoes],
+  // Primeiro respeitamos as regras de negócio existentes; em seguida,
+  // a permissão granular. A autorização deve passar nas duas verificações.
+  const possuiPermissao = (acao: AcaoProposta): boolean => {
+    switch (acao) {
+      case 'EXCLUIR': return permissoes.delete;
+      case 'MARCAR_PERDIDA': return permissoes.lose;
+      // Reabrir não tem chave própria: exige editar + gerenciar a perda.
+      case 'REABRIR': return permissoes.update && permissoes.lose;
+      case 'REVERTER_VENDA': return permissoes.reverse;
+      // Ainda não existe operação implementada nem autorização própria.
+      case 'CANCELAR_CONTRATO': return false;
+    }
+  };
+
+  const acoesPermitidas = acoes.filter(
+    acao => acao.permitido && possuiPermissao(acao.acao),
   );
 
   const cancelarContrato =
-    acoes.find(
-      acao =>
-        acao.acao ===
-        'CANCELAR_CONTRATO',
-    );
+    acoes.find(acao => acao.acao === 'CANCELAR_CONTRATO');
 
   const contratoResumo =
     obterContratoResumo(proposta);
@@ -271,7 +287,7 @@ export function ModalAcoesProposta({
   const selecionarAcao = (
     acao: AcaoPropostaDisponivel,
   ) => {
-    if (!acao.permitido) return;
+    if (!acao.permitido || !possuiPermissao(acao.acao)) return;
 
     setAcaoSelecionada(acao.acao);
     setMotivoPerda('');
@@ -296,10 +312,14 @@ export function ModalAcoesProposta({
   };
 
   const executarAcao = async () => {
-    if (
-      !acaoSelecionada ||
-      executando
-    ) {
+    if (!acaoSelecionada || executando || !open) return;
+
+    // Revalidação no momento do clique de confirmação, evitando ações
+    // que perderam a autorização durante a navegação entre etapas.
+    const acaoAtual = acoes.find(item => item.acao === acaoSelecionada);
+    if (!acaoAtual?.permitido || !possuiPermissao(acaoSelecionada)) {
+      toast.error('Você não possui permissão para esta ação.');
+      voltarParaAcoes();
       return;
     }
 

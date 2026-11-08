@@ -15,6 +15,8 @@ export type AcaoProposta =
   | 'REVERTER_VENDA'
   | 'CANCELAR_CONTRATO';
 
+export type EscopoAcaoProposta = 'none' | 'own' | 'tenant';
+
 export interface AcaoPropostaDisponivel {
   acao: AcaoProposta;
   permitido: boolean;
@@ -24,6 +26,14 @@ export interface AcaoPropostaDisponivel {
 export interface ContextoAcoesProposta {
   tipoUsuario: TipoUsuarioAcaoProposta;
   usuarioId: string;
+  /**
+   * Escopos efetivos da matriz operacoes.propostas, carregados pelo chamador.
+   * Opcional durante a migração: quando ausente, permanece a regra legada
+   * (CORRETORA/ADMIN na corretora; CORRETOR somente responsável).
+   *
+   * REABRIR exige simultaneamente update e lose.
+   */
+  escopos?: Partial<Record<'delete' | 'lose' | 'update' | 'reverse', EscopoAcaoProposta>>;
 }
 
 function criarAcao(
@@ -34,8 +44,7 @@ function criarAcao(
   return {
     acao,
     permitido,
-    motivoBloqueio:
-      permitido ? null : motivoBloqueio,
+    motivoBloqueio: permitido ? null : motivoBloqueio,
   };
 }
 
@@ -43,29 +52,18 @@ function possuiContratoComStatus(
   proposta: PropostaDetalhada,
   status: StatusContrato,
 ): boolean {
-  return proposta.contratos.some(
-    contrato => contrato.status === status,
-  );
+  return proposta.contratos.some(contrato => contrato.status === status);
 }
 
-function possuiQualquerContrato(
-  proposta: PropostaDetalhada,
-): boolean {
+function possuiQualquerContrato(proposta: PropostaDetalhada): boolean {
   return proposta.contratos.length > 0;
 }
 
-function possuiContratoAguardandoEmissao(
-  proposta: PropostaDetalhada,
-): boolean {
-  return possuiContratoComStatus(
-    proposta,
-    'AGUARDANDO_EMISSAO',
-  );
+function possuiContratoAguardandoEmissao(proposta: PropostaDetalhada): boolean {
+  return possuiContratoComStatus(proposta, 'AGUARDANDO_EMISSAO');
 }
 
-function possuiContratoEmitido(
-  proposta: PropostaDetalhada,
-): boolean {
+function possuiContratoEmitido(proposta: PropostaDetalhada): boolean {
   return proposta.contratos.some(
     contrato =>
       contrato.status === 'ATIVO' ||
@@ -75,147 +73,103 @@ function possuiContratoEmitido(
   );
 }
 
-function usuarioPodeGerenciarProposta(
+function escopoPermite(
+  escopo: EscopoAcaoProposta | undefined,
   proposta: PropostaDetalhada,
-  contexto: ContextoAcoesProposta,
+  usuarioId: string,
 ): boolean {
-  if (
-    contexto.tipoUsuario === 'CORRETORA' ||
-    contexto.tipoUsuario === 'ADMIN'
-  ) {
-    return true;
-  }
-
-  return proposta.corretor_id === contexto.usuarioId;
+  if (escopo === 'tenant') return true;
+  if (escopo === 'own') return proposta.corretor_id === usuarioId;
+  return false;
 }
 
-function obterMotivoSemPermissao(
+function usuarioPodeExecutar(
+  proposta: PropostaDetalhada,
   contexto: ContextoAcoesProposta,
-): string {
-  if (contexto.tipoUsuario === 'CORRETOR') {
-    return 'Esta proposta pertence a outro corretor.';
+  acao: AcaoProposta,
+): boolean {
+  if (acao === 'CANCELAR_CONTRATO') {
+    // Operação ainda não implementada: nunca autorizar por esta matriz.
+    return false;
   }
 
-  return 'Você não possui permissão para realizar esta ação.';
+  // Durante a migração, consumidores que ainda não fornecem escopos seguem
+  // o comportamento legado. Uma vez fornecido o objeto, a ausência de chave
+  // significa "none" (negação por padrão), inclusive para administradores.
+  if (!contexto.escopos) {
+    return contexto.tipoUsuario === 'CORRETORA' ||
+      contexto.tipoUsuario === 'ADMIN' ||
+      proposta.corretor_id === contexto.usuarioId;
+  }
+
+  if (acao === 'REABRIR') {
+    return escopoPermite(contexto.escopos.update, proposta, contexto.usuarioId) &&
+      escopoPermite(contexto.escopos.lose, proposta, contexto.usuarioId);
+  }
+
+  const chave: 'delete' | 'lose' | 'reverse' =
+    acao === 'EXCLUIR' ? 'delete' :
+    acao === 'MARCAR_PERDIDA' ? 'lose' : 'reverse';
+
+  return escopoPermite(contexto.escopos[chave], proposta, contexto.usuarioId);
+}
+
+function motivoSemPermissao(): string {
+  return 'Você não possui permissão para esta ação nesta proposta.';
 }
 
 export function obterAcoesProposta(
   proposta: PropostaDetalhada,
   contexto: ContextoAcoesProposta,
 ): AcaoPropostaDisponivel[] {
-  const podeGerenciar =
-    usuarioPodeGerenciarProposta(
-      proposta,
-      contexto,
-    );
+  const possuiContrato = possuiQualquerContrato(proposta);
+  const aguardandoEmissao = possuiContratoAguardandoEmissao(proposta);
+  const contratoEmitido = possuiContratoEmitido(proposta);
 
-  const motivoSemPermissao =
-    obterMotivoSemPermissao(contexto);
+  const podeExcluir = usuarioPodeExecutar(proposta, contexto, 'EXCLUIR');
+  const podePerder = usuarioPodeExecutar(proposta, contexto, 'MARCAR_PERDIDA');
+  const podeReabrir = usuarioPodeExecutar(proposta, contexto, 'REABRIR');
+  const podeReverter = usuarioPodeExecutar(proposta, contexto, 'REVERTER_VENDA');
 
-  const possuiContrato =
-    possuiQualquerContrato(proposta);
-
-  const aguardandoEmissao =
-    possuiContratoAguardandoEmissao(
-      proposta,
-    );
-
-  const contratoEmitido =
-    possuiContratoEmitido(proposta);
-
-  const somenteCorretora =
-    contexto.tipoUsuario === 'CORRETORA';
-
-  const excluir =
-    proposta.status === 'EM_NEGOCIACAO' &&
-    !possuiContrato &&
-    podeGerenciar;
-
-  const marcarPerdida =
-    proposta.status === 'EM_NEGOCIACAO' &&
-    !possuiContrato &&
-    podeGerenciar;
-
-  const reabrir =
-    proposta.status === 'PERDIDA' &&
-    !possuiContrato &&
-    podeGerenciar;
-
-  const reverterVenda =
-    proposta.status === 'VENDIDA' &&
-    possuiContrato &&
-    aguardandoEmissao &&
-    !contratoEmitido &&
-    podeGerenciar;
-
-  const cancelarContrato =
-    proposta.status === 'VENDIDA' &&
-    contratoEmitido &&
-    somenteCorretora;
+  const excluir = proposta.status === 'EM_NEGOCIACAO' && !possuiContrato && podeExcluir;
+  const marcarPerdida = proposta.status === 'EM_NEGOCIACAO' && !possuiContrato && podePerder;
+  const reabrir = proposta.status === 'PERDIDA' && !possuiContrato && podeReabrir;
+  const reverterVenda = proposta.status === 'VENDIDA' &&
+    possuiContrato && aguardandoEmissao && !contratoEmitido && podeReverter;
 
   return [
     criarAcao(
-      'EXCLUIR',
-      excluir,
-      !podeGerenciar
-        ? motivoSemPermissao
-        : proposta.status !==
-            'EM_NEGOCIACAO'
-          ? 'Somente propostas em negociação podem ser excluídas.'
-          : possuiContrato
-            ? 'Esta proposta possui contrato vinculado e não pode ser excluída.'
-            : 'A proposta não pode ser excluída.',
+      'EXCLUIR', excluir,
+      !podeExcluir ? motivoSemPermissao() :
+      proposta.status !== 'EM_NEGOCIACAO' ? 'Somente propostas em negociação podem ser excluídas.' :
+      possuiContrato ? 'Esta proposta possui contrato vinculado e não pode ser excluída.' :
+      'A proposta não pode ser excluída.',
     ),
-
     criarAcao(
-      'MARCAR_PERDIDA',
-      marcarPerdida,
-      !podeGerenciar
-        ? motivoSemPermissao
-        : proposta.status !==
-            'EM_NEGOCIACAO'
-          ? 'Somente propostas em negociação podem ser marcadas como perdidas.'
-          : possuiContrato
-            ? 'Uma proposta com contrato vinculado não pode ser marcada como perdida.'
-            : 'A proposta não pode ser marcada como perdida.',
+      'MARCAR_PERDIDA', marcarPerdida,
+      !podePerder ? motivoSemPermissao() :
+      proposta.status !== 'EM_NEGOCIACAO' ? 'Somente propostas em negociação podem ser marcadas como perdidas.' :
+      possuiContrato ? 'Uma proposta com contrato vinculado não pode ser marcada como perdida.' :
+      'A proposta não pode ser marcada como perdida.',
     ),
-
     criarAcao(
-      'REABRIR',
-      reabrir,
-      !podeGerenciar
-        ? motivoSemPermissao
-        : proposta.status !== 'PERDIDA'
-          ? 'Somente propostas perdidas podem ser reabertas.'
-          : possuiContrato
-            ? 'Esta proposta possui contrato vinculado e não pode ser reaberta.'
-            : 'A proposta não pode ser reaberta.',
+      'REABRIR', reabrir,
+      !podeReabrir ? motivoSemPermissao() :
+      proposta.status !== 'PERDIDA' ? 'Somente propostas perdidas podem ser reabertas.' :
+      possuiContrato ? 'Esta proposta possui contrato vinculado e não pode ser reaberta.' :
+      'A proposta não pode ser reaberta.',
     ),
-
     criarAcao(
-      'REVERTER_VENDA',
-      reverterVenda,
-      !podeGerenciar
-        ? motivoSemPermissao
-        : proposta.status !== 'VENDIDA'
-          ? 'Somente propostas vendidas podem ter a venda revertida.'
-          : contratoEmitido
-            ? 'A venda não pode ser revertida após a emissão do contrato.'
-            : !aguardandoEmissao
-              ? 'Não existe contrato aguardando emissão para esta proposta.'
-              : 'A venda não pode ser revertida.',
+      'REVERTER_VENDA', reverterVenda,
+      !podeReverter ? motivoSemPermissao() :
+      proposta.status !== 'VENDIDA' ? 'Somente propostas vendidas podem ter a venda revertida.' :
+      contratoEmitido ? 'A venda não pode ser revertida após a emissão do contrato.' :
+      !aguardandoEmissao ? 'Não existe contrato aguardando emissão para esta proposta.' :
+      'A venda não pode ser revertida.',
     ),
-
     criarAcao(
-      'CANCELAR_CONTRATO',
-      cancelarContrato,
-      !somenteCorretora
-        ? 'Somente a corretora pode cancelar um contrato emitido.'
-        : proposta.status !== 'VENDIDA'
-          ? 'Somente propostas vendidas com contrato emitido podem ser canceladas.'
-          : !contratoEmitido
-            ? 'O contrato ainda não foi emitido.'
-            : 'O contrato não pode ser cancelado.',
+      'CANCELAR_CONTRATO', false,
+      'O cancelamento de contratos ainda não está implementado nesta etapa.',
     ),
   ];
 }
@@ -225,21 +179,8 @@ export function buscarAcaoProposta(
   contexto: ContextoAcoesProposta,
   acao: AcaoProposta,
 ): AcaoPropostaDisponivel {
-  const resultado =
-    obterAcoesProposta(
-      proposta,
-      contexto,
-    ).find(item => item.acao === acao);
-
-  if (!resultado) {
-    return criarAcao(
-      acao,
-      false,
-      'Ação não disponível.',
-    );
-  }
-
-  return resultado;
+  return obterAcoesProposta(proposta, contexto).find(item => item.acao === acao) ??
+    criarAcao(acao, false, 'Ação não disponível.');
 }
 
 export function podeExecutarAcaoProposta(
@@ -247,9 +188,5 @@ export function podeExecutarAcaoProposta(
   contexto: ContextoAcoesProposta,
   acao: AcaoProposta,
 ): boolean {
-  return buscarAcaoProposta(
-    proposta,
-    contexto,
-    acao,
-  ).permitido;
+  return buscarAcaoProposta(proposta, contexto, acao).permitido;
 }
