@@ -35,7 +35,8 @@ import {
   buscarPropostaPorId,
   excluirItemProposta,
   buscarProdutoRenovacaoOrigem,
-  buscarContratoPorId
+  buscarContratoPorId,
+  atualizarNumeroApoliceContrato,
 } from "../services/propostasService";
 import type {
   PropostaDetalhada,
@@ -235,6 +236,16 @@ export default function PropostaDetalhes() {
 
   const [contratoParaRenovar, setContratoParaRenovar] =
   useState<ContratoResumo | null>(null);
+
+    // Edição do número da apólice de contrato ativo
+  const [contratoEditandoApolice, setContratoEditandoApolice] =
+    useState<string | null>(null);
+
+  const [novoNumeroApolice, setNovoNumeroApolice] =
+    useState("");
+
+  const [salvandoNumeroApolice, setSalvandoNumeroApolice] =
+    useState(false);
 
   const [financeirosPorContrato, setFinanceirosPorContrato] =
   useState<Record<string, FinanceiroContratoDetalhado | null>>({});
@@ -655,6 +666,99 @@ export default function PropostaDetalhes() {
     },
     [carregarProposta]
   );
+
+    const iniciarEdicaoApolice = (
+    contrato: ContratoResumo
+  ) => {
+    if (
+      contrato.status !== "ATIVO" ||
+      !podeEmitirApolice ||
+      salvandoNumeroApolice
+    ) {
+      return;
+    }
+
+    setContratoEditandoApolice(contrato.id);
+    setNovoNumeroApolice(
+      contrato.numero_apolice ?? ""
+    );
+  };
+
+  const cancelarEdicaoApolice = () => {
+    if (salvandoNumeroApolice) return;
+
+    setContratoEditandoApolice(null);
+    setNovoNumeroApolice("");
+  };
+
+  const salvarNumeroApolice = async (
+    contrato: ContratoResumo
+  ) => {
+    if (
+      contrato.status !== "ATIVO" ||
+      !podeEmitirApolice ||
+      salvandoNumeroApolice
+    ) {
+      return;
+    }
+
+    const numero = novoNumeroApolice.trim();
+
+    if (!numero) {
+      toast.error("Informe o número da apólice.");
+      return;
+    }
+
+    try {
+      setSalvandoNumeroApolice(true);
+
+      const resultado =
+        await atualizarNumeroApoliceContrato(
+          contrato.id,
+          numero
+        );
+
+      // Atualiza imediatamente o contrato na tela.
+      setProposta((atual) => {
+        if (!atual) return atual;
+
+        return {
+          ...atual,
+          contratos: atual.contratos.map((item) =>
+            item.id === contrato.id
+              ? {
+                  ...item,
+                  numero_apolice:
+                    resultado.numero_apolice,
+                }
+              : item
+          ),
+        };
+      });
+
+      setContratoEditandoApolice(null);
+      setNovoNumeroApolice("");
+
+      toast.success(
+        resultado.alterado
+          ? "Número da apólice atualizado com sucesso."
+          : "O número da apólice já estava atualizado."
+      );
+    } catch (error) {
+      console.error(
+        "Erro ao atualizar número da apólice:",
+        error
+      );
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar a apólice."
+      );
+    } finally {
+      setSalvandoNumeroApolice(false);
+    }
+  };
 
   useEffect(() => {
     void carregarProposta();
@@ -2201,10 +2305,87 @@ useEffect(() => {
                               Apólice
                             </p>
 
-                            <p className="mt-0.5 text-sm font-medium text-slate-800 dark:text-slate-200">
-                              {contrato.numero_apolice ||
-                                "Aguardando emissão"}
-                            </p>
+                            {contratoEditandoApolice === contrato.id ? (
+                              <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={novoNumeroApolice}
+                                  onChange={(event) =>
+                                    setNovoNumeroApolice(event.target.value)
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      void salvarNumeroApolice(contrato);
+                                    }
+
+                                    if (event.key === "Escape") {
+                                      cancelarEdicaoApolice();
+                                    }
+                                  }}
+                                  disabled={salvandoNumeroApolice}
+                                  autoFocus
+                                  placeholder="Número da apólice"
+                                  className="h-9 w-48 rounded-lg border border-blue-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void salvarNumeroApolice(contrato)
+                                  }
+                                  disabled={
+                                    salvandoNumeroApolice ||
+                                    !novoNumeroApolice.trim()
+                                  }
+                                  title="Salvar número da apólice"
+                                  aria-label="Salvar número da apólice"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  {salvandoNumeroApolice ? (
+                                    <Loader2
+                                      size={15}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Save size={15} />
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={cancelarEdicaoApolice}
+                                  disabled={salvandoNumeroApolice}
+                                  title="Cancelar edição"
+                                  aria-label="Cancelar edição"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                                >
+                                  <X size={15} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="mt-0.5 flex items-center gap-2">
+                                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                                  {contrato.numero_apolice ||
+                                    "Aguardando emissão"}
+                                </span>
+
+                                {contrato.status === "ATIVO" &&
+                                  podeEmitirApolice && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        iniciarEdicaoApolice(contrato)
+                                      }
+                                      title="Editar número da apólice"
+                                      aria-label="Editar número da apólice"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                                    >
+                                      <Edit3 size={14} />
+                                    </button>
+                                  )}
+                              </div>
+                            )}
                           </div>
 
                           <div>

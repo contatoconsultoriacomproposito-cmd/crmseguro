@@ -1981,6 +1981,66 @@ export async function emitirContrato(
   };
 }
 
+/**
+ * Atualiza exclusivamente o número da apólice
+ * de um contrato já emitido.
+ *
+ * A autorização definitiva ocorre na RPC:
+ * crm_atualizar_numero_apolice
+ *
+ * Permissão: operacoes.propostas.issue
+ * Escopos: own / tenant
+ */
+export async function atualizarNumeroApoliceContrato(
+  contratoId: string,
+  novoNumeroApolice: string,
+): Promise<{
+  sucesso: boolean;
+  alterado: boolean;
+  contrato_id: string;
+  numero_anterior?: string | null;
+  numero_apolice: string;
+}> {
+  if (!contratoId) {
+    throw new Error('Contrato não informado.');
+  }
+
+  const numeroApolice = novoNumeroApolice.trim();
+
+  if (!numeroApolice) {
+    throw new Error('Informe o novo número da apólice.');
+  }
+
+  const { data, error } = await supabase.rpc(
+    'crm_atualizar_numero_apolice',
+    {
+      p_contrato_id: contratoId,
+      p_numero_apolice: numeroApolice,
+    },
+  );
+
+  if (error) {
+    throw new Error(
+      error.message ||
+        'Não foi possível atualizar o número da apólice.',
+    );
+  }
+
+  if (!data || data.sucesso !== true) {
+    throw new Error(
+      'A atualização da apólice não retornou um resultado válido.',
+    );
+  }
+
+  return {
+    sucesso: true,
+    alterado: data.alterado === true,
+    contrato_id: data.contrato_id,
+    numero_anterior: data.numero_anterior ?? null,
+    numero_apolice: data.numero_apolice,
+  };
+}
+
 export async function iniciarRenovacaoContrato(
   payload: IniciarRenovacaoContratoPayload,
 ): Promise<ResultadoInicioRenovacao> {
