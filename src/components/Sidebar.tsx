@@ -73,6 +73,9 @@ export default function Sidebar({
   const podeVerAgenda =
     escopo("atendimento.agenda", "read") !== "none"  
 
+  const podeVerPropostas =
+    escopo("operacoes.propostas", "read") !== "none"
+
   const podeVerCorretor =
   userProfile?.tipo_usuario === "CORRETORA" ||
   userProfile?.tipo_usuario === "ADMIN"
@@ -268,14 +271,16 @@ export default function Sidebar({
             iconClassName="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
           />
 
-          <SidebarItem
-            to="/whatsapp/propostas"
-            icon={<FileText size={18} />}
-            label="Propostas"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
-          />
+          {podeVerPropostas && (
+            <SidebarItem
+              to="/whatsapp/propostas"
+              icon={<FileText size={18} />}
+              label="Propostas"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
+            />
+          )}
 
           <SidebarItem
             to="/whatsapp/comissoes"
