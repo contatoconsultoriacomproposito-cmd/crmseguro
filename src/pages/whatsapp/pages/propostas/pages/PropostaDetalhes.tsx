@@ -37,6 +37,8 @@ import {
   buscarProdutoRenovacaoOrigem,
   buscarContratoPorId,
   atualizarNumeroApoliceContrato,
+  atualizarVigenciaContrato,
+  reativarContrato,
 } from "../services/propostasService";
 import type {
   PropostaDetalhada,
@@ -245,7 +247,35 @@ export default function PropostaDetalhes() {
     useState("");
 
   const [salvandoNumeroApolice, setSalvandoNumeroApolice] =
+  useState(false);
+
+  // Edição da vigência de contrato ativo
+  const [contratoEditandoVigencia, setContratoEditandoVigencia] =
+    useState<string | null>(null);
+
+  const [novoInicioVigencia, setNovoInicioVigencia] =
+    useState("");
+
+  const [novoFimVigencia, setNovoFimVigencia] =
+    useState("");
+
+  const [salvandoVigencia, setSalvandoVigencia] =
     useState(false);
+
+  
+  // Reativação excepcional de contrato encerrado
+  const [contratoParaReativar, setContratoParaReativar] =
+    useState<string | null>(null);
+
+  const [inicioReativacao, setInicioReativacao] =
+    useState("");
+
+  const [fimReativacao, setFimReativacao] =
+    useState("");
+
+  const [salvandoReativacao, setSalvandoReativacao] =
+    useState(false);
+
 
   const [financeirosPorContrato, setFinanceirosPorContrato] =
   useState<Record<string, FinanceiroContratoDetalhado | null>>({});
@@ -312,8 +342,14 @@ export default function PropostaDetalhes() {
     proposta?.status === "EM_NEGOCIACAO" && podeExecutarAcao("update", proposta);
   const podeFecharVenda =
     proposta?.status === "EM_NEGOCIACAO" && podeExecutarAcao("close", proposta);
+  
+  
   const podeEmitirApolice = podeExecutarAcao("issue", proposta);
+  const podeCorrigirVigencia = podeExecutarAcao("correct_term", proposta);
+  const podeReativarContrato = podeExecutarAcao("reactivate", proposta);
   const podeRenovar = podeExecutarAcao("renew", proposta);
+
+
   const podeLancarFinanceiro = podeExecutarAcao("financial", proposta);
   const podeLancarComissoes = podeExecutarAcao("commissions", proposta);
 
@@ -759,6 +795,225 @@ export default function PropostaDetalhes() {
       setSalvandoNumeroApolice(false);
     }
   };
+
+
+  // ============================================================
+  // CORREÇÃO DA VIGÊNCIA DE CONTRATO ATIVO
+  // ============================================================
+
+  const iniciarEdicaoVigencia = (
+    contrato: ContratoResumo
+  ) => {
+    
+    if (
+      contrato.status !== "ATIVO" ||
+      !podeCorrigirVigencia ||
+      salvandoVigencia
+    ) {
+      return;
+    }
+
+
+    setContratoEditandoVigencia(contrato.id);
+    setNovoInicioVigencia(contrato.inicio_vigencia ?? "");
+    setNovoFimVigencia(contrato.fim_vigencia ?? "");
+  };
+
+  const cancelarEdicaoVigencia = () => {
+    if (salvandoVigencia) return;
+
+    setContratoEditandoVigencia(null);
+    setNovoInicioVigencia("");
+    setNovoFimVigencia("");
+  };
+
+  const salvarVigencia = async (
+    contrato: ContratoResumo
+  ) => {
+    if (
+      contrato.status !== "ATIVO" ||
+      !podeCorrigirVigencia ||
+      salvandoVigencia
+    ) {
+      return;
+    }
+
+    if (!novoInicioVigencia || !novoFimVigencia) {
+      toast.error("Informe o início e o fim da vigência.");
+      return;
+    }
+
+    if (novoFimVigencia < novoInicioVigencia) {
+      toast.error(
+        "O fim da vigência não pode ser anterior ao início."
+      );
+      return;
+    }
+
+    try {
+      setSalvandoVigencia(true);
+
+      const resultado = await atualizarVigenciaContrato(
+        contrato.id,
+        novoInicioVigencia,
+        novoFimVigencia
+      );
+
+      // Atualiza imediatamente o contrato na tela.
+      setProposta((atual) => {
+        if (!atual) return atual;
+
+        return {
+          ...atual,
+          contratos: atual.contratos.map((item) =>
+            item.id === contrato.id
+              ? {
+                  ...item,
+                  inicio_vigencia: resultado.inicio_vigencia,
+                  fim_vigencia: resultado.fim_vigencia,
+                }
+              : item
+          ),
+        };
+      });
+
+      setContratoEditandoVigencia(null);
+      setNovoInicioVigencia("");
+      setNovoFimVigencia("");
+
+      toast.success(
+        resultado.alterado
+          ? "Vigência atualizada com sucesso."
+          : "A vigência já estava atualizada."
+      );
+    } catch (error) {
+      console.error(
+        "Erro ao atualizar vigência do contrato:",
+        error
+      );
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar a vigência."
+      );
+    } finally {
+      setSalvandoVigencia(false);
+    }
+  };
+
+
+  // ============================================================
+  // REATIVAÇÃO DE CONTRATO ENCERRADO
+  // ============================================================
+
+  const iniciarReativacao = (contrato: ContratoResumo) => {
+    if (
+      contrato.status !== "ENCERRADO" ||
+      !podeReativarContrato ||
+      salvandoReativacao
+    ) {
+      return;
+    }
+
+    setContratoParaReativar(contrato.id);
+    setInicioReativacao(contrato.inicio_vigencia ?? "");
+    setFimReativacao(contrato.fim_vigencia ?? "");
+  };
+
+  const cancelarReativacao = () => {
+    if (salvandoReativacao) return;
+
+    setContratoParaReativar(null);
+    setInicioReativacao("");
+    setFimReativacao("");
+  };
+
+  const confirmarReativacao = async (contrato: ContratoResumo) => {
+    if (
+      contrato.status !== "ENCERRADO" ||
+      contratoParaReativar !== contrato.id ||
+      !podeReativarContrato ||
+      salvandoReativacao
+    ) {
+      return;
+    }
+
+    if (!inicioReativacao || !fimReativacao) {
+      toast.error("Informe o início e o fim da vigência.");
+      return;
+    }
+
+    if (fimReativacao < inicioReativacao) {
+      toast.error(
+        "O fim da vigência não pode ser anterior ao início."
+      );
+      return;
+    }
+
+    const confirmado = window.confirm(
+      `CONFIRMAR REATIVAÇÃO\n\n` +
+      `Apólice: ${contrato.numero_apolice ?? "Não informada"}\n\n` +
+      `Status atual: ENCERRADO\n` +
+      `Novo status: ATIVO\n\n` +
+      `Início: ${formatarData(inicioReativacao)}\n` +
+      `Fim: ${formatarData(fimReativacao)}\n\n` +
+      `Esta operação será registrada na auditoria.\n\n` +
+      `Deseja realmente reativar este contrato?`
+    );
+
+    if (!confirmado) return;
+
+    try {
+      setSalvandoReativacao(true);
+
+      const resultado = await reativarContrato(
+        contrato.id,
+        inicioReativacao,
+        fimReativacao
+      );
+
+      setProposta((atual) => {
+        if (!atual) return atual;
+
+        return {
+          ...atual,
+          contratos: atual.contratos.map((item) =>
+            item.id === contrato.id
+              ? {
+                  ...item,
+                  status: "ATIVO" as const,
+                  inicio_vigencia: resultado.inicio_vigencia,
+                  fim_vigencia: resultado.fim_vigencia,
+                }
+              : item
+          ),
+        };
+      });
+
+      setContratoParaReativar(null);
+      setInicioReativacao("");
+      setFimReativacao("");
+
+      toast.success("Contrato reativado com sucesso.");
+
+      // Recarrega também financeiro e comissões,
+      // agora que o contrato voltou ao status ATIVO.
+      void carregarProposta();
+    } catch (error) {
+      console.error("Erro ao reativar contrato:", error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível reativar o contrato."
+      );
+    } finally {
+      setSalvandoReativacao(false);
+    }
+  };
+
+
 
   useEffect(() => {
     void carregarProposta();
@@ -2272,6 +2527,21 @@ useEffect(() => {
                             </button>
                           )}
 
+
+                          {podeReativarContrato &&
+                            contrato.status === "ENCERRADO" && (
+                              <button
+                                type="button"
+                                onClick={() => iniciarReativacao(contrato)}
+                                disabled={salvandoReativacao}
+                                className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+                              >
+                                <RefreshCw size={14} />
+                                Reativar contrato
+                              </button>
+                          )}
+
+
                         </div>
                         </div>
 
@@ -2393,15 +2663,207 @@ useEffect(() => {
                               Vigência
                             </p>
 
-                            <p className="mt-0.5 text-sm font-medium text-slate-800 dark:text-slate-200">
-                              {contrato.inicio_vigencia
-                                ? formatarData(
-                                    contrato.inicio_vigencia
-                                  )
-                                : "—"}
-                            </p>
+                            {contratoEditandoVigencia === contrato.id ? (
+                              <div className="mt-2 space-y-2">
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="mb-1 block text-xs text-slate-500">
+                                      Início
+                                    </label>
+
+                                    <input
+                                      type="date"
+                                      value={novoInicioVigencia}
+                                      onChange={(event) =>
+                                        setNovoInicioVigencia(event.target.value)
+                                      }
+                                      disabled={salvandoVigencia}
+                                      className="h-9 w-full min-w-0 rounded-lg border border-blue-300 bg-white px-2 text-xs text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="mb-1 block text-xs text-slate-500">
+                                      Fim
+                                    </label>
+
+                                    <input
+                                      type="date"
+                                      value={novoFimVigencia}
+                                      onChange={(event) =>
+                                        setNovoFimVigencia(event.target.value)
+                                      }
+                                      disabled={salvandoVigencia}
+                                      className="h-9 w-full min-w-0 rounded-lg border border-blue-300 bg-white px-2 text-xs text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void salvarVigencia(contrato)}
+                                    disabled={
+                                      salvandoVigencia ||
+                                      !novoInicioVigencia ||
+                                      !novoFimVigencia ||
+                                      novoFimVigencia < novoInicioVigencia
+                                    }
+                                    title="Salvar vigência"
+                                    aria-label="Salvar vigência"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                                  >
+                                    {salvandoVigencia ? (
+                                      <Loader2
+                                        size={15}
+                                        className="animate-spin"
+                                      />
+                                    ) : (
+                                      <Save size={15} />
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={cancelarEdicaoVigencia}
+                                    disabled={salvandoVigencia}
+                                    title="Cancelar edição"
+                                    aria-label="Cancelar edição"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                                  >
+                                    <X size={15} />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="mt-0.5 flex items-center gap-2">
+                                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                                  {contrato.inicio_vigencia
+                                    ? formatarData(contrato.inicio_vigencia)
+                                    : "—"}
+                                  {" até "}
+                                  {contrato.fim_vigencia
+                                    ? formatarData(contrato.fim_vigencia)
+                                    : "—"}
+                                </span>
+
+                                {contrato.status === "ATIVO" &&
+                                  podeCorrigirVigencia && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        iniciarEdicaoVigencia(contrato)
+                                      }
+                                      title="Editar vigência"
+                                      aria-label="Editar vigência"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                                    >
+                                      <Edit3 size={14} />
+                                    </button>
+                                  )}
+                              </div>
+                            )}
                           </div>
+
                         </div>
+
+
+                        {contrato.status === "ENCERRADO" &&
+                          podeReativarContrato &&
+                          contratoParaReativar === contrato.id && (
+                            <div className="mt-5 rounded-xl border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+                              <div className="mb-4 flex items-start gap-3">
+                                <AlertTriangle
+                                  size={18}
+                                  className="mt-0.5 shrink-0 text-amber-600"
+                                />
+
+                                <div>
+                                  <p className="text-sm font-bold text-amber-900 dark:text-amber-300">
+                                    Reativação excepcional
+                                  </p>
+                                  <p className="mt-1 text-xs text-amber-800 dark:text-amber-400">
+                                    Confira a vigência correta da apólice antes de
+                                    reativar. Esta operação será auditada e poderá
+                                    ser recusada caso exista renovação vinculada.
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                  <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                    Início da vigência
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={inicioReativacao}
+                                    onChange={(event) =>
+                                      setInicioReativacao(event.target.value)
+                                    }
+                                    disabled={salvandoReativacao}
+                                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                    Fim da vigência corrigido
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={fimReativacao}
+                                    min={inicioReativacao || undefined}
+                                    onChange={(event) =>
+                                      setFimReativacao(event.target.value)
+                                    }
+                                    disabled={salvandoReativacao}
+                                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                  />
+                                </div>
+                              </div>
+
+                              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                                A data final corrigida deve ser posterior à data
+                                atual. A reativação não altera outros dados comerciais
+                                do contrato.
+                              </p>
+
+                              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={cancelarReativacao}
+                                  disabled={salvandoReativacao}
+                                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                >
+                                  Cancelar
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => void confirmarReativacao(contrato)}
+                                  disabled={
+                                    salvandoReativacao ||
+                                    !inicioReativacao ||
+                                    !fimReativacao ||
+                                    fimReativacao < inicioReativacao
+                                  }
+                                  className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {salvandoReativacao ? (
+                                    <Loader2 size={15} className="animate-spin" />
+                                  ) : (
+                                    <RefreshCw size={15} />
+                                  )}
+                                  Confirmar reativação
+                                </button>
+                              </div>
+                            </div>
+                        )}
+
+
+
                         {contrato.status === "ATIVO" && (
                           <div className="mt-5 grid gap-4 xl:grid-cols-2">
                             <FinanceiroContratoCard

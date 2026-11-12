@@ -85,6 +85,7 @@ export const PERMISSOES_EQUIPE_PADRAO: PermissoesEquipe = {
 
 // Permissões da área Operações → Propostas. Escopo own = corretor_id da proposta.
 export type EscopoProposta = "none" | "own" | "tenant";
+
 export interface PermissoesPropostas {
   create: EscopoProposta;
   read: EscopoProposta;
@@ -94,30 +95,108 @@ export interface PermissoesPropostas {
   reverse: EscopoProposta;
   close: EscopoProposta;
   issue: EscopoProposta;
+  correct_term: EscopoProposta;
+  reactivate: EscopoProposta;
   financial: EscopoProposta;
   commissions: EscopoProposta;
   renew: EscopoProposta;
 }
+
+
 export const PERMISSOES_PROPOSTAS_PADRAO: PermissoesPropostas = {
-  create: "none", read: "none", update: "none", delete: "none",
-  lose: "none", reverse: "none", close: "none", issue: "none",
-  financial: "none", commissions: "none", renew: "none",
+  create: "none",
+  read: "none",
+  update: "none",
+  delete: "none",
+  lose: "none",
+  reverse: "none",
+  close: "none",
+  issue: "none",
+  correct_term: "none",
+  reactivate: "none",
+  financial: "none",
+  commissions: "none",
+  renew: "none",
 };
+
+
 export const ACOES_PROPOSTAS: Array<{
-  key: keyof PermissoesPropostas; label: string; descricao: string;
+  key: keyof PermissoesPropostas;
+  label: string;
+  descricao: string;
 }> = [
-  { key: "create", label: "Adicionar novas propostas", descricao: "Criar propostas de novos negócios ou renovação." },
-  { key: "read", label: "Abrir detalhamento de proposta", descricao: "Consultar dados, itens, valores e histórico de uma proposta." },
-  { key: "update", label: "Editar dados da proposta", descricao: "Alterar dados e itens quando o status permitir." },
-  { key: "delete", label: "Excluir proposta", descricao: "Excluir propostas conforme as regras de integridade do módulo." },
-  { key: "lose", label: "Marcar como perdida", descricao: "Registrar a perda de uma negociação." },
-  { key: "reverse", label: "Reverter venda", descricao: "Executar a reversão de uma venda conforme as regras do módulo." },
-  { key: "close", label: "Fechar venda", descricao: "Converter proposta negociada em venda e contrato." },
-  { key: "issue", label: "Emitir apólice", descricao: "Executar a ação de emissão de apólice/contrato." },
-  { key: "financial", label: "Lançar financeiro", descricao: "Acionar lançamentos financeiros a partir de Propostas." },
-  { key: "commissions", label: "Lançar comissões", descricao: "Acionar lançamentos de comissões a partir de Propostas." },
-  { key: "renew", label: "Renovar", descricao: "Iniciar uma renovação vinculada ao contrato de origem." },
+  {
+    key: "create",
+    label: "Adicionar novas propostas",
+    descricao: "Criar propostas de novos negócios ou renovação.",
+  },
+  {
+    key: "read",
+    label: "Abrir detalhamento de proposta",
+    descricao: "Consultar dados, itens, valores e histórico de uma proposta.",
+  },
+  {
+    key: "update",
+    label: "Editar dados da proposta",
+    descricao: "Alterar dados e itens quando o status permitir.",
+  },
+  {
+    key: "delete",
+    label: "Excluir proposta",
+    descricao: "Excluir propostas conforme as regras de integridade do módulo.",
+  },
+  {
+    key: "lose",
+    label: "Marcar como perdida",
+    descricao: "Registrar a perda de uma negociação.",
+  },
+  {
+    key: "reverse",
+    label: "Reverter venda",
+    descricao: "Executar a reversão de uma venda conforme as regras do módulo.",
+  },
+  {
+    key: "close",
+    label: "Fechar venda",
+    descricao: "Converter proposta negociada em venda e contrato.",
+  },
+  {
+    key: "issue",
+    label: "Emitir apólice",
+    descricao: "Executar a emissão inicial de apólices e contratos.",
+  },
+  {
+    key: "correct_term",
+    label: "Corrigir vigência",
+    descricao:
+      "Corrigir as datas de início e fim da vigência de contratos ativos.",
+  },
+  {
+    key: "reactivate",
+    label: "Reativar contrato encerrado",
+    descricao:
+      "Corrigir a vigência e reativar contratos encerrados, respeitando as regras de renovação.",
+  },
+  {
+    key: "financial",
+    label: "Lançar financeiro",
+    descricao:
+      "Acionar lançamentos financeiros a partir de Propostas.",
+  },
+  {
+    key: "commissions",
+    label: "Lançar comissões",
+    descricao:
+      "Acionar lançamentos de comissões a partir de Propostas.",
+  },
+  {
+    key: "renew",
+    label: "Renovar",
+    descricao:
+      "Iniciar uma renovação vinculada ao contrato de origem.",
+  },
 ];
+
 export const OPCOES_ESCOPO_PROPOSTAS: Array<{
   value: EscopoProposta; label: string; descricao: string;
 }> = [

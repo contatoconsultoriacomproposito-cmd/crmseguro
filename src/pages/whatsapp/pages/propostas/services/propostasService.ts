@@ -2041,6 +2041,208 @@ export async function atualizarNumeroApoliceContrato(
   };
 }
 
+
+/**
+ * Corrige as datas de vigência de um contrato já emitido.
+ *
+ * A autorização definitiva ocorre na RPC:
+ * crm_atualizar_vigencia_contrato
+ *
+ * Permissão: operacoes.propostas.correct_term
+ * Escopos: own / tenant
+ *
+ * Atualiza exclusivamente inicio_vigencia e fim_vigencia,
+ * além dos campos de auditoria no banco.
+ */
+export async function atualizarVigenciaContrato(
+  contratoId: string,
+  inicioVigencia: string,
+  fimVigencia: string,
+): Promise<{
+  sucesso: boolean;
+  alterado: boolean;
+  contrato_id: string;
+  inicio_anterior: string | null;
+  fim_anterior: string | null;
+  inicio_vigencia: string;
+  fim_vigencia: string;
+}> {
+  if (!contratoId) {
+    throw new Error('Contrato não informado.');
+  }
+
+  const validarData = (valor: string): boolean => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+      return false;
+    }
+
+    const [ano, mes, dia] = valor.split('-').map(Number);
+    const data = new Date(Date.UTC(ano, mes - 1, dia));
+
+    return (
+      data.getUTCFullYear() === ano &&
+      data.getUTCMonth() === mes - 1 &&
+      data.getUTCDate() === dia
+    );
+  };
+
+  if (!validarData(inicioVigencia)) {
+    throw new Error('Informe uma data de início de vigência válida.');
+  }
+
+  if (!validarData(fimVigencia)) {
+    throw new Error('Informe uma data de fim de vigência válida.');
+  }
+
+  if (fimVigencia < inicioVigencia) {
+    throw new Error(
+      'O fim da vigência não pode ser anterior ao início.',
+    );
+  }
+
+  const { data, error } = await supabase.rpc(
+    'crm_atualizar_vigencia_contrato',
+    {
+      p_contrato_id: contratoId,
+      p_inicio_vigencia: inicioVigencia,
+      p_fim_vigencia: fimVigencia,
+    },
+  );
+
+  if (error) {
+    throw new Error(
+      error.message ||
+        'Não foi possível atualizar a vigência do contrato.',
+    );
+  }
+
+  if (
+    !data ||
+    data.sucesso !== true ||
+    data.contrato_id !== contratoId ||
+    !validarData(data.inicio_vigencia) ||
+    !validarData(data.fim_vigencia)
+  ) {
+    throw new Error(
+      'A atualização da vigência não retornou um resultado válido.',
+    );
+  }
+
+  return {
+    sucesso: true,
+    alterado: data.alterado === true,
+    contrato_id: data.contrato_id,
+    inicio_anterior: data.inicio_anterior ?? null,
+    fim_anterior: data.fim_anterior ?? null,
+    inicio_vigencia: data.inicio_vigencia,
+    fim_vigencia: data.fim_vigencia,
+  };
+}
+
+
+
+/**
+ * Reativa um contrato ENCERRADO com a vigência corrigida.
+ *
+ * Permissão: operacoes.propostas.reactivate
+ * Escopos: own / tenant
+ *
+ * A autorização, as regras de renovação e a auditoria
+ * são executadas pelo banco através da RPC.
+ */
+export async function reativarContrato(
+  contratoId: string,
+  inicioVigencia: string,
+  fimVigencia: string,
+): Promise<{
+  sucesso: boolean;
+  alterado: boolean;
+  contrato_id: string;
+  status_anterior: string;
+  status: string;
+  inicio_anterior: string | null;
+  fim_anterior: string | null;
+  inicio_vigencia: string;
+  fim_vigencia: string;
+}> {
+  if (!contratoId) {
+    throw new Error('Contrato não informado.');
+  }
+
+  const validarData = (valor: string): boolean => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+      return false;
+    }
+
+    const [ano, mes, dia] = valor.split('-').map(Number);
+    const data = new Date(Date.UTC(ano, mes - 1, dia));
+
+    return (
+      data.getUTCFullYear() === ano &&
+      data.getUTCMonth() === mes - 1 &&
+      data.getUTCDate() === dia
+    );
+  };
+
+  if (!validarData(inicioVigencia)) {
+    throw new Error('Informe uma data de início de vigência válida.');
+  }
+
+  if (!validarData(fimVigencia)) {
+    throw new Error('Informe uma data de fim de vigência válida.');
+  }
+
+  if (fimVigencia < inicioVigencia) {
+    throw new Error(
+      'O fim da vigência não pode ser anterior ao início.',
+    );
+  }
+
+  const { data, error } = await supabase.rpc(
+    'crm_reativar_contrato',
+    {
+      p_contrato_id: contratoId,
+      p_inicio_vigencia: inicioVigencia,
+      p_fim_vigencia: fimVigencia,
+    },
+  );
+
+  if (error) {
+    throw new Error(
+      error.message ||
+        'Não foi possível reativar o contrato.',
+    );
+  }
+
+  if (
+    !data ||
+    data.sucesso !== true ||
+    data.alterado !== true ||
+    data.contrato_id !== contratoId ||
+    data.status_anterior !== 'ENCERRADO' ||
+    data.status !== 'ATIVO' ||
+    !validarData(data.inicio_vigencia) ||
+    !validarData(data.fim_vigencia)
+  ) {
+    throw new Error(
+      'A reativação não retornou um resultado válido.',
+    );
+  }
+
+  return {
+    sucesso: true,
+    alterado: true,
+    contrato_id: data.contrato_id,
+    status_anterior: data.status_anterior,
+    status: data.status,
+    inicio_anterior: data.inicio_anterior ?? null,
+    fim_anterior: data.fim_anterior ?? null,
+    inicio_vigencia: data.inicio_vigencia,
+    fim_vigencia: data.fim_vigencia,
+  };
+}
+
+
 export async function iniciarRenovacaoContrato(
   payload: IniciarRenovacaoContratoPayload,
 ): Promise<ResultadoInicioRenovacao> {
