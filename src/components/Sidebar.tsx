@@ -73,6 +73,9 @@ export default function Sidebar({
   const podeVerAgenda =
     escopo("atendimento.agenda", "read") !== "none"  
 
+  const podeVerClientes =
+    escopo("operacoes.clientes", "read") !== "none"
+
   const podeVerPropostas =
     escopo("operacoes.propostas", "read") !== "none"
 
@@ -262,14 +265,16 @@ export default function Sidebar({
             />
           )}
 
-          <SidebarItem
-            to="/whatsapp/clientes"
-            icon={<Users size={18} />}
-            label="Clientes"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
-          />
+          {podeVerClientes && (
+            <SidebarItem
+              to="/whatsapp/clientes"
+              icon={<Users size={18} />}
+              label="Clientes"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
+            />
+          )}
 
           {podeVerPropostas && (
             <SidebarItem

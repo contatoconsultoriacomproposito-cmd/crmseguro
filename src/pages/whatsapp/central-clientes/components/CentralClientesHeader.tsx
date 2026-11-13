@@ -10,12 +10,16 @@ interface Props {
   visualizacao: VisualizacaoCentral
   onVisualizacaoChange: (value: VisualizacaoCentral) => void
   onNovoCliente: () => void
+  podeCriar: boolean
+  podeVisualizar: boolean
 }
 
 export default function CentralClientesHeader({
   visualizacao,
   onVisualizacaoChange,
   onNovoCliente,
+  podeCriar,
+  podeVisualizar,
 }: Props) {
   return (
     <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-4 md:px-6">
@@ -35,7 +39,7 @@ export default function CentralClientesHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+          {podeVisualizar && <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
             <button
               type="button"
               onClick={() => onVisualizacaoChange('LISTA')}
@@ -60,16 +64,16 @@ export default function CentralClientesHeader({
               <LayoutGrid size={15} />
               Kanban
             </button>
-          </div>
+          </div>}
 
-          <button
+          {podeCriar && <button
             type="button"
             onClick={onNovoCliente}
             className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
             <Plus size={17} />
             Novo cliente
-          </button>
+          </button>}
         </div>
       </div>
     </header>

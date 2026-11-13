@@ -1,3 +1,4 @@
+import { type AcessoClientes, abasPermitidas, podeCliente } from '../../hooks/useAcessoClientes'
 import {
   useEffect,
   useState,
@@ -24,6 +25,7 @@ import ClienteComissoesTab from './tabs/ClienteComissoesTab'
 
 interface Props {
   clienteInicial: ClienteCentral
+  acesso: AcessoClientes | null
   responsaveis: ResponsavelCentral[]
   onClose: () => void
   onWhatsApp: (cliente: ClienteCentral) => void
@@ -41,6 +43,7 @@ interface Props {
 
 export default function Cliente360Modal({
   clienteInicial,
+  acesso,
   responsaveis,
   onClose,
   onWhatsApp,
@@ -49,8 +52,9 @@ export default function Cliente360Modal({
   onTransferir,
   onUpdated,
 }: Props) {
+  const abas = abasPermitidas(acesso, clienteInicial)
   const [activeTab, setActiveTab] =
-    useState<Cliente360Tab>('cadastro')
+    useState<Cliente360Tab | null>(abas[0] ?? null)
   const [salvando, setSalvando] = useState(false)
   const {
     cliente,
@@ -58,12 +62,14 @@ export default function Cliente360Modal({
     loading,
     error,
     recarregar,
-  } = useCliente360(clienteInicial)
+  } = useCliente360(clienteInicial, acesso)
 
   useEffect(() => {
-    setActiveTab('cadastro')
-  }, [clienteInicial.id, clienteInicial.tipo])
+    setActiveTab(abasPermitidas(acesso, clienteInicial)[0] ?? null)
+  }, [clienteInicial.id, clienteInicial.tipo, acesso])
 
+  const abaAtiva = activeTab && abas.includes(activeTab) ? activeTab : (abas[0] ?? null)
+  const pode = (acao: Parameters<typeof podeCliente>[1]) => podeCliente(acesso, acao, clienteInicial)
   const atualizarTudo = async () => {
     await Promise.all([
       recarregar(),
@@ -127,55 +133,62 @@ export default function Cliente360Modal({
               onWhatsApp={onWhatsApp}
               onTornarLead={tornarLead}
               onAlterarEtapa={alterarEtapa}
+              podeTornarLead={pode('make_lead')}
+              podeAlterarEtapa={pode('update')}
+              podeWhatsApp={pode('whatsapp')}
             />
 
             <Cliente360Tabs
-              active={activeTab}
+              active={abaAtiva}
+              permitidas={abas}
               contadores={contadores}
               onChange={setActiveTab}
             />
 
             <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
-              {activeTab === 'cadastro' && (
+              {!abaAtiva && <div className="rounded-xl bg-white p-6 text-center text-sm text-slate-500">Nenhuma aba deste cliente está autorizada.</div>}
+              {abaAtiva === 'cadastro' && (
                 <ClienteCadastroTab
                   cliente={cliente}
                   responsaveis={responsaveis}
                   onTransferir={onTransferir}
                   onUpdated={atualizarTudo}
+                  podeEditar={pode('update')}
+                  podeTransferir={pode('transfer')}
                 />
               )}
 
-              {activeTab === 'agenda' && (
+              {abaAtiva === 'agenda' && (
                 <ClienteAgendaTab cliente={cliente} />
               )}
 
-              {activeTab === 'propostas' && (
+              {abaAtiva === 'propostas' && (
                 <ClientePropostasTab cliente={cliente} />
               )}
 
-              {activeTab === 'contratos' && (
+              {abaAtiva === 'contratos' && (
                 <ClienteContratosTab cliente={cliente} />
               )}
 
-              {activeTab === 'sinistros' && (
+              {abaAtiva === 'sinistros' && (
                 <ClienteSinistrosTab cliente={cliente} />
               )}
 
-              {activeTab === 'assistencias' && (
+              {abaAtiva === 'assistencias' && (
                 <ClienteAssistenciasTab
                   cliente={cliente}
                 />
               )}
 
-              {activeTab === 'financeiro' && (
+              {abaAtiva === 'financeiro' && (
                 <ClienteFinanceiroTab cliente={cliente} />
               )}
 
-              {activeTab === 'comissoes' && (
+              {abaAtiva === 'comissoes' && (
                 <ClienteComissoesTab cliente={cliente} />
               )}
 
-              {activeTab === 'arquivos' && (
+              {abaAtiva === 'arquivos' && (
                 <ClienteArquivosTab cliente={cliente} />
               )}
             </main>

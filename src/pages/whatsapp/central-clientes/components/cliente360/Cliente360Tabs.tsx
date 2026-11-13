@@ -4,7 +4,8 @@ import type {
 } from '../../types/centralClientes'
 
 interface Props {
-  active: Cliente360Tab
+  active: Cliente360Tab | null
+  permitidas: Cliente360Tab[]
   contadores: Cliente360Contadores
   onChange: (tab: Cliente360Tab) => void
 }
@@ -52,13 +53,14 @@ const tabs: Array<{
 
 export default function Cliente360Tabs({
   active,
+  permitidas,
   contadores,
   onChange,
 }: Props) {
   return (
     <nav className="shrink-0 overflow-x-auto border-b border-slate-200 bg-white px-4">
       <div className="flex min-w-max">
-        {tabs.map(tab => {
+        {tabs.filter(tab => permitidas.includes(tab.id)).map(tab => {
           const count = tab.contador
             ? contadores[tab.contador]
             : null

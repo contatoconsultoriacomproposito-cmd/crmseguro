@@ -1,3 +1,4 @@
+import { usePermissaoModuloCliente } from '../../../hooks/usePermissaoModuloCliente'
 import {
   CalendarClock,
   Headphones,
@@ -77,6 +78,7 @@ export default function ClienteAssistenciasTab({
   cliente: ClienteCentral
 }) {
   const navigate = useNavigate()
+  const podeCriarAssistencia = usePermissaoModuloCliente('operacoes.assistencias', 'create', cliente)
   const [itens, setItens] = useState<
     CrmAssistencia[]
   >([])
@@ -149,7 +151,7 @@ export default function ClienteAssistenciasTab({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Header />
 
-          <button
+          {podeCriarAssistencia && <button
             type="button"
             onClick={() =>
               setModalNovaAssistenciaAberto(true)
@@ -158,15 +160,13 @@ export default function ClienteAssistenciasTab({
           >
             <Plus size={15} />
             Nova assistência
-          </button>
+          </button>}
         </div>
 
         {itens.length === 0 ? (
-          <Empty
-            onCreate={() =>
-              setModalNovaAssistenciaAberto(true)
-            }
-          />
+          podeCriarAssistencia ? <Empty
+            onCreate={() => setModalNovaAssistenciaAberto(true)}
+          /> : <div className="rounded-lg bg-white p-6 text-center text-sm text-slate-500">Nenhum registro vinculado.</div>
         ) : (
           <div className="space-y-3">
             {itens.map(item => (
@@ -294,7 +294,7 @@ export default function ClienteAssistenciasTab({
       </div>
 
       <ModalNovaAssistencia
-        open={modalNovaAssistenciaAberto}
+        open={modalNovaAssistenciaAberto && podeCriarAssistencia}
         clienteInicial={{
           id: cliente.id,
           tipo: cliente.tipo,

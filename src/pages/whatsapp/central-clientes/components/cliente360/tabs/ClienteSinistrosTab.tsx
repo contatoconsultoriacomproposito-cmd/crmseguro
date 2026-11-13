@@ -1,3 +1,4 @@
+import { usePermissaoModuloCliente } from '../../../hooks/usePermissaoModuloCliente'
 import {
   AlertTriangle,
   CalendarDays,
@@ -92,6 +93,7 @@ export default function ClienteSinistrosTab({
   cliente: ClienteCentral
 }) {
   const navigate = useNavigate()
+  const podeCriarSinistro = usePermissaoModuloCliente('operacoes.sinistros', 'create', cliente)
   const [itens, setItens] = useState<
     CrmSinistro[]
   >([])
@@ -175,7 +177,7 @@ export default function ClienteSinistrosTab({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Header />
 
-          <button
+          {podeCriarSinistro && <button
             type="button"
             onClick={() =>
               setModalNovoSinistroAberto(true)
@@ -184,15 +186,13 @@ export default function ClienteSinistrosTab({
           >
             <Plus size={15} />
             Novo sinistro
-          </button>
+          </button>}
         </div>
 
         {itens.length === 0 ? (
-          <Empty
-            onCreate={() =>
-              setModalNovoSinistroAberto(true)
-            }
-          />
+          podeCriarSinistro ? <Empty
+            onCreate={() => setModalNovoSinistroAberto(true)}
+          /> : <div className="rounded-lg bg-white p-6 text-center text-sm text-slate-500">Nenhum registro vinculado.</div>
         ) : (
           <div className="space-y-3">
             {itens.map(item => (
@@ -368,7 +368,7 @@ export default function ClienteSinistrosTab({
       </div>
 
       <ModalNovoSinistro
-        open={modalNovoSinistroAberto}
+        open={modalNovoSinistroAberto && podeCriarSinistro}
         clienteInicial={{
           id: cliente.id,
           tipo: cliente.tipo,

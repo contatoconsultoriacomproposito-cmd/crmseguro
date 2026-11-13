@@ -6,6 +6,13 @@ import ModalPermissoesConversas from "./components/ModalPermissoesConversas";
 import ModalPermissoesAgenda from "./components/ModalPermissoesAgenda";
 import ModalPermissoesEquipe from "./components/ModalPermissoesEquipe";
 import ModalPermissoesPropostas from "./components/ModalPermissoesPropostas";
+import ModalPermissoesClientes, {
+  PERMISSOES_CLIENTES_PADRAO,
+  normalizarPermissoesClientes,
+  type PermissoesClientes,
+  type AcaoPermissaoCliente,
+  type EscopoCliente,
+} from "./components/ModalPermissoesClientes";
 import { PERMISSOES_CONTATOS_PADRAO, PERMISSOES_CONVERSAS_PADRAO, PERMISSOES_AGENDA_PADRAO, PERMISSOES_EQUIPE_PADRAO, PERMISSOES_PROPOSTAS_PADRAO,
  OPCOES_ESCOPO_CONTATOS, normalizarPermissoesContatos, normalizarPermissoesConversas, normalizarPermissoesAgenda, normalizarPermissoesEquipe, normalizarPermissoesPropostas,
  type PermissoesContatos, type PermissoesConversas, type PermissoesAgenda, type PermissoesEquipe, type PermissoesPropostas,
@@ -69,6 +76,10 @@ export default function ModalPermissoesUsuario({
 
   const [permissoesPropostas, setPermissoesPropostas] = useState<PermissoesPropostas>({ ...PERMISSOES_PROPOSTAS_PADRAO });
 
+  const [permissoesClientes, setPermissoesClientes] = useState<PermissoesClientes>({
+    ...PERMISSOES_CLIENTES_PADRAO,
+  });
+
   const [permissoesOriginais, setPermissoesOriginais] = useState<any>({});
 
   const [loading, setLoading] =
@@ -129,6 +140,7 @@ export default function ModalPermissoesUsuario({
       setPermissoesAgenda(normalizarPermissoesAgenda(jsonAtual));
       setPermissoesEquipe(normalizarPermissoesEquipe(jsonAtual));
       setPermissoesPropostas(normalizarPermissoesPropostas(jsonAtual));
+      setPermissoesClientes(normalizarPermissoesClientes(jsonAtual));
       setPermissoesCarregadas(true);
     } catch (error) {
       console.error("Erro ao carregar permissões:", error);
@@ -136,6 +148,18 @@ export default function ModalPermissoesUsuario({
     } finally {
       setLoading(false);
     }
+  }
+
+  function alterarPermissaoCliente(acao: AcaoPermissaoCliente, escopo: EscopoCliente) {
+    setPermissoesClientes((prev) => ({ ...prev, [acao]: escopo }));
+    setSucesso("");
+  }
+
+  function aplicarTodasClientes(escopo: EscopoCliente) {
+    setPermissoesClientes((prev) =>
+      Object.fromEntries(Object.keys(prev).map((chave) => [chave, escopo])) as PermissoesClientes
+    );
+    setSucesso("");
   }
 
   function alterarPermissaoProposta(acao: keyof PermissoesPropostas, escopo: EscopoProposta) {
@@ -269,6 +293,7 @@ export default function ModalPermissoesUsuario({
         operacoes: {
           equipe: { ...permissoesEquipe },
           propostas: { ...permissoesPropostas },
+          clientes: { ...permissoesClientes },
         },
       };
 
@@ -295,6 +320,7 @@ export default function ModalPermissoesUsuario({
       setPermissoesOriginais(jsonSalvo);
       setPermissoesEquipe(normalizarPermissoesEquipe(jsonSalvo));
       setPermissoesPropostas(normalizarPermissoesPropostas(jsonSalvo));
+      setPermissoesClientes(normalizarPermissoesClientes(jsonSalvo));
       setSucesso("Permissões atualizadas com sucesso.");
       onSaved?.();
     } catch (error) {
@@ -426,6 +452,7 @@ export default function ModalPermissoesUsuario({
                   </div>
                   <div className="space-y-4">
                     <ModalPermissoesEquipe value={permissoesEquipe} disabled={saving || loading} onChange={alterarPermissaoEquipe} onAplicarTodas={aplicarTodasEquipe} />
+                    <ModalPermissoesClientes value={permissoesClientes} disabled={saving || loading} onChange={alterarPermissaoCliente} onAplicarTodas={aplicarTodasClientes} />
                     <ModalPermissoesPropostas value={permissoesPropostas} disabled={saving || loading} onChange={alterarPermissaoProposta} onAplicarTodas={aplicarTodasPropostas} />
                   </div>
                 </section>

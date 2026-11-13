@@ -10,12 +10,16 @@ interface Props {
   cliente: ClienteCentral
   onTornarLead: (cliente: ClienteCentral) => void
   onExcluir: (cliente: ClienteCentral) => void
+  podeTornarLead: boolean
+  podeExcluir: boolean
 }
 
 export default function ClienteAcoesMenu({
   cliente,
   onTornarLead,
   onExcluir,
+  podeTornarLead,
+  podeExcluir,
 }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
@@ -51,7 +55,7 @@ export default function ClienteAcoesMenu({
 
       {open && (
         <div className="absolute right-0 top-10 z-40 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-          {cliente.classificacao !== 'LEAD' && (
+          {podeTornarLead && cliente.classificacao !== 'LEAD' && (
             <button
               type="button"
               onClick={() => {
@@ -65,7 +69,7 @@ export default function ClienteAcoesMenu({
             </button>
           )}
 
-          <button
+          {podeExcluir && <button
             type="button"
             onClick={() => {
               setOpen(false)
@@ -75,7 +79,7 @@ export default function ClienteAcoesMenu({
           >
             <Trash2 size={14} />
             Excluir cliente
-          </button>
+          </button>}
         </div>
       )}
     </div>

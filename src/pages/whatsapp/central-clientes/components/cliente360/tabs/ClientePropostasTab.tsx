@@ -1,3 +1,4 @@
+import { usePermissaoModuloCliente } from '../../../hooks/usePermissaoModuloCliente'
 import {
   ChevronRight,
   FileText,
@@ -90,6 +91,8 @@ export default function ClientePropostasTab({
   cliente: ClienteCentral
 }) {
   const navigate = useNavigate()
+  const podeCriarProposta = usePermissaoModuloCliente('operacoes.propostas', 'create', cliente)
+  const podeAbrirProposta = usePermissaoModuloCliente('operacoes.propostas', 'read', cliente)
 
   const [itens, setItens] = useState<
     PropostaRow[]
@@ -162,6 +165,7 @@ export default function ClientePropostasTab({
   const abrirProposta = (
     propostaId: string
   ) => {
+    if (!podeAbrirProposta) return
     navigate(
       `/whatsapp/propostas/${propostaId}`
     )
@@ -180,7 +184,7 @@ export default function ClientePropostasTab({
             description="Histórico comercial e negociações deste cliente."
           />
 
-          <button
+          {podeCriarProposta && <button
             type="button"
             onClick={() =>
               setModalNovaPropostaAberto(true)
@@ -189,24 +193,20 @@ export default function ClientePropostasTab({
           >
             <Plus size={15} />
             Nova proposta
-          </button>
+          </button>}
         </div>
 
         {itens.length === 0 ? (
-          <Empty
-            onCreate={() =>
-              setModalNovaPropostaAberto(true)
-            }
-          />
+          podeCriarProposta ? <Empty
+            onCreate={() => setModalNovaPropostaAberto(true)}
+          /> : <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Nenhuma proposta vinculada.</div>
         ) : (
           <div className="space-y-3">
             {itens.map(item => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() =>
-                  abrirProposta(item.id)
-                }
+                onClick={() => { if (podeAbrirProposta) abrirProposta(item.id) }}
                 className="group w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/20 hover:shadow-sm"
               >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -319,7 +319,7 @@ export default function ClientePropostasTab({
       </div>
 
       <ModalNovaProposta
-        open={modalNovaPropostaAberto}
+        open={modalNovaPropostaAberto && podeCriarProposta}
         clienteInicial={{
           id: cliente.id,
           tipo: cliente.tipo,

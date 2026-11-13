@@ -1,3 +1,4 @@
+import { type AcessoClientes, podeCliente } from '../hooks/useAcessoClientes'
 import { supabase } from '../../../../lib/supabaseClient'
 import {
   enviarEmpresaParaLead,
@@ -130,12 +131,18 @@ const contatoWhatsAppId = (dados: Record<string, any>) =>
     dados?.campos_adicionais?.whatsapp?.contato_id
   ) || null
 
-async function carregarEntidades(): Promise<EntidadeRow[]> {
+async function carregarEntidades(acesso: AcessoClientes): Promise<EntidadeRow[]> {
+  if (!podeCliente(acesso, 'read')) return []
+  const filtro = (query: any) => {
+    let q = query.eq('corretora_id', acesso.corretoraId)
+    if (acesso.escopos.read === 'own') q = q.eq('corretor_id', acesso.usuarioId)
+    return q
+  }
   const [
     { data: pessoas, error: pessoasError },
     { data: empresas, error: empresasError },
   ] = await Promise.all([
-    supabase
+    filtro(supabase
       .from('crm_pessoas')
       .select(`
         id,
@@ -149,8 +156,8 @@ async function carregarEntidades(): Promise<EntidadeRow[]> {
         posicao_kanban,
         created_at,
         updated_at
-      `),
-    supabase
+      `)),
+    filtro(supabase
       .from('crm_empresas')
       .select(`
         id,
@@ -164,7 +171,7 @@ async function carregarEntidades(): Promise<EntidadeRow[]> {
         posicao_kanban,
         created_at,
         updated_at
-      `),
+      `)),
   ])
 
   if (pessoasError) throw pessoasError
@@ -184,14 +191,20 @@ async function carregarEntidades(): Promise<EntidadeRow[]> {
   ]
 }
 
-async function carregarEntidadesKanban(): Promise<
+async function carregarEntidadesKanban(acesso: AcessoClientes): Promise<
   EntidadeRow[]
 > {
+  if (!podeCliente(acesso, 'read')) return []
+  const filtro = (query: any) => {
+    let q = query.eq('corretora_id', acesso.corretoraId)
+    if (acesso.escopos.read === 'own') q = q.eq('corretor_id', acesso.usuarioId)
+    return q
+  }
   const [
     { data: pessoas, error: pessoasError },
     { data: empresas, error: empresasError },
   ] = await Promise.all([
-    supabase
+    filtro(supabase
       .from('crm_pessoas')
       .select(`
         id,
@@ -206,8 +219,8 @@ async function carregarEntidadesKanban(): Promise<
         created_at,
         updated_at
       `)
-      .eq('classificacao', 'LEAD'),
-    supabase
+      .eq('classificacao', 'LEAD')),
+    filtro(supabase
       .from('crm_empresas')
       .select(`
         id,
@@ -222,7 +235,7 @@ async function carregarEntidadesKanban(): Promise<
         created_at,
         updated_at
       `)
-      .eq('classificacao', 'LEAD'),
+      .eq('classificacao', 'LEAD')),
   ])
 
   if (pessoasError) throw pessoasError
@@ -597,19 +610,24 @@ function ordenarEntidades(
 }
 
 async function enriquecerEntidades(
-  entidades: EntidadeRow[]
+  entidades: EntidadeRow[],
+  acesso: AcessoClientes
 ): Promise<ClienteCentral[]> {
   if (!entidades.length) return []
 
-  const [responsaveis, produtos, agenda, conversas] =
-    await Promise.all([
-      carregarResponsaveis(
-        entidades.map(item => item.corretor_id)
-      ),
+  // Informações auxiliares não podem impedir a leitura básica da carteira.
+  // O backend continua responsável por proteger cada módulo e seus dados.
+  const [responsaveisResult, produtosResult, agendaResult, conversasResult] =
+    await Promise.allSettled([
+      carregarResponsaveis(entidades.map(item => item.corretor_id)),
       carregarProdutos(entidades),
       carregarAgenda(entidades),
       carregarConversasWhatsApp(entidades),
     ])
+  const responsaveis = responsaveisResult.status === 'fulfilled' ? responsaveisResult.value : new Map<string, string>()
+  const produtos = produtosResult.status === 'fulfilled' ? produtosResult.value : new Map<string, ClienteProdutoResumo[]>()
+  const agenda = agendaResult.status === 'fulfilled' ? agendaResult.value : new Map<string, AgendaResumo>()
+  const conversas = conversasResult.status === 'fulfilled' ? conversasResult.value : new Map<string, string>()
 
   return entidades.map(row => {
     const dados = row.dados || {}
@@ -658,7 +676,9 @@ async function enriquecerEntidades(
         contatoId
           ? conversas.get(contatoId) || null
           : null,
-      dados,
+      // Somente devolve o JSON cadastral completo quando a aba Cadastro estiver autorizada.
+      // A proteção efetiva do JSON no banco exige uma RPC/projeção segura.
+      dados: podeCliente(acesso, 'view_cadastro', { corretoraId: row.corretora_id, corretorId: row.corretor_id }) ? dados : {},
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     } satisfies ClienteCentral
@@ -702,17 +722,19 @@ function ordenarClientesEnriquecidos(
 }
 
 async function montarClientes(
-  entidades: EntidadeRow[]
+  entidades: EntidadeRow[],
+  acesso: AcessoClientes
 ): Promise<ClienteCentral[]> {
-  return enriquecerEntidades(entidades)
+  return enriquecerEntidades(entidades, acesso)
 }
 
 export async function buscarClientesCentral(
   filtros: CentralClientesFiltros,
+  acesso: AcessoClientes,
   pagina = 1,
   porPagina = 20
 ): Promise<CentralClientesResultado> {
-  const entidades = await carregarEntidades()
+  const entidades = await carregarEntidades(acesso)
 
   let filtradas = entidades.filter(row => {
     if (
@@ -757,7 +779,7 @@ export async function buscarClientesCentral(
     filtros.ordenacao === 'SEM_COMPROMISSO'
 
   if (dependeAgenda) {
-    let clientes = await enriquecerEntidades(filtradas)
+    let clientes = await enriquecerEntidades(filtradas, acesso)
 
     clientes = clientes.filter(cliente => {
       if (
@@ -833,7 +855,7 @@ export async function buscarClientesCentral(
   )
 
   const clientes = await enriquecerEntidades(
-    paginaEntidades
+    paginaEntidades, acesso
   )
 
   return {
@@ -847,11 +869,11 @@ export async function buscarClientesCentral(
   }
 }
 
-export async function buscarClientesKanban(): Promise<
+export async function buscarClientesKanban(acesso: AcessoClientes): Promise<
   ClienteCentral[]
 > {
-  const entidades = await carregarEntidadesKanban()
-  const clientes = await montarClientes(entidades)
+  const entidades = await carregarEntidadesKanban(acesso)
+  const clientes = await montarClientes(entidades, acesso)
 
   return clientes.sort(
     (a, b) =>
@@ -861,9 +883,10 @@ export async function buscarClientesKanban(): Promise<
 }
 
 export async function buscarResumoCentral(
-  filtros: CentralClientesFiltros
+  filtros: CentralClientesFiltros,
+  acesso: AcessoClientes
 ): Promise<CentralClientesResumo> {
-  const entidades = await carregarEntidades()
+  const entidades = await carregarEntidades(acesso)
 
   let filtradas = entidades.filter(row => {
     if (
@@ -897,7 +920,7 @@ export async function buscarResumoCentral(
    *
    * Compromisso precisa da agenda para ser avaliado.
    */
-  const agenda = await carregarAgenda(filtradas)
+  const agenda = await carregarAgenda(filtradas).catch(() => new Map<string, AgendaResumo>())
 
   if (filtros.compromisso !== 'TODOS') {
     filtradas = filtradas.filter(entidade => {
@@ -959,22 +982,25 @@ export async function buscarResumoCentral(
   }
 }
 
-export async function buscarResponsaveisCentral(): Promise<
+export async function buscarResponsaveisCentral(acesso: AcessoClientes): Promise<
   ResponsavelCentral[]
 > {
   const sessao = await obterSessaoCrm()
   const corretoraId = sessao.corretora_id
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('usuarios_perfis')
-    .select(
-      'id, nome, tipo_usuario, corretora_id, ativo'
-    )
+    .select('id, nome, tipo_usuario, corretora_id, ativo')
     .eq('ativo', true)
-    .or(
-      `id.eq.${corretoraId},corretora_id.eq.${corretoraId}`
-    )
-    .order('nome', { ascending: true })
+    .or(`id.eq.${corretoraId},corretora_id.eq.${corretoraId}`)
+  const podeTransferir =
+    acesso.escopos.transfer === 'own' ||
+    acesso.escopos.transfer === 'tenant'
+
+  if (!podeTransferir && acesso.escopos.read === 'own') {
+    query = query.eq('id', acesso.usuarioId)
+  }
+  const { data, error } = await query.order('nome', { ascending: true })
 
   if (error) throw error
 
@@ -987,8 +1013,10 @@ export async function buscarResponsaveisCentral(): Promise<
 
 export async function buscarClienteCentralPorId(
   tipo: 'PF' | 'PJ',
-  id: string
+  id: string,
+  acesso: AcessoClientes
 ): Promise<ClienteCentral | null> {
+  if (!podeCliente(acesso, 'open')) return null
   const tabela =
     tipo === 'PF'
       ? 'crm_pessoas'
@@ -1015,6 +1043,7 @@ export async function buscarClienteCentralPorId(
       updated_at
     `)
     .eq('id', id)
+    .eq('corretora_id', acesso.corretoraId)
     .maybeSingle()
 
   if (error) throw error
@@ -1026,7 +1055,8 @@ export async function buscarClienteCentralPorId(
     tipo,
   }
 
-  const [cliente] = await enriquecerEntidades([row])
+  if (!podeCliente(acesso, 'open', { corretoraId: row.corretora_id, corretorId: row.corretor_id })) return null
+  const [cliente] = await enriquecerEntidades([row], acesso)
 
   return cliente || null
 }

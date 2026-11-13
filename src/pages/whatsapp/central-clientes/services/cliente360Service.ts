@@ -1,3 +1,5 @@
+import type { AcessoClientes } from '../hooks/useAcessoClientes'
+import type { Cliente360Tab } from '../types/centralClientes'
 import { supabase } from '../../../../lib/supabaseClient'
 import { buscarClienteCentralPorId } from './centralClientesService'
 import type {
@@ -7,9 +9,10 @@ import type {
 
 export async function buscarCliente360Cabecalho(
   tipo: 'PF' | 'PJ',
-  id: string
+  id: string,
+  acesso: AcessoClientes
 ): Promise<ClienteCentral | null> {
-  return buscarClienteCentralPorId(tipo, id)
+  return buscarClienteCentralPorId(tipo, id, acesso)
 }
 
 async function contar(
@@ -25,12 +28,14 @@ async function contar(
     })
     .eq(coluna, id)
 
-  if (error) throw error
+  // Uma consulta auxiliar negada não deve bloquear todo o card 360°.
+  if (error) return 0
   return count || 0
 }
 
 export async function buscarContadoresCliente360(
-  cliente: Pick<ClienteCentral, 'id' | 'tipo'>
+  cliente: Pick<ClienteCentral, 'id' | 'tipo'>,
+  abas: Cliente360Tab[]
 ): Promise<Cliente360Contadores> {
   const coluna =
     cliente.tipo === 'PF'
@@ -45,21 +50,21 @@ export async function buscarContadoresCliente360(
     assistencias,
     arquivos,
   ] = await Promise.all([
-    contar('crm_agenda', coluna, cliente.id),
-    contar('crm_propostas', coluna, cliente.id),
-    contar('crm_contratos', coluna, cliente.id),
-    contar('crm_sinistros', coluna, cliente.id),
-    contar('crm_assistencias', coluna, cliente.id),
-    contar('crm_arquivos', coluna, cliente.id),
+    abas.includes('agenda') ? contar('crm_agenda', coluna, cliente.id) : Promise.resolve(0),
+    abas.includes('propostas') ? contar('crm_propostas', coluna, cliente.id) : Promise.resolve(0),
+    abas.includes('contratos') ? contar('crm_contratos', coluna, cliente.id) : Promise.resolve(0),
+    abas.includes('sinistros') ? contar('crm_sinistros', coluna, cliente.id) : Promise.resolve(0),
+    abas.includes('assistencias') ? contar('crm_assistencias', coluna, cliente.id) : Promise.resolve(0),
+    abas.includes('arquivos') ? contar('crm_arquivos', coluna, cliente.id) : Promise.resolve(0),
   ])
 
   const { data: contratosCliente, error: contratosError } =
-    await supabase
+    abas.includes('financeiro') ? await supabase
       .from('crm_contratos')
       .select('id')
-      .eq(coluna, cliente.id)
+      .eq(coluna, cliente.id) : { data: [] as { id: string }[], error: null }
 
-  if (contratosError) throw contratosError
+  if (contratosError) return { agenda, propostas, contratos, sinistros, assistencias, financeiro: 0, arquivos }
 
   const idsContratos = (contratosCliente || []).map(
     (item: any) => item.id
@@ -75,8 +80,7 @@ export async function buscarContadoresCliente360(
       })
       .in('contrato_id', idsContratos)
 
-    if (error) throw error
-    financeiro = count || 0
+    if (!error) financeiro = count || 0
   }
 
   return {

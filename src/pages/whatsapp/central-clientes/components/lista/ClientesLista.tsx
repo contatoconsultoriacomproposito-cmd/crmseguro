@@ -18,6 +18,10 @@ interface Props {
   onWhatsApp: (cliente: ClienteCentral) => void
   onTornarLead: (cliente: ClienteCentral) => void
   onExcluir: (cliente: ClienteCentral) => void
+  podeAbrir: (cliente: ClienteCentral) => boolean
+  podeWhatsApp: (cliente: ClienteCentral) => boolean
+  podeTornarLead: (cliente: ClienteCentral) => boolean
+  podeExcluir: (cliente: ClienteCentral) => boolean
 }
 
 export default function ClientesLista({
@@ -29,6 +33,10 @@ export default function ClientesLista({
   onWhatsApp,
   onTornarLead,
   onExcluir,
+  podeAbrir,
+  podeWhatsApp,
+  podeTornarLead,
+  podeExcluir,
 }: Props) {
   return (
     <div className="min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -65,6 +73,10 @@ export default function ClientesLista({
                   onWhatsApp={onWhatsApp}
                   onTornarLead={onTornarLead}
                   onExcluir={onExcluir}
+                  podeAbrir={podeAbrir(cliente)}
+                  podeWhatsApp={podeWhatsApp(cliente)}
+                  podeTornarLead={podeTornarLead(cliente)}
+                  podeExcluir={podeExcluir(cliente)}
                 />
               ))}
           </tbody>

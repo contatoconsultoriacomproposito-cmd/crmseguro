@@ -52,6 +52,8 @@ interface Props {
   clientes: ClienteCentral[]
   loading: boolean
   onOpen: (cliente: ClienteCentral) => void
+  podeAbrir: (cliente: ClienteCentral) => boolean
+  podeMover: (cliente: ClienteCentral) => boolean
   onMove: (
     cliente: ClienteCentral,
     etapa: ClienteKanbanStage,
@@ -549,6 +551,8 @@ export default function ClientesKanban({
   clientes,
   loading,
   onOpen,
+  podeAbrir,
+  podeMover,
   onMove,
 }: Props) {
   const [local, setLocal] =
@@ -1039,9 +1043,9 @@ export default function ClientesKanban({
                         stage.id
                       ) || []
                     }
-                    onOpen={
-                      onOpen
-                    }
+                    onOpen={onOpen}
+                    podeAbrir={podeAbrir}
+                    podeMover={podeMover}
                   />
                 )
               }

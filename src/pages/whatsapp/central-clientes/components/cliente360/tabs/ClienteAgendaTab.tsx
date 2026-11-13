@@ -1,3 +1,4 @@
+import { usePermissaoModuloCliente } from '../../../hooks/usePermissaoModuloCliente'
 import {
   CalendarClock,
   CheckCircle2,
@@ -62,6 +63,7 @@ export default function ClienteAgendaTab({
   cliente,
   onUpdated,
 }: Props) {
+  const podeGerenciarAgenda = usePermissaoModuloCliente('atendimento.agenda', 'manage', cliente)
   const { userProfile } = useAuth()
 
   const [
@@ -343,6 +345,7 @@ export default function ClienteAgendaTab({
 
   const abrirNovoCompromisso =
     async () => {
+      if (!podeGerenciarAgenda) return
       if (
         carregandoClienteAgenda ||
         salvandoNovo
@@ -385,6 +388,7 @@ export default function ClienteAgendaTab({
       payload:
         NovoCompromissoSubmitPayload
     ) => {
+      if (!podeGerenciarAgenda) return
       if (
         !userProfile?.id ||
         !corretoraId ||
@@ -618,6 +622,7 @@ export default function ClienteAgendaTab({
     async (
       compromisso: AgendaItem
     ) => {
+      if (!podeGerenciarAgenda) { toast.error('Sem permissão para gerenciar a Agenda.'); return }
       if (
         salvandoCompromisso
       ) {
@@ -672,6 +677,7 @@ export default function ClienteAgendaTab({
       reagendamento:
         ModalCompromissoReagendamento
     ) => {
+      if (!podeGerenciarAgenda) { toast.error('Sem permissão para gerenciar a Agenda.'); return }
       if (
         salvandoCompromisso
       ) {
@@ -736,6 +742,7 @@ export default function ClienteAgendaTab({
       edicao:
         ModalCompromissoEdicao
     ) => {
+      if (!podeGerenciarAgenda) { toast.error('Sem permissão para gerenciar a Agenda.'); return }
       if (
         salvandoCompromisso
       ) {
@@ -801,6 +808,7 @@ export default function ClienteAgendaTab({
     async (
       compromisso: AgendaItem
     ) => {
+      if (!podeGerenciarAgenda) { toast.error('Sem permissão para gerenciar a Agenda.'); return }
       if (
         salvandoCompromisso
       ) {
@@ -862,6 +870,7 @@ export default function ClienteAgendaTab({
         | 'CONCLUIDO'
         | 'CANCELADO'
     ) => {
+      if (!podeGerenciarAgenda) return
       if (
         salvandoStatus
       ) {
@@ -920,6 +929,7 @@ export default function ClienteAgendaTab({
     <>
       <div className="space-y-3">
         <Header
+          podeCriar={podeGerenciarAgenda}
           title="Agenda"
           description="Compromissos vinculados a este cliente."
           onNovo={() =>
@@ -934,6 +944,7 @@ export default function ClienteAgendaTab({
         {itens.length ===
         0 ? (
           <Empty
+            podeCriar={podeGerenciarAgenda}
             text="Nenhum compromisso encontrado."
             onNovo={() =>
               void abrirNovoCompromisso()
@@ -1057,7 +1068,7 @@ export default function ClienteAgendaTab({
                     />
                   </div>
 
-                  {item.status ===
+                  {podeGerenciarAgenda && item.status ===
                     'PENDENTE' && (
                     <div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-3">
                       <button
@@ -1165,9 +1176,7 @@ export default function ClienteAgendaTab({
        * Agenda principal.
        */}
       <ModalCompromisso
-        aberto={
-          modalCompromissoAberto
-        }
+        aberto={modalCompromissoAberto}
         compromisso={
           compromissoSelecionado
         }
@@ -1196,7 +1205,7 @@ export default function ClienteAgendaTab({
        *
        * Fluxo existente preservado.
        */}
-      {corretoraId &&
+      {podeGerenciarAgenda && corretoraId &&
         clienteAgenda && (
           <ModalNovoCompromisso
             aberto={
@@ -1235,11 +1244,13 @@ function Header({
   description,
   onNovo,
   criando,
+  podeCriar,
 }: {
   title: string
   description: string
   onNovo: () => void
   criando: boolean
+  podeCriar: boolean
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1253,7 +1264,7 @@ function Header({
         </p>
       </div>
 
-      <button
+      {podeCriar && <button
         type="button"
         onClick={
           onNovo
@@ -1275,7 +1286,7 @@ function Header({
         )}
 
         Novo compromisso
-      </button>
+      </button>}
     </div>
   )
 }
@@ -1330,10 +1341,12 @@ function Empty({
   text,
   onNovo,
   criando,
+  podeCriar,
 }: {
   text: string
   onNovo: () => void
   criando: boolean
+  podeCriar: boolean
 }) {
   return (
     <div className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 px-4 text-center">
@@ -1346,7 +1359,7 @@ function Empty({
         {text}
       </p>
 
-      <button
+      {podeCriar && <button
         type="button"
         onClick={
           onNovo
@@ -1368,7 +1381,7 @@ function Empty({
         )}
 
         Criar compromisso
-      </button>
+      </button>}
     </div>
   )
 }

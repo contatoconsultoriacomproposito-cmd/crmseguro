@@ -22,6 +22,9 @@ import {
 interface Props {
   cliente: ClienteCentral
   salvando?: boolean
+  podeTornarLead: boolean
+  podeAlterarEtapa: boolean
+  podeWhatsApp: boolean
   onClose: () => void
   onWhatsApp: (cliente: ClienteCentral) => void
   onTornarLead: (cliente: ClienteCentral) => Promise<void>
@@ -34,6 +37,9 @@ interface Props {
 export default function Cliente360Header({
   cliente,
   salvando = false,
+  podeTornarLead,
+  podeAlterarEtapa,
+  podeWhatsApp,
   onClose,
   onWhatsApp,
   onTornarLead,
@@ -119,6 +125,7 @@ export default function Cliente360Header({
 
         <div className="flex shrink-0 items-center gap-2">
           {cliente.classificacao !== 'LEAD' ? (
+            podeTornarLead && (
             <button
               type="button"
               disabled={salvando}
@@ -127,9 +134,9 @@ export default function Cliente360Header({
             >
               <Target size={14} />
               Tornar Lead
-            </button>
+            </button>)
           ) : (
-            <select
+            podeAlterarEtapa && <select
               value={cliente.etapaKanban || 'prospeccao'}
               disabled={salvando}
               onChange={event =>
@@ -149,7 +156,7 @@ export default function Cliente360Header({
             </select>
           )}
 
-          <button
+          {podeWhatsApp && <button
             type="button"
             disabled={!cliente.possuiWhatsApp}
             onClick={() => onWhatsApp(cliente)}
@@ -157,7 +164,7 @@ export default function Cliente360Header({
             title="WhatsApp"
           >
             <MessageCircle size={15} />
-          </button>
+          </button>}
 
           <button
             type="button"

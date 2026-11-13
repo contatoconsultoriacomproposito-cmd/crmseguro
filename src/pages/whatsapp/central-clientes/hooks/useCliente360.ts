@@ -1,3 +1,4 @@
+import { type AcessoClientes, podeCliente, abasPermitidas } from './useAcessoClientes'
 import {
   useCallback,
   useEffect,
@@ -23,7 +24,8 @@ const CONTADORES_INICIAIS: Cliente360Contadores = {
 }
 
 export function useCliente360(
-  clienteInicial: ClienteCentral | null
+  clienteInicial: ClienteCentral | null,
+  acesso: AcessoClientes | null
 ) {
   const [cliente, setCliente] =
     useState<ClienteCentral | null>(clienteInicial)
@@ -35,7 +37,7 @@ export function useCliente360(
   const [error, setError] = useState<Error | null>(null)
 
   const carregar = useCallback(async () => {
-    if (!clienteInicial) {
+    if (!clienteInicial || !podeCliente(acesso, 'open', clienteInicial)) {
       setCliente(null)
       setContadores(CONTADORES_INICIAIS)
       return
@@ -48,9 +50,10 @@ export function useCliente360(
         await Promise.all([
           buscarCliente360Cabecalho(
             clienteInicial.tipo,
-            clienteInicial.id
+            clienteInicial.id,
+            acesso!
           ),
-          buscarContadoresCliente360(clienteInicial),
+          buscarContadoresCliente360(clienteInicial, abasPermitidas(acesso, clienteInicial)),
         ])
 
       setCliente(cabecalho)
@@ -66,7 +69,7 @@ export function useCliente360(
     } finally {
       setLoading(false)
     }
-  }, [clienteInicial])
+  }, [clienteInicial, acesso])
 
   useEffect(() => {
     void carregar()

@@ -17,6 +17,8 @@ export const clienteCardId = (cliente: ClienteCentral) =>
 interface Props {
   cliente: ClienteCentral
   onOpen: (cliente: ClienteCentral) => void
+  podeAbrir?: boolean
+  podeMover?: boolean
 }
 
 type SortableAttributes = ReturnType<typeof useSortable>['attributes']
@@ -28,6 +30,8 @@ interface ContentProps {
   dragAttributes?: SortableAttributes
   dragListeners?: SortableListeners
   onOpen?: (cliente: ClienteCentral) => void
+  podeAbrir?: boolean
+  podeMover?: boolean
 }
 
 export function ClienteKanbanCardContent({
@@ -36,11 +40,13 @@ export function ClienteKanbanCardContent({
   dragAttributes,
   dragListeners,
   onOpen,
+  podeAbrir = true,
+  podeMover = true,
 }: ContentProps) {
   return (
     <div
       onClick={() => {
-        if (!dragging) {
+        if (!dragging && podeAbrir) {
           onOpen?.(cliente)
         }
       }}
@@ -63,7 +69,7 @@ export function ClienteKanbanCardContent({
           </p>
         </div>
 
-        {!dragging && (
+        {!dragging && podeMover && (
           <button
             type="button"
             {...dragAttributes}
@@ -124,6 +130,8 @@ export function ClienteKanbanCardContent({
 export default function ClienteKanbanCard({
   cliente,
   onOpen,
+  podeAbrir = true,
+  podeMover = true,
 }: Props) {
   const {
     attributes,
@@ -134,6 +142,7 @@ export default function ClienteKanbanCard({
     isDragging,
   } = useSortable({
     id: clienteCardId(cliente),
+    disabled: !podeMover,
   })
 
   return (
@@ -154,6 +163,8 @@ export default function ClienteKanbanCard({
         dragAttributes={attributes}
         dragListeners={listeners}
         onOpen={onOpen}
+        podeAbrir={podeAbrir}
+        podeMover={podeMover}
       />
     </div>
   )

@@ -23,6 +23,8 @@ interface Props {
   dropStyle: string
   clientes: ClienteCentral[]
   onOpen: (cliente: ClienteCentral) => void
+  podeAbrir: (cliente: ClienteCentral) => boolean
+  podeMover: (cliente: ClienteCentral) => boolean
 }
 
 export default function ClienteKanbanColumn({
@@ -36,6 +38,8 @@ export default function ClienteKanbanColumn({
   dropStyle,
   clientes,
   onOpen,
+  podeAbrir,
+  podeMover,
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column:${id}`,
@@ -97,6 +101,8 @@ export default function ClienteKanbanColumn({
                 key={clienteCardId(cliente)}
                 cliente={cliente}
                 onOpen={onOpen}
+                podeAbrir={podeAbrir(cliente)}
+                podeMover={podeMover(cliente)}
               />
             ))
           ) : (

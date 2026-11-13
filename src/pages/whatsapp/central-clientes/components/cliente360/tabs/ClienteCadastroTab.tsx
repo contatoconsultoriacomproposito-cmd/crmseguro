@@ -38,7 +38,6 @@ import {
   formatarDocumento,
   
 } from '../../../utils/clienteFormatters'
-import { useAuth } from '../../../../../../auth/AuthContext'
 
 import {
   formatCurrency,
@@ -59,6 +58,8 @@ interface Props {
     responsavelId: string
   ) => Promise<void>
   onUpdated: () => Promise<void>
+  podeEditar: boolean
+  podeTransferir: boolean
 }
 
 type RegistroCompleto = CrmPessoa | CrmEmpresa
@@ -114,11 +115,10 @@ export default function ClienteCadastroTab({
   responsaveis,
   onTransferir,
   onUpdated,
+  podeEditar,
+  podeTransferir,
 }: Props) {
-  const { userProfile } = useAuth()
-
-  const podeAlterarResponsavel =
-    userProfile?.tipo_usuario === 'CORRETORA'
+  const podeAlterarResponsavel = podeTransferir
 
   const [responsavelId, setResponsavelId] = useState('')
   const [registro, setRegistro] =
@@ -453,7 +453,7 @@ export default function ClienteCadastroTab({
   }
 
   const salvar = async () => {
-    if (!registro) return
+    if (!registro || !podeEditar) return
 
     setSalvando(true)
 
@@ -494,16 +494,6 @@ export default function ClienteCadastroTab({
   })
 }
 
-      const responsavelAtualId = registro.corretor_id || ''
-      const responsavelAlterado =
-        podeAlterarResponsavel &&
-        responsavelId &&
-        responsavelId !== responsavelAtualId
-
-      if (responsavelAlterado) {
-        await onTransferir(cliente, responsavelId)
-      }
-
       await carregar()
       await onUpdated()
       setEditando(false)
@@ -513,6 +503,21 @@ export default function ClienteCadastroTab({
         error?.message ||
           'Não foi possível atualizar o cadastro.'
       )
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const transferirSeparadamente = async () => {
+    if (!registro || !podeTransferir || !responsavelId || responsavelId === registro.corretor_id) return
+    setSalvando(true)
+    try {
+      await onTransferir(cliente, responsavelId)
+      await carregar()
+      await onUpdated()
+      toast.success('Responsável transferido com sucesso.')
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : 'Não foi possível transferir o responsável.')
     } finally {
       setSalvando(false)
     }
@@ -559,7 +564,7 @@ export default function ClienteCadastroTab({
         </div>
 
         <div className="flex items-center gap-2">
-          {editando && (
+          {podeEditar && editando && (
             <button
               type="button"
               onClick={cancelarEdicao}
@@ -571,7 +576,7 @@ export default function ClienteCadastroTab({
             </button>
           )}
 
-          <button
+          {podeEditar && <button
             type="button"
             onClick={() =>
               editando
@@ -587,7 +592,7 @@ export default function ClienteCadastroTab({
               : editando
                 ? 'Salvar alterações'
                 : 'Editar cadastro'}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -673,7 +678,7 @@ export default function ClienteCadastroTab({
             value={registro.classificacao}
           />
 
-          {editando && podeAlterarResponsavel ? (
+          {podeAlterarResponsavel ? (
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                 Responsável
@@ -699,6 +704,11 @@ export default function ClienteCadastroTab({
                   </option>
                 ))}
               </select>
+              <button type="button" disabled={salvando || !responsavelId || responsavelId === registro.corretor_id}
+                onClick={() => void transferirSeparadamente()}
+                className="mt-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                Transferir responsável
+              </button>
             </div>
           ) : (
             <ReadOnlyField

@@ -1,3 +1,4 @@
+import { type AcessoClientes, podeCliente } from './useAcessoClientes'
 import {
   useCallback,
   useEffect,
@@ -40,7 +41,7 @@ const RESUMO_INICIAL: CentralClientesResumo = {
   semCompromisso: 0,
 }
 
-export function useCentralClientes() {
+export function useCentralClientes(acesso: AcessoClientes | null) {
   const [visualizacao, setVisualizacao] =
     useState<VisualizacaoCentral>('LISTA')
   const [filtros, setFiltros] =
@@ -62,11 +63,18 @@ export function useCentralClientes() {
   const [error, setError] = useState<Error | null>(null)
 
   const carregarLista = useCallback(async () => {
+    if (!podeCliente(acesso, 'read')) {
+      setClientes([])
+      setPaginacao(PAGINACAO_INICIAL)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
       const resultado = await buscarClientesCentral(
         filtros,
+        acesso!,
         pagina,
         20
       )
@@ -81,27 +89,40 @@ export function useCentralClientes() {
     } finally {
       setLoading(false)
     }
-  }, [filtros, pagina])
+  }, [filtros, pagina, acesso])
 
   const carregarKanban = useCallback(async () => {
+    if (!podeCliente(acesso, 'read')) {
+      setClientesKanban([])
+      setLoadingKanban(false)
+      return
+    }
     setLoadingKanban(true)
     try {
-      setClientesKanban(await buscarClientesKanban())
+      setClientesKanban(await buscarClientesKanban(acesso!))
     } finally {
       setLoadingKanban(false)
     }
-  }, [])
+  }, [acesso])
 
   const carregarApoio = useCallback(async () => {
-    const [novoResumo, novosResponsaveis] =
-      await Promise.all([
-        buscarResumoCentral(filtros),
-        buscarResponsaveisCentral(),
-      ])
-
-    setResumo(novoResumo)
-    setResponsaveis(novosResponsaveis)
-  }, [filtros])
+    if (!podeCliente(acesso, 'read')) {
+      setResumo(RESUMO_INICIAL)
+      setResponsaveis([])
+      return
+    }
+    try {
+      const [novoResumo, novosResponsaveis] =
+        await Promise.all([
+          buscarResumoCentral(filtros, acesso!),
+          buscarResponsaveisCentral(acesso!),
+        ])
+      setResumo(novoResumo)
+      setResponsaveis(novosResponsaveis)
+    } catch (erro) {
+      setError(erro instanceof Error ? erro : new Error('Falha ao carregar resumo de clientes.'))
+    }
+  }, [filtros, acesso])
 
   const recarregar = useCallback(async () => {
     await Promise.all([
@@ -150,10 +171,11 @@ export function useCentralClientes() {
 
   const tornarLead = useCallback(
     async (cliente: ClienteCentral) => {
+      if (!podeCliente(acesso, 'make_lead', cliente)) throw new Error('Sem permissão para tornar Lead.')
       await tornarClienteLead(cliente)
       await recarregar()
     },
-    [recarregar]
+    [recarregar, acesso]
   )
 
   const moverKanban = useCallback(
@@ -162,6 +184,7 @@ export function useCentralClientes() {
       etapa: ClienteKanbanStage,
       posicao: number
     ) => {
+      if (!podeCliente(acesso, 'update', cliente)) throw new Error('Sem permissão para mover o Kanban.')
       await atualizarKanbanCliente(
         cliente,
         etapa,
@@ -182,7 +205,7 @@ export function useCentralClientes() {
         )
       )
     },
-    []
+    [acesso]
   )
 
   const transferir = useCallback(
@@ -190,21 +213,23 @@ export function useCentralClientes() {
       cliente: ClienteCentral,
       responsavelId: string
     ) => {
+      if (!podeCliente(acesso, 'transfer', cliente)) throw new Error('Sem permissão para transferir.')
       await transferirResponsavelCentral(
         cliente,
         responsavelId
       )
       await recarregar()
     },
-    [recarregar]
+    [recarregar, acesso]
   )
 
   const excluir = useCallback(
     async (cliente: ClienteCentral) => {
+      if (!podeCliente(acesso, 'delete', cliente)) throw new Error('Sem permissão para excluir.')
       await excluirClienteCentral(cliente)
       await recarregar()
     },
-    [recarregar]
+    [recarregar, acesso]
   )
 
   const buscaValida = useMemo(

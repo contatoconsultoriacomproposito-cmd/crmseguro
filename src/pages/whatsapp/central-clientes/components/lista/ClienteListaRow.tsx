@@ -19,6 +19,10 @@ interface Props {
   onWhatsApp: (cliente: ClienteCentral) => void
   onTornarLead: (cliente: ClienteCentral) => void
   onExcluir: (cliente: ClienteCentral) => void
+  podeAbrir: boolean
+  podeWhatsApp: boolean
+  podeTornarLead: boolean
+  podeExcluir: boolean
 }
 
 export default function ClienteListaRow({
@@ -27,14 +31,18 @@ export default function ClienteListaRow({
   onWhatsApp,
   onTornarLead,
   onExcluir,
+  podeAbrir,
+  podeWhatsApp,
+  podeTornarLead,
+  podeExcluir,
 }: Props) {
   const Icon =
     cliente.tipo === 'PF' ? UserRound : Building2
 
   return (
     <tr
-      onClick={() => onOpen(cliente)}
-      className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50/80"
+      onClick={() => { if (podeAbrir) onOpen(cliente) }}
+      className={`${podeAbrir ? 'cursor-pointer' : 'cursor-default'} border-b border-slate-100 transition hover:bg-slate-50/80`}
     >
       <td className="px-4 py-3.5">
         <div className="flex min-w-0 items-center gap-3">
@@ -152,7 +160,7 @@ export default function ClienteListaRow({
                 ? 'Abrir WhatsApp'
                 : 'WhatsApp não vinculado'
             }
-            disabled={!cliente.possuiWhatsApp}
+            disabled={!podeWhatsApp || !cliente.possuiWhatsApp}
             onClick={event => {
               event.stopPropagation()
               onWhatsApp(cliente)
@@ -162,11 +170,13 @@ export default function ClienteListaRow({
             <MessageCircle size={15} />
           </button>
 
-          <ClienteAcoesMenu
+          {((podeTornarLead && cliente.classificacao !== 'LEAD') || podeExcluir) && <ClienteAcoesMenu
             cliente={cliente}
+            podeTornarLead={podeTornarLead}
+            podeExcluir={podeExcluir}
             onTornarLead={onTornarLead}
             onExcluir={onExcluir}
-          />
+          />}
         </div>
       </td>
     </tr>
