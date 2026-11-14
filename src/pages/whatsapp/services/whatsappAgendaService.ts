@@ -38,15 +38,9 @@ export interface WhatsAppAgendaData {
   >
 }
 
-interface CrmPessoaLinkRow {
+interface CrmLinkRow {
   id: string
-  dados: unknown
-  created_at: string
-}
-
-interface CrmEmpresaLinkRow {
-  id: string
-  dados: unknown
+  contato_id: string | null
   created_at: string
 }
 
@@ -66,7 +60,12 @@ interface AgendaRow {
   origem_id: string | null
 }
 
-const CRM_LOOKUP_BATCH_SIZE = 10
+// Evita uma requisição por contato; lotes pequenos mantêm a URL e o uso de memória controlados.
+const CRM_LOOKUP_BATCH_SIZE = 80
+// Protege contra o limite de linhas retornadas pelo PostgREST.
+const CRM_RESULT_PAGE_SIZE = 1000
+const CRM_CONTACT_ID_PATH = 'dados->campos_adicionais->whatsapp->>contato_id'
+const CRM_LINK_SELECT = 'id, created_at, contato_id:dados->campos_adicionais->whatsapp->>contato_id' 
 
 const emptyAgendaData =
   (): WhatsAppAgendaData => ({
@@ -76,73 +75,6 @@ const emptyAgendaData =
     todos: [],
     proximoPorConversa: {},
   })
-
-const filtroWhatsApp = (
-  contatoId: string
-) => ({
-  campos_adicionais: {
-    whatsapp: {
-      contato_id: contatoId,
-    },
-  },
-})
-
-function getWhatsAppContactId(
-  dados: unknown
-): string | null {
-  if (
-    !dados ||
-    typeof dados !== 'object'
-  ) {
-    return null
-  }
-
-  const camposAdicionais =
-    (
-      dados as Record<
-        string,
-        unknown
-      >
-    ).campos_adicionais
-
-  if (
-    !camposAdicionais ||
-    typeof camposAdicionais !==
-      'object'
-  ) {
-    return null
-  }
-
-  const whatsapp =
-    (
-      camposAdicionais as Record<
-        string,
-        unknown
-      >
-    ).whatsapp
-
-  if (
-    !whatsapp ||
-    typeof whatsapp !== 'object'
-  ) {
-    return null
-  }
-
-  const contatoId =
-    (
-      whatsapp as Record<
-        string,
-        unknown
-      >
-    ).contato_id
-
-  return (
-    typeof contatoId === 'string' &&
-    contatoId.trim()
-      ? contatoId
-      : null
-  )
-}
 
 function getSituation(
   inicioEm: string,
@@ -185,126 +117,69 @@ function chunk<T>(
   return chunks
 }
 
-async function buscarPessoasPorContatos(
+/**
+ * Uma consulta por lote/tabela, em vez de uma consulta por contato/tabela.
+ * A RLS continua aplicada pelo PostgREST com o JWT do usuário autenticado.
+ *
+ * Se houver mais de um vínculo com o mesmo contato, preservamos o registro
+ * mais recente (o comportamento anterior usava ORDER BY created_at DESC LIMIT 1).
+ */
+async function buscarVinculosCrmPorContatos(
+  tabela: 'crm_pessoas' | 'crm_empresas',
   corretoraId: string,
   contactIds: string[]
-): Promise<CrmPessoaLinkRow[]> {
-  const results:
-    CrmPessoaLinkRow[] = []
+): Promise<CrmLinkRow[]> {
+  const idsUnicos = Array.from(new Set(contactIds.filter(Boolean)))
+  if (idsUnicos.length === 0) return []
 
-  for (
-    const batch of chunk(
-      contactIds,
-      CRM_LOOKUP_BATCH_SIZE
-    )
-  ) {
-    const responses =
-      await Promise.all(
-        batch.map(contatoId =>
-          supabase
-            .from('crm_pessoas')
-            .select(
-              'id, dados, created_at'
-            )
-            .eq(
-              'corretora_id',
-              corretoraId
-            )
-            .contains(
-              'dados',
-              filtroWhatsApp(
-                contatoId
-              )
-            )
-            .order(
-              'created_at',
-              {
-                ascending: false,
-              }
-            )
-            .limit(1)
-            .maybeSingle()
-        )
-      )
+  const porContato = new Map<string, CrmLinkRow>()
 
-    for (
-      const response of responses
-    ) {
-      if (response.error) {
-        throw response.error
+  for (const batch of chunk(idsUnicos, CRM_LOOKUP_BATCH_SIZE)) {
+    let offset = 0
+
+    // Paginação defensiva: evita perda silenciosa de vínculos se uma corretora
+    // tiver múltiplos registros com o mesmo contato ou houver muitos resultados.
+    while (true) {
+      const { data, error } = await supabase
+        .from(tabela)
+        .select(CRM_LINK_SELECT)
+        .eq('corretora_id', corretoraId)
+        .in(CRM_CONTACT_ID_PATH, batch)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(offset, offset + CRM_RESULT_PAGE_SIZE - 1)
+
+      if (error) throw error
+
+      const registros = (data || []) as unknown as CrmLinkRow[]
+      for (const registro of registros) {
+        const contatoId = registro.contato_id
+        if (typeof contatoId !== 'string' || !contatoId.trim()) continue
+
+        // O retorno está ordenado do mais novo para o mais antigo.
+        if (!porContato.has(contatoId)) porContato.set(contatoId, registro)
       }
 
-      if (response.data) {
-        results.push(
-          response.data as
-            CrmPessoaLinkRow
-        )
-      }
+      if (registros.length < CRM_RESULT_PAGE_SIZE) break
+      offset += CRM_RESULT_PAGE_SIZE
     }
   }
 
-  return results
+  return Array.from(porContato.values())
+}
+
+async function buscarPessoasPorContatos(
+  corretoraId: string,
+  contactIds: string[]
+): Promise<CrmLinkRow[]> {
+  return buscarVinculosCrmPorContatos('crm_pessoas', corretoraId, contactIds)
 }
 
 async function buscarEmpresasPorContatos(
   corretoraId: string,
   contactIds: string[]
-): Promise<CrmEmpresaLinkRow[]> {
-  const results:
-    CrmEmpresaLinkRow[] = []
-
-  for (
-    const batch of chunk(
-      contactIds,
-      CRM_LOOKUP_BATCH_SIZE
-    )
-  ) {
-    const responses =
-      await Promise.all(
-        batch.map(contatoId =>
-          supabase
-            .from('crm_empresas')
-            .select(
-              'id, dados, created_at'
-            )
-            .eq(
-              'corretora_id',
-              corretoraId
-            )
-            .contains(
-              'dados',
-              filtroWhatsApp(
-                contatoId
-              )
-            )
-            .order(
-              'created_at',
-              {
-                ascending: false,
-              }
-            )
-            .limit(1)
-            .maybeSingle()
-        )
-      )
-
-    for (
-      const response of responses
-    ) {
-      if (response.error) {
-        throw response.error
-      }
-
-      if (response.data) {
-        results.push(
-          response.data as
-            CrmEmpresaLinkRow
-        )
-      }
-    }
-  }
-
-  return results
+): Promise<CrmLinkRow[]> {
+  return buscarVinculosCrmPorContatos('crm_empresas', corretoraId, contactIds)
 }
 
 export async function buscarAgendaWhatsApp(
@@ -411,10 +286,7 @@ export async function buscarAgendaWhatsApp(
   for (
     const pessoa of pessoas
   ) {
-    const contactId =
-      getWhatsAppContactId(
-        pessoa.dados
-      )
+    const contactId = pessoa.contato_id
 
     if (!contactId) {
       continue
@@ -441,10 +313,7 @@ export async function buscarAgendaWhatsApp(
   for (
     const empresa of empresas
   ) {
-    const contactId =
-      getWhatsAppContactId(
-        empresa.dados
-      )
+    const contactId = empresa.contato_id
 
     if (!contactId) {
       continue

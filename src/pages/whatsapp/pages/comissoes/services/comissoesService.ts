@@ -1,4 +1,5 @@
 import { supabase } from "../../../../../lib/supabaseClient";
+import { valoresFiltro, incluiFiltro, temFiltro } from "./filtrosComissoesUtils";
 import type {
   Comissao,
   ComissaoContratoDetalhada,
@@ -18,6 +19,7 @@ import type {
   ResultadoBuscaComissoesGeral,
   TipoUsuarioComissao,
   CriarComissaoPayload,
+  SplitComissaoInput,
   ResultadoCriarComissao,
   ReceberComissaoPayload,
   EstornarRecebimentoComissaoPayload,
@@ -794,6 +796,49 @@ export async function buscarMovimentacoesComissao(
   return (data ?? []) as ComissaoMovimentacao[];
 }
 
+/** Consulta autorizada exclusivamente para a operação solicitada. Não infere ausência a partir de RLS. */
+export async function consultarComissaoParaOperacao(
+  contratoId: string,
+  acao: "create" | "update" | "manage_splits"
+): Promise<{ existe: boolean; detalhes: ComissaoContratoDetalhada | null }> {
+  if (!contratoId) throw new Error("Contrato não informado.");
+  const { data, error } = await supabase.rpc("crm_consultar_comissao_para_operacao", {
+    p_contrato_id: contratoId,
+    p_acao: acao,
+  });
+  if (error) throw new Error(error.message);
+  if (!data || typeof data !== "object" || typeof data.existe !== "boolean") {
+    throw new Error("Resposta inválida na consulta autorizada da comissão.");
+  }
+  if (!data.existe) return { existe: false, detalhes: null };
+  // Em create, o backend informa exclusivamente a existência (não expõe dados).
+  if (acao === "create") return { existe: true, detalhes: null };
+
+  if (!data.comissao || !Array.isArray(data.deducoes) || !Array.isArray(data.recebimentos)) {
+    throw new Error("Dados incompletos da comissão. A edição foi bloqueada.");
+  }
+  if (acao === "manage_splits" &&
+    (!Array.isArray(data.splits) || !Array.isArray(data.split_deducoes) || !Array.isArray(data.pagamentos))) {
+    throw new Error("Rateios incompletos. A edição foi bloqueada.");
+  }
+  const comissao = data.comissao as Comissao;
+  const recebimentos = adicionarSituacaoRecebimentos(data.recebimentos as ComissaoRecebimento[]);
+  const splits = (data.splits ?? []) as ComissaoSplit[];
+  const pagamentos = adicionarSituacaoPagamentos((data.pagamentos ?? []) as ComissaoPagamento[]);
+  const detalhes: ComissaoContratoDetalhada = {
+    comissao,
+    deducoes: data.deducoes as ComissaoDeducao[],
+    recebimentos,
+    splits,
+    split_deducoes: (data.split_deducoes ?? []) as ComissaoSplitDeducao[],
+    pagamentos,
+    resumo_recebimentos: calcularResumoRecebimentos(recebimentos),
+    resumo_pagamentos: calcularResumoPagamentosIntegrado(pagamentos),
+    resumo_splits: calcularResumoSplits({valor_comissao_bruta: comissao.valor_comissao_bruta, splits}),
+  };
+  return { existe: true, detalhes };
+}
+
 export async function buscarComissaoContratoDetalhada(
   contratoId: string,
   incluirMovimentacoes = false
@@ -1251,21 +1296,10 @@ export async function buscarMinhasComissoesCorretor(
       );
     }
 
-    if (filtros.seguradora_id) {
-      itens = itens.filter(
-        (item) =>
-          item.contrato.seguradora_id ===
-          filtros.seguradora_id
-      );
-    }
-
-    if (filtros.produto_id) {
-      itens = itens.filter(
-        (item) =>
-          item.contrato.produto_id ===
-          filtros.produto_id
-      );
-    }
+    itens = itens.filter((item) =>
+      incluiFiltro(filtros.seguradora_id, item.contrato.seguradora_id) &&
+      incluiFiltro(filtros.produto_id, item.contrato.produto_id)
+    );
 
     if (filtros.contrato_id) {
       itens = itens.filter(
@@ -1288,22 +1322,16 @@ export async function buscarMinhasComissoesCorretor(
      * usuário. Se chegar outro ID pelo filtro, não retorna nada.
      */
     if (
-      filtros.corretor_id &&
-      filtros.corretor_id !== perfil.id
+      temFiltro(filtros.corretor_id) &&
+      !valoresFiltro(filtros.corretor_id).includes(perfil.id)
     ) {
       itens = [];
     }
 
-    if (
-      filtros.situacao_pagamento
-    ) {
-      itens = itens.filter(
-        (item) =>
-          item.pagamentos.some(
-            (pagamento) =>
-              pagamento.situacao ===
-              filtros.situacao_pagamento
-          )
+    if (temFiltro(filtros.situacao_pagamento)) {
+      const selecionadas = valoresFiltro(filtros.situacao_pagamento);
+      itens = itens.filter((item) =>
+        item.pagamentos.some((p) => selecionadas.includes(p.situacao))
       );
     }
 
@@ -2001,6 +2029,8 @@ async function buscarResumosComissoes(
       pagamentos: ResumoPagamentosComissao;
       splits: ReturnType<typeof calcularResumoSplits>;
       correspondeParticipante: boolean;
+      splitsOriginais: ComissaoSplit[];
+      pagamentosOriginais: ComissaoPagamentoComSituacao[];
     }
   >
 > {
@@ -2030,9 +2060,8 @@ async function buscarResumosComissoes(
     );
   const splits = (splitsResult.data ?? []) as ComissaoSplit[];
 
-  const possuiFiltroParticipante = Boolean(
-    filtros.tipo_participante || filtros.participante_id
-  );
+  const possuiFiltroParticipante =
+    temFiltro(filtros.tipo_participante) || temFiltro(filtros.participante_id);
 
   const mapa = new Map<
     string,
@@ -2043,6 +2072,8 @@ async function buscarResumosComissoes(
       pagamentos: ResumoPagamentosComissao;
       splits: ReturnType<typeof calcularResumoSplits>;
       correspondeParticipante: boolean;
+      splitsOriginais: ComissaoSplit[];
+      pagamentosOriginais: ComissaoPagamentoComSituacao[];
     }
   >();
 
@@ -2057,16 +2088,15 @@ async function buscarResumosComissoes(
 
     const splitsEscopo = splitsComissao.filter((split) => {
       if (
-        filtros.tipo_participante &&
-        split.tipo_participante !== filtros.tipo_participante
+        !incluiFiltro(filtros.tipo_participante, split.tipo_participante)
       ) {
         return false;
       }
 
-      return splitCorrespondeParticipante(
-        split,
-        filtros.participante_id
-      );
+      return !temFiltro(filtros.participante_id) ||
+        valoresFiltro(filtros.participante_id).some((id) =>
+          splitCorrespondeParticipante(split, id)
+        );
     });
 
     const idsSplitsEscopo = new Set(
@@ -2098,6 +2128,8 @@ async function buscarResumosComissoes(
       }),
       correspondeParticipante:
         !possuiFiltroParticipante || splitsEscopo.length > 0,
+      splitsOriginais: splitsComissao,
+      pagamentosOriginais: pagamentosBase,
     });
   }
 
@@ -2248,25 +2280,25 @@ export async function buscarComissoesGeral(
       );
     }
 
-    if (filtros.corretor_id) {
-      query = query.eq(
-        "crm_contratos.corretor_id",
-        filtros.corretor_id
-      );
+    const corretor_idSelecionados = valoresFiltro(filtros.corretor_id);
+    if (corretor_idSelecionados.length === 1) {
+      query = query.eq("crm_contratos.corretor_id", corretor_idSelecionados[0]);
+    } else if (corretor_idSelecionados.length > 1) {
+      query = query.in("crm_contratos.corretor_id", corretor_idSelecionados);
     }
 
-    if (filtros.seguradora_id) {
-      query = query.eq(
-        "crm_contratos.seguradora_id",
-        filtros.seguradora_id
-      );
+    const seguradora_idSelecionados = valoresFiltro(filtros.seguradora_id);
+    if (seguradora_idSelecionados.length === 1) {
+      query = query.eq("crm_contratos.seguradora_id", seguradora_idSelecionados[0]);
+    } else if (seguradora_idSelecionados.length > 1) {
+      query = query.in("crm_contratos.seguradora_id", seguradora_idSelecionados);
     }
 
-    if (filtros.produto_id) {
-      query = query.eq(
-        "crm_contratos.produto_id",
-        filtros.produto_id
-      );
+    const produto_idSelecionados = valoresFiltro(filtros.produto_id);
+    if (produto_idSelecionados.length === 1) {
+      query = query.eq("crm_contratos.produto_id", produto_idSelecionados[0]);
+    } else if (produto_idSelecionados.length > 1) {
+      query = query.in("crm_contratos.produto_id", produto_idSelecionados);
     }
 
     if (filtros.data_inicio) {
@@ -2496,8 +2528,34 @@ export async function buscarComissoesGeral(
               resumo.recebimentos,
             resumo_pagamentos:
               resumo.pagamentos,
-            resumo_splits:
-              resumo.splits,
+            resumo_splits: resumo.splits,
+            valor_comissao_corretor: arredondarMoeda(
+              resumo.splitsOriginais
+                .filter((s) => s.tipo_participante === "CORRETOR" &&
+                  s.usuario_id === contrato.corretor_id && !s.residual_corretora)
+                .reduce((valor, s) => valor + normalizarNumero(s.valor_liquido_split), 0)
+            ),
+            valor_pago_corretor: arredondarMoeda(
+              resumo.pagamentosOriginais
+                .filter((p) => resumo.splitsOriginais.some((s) =>
+                  s.id === p.split_id && s.tipo_participante === "CORRETOR" &&
+                  s.usuario_id === contrato.corretor_id && !s.residual_corretora))
+                .reduce((valor, p) => valor + normalizarNumero(p.valor_pago), 0)
+            ),
+            situacao_pagamento_corretor: (() => {
+              const ids = new Set(resumo.splitsOriginais
+                .filter((s) => s.tipo_participante === "CORRETOR" &&
+                  s.usuario_id === contrato.corretor_id && !s.residual_corretora)
+                .map((s) => s.id));
+              const pagamentos = resumo.pagamentosOriginais.filter((p) => ids.has(p.split_id));
+              if (!pagamentos.length) return "SEM_PROVISAO";
+              if (pagamentos.some((p) => p.situacao === "ATRASADA")) return "ATRASADA";
+              if (pagamentos.some((p) => p.situacao === "VENCE_HOJE")) return "VENCE_HOJE";
+              if (pagamentos.every((p) => p.situacao === "PAGA")) return "PAGA";
+              if (pagamentos.some((p) => p.situacao === "PARCIAL" || p.situacao === "PAGA")) return "PARCIAL";
+              if (pagamentos.every((p) => p.situacao === "CANCELADA")) return "CANCELADA";
+              return "A_PAGAR";
+            })(),
           },
         ];
       });
@@ -2542,53 +2600,40 @@ export async function buscarComissoesGeral(
       });
     }
 
-    if (filtros.situacao_recebimento) {
+    if (temFiltro(filtros.situacao_recebimento)) {
+      const situacoes = valoresFiltro(filtros.situacao_recebimento);
       itens = itens.filter((item) => {
-        const resumo =
-          item.resumo_recebimentos;
-
-        switch (
-          filtros.situacao_recebimento
-        ) {
-          case "A_RECEBER":
-            return resumo.valor_a_receber > 0;
-          case "RECEBE_HOJE":
-            return resumo.valor_recebe_hoje > 0;
-          case "ATRASADA":
-            return resumo.valor_atrasado > 0;
-          case "RECEBIDA":
-            return resumo.valor_recebido > 0;
-          case "CANCELADA":
-            return resumo.valor_cancelado > 0;
-          default:
-            return true;
-        }
+        const resumo = item.resumo_recebimentos;
+        return situacoes.some((situacao) => {
+          switch (situacao) {
+            case "A_RECEBER": return resumo.valor_a_receber > 0;
+            case "RECEBE_HOJE": return resumo.valor_recebe_hoje > 0;
+            case "ATRASADA": return resumo.valor_atrasado > 0;
+            case "RECEBIDA": return resumo.valor_recebido > 0;
+            case "CANCELADA": return resumo.valor_cancelado > 0;
+            default: return false;
+          }
+        });
       });
     }
 
-    if (filtros.situacao_pagamento) {
+    if (temFiltro(filtros.situacao_pagamento)) {
+      const situacoes = valoresFiltro(filtros.situacao_pagamento);
       itens = itens.filter((item) => {
-        const resumo =
-          item.resumo_pagamentos;
-
-        switch (
-          filtros.situacao_pagamento
-        ) {
-          case "A_PAGAR":
-            return resumo.valor_a_pagar > 0;
-          case "VENCE_HOJE":
-            return resumo.valor_vence_hoje > 0;
-          case "ATRASADA":
-            return resumo.valor_atrasado > 0;
-          case "PAGA":
-            return resumo.valor_pago > 0;
-          case "CANCELADA":
-            return resumo.valor_cancelado > 0;
-          default:
-            return true;
-        }
+        const resumo = item.resumo_pagamentos;
+        return situacoes.some((situacao) => {
+          switch (situacao) {
+            case "A_PAGAR": return resumo.valor_a_pagar > 0;
+            case "VENCE_HOJE": return resumo.valor_vence_hoje > 0;
+            case "ATRASADA": return resumo.valor_atrasado > 0;
+            case "PAGA": return resumo.valor_pago > 0;
+            case "CANCELADA": return resumo.valor_cancelado > 0;
+            default: return false;
+          }
+        });
       });
     }
+
 
 
     const resumo =
@@ -2789,3 +2834,92 @@ export async function reverterCancelamentoProvisaoComissao(
     );
   }
 }
+
+
+export interface ResultadoEdicaoComissao {
+  sucesso: boolean;
+  comissao_id: string;
+  valor_comissao_bruta?: number;
+  valor_distribuido?: number;
+  valor_residual_corretora?: number;
+}
+
+export async function atualizarCondicoesComissao(
+  payload: CriarComissaoPayload
+): Promise<ResultadoEdicaoComissao> {
+  try {
+    if (!payload.contrato_id) {
+      throw new Error("Contrato não informado.");
+    }
+
+    if (!payload.recebimentos?.length) {
+      throw new Error("Informe ao menos um recebimento.");
+    }
+
+    const { data, error } = await supabase.rpc(
+      "crm_atualizar_condicoes_comissao",
+      {
+        p_contrato_id: payload.contrato_id,
+        p_tipo_calculo_comissao:
+          payload.tipo_calculo_comissao,
+        p_percentual_comissao:
+          payload.percentual_comissao ?? null,
+        p_valor_comissao_fixa:
+          payload.valor_comissao_fixa ?? null,
+        p_valor_base_original:
+          payload.valor_base_original,
+        p_recebimentos: payload.recebimentos,
+        p_deducoes: payload.deducoes ?? [],
+        p_observacoes: payload.observacoes ?? null,
+      }
+    );
+
+    if (error) throw new Error(error.message);
+    if (!data) {
+      throw new Error("A edição não retornou resultado.");
+    }
+
+    return data as ResultadoEdicaoComissao;
+  } catch (erro) {
+    throw new Error(
+      mensagemErro(
+        erro,
+        "Não foi possível atualizar a comissão."
+      )
+    );
+  }
+}
+
+export async function gerenciarRateiosComissao(
+  contratoId: string,
+  splits: SplitComissaoInput[]
+): Promise<ResultadoEdicaoComissao> {
+  try {
+    if (!contratoId) {
+      throw new Error("Contrato não informado.");
+    }
+
+    const { data, error } = await supabase.rpc(
+      "crm_gerenciar_rateios_comissao",
+      {
+        p_contrato_id: contratoId,
+        p_splits: splits,
+      }
+    );
+
+    if (error) throw new Error(error.message);
+    if (!data) {
+      throw new Error("A edição dos rateios não retornou resultado.");
+    }
+
+    return data as ResultadoEdicaoComissao;
+  } catch (erro) {
+    throw new Error(
+      mensagemErro(
+        erro,
+        "Não foi possível gerenciar os rateios."
+      )
+    );
+  }
+}
+

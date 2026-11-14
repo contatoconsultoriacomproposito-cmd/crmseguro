@@ -331,6 +331,7 @@ export interface ComissaoMovimentacao {
 }
 
 export interface DeducaoComissaoInput {
+  id?: string;
   descricao: string;
   tipo_calculo: TipoCalculoComissao;
   percentual?: number | null;
@@ -343,6 +344,7 @@ export interface DeducaoComissaoCalculada
 }
 
 export interface RecebimentoComissaoInput {
+  id?: string;
   data_prevista: string;
   valor_base_referencia: number;
   percentual_previsto: number;
@@ -351,6 +353,7 @@ export interface RecebimentoComissaoInput {
 }
 
 export interface ProvisaoPagamentoSplitInput {
+  id?: string;
   data_prevista: string;
   valor_base_referencia: number;
   percentual_previsto: number;
@@ -359,6 +362,7 @@ export interface ProvisaoPagamentoSplitInput {
 }
 
 export interface SplitComissaoInput {
+  id?: string;
   tipo_participante: TipoParticipanteComissao;
   usuario_id?: string | null;
   participante_nome?: string | null;
@@ -534,18 +538,20 @@ export interface ResultadoOperacaoComissao {
   quantidade?: number;
 }
 
+export type SelecoesFiltroComissao<T extends string = string> = T | T[];
+
 export interface FiltrosComissoes {
   busca?: string;
   data_inicio?: string;
   data_fim?: string;
-  corretor_id?: string;
-  seguradora_id?: string;
-  produto_id?: string;
+  corretor_id?: SelecoesFiltroComissao;
+  seguradora_id?: SelecoesFiltroComissao;
+  produto_id?: SelecoesFiltroComissao;
 
-  situacao_recebimento?: SituacaoRecebimentoComissao | "";
-  situacao_pagamento?: SituacaoPagamentoComissao | "";
-  tipo_participante?: TipoParticipanteComissao | "";
-  participante_id?: string;
+  situacao_recebimento?: SelecoesFiltroComissao<SituacaoRecebimentoComissao> | "";
+  situacao_pagamento?: SelecoesFiltroComissao<SituacaoPagamentoComissao> | "";
+  tipo_participante?: SelecoesFiltroComissao<TipoParticipanteComissao> | "";
+  participante_id?: SelecoesFiltroComissao;
   contrato_id?: string;
   cliente_id?: string;
   pagina?: number;
@@ -576,6 +582,12 @@ export interface ItemComissaoGeral {
   resumo_recebimentos: ResumoRecebimentosComissao;
   resumo_pagamentos: ResumoPagamentosComissao;
   resumo_splits: ResumoSplitsComissao;
+  /** Participação líquida do corretor responsável pelo contrato, não a comissão total da corretora. */
+  valor_comissao_corretor: number;
+  /** Valor já baixado financeiramente para o corretor responsável. */
+  valor_pago_corretor: number;
+  /** Situação financeira das provisões do corretor responsável. */
+  situacao_pagamento_corretor: string;
 }
 
 export interface ResumoComissoesGeral {

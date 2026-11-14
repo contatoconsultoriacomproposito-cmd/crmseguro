@@ -5,7 +5,6 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
-  ChevronRight,
   CircleDollarSign,
   Clock3,
   Edit3,
@@ -71,6 +70,9 @@ import {
   buscarCorretoresComissao,
   buscarSupervisoresComissao,
   salvarComissaoContrato,
+  atualizarCondicoesComissao,
+  gerenciarRateiosComissao,
+  consultarComissaoParaOperacao,
 } from "../../comissoes/services/comissoesService";
 
 import type {
@@ -80,19 +82,16 @@ import type {
 
 import type {
   ComissaoContratoDetalhada,
-  ContextoPermissaoComissao,
   CriarComissaoPayload,
   ItemMinhaComissaoCorretor,
 } from "../../comissoes/types/comissoes";
 
-import {
-  podeCriarComissao,
-  podeEditarComissao,
-} from "../../comissoes/services/comissoesPermissoes";
-
 import ComissaoContratoCard from "../../comissoes/components/ComissaoContratoCard";
 
-import { ModalLancamentoComissao } from "../../comissoes/components/ModalLancamentoComissao";
+import {
+  ModalLancamentoComissao,
+  type ModoModalComissao,
+} from "../../comissoes/components/ModalLancamentoComissao";
 
 interface EdicaoCabecalhoState {
   data_emissao: string;
@@ -300,6 +299,15 @@ export default function PropostaDetalhes() {
   const [contratoComissao, setContratoComissao] =
     useState<ContratoResumo | null>(null);
 
+  const [modoModalComissao, setModoModalComissao] =
+    useState<ModoModalComissao>("CRIACAO");
+
+  const [contratoEscolhendoModoComissao, setContratoEscolhendoModoComissao] =
+    useState<ContratoResumo | null>(null);
+
+  const [abrindoComissaoId, setAbrindoComissaoId] =
+    useState<string | null>(null);
+
   const [salvandoComissao, setSalvandoComissao] =
     useState(false);
 
@@ -351,7 +359,6 @@ export default function PropostaDetalhes() {
 
 
   const podeLancarFinanceiro = podeExecutarAcao("financial", proposta);
-  const podeLancarComissoes = podeExecutarAcao("commissions", proposta);
 
   const permissoesAcoes = {
     delete: podeExecutarAcao("delete", proposta),
@@ -1065,36 +1072,60 @@ export default function PropostaDetalhes() {
   };
 }, [userProfile]);
 
-const contextoComissao = useMemo<ContextoPermissaoComissao | null>(() => {
-  if (!userProfile) {
-    return null;
-  }
+const podeExecutarAcaoComissao = useCallback(
+  (
+    acao: "create" | "update" | "manage_splits",
+    contrato: ContratoResumo
+  ): boolean => {
+    if (!userProfile || carregandoPermissoes) {
+      return false;
+    }
 
-  if (
-    userProfile.tipo_usuario !== "CORRETORA" &&
-    userProfile.tipo_usuario !== "CORRETOR" &&
-    userProfile.tipo_usuario !== "ADMIN"
-  ) {
-    return null;
-  }
-
-  return {
-    tipoUsuario: userProfile.tipo_usuario,
-    usuarioId: userProfile.id,
-    corretoraId:
+    const corretoraId =
       userProfile.tipo_usuario === "CORRETORA"
         ? userProfile.id
-        : userProfile.corretora_id ?? null,
-  };
-}, [userProfile]);
+        : userProfile.corretora_id;
 
-const usuarioPodeConfigurarComissao =
-  contextoComissao
-    ? (
-        podeCriarComissao(contextoComissao) ||
-        podeEditarComissao(contextoComissao)
-      )
-    : false;
+    if (
+      !corretoraId ||
+      contrato.corretora_id !== corretoraId
+    ) {
+      return false;
+    }
+
+    // A CORRETORA administra as comissões da própria empresa.
+    if (userProfile.tipo_usuario === "CORRETORA") {
+      return true;
+    }
+
+    if (userProfile.tipo_usuario !== "CORRETOR") {
+      return false;
+    }
+
+    const escopoAcao = escopo(
+      "operacoes.comissoes",
+      acao
+    );
+
+    if (escopoAcao === "tenant") {
+      return true;
+    }
+
+    if (escopoAcao === "own") {
+      return contrato.corretor_id === userProfile.id;
+    }
+
+    return false;
+  },
+  [userProfile, carregandoPermissoes, escopo]
+);
+
+const usuarioPodeCarregarParticipantesComissao = Boolean(
+  proposta?.contratos.some((contrato) =>
+    podeExecutarAcaoComissao("create", contrato) ||
+    podeExecutarAcaoComissao("manage_splits", contrato)
+  )
+);
 
 const usuarioPodeOperarFinanceiro =
   contextoFinanceiro
@@ -1118,11 +1149,15 @@ const podeOperarContrato = useCallback(
   [userProfile, proposta],
 );
 
+
+
+
+
 useEffect(() => {
   let ativo = true;
 
   async function carregarParticipantesComissao() {
-    if (!usuarioPodeConfigurarComissao) {
+    if (!usuarioPodeCarregarParticipantesComissao) {
       setOpcoesCorretoresComissao([]);
       setOpcoesSupervisoresComissao([]);
       setCarregandoParticipantesComissao(false);
@@ -1172,7 +1207,7 @@ useEffect(() => {
   return () => {
     ativo = false;
   };
-}, [usuarioPodeConfigurarComissao]);
+}, [usuarioPodeCarregarParticipantesComissao]);
 
   const produtoRenovacaoPronto =
     proposta?.tipo_negocio !== "RENOVACAO" ||
@@ -1447,46 +1482,138 @@ useEffect(() => {
     navigate("/whatsapp/propostas");
   }, [navigate]);
 
-  async function handleSalvarComissao(
-    payload: CriarComissaoPayload
+  async function abrirModalComissaoAutorizado(
+    contrato: ContratoResumo,
+    modo: ModoModalComissao
   ) {
-    if (
-      !contratoComissao ||
-      !podeLancarComissoes ||
-      !usuarioPodeConfigurarComissao ||
-      !podeOperarContrato(contratoComissao) ||
-      salvandoComissao
-    ) {
+    const acao = modo === "CRIACAO" ? "create" :
+      modo === "CONDICOES" ? "update" : "manage_splits";
+    if (!podeExecutarAcaoComissao(acao, contrato)) {
+      toast.error("Você não possui permissão para esta operação.");
+      return;
+    }
+    setAbrindoComissaoId(contrato.id);
+    try {
+      const consulta = await consultarComissaoParaOperacao(contrato.id, acao);
+      if (modo === "CRIACAO") {
+        if (consulta.existe) {
+          toast.error("Já existe comissão neste contrato. Solicite acesso à edição.");
+          return;
+        }
+        setComissoesPorContrato((atual) => ({...atual, [contrato.id]: null}));
+      } else {
+        if (!consulta.existe || !consulta.detalhes) {
+          toast.error("Comissão inexistente ou dados não disponíveis para edição.");
+          return;
+        }
+        setComissoesPorContrato((atual) => ({...atual, [contrato.id]: consulta.detalhes}));
+      }
+      setModoModalComissao(modo);
+      setContratoComissao(contrato);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message :
+        "Não foi possível carregar a comissão com segurança.");
+    } finally {
+      setAbrindoComissaoId(null);
+    }
+  }
+
+  async function abrirConfiguracaoComissao(contrato: ContratoResumo) {
+    if (abrindoComissaoId || salvandoComissao) return;
+    const podeCriar = podeExecutarAcaoComissao("create", contrato);
+    const podeAtualizar = podeExecutarAcaoComissao("update", contrato);
+    const podeRateios = podeExecutarAcaoComissao("manage_splits", contrato);
+    if (!podeCriar && !podeAtualizar && !podeRateios) return;
+
+    // O split pessoal ja prova que existe comissao: nao oferecer criacao
+    // quando o usuario tem apenas 'create', sem 'update'/'manage_splits'.
+    if (!podeAtualizar && !podeRateios &&
+        (comissoesPorContrato[contrato.id] || minhasComissoesPorContrato[contrato.id])) {
+      return;
+    }
+
+    // A existência é verificada pelo backend, nunca inferida de consultas RLS.
+    // Se a criação estiver permitida e ainda não houver comissão, abrir criação.
+    if (podeCriar) {
+      setAbrindoComissaoId(contrato.id);
+      try {
+        const estado = await consultarComissaoParaOperacao(contrato.id, "create");
+        if (!estado.existe) {
+          // A função executa novamente a verificação antes de abrir o modal.
+          await abrirModalComissaoAutorizado(contrato, "CRIACAO");
+          return;
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message :
+          "Não foi possível verificar a existência da comissão.");
+        return;
+      } finally {
+        setAbrindoComissaoId(null);
+      }
+    }
+    // Priorizar edição de comissões existentes sem cair no modo criação.
+    if (podeAtualizar && podeRateios) {
+      setContratoEscolhendoModoComissao(contrato);
+      return;
+    }
+    if (podeAtualizar || podeRateios) {
+      await abrirModalComissaoAutorizado(contrato,
+        podeAtualizar ? "CONDICOES" : "RATEIOS");
+      return;
+    }
+    if (podeCriar) await abrirModalComissaoAutorizado(contrato, "CRIACAO");
+  }
+
+  async function handleSalvarComissao(payload: CriarComissaoPayload) {
+    if (!contratoComissao || salvandoComissao) return;
+    if (payload.contrato_id !== contratoComissao.id) {
+      toast.error("Contrato da comissão incompatível com o formulário.");
+      return;
+    }
+
+    const acao = modoModalComissao === "CRIACAO"
+      ? "create"
+      : modoModalComissao === "CONDICOES"
+        ? "update"
+        : "manage_splits";
+
+    if (!podeExecutarAcaoComissao(acao, contratoComissao)) {
+      toast.error("Você não possui permissão para executar esta operação.");
+      return;
+    }
+
+    const existente = comissoesPorContrato[contratoComissao.id] ?? null;
+    if (modoModalComissao === "CRIACAO" && existente) {
+      toast.error("Esta comissão já existe. Reabra para escolher a operação de edição.");
+      return;
+    }
+    if (modoModalComissao !== "CRIACAO" && !existente) {
+      toast.error("Carregue a comissão existente antes de editá-la.");
       return;
     }
 
     setSalvandoComissao(true);
-
     try {
-      await salvarComissaoContrato(payload);
+      if (modoModalComissao === "CRIACAO") {
+        await salvarComissaoContrato(payload);
+      } else if (modoModalComissao === "CONDICOES") {
+        await atualizarCondicoesComissao(payload);
+      } else {
+        await gerenciarRateiosComissao(contratoComissao.id, payload.splits ?? []);
+      }
 
-      await carregarComissaoContrato(
-        contratoComissao.id
-      );
-
+      await carregarComissaoContrato(contratoComissao.id);
       toast.success(
-        comissoesPorContrato[contratoComissao.id]
-          ? "Comissão atualizada com sucesso."
-          : "Comissão configurada com sucesso."
+        modoModalComissao === "CRIACAO"
+          ? "Comissão configurada com sucesso."
+          : modoModalComissao === "CONDICOES"
+            ? "Condições da comissão atualizadas com sucesso."
+            : "Rateios atualizados com sucesso."
       );
-
       setContratoComissao(null);
     } catch (error) {
-      console.error(
-        "Erro ao salvar comissão:",
-        error
-      );
-
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível salvar a comissão."
-      );
+      console.error("Erro ao salvar comissão:", error);
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar a comissão.");
     } finally {
       setSalvandoComissao(false);
     }
@@ -1874,9 +2001,11 @@ useEffect(() => {
                             Prêmio
                           </th>
 
-                          <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Ações
-                          </th>
+                         {podeEditar && (
+                            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Ações
+                            </th>
+                          )}
                         </tr>
                       </thead>
 
@@ -1984,8 +2113,8 @@ useEffect(() => {
                                   )}
                                 </td>
 
-                                <td className="px-4 py-4 text-right">
-                                  {podeEditar ? (
+                                {podeEditar && (
+                                  <td className="px-4 py-4 text-right">
                                     <div className="inline-flex items-center gap-1">
                                       <button
                                         type="button"
@@ -2045,18 +2174,9 @@ useEffect(() => {
                                           />
                                         )}
                                       </button>
-                                    </div>
-                                  ) : contrato ? (
-                                    <ChevronRight
-                                      size={17}
-                                      className="ml-auto text-slate-400"
-                                    />
-                                  ) : (
-                                    <span className="text-sm text-slate-400">
-                                      —
-                                    </span>
-                                  )}
-                                </td>
+                                        </div>
+                                          </td>
+                                        )}
                               </tr>
                             );
                           }
@@ -2078,7 +2198,7 @@ useEffect(() => {
                             )}
                           </td>
 
-                          <td />
+                          {podeEditar && <td />}
                         </tr>
                       </tfoot>
                     </table>
@@ -2893,7 +3013,7 @@ useEffect(() => {
 
                             <ComissaoContratoCard
                               loading={
-                                carregandoComissoes[contrato.id] ?? false
+                                (carregandoComissoes[contrato.id] ?? false) || abrindoComissaoId === contrato.id
                               }
                               comissao={
                                 comissoesPorContrato[contrato.id] ?? null
@@ -2901,17 +3021,18 @@ useEffect(() => {
                               minhaComissao={
                                 minhasComissoesPorContrato[contrato.id] ?? null
                               }
-                              podeOperar={
-                                podeLancarComissoes &&
-                                usuarioPodeConfigurarComissao &&
-                                podeOperarContrato(contrato)
+                              podeCriar={
+                                podeExecutarAcaoComissao("create", contrato) &&
+                                !(comissoesPorContrato[contrato.id] ?? null) &&
+                                !(minhasComissoesPorContrato[contrato.id] ?? null)
                               }
-                              onConfigurarComissao={() =>
-                                podeLancarComissoes &&
-                                usuarioPodeConfigurarComissao &&
-                                podeOperarContrato(contrato) &&
-                                setContratoComissao(contrato)
+                              podeEditar={
+                                podeExecutarAcaoComissao("update", contrato) ||
+                                podeExecutarAcaoComissao("manage_splits", contrato)
                               }
+                              onConfigurarComissao={() => {
+                                void abrirConfiguracaoComissao(contrato);
+                              }}
                               onVerComissao={() =>
                                 navigate(
                                   `/whatsapp/comissoes/contratos/${contrato.id}`
@@ -3036,9 +3157,55 @@ useEffect(() => {
         />
       )}
 
-      {contratoComissao && podeLancarComissoes && usuarioPodeConfigurarComissao && podeOperarContrato(contratoComissao) && (
+      {contratoEscolhendoModoComissao && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Escolher operação de comissão"
+            className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-slate-900"
+          >
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+              O que deseja editar?
+            </h2>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Cada operação possui permissão independente e salva apenas os próprios dados.
+            </p>
+            <div className="mt-5 flex flex-col gap-3">
+              <button type="button" className="rounded-lg border border-slate-200 px-4 py-3 text-left font-medium hover:bg-slate-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
+                onClick={() => {
+                  const contrato = contratoEscolhendoModoComissao;
+                  setContratoEscolhendoModoComissao(null);
+                  void abrirModalComissaoAutorizado(contrato, "CONDICOES");
+                }}>
+                Editar condições e recebimentos
+              </button>
+              <button type="button" className="rounded-lg border border-slate-200 px-4 py-3 text-left font-medium hover:bg-slate-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
+                onClick={() => {
+                  const contrato = contratoEscolhendoModoComissao;
+                  setContratoEscolhendoModoComissao(null);
+                  void abrirModalComissaoAutorizado(contrato, "RATEIOS");
+                }}>
+                Gerenciar participantes e rateios
+              </button>
+              <button type="button" className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+                onClick={() => setContratoEscolhendoModoComissao(null)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {contratoComissao &&
+        podeExecutarAcaoComissao(
+          modoModalComissao === "CRIACAO" ? "create" :
+          modoModalComissao === "CONDICOES" ? "update" : "manage_splits",
+          contratoComissao
+        ) && (
       <ModalLancamentoComissao
         aberto={Boolean(contratoComissao)}
+        modo={modoModalComissao}
         contratoId={contratoComissao.id}
         valorBaseSugerido={
           comissoesPorContrato[

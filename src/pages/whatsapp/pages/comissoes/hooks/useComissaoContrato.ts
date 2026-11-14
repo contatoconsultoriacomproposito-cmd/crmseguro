@@ -8,6 +8,7 @@ import type {
   ReverterCancelamentoProvisaoComissaoPayload,
   ResultadoCriarComissao,
   ResultadoOperacaoComissao,
+  SplitComissaoInput,
 } from "../types/comissoes";
 import {
   buscarComissaoContratoDetalhada,
@@ -16,6 +17,9 @@ import {
   receberComissao,
   reverterCancelamentoProvisaoComissao,
   salvarComissaoContrato,
+  atualizarCondicoesComissao,
+  gerenciarRateiosComissao,
+  type ResultadoEdicaoComissao,
 } from "../services/comissoesService";
 
 interface UseComissaoContratoOptions {
@@ -213,6 +217,66 @@ export function useComissaoContrato(
       carregar,
       definirOperacao,
     ]
+  );
+
+    const atualizarCondicoes = useCallback(
+    async (
+      payload: CriarComissaoPayload
+    ): Promise<ResultadoEdicaoComissao> => {
+      definirOperacao("salvando", true);
+      setErro(null);
+
+      try {
+        const resultado =
+          await atualizarCondicoesComissao(payload);
+
+        await carregar(payload.contrato_id);
+
+        return resultado;
+      } catch (error) {
+        setErro(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível atualizar as condições da comissão."
+        );
+        throw error;
+      } finally {
+        definirOperacao("salvando", false);
+      }
+    },
+    [carregar, definirOperacao]
+  );
+
+  const gerenciarRateios = useCallback(
+    async (
+      idContrato: string,
+      splits: SplitComissaoInput[]
+    ): Promise<ResultadoEdicaoComissao> => {
+      definirOperacao("salvando", true);
+      setErro(null);
+
+      try {
+        const resultado =
+          await gerenciarRateiosComissao(
+            idContrato,
+            splits
+          );
+
+        await carregar(idContrato);
+
+        return resultado;
+      } catch (error) {
+        setErro(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível gerenciar os rateios."
+        );
+        throw error;
+      } finally {
+        definirOperacao("salvando", false);
+      }
+    },
+    [carregar, definirOperacao]
   );
 
   const receber = useCallback(
@@ -529,6 +593,8 @@ export function useComissaoContrato(
     carregar,
     recarregar: carregar,
     salvar,
+    atualizarCondicoes,
+    gerenciarRateios,
     receber,
     estornarRecebimento,
     cancelarProvisao,

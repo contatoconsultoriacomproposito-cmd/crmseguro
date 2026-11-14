@@ -51,8 +51,14 @@ interface OpcaoUsuario {
   label: string;
 }
 
+export type ModoModalComissao =
+  | "CRIACAO"
+  | "CONDICOES"
+  | "RATEIOS";
+
 interface ModalLancamentoComissaoProps {
   aberto: boolean;
+  modo?: ModoModalComissao;
   contratoId: string;
   valorBaseSugerido: number;
   dadosIniciais?: ComissaoContratoDetalhada | null;
@@ -188,6 +194,7 @@ const labelClass =
 
 export function ModalLancamentoComissao({
   aberto,
+  modo = "CRIACAO",
   contratoId,
   valorBaseSugerido,
   dadosIniciais = null,
@@ -250,8 +257,9 @@ export function ModalLancamentoComissao({
     setRecebimentos(
       recebimentosOrdenados.length
         ? recebimentosOrdenados.map((recebimento) => ({
-            id_local: gerarIdLocal(),
-            data_prevista: recebimento.data_prevista,
+          id: recebimento.id,
+          id_local: gerarIdLocal(),
+          data_prevista: recebimento.data_prevista,
             valor_base_referencia: recebimento.valor_base_referencia,
             percentual_previsto: recebimento.percentual_previsto,
             valor_previsto: recebimento.valor_previsto,
@@ -270,6 +278,7 @@ export function ModalLancamentoComissao({
           (a, b) => a.ordem - b.ordem
         )
         .map((deducao) => ({
+          id: deducao.id,
           descricao: deducao.descricao,
           tipo_calculo:
             deducao.tipo_calculo,
@@ -303,6 +312,7 @@ export function ModalLancamentoComissao({
                   a.ordem - b.ordem
               )
               .map((deducao) => ({
+                id: deducao.id,
                 descricao:
                   deducao.descricao,
                 tipo_calculo:
@@ -335,6 +345,7 @@ export function ModalLancamentoComissao({
                   calcularPercentualPagamentoSplit(baseReferencia, valorPrevisto);
 
                 return {
+                  id: pagamento.id,
                   data_prevista: pagamento.data_prevista,
                   valor_base_referencia: baseReferencia,
                   percentual_previsto: percentualPrevisto,
@@ -344,10 +355,11 @@ export function ModalLancamentoComissao({
               });
 
           return {
-            id_local: gerarIdLocal(),
-            expandido: true,
-            tipo_participante:
-              split.tipo_participante,
+          id: split.id,
+          id_local: gerarIdLocal(),
+          expandido: true,
+          tipo_participante:
+            split.tipo_participante,
             usuario_id:
               split.usuario_id,
             participante_nome:
@@ -422,14 +434,22 @@ export function ModalLancamentoComissao({
   const calculoComissao = useMemo(() => {
     if (!calculoBase) return null;
 
+    // Gerenciar rateios nunca recalcula valores dos recebimentos ocultos.
+    const bruto = modo === "RATEIOS" && dadosIniciais
+      ? dadosIniciais.comissao.valor_comissao_bruta
+      : totaisRecebimentos.valor;
+
     return {
       ...calculoBase,
+      valor_base_calculo: modo === "RATEIOS" && dadosIniciais
+        ? dadosIniciais.comissao.valor_base_calculo
+        : calculoBase.valor_base_calculo,
       tipo_calculo_comissao: "FIXO" as const,
       percentual_comissao: null,
-      valor_comissao_fixa: totaisRecebimentos.valor,
-      valor_comissao_bruta: totaisRecebimentos.valor,
+      valor_comissao_fixa: bruto,
+      valor_comissao_bruta: bruto,
     };
-  }, [calculoBase, totaisRecebimentos.valor]);
+  }, [calculoBase, totaisRecebimentos.valor, modo, dadosIniciais]);
 
   const distribuicao = useMemo(() => {
     if (!calculoComissao) return null;
@@ -460,7 +480,9 @@ export function ModalLancamentoComissao({
   );
 
   useEffect(() => {
-    if (!distribuicao) return;
+    if (!distribuicao || modo === "CONDICOES") return;
+    // Recalcula provisões preservando os IDs existentes.
+    // O backend impede mudanças em pagamentos já movimentados.
 
     setSplits((atuais) => {
       let alterou = false;
@@ -512,10 +534,10 @@ export function ModalLancamentoComissao({
 
       return alterou ? proximos : atuais;
     });
-  }, [assinaturaLiquidosParticipantes]);
+  }, [assinaturaLiquidosParticipantes, modo]);
 
   useEffect(() => {
-    if (!calculoBase) return;
+    if (!calculoBase || modo === "RATEIOS") return;
 
     setRecebimentos((atuais) => {
       if (!atuais.length) return atuais;
@@ -534,7 +556,7 @@ export function ModalLancamentoComissao({
         ),
       }));
     });
-  }, [calculoBase?.valor_base_calculo, recebimentos.length]);
+  }, [calculoBase?.valor_base_calculo, recebimentos.length, modo]);
 
   function alterarQuantidadeRecebimentos(quantidade: number) {
     const quantidadeFinal = Math.max(1, Math.trunc(quantidade || 1));
@@ -553,6 +575,7 @@ export function ModalLancamentoComissao({
           adicionarMesesPreservandoDia(dataInicial, index);
 
         return {
+          id: existente?.id,
           id_local: existente?.id_local ?? gerarIdLocal(),
           data_prevista: dataPrevista,
           valor_base_referencia: bases[index],
@@ -834,9 +857,10 @@ export function ModalLancamentoComissao({
             );
 
             return {
-              data_prevista:
-                existente?.data_prevista ??
-                adicionarMesesPreservandoDia(dataInicial, index),
+            id: existente?.id,
+            data_prevista:
+              existente?.data_prevista ??
+              adicionarMesesPreservandoDia(dataInicial, index),
               valor_base_referencia: valorLiquido,
               percentual_previsto: percentualPrevisto,
               valor_previsto: valorPrevisto,
@@ -946,6 +970,7 @@ export function ModalLancamentoComissao({
     deducao: DeducaoComissaoInput
   ): DeducaoComissaoInput {
     return {
+      ...(deducao.id ? { id: deducao.id } : {}),
       descricao: deducao.descricao.trim(),
       tipo_calculo: deducao.tipo_calculo,
       percentual:
@@ -979,6 +1004,7 @@ export function ModalLancamentoComissao({
       : null;
 
     return {
+      ...(split.id ? { id: split.id } : {}),
       tipo_participante: split.tipo_participante,
       usuario_id: usuarioId,
       participante_nome: participanteInterno
@@ -1009,6 +1035,7 @@ export function ModalLancamentoComissao({
         normalizarDeducaoPayload
       ),
       pagamentos: split.pagamentos.map((pagamento) => ({
+        ...(pagamento.id ? { id: pagamento.id } : {}),
         data_prevista: pagamento.data_prevista,
         valor_base_referencia: normalizarNumero(
           pagamento.valor_base_referencia
@@ -1027,7 +1054,7 @@ export function ModalLancamentoComissao({
       return "Contrato não informado.";
     }
 
-    if (valorBaseOriginal < 0) {
+    if (modo !== "RATEIOS" && valorBaseOriginal < 0) {
       return "A base original não pode ser negativa.";
     }
 
@@ -1035,21 +1062,18 @@ export function ModalLancamentoComissao({
       return "Revise a base de cálculo da comissão.";
     }
 
-    const errosRecebimentos = validarRecebimentosComissao({
-      recebimentos,
-    });
+    if (modo !== "RATEIOS") {
+      const errosRecebimentos = validarRecebimentosComissao({ recebimentos });
+      if (errosRecebimentos.length) return errosRecebimentos[0];
 
-    if (errosRecebimentos.length) {
-      return errosRecebimentos[0];
-    }
-
-    for (const deducao of deducoes) {
-      if (!deducao.descricao.trim()) {
-        return "Toda dedução deve possuir descrição.";
+      for (const deducao of deducoes) {
+        if (!deducao.descricao.trim()) {
+          return "Toda dedução deve possuir descrição.";
+        }
       }
     }
 
-    for (const split of splits) {
+    if (modo !== "CONDICOES") for (const split of splits) {
       if (
         ["CORRETOR", "SUPERVISOR"].includes(
           split.tipo_participante
@@ -1128,6 +1152,15 @@ export function ModalLancamentoComissao({
   }
 
   async function handleSalvar() {
+    if (salvando) return;
+    if (modo !== "CRIACAO" && !dadosIniciais) {
+      setErro("A comissão existente não foi carregada. Feche e abra novamente.");
+      return;
+    }
+    if (modo === "CRIACAO" && dadosIniciais) {
+      setErro("Esta comissão já existe. Utilize uma das opções de edição.");
+      return;
+    }
     const erroValidacao = validar();
 
     if (erroValidacao) {
@@ -1145,6 +1178,7 @@ export function ModalLancamentoComissao({
       valor_base_original:
         valorBaseOriginal,
       recebimentos: recebimentos.map((recebimento) => ({
+        ...(recebimento.id ? { id: recebimento.id } : {}),
         data_prevista: recebimento.data_prevista,
         valor_base_referencia: normalizarNumero(recebimento.valor_base_referencia),
         percentual_previsto: normalizarNumero(recebimento.percentual_previsto),
@@ -1181,11 +1215,19 @@ export function ModalLancamentoComissao({
 
             <div>
               <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                Configurar comissão
+                {modo === "CONDICOES"
+                  ? "Editar condições da comissão"
+                  : modo === "RATEIOS"
+                    ? "Gerenciar rateios da comissão"
+                    : "Configurar comissão"}
               </h2>
 
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Cálculo, recebimentos, splits e pagamentos
+                {modo === "CONDICOES"
+                  ? "Cálculo, deduções e recebimentos"
+                  : modo === "RATEIOS"
+                    ? "Participantes, rateios e pagamentos"
+                    : "Cálculo, recebimentos, splits e pagamentos"}
               </p>
             </div>
           </div>
@@ -1210,7 +1252,9 @@ export function ModalLancamentoComissao({
 
           <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
             <div className="min-w-0 space-y-5">
-              <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+            {modo !== "RATEIOS" && (
+              <>
+                <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
               <div className="mb-4 flex items-center gap-2">
                 <Calculator size={17} />
 
@@ -1582,8 +1626,11 @@ export function ModalLancamentoComissao({
                   Comissão bruta calculada pelas parcelas: {formatarMoedaComissao(totaisRecebimentos.valor)}
                 </span>
               </div>
-            </section>
+              </section>
+              </>
+            )}
 
+            {modo !== "CONDICOES" && (
             <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
@@ -2431,7 +2478,9 @@ export function ModalLancamentoComissao({
                 )}
               </div>
             </section>
+            )}
 
+            {modo !== "RATEIOS" && (
             <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
               <label className={labelClass}>
                 Observações
@@ -2448,6 +2497,7 @@ export function ModalLancamentoComissao({
                 className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
               />
             </section>
+            )}
             </div>
 
             <aside className="xl:sticky xl:top-0">
@@ -2772,7 +2822,7 @@ export function ModalLancamentoComissao({
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-950">
           <div className="text-xs text-slate-500">
-            O banco recalculará e validará todos os valores ao salvar.
+            O banco validará a operação e preservará o histórico financeiro existente.
           </div>
 
           <div className="flex items-center gap-2">
@@ -2800,7 +2850,11 @@ export function ModalLancamentoComissao({
                 />
               )}
 
-              Salvar comissão
+              {modo === "CONDICOES"
+                ? "Salvar condições"
+                : modo === "RATEIOS"
+                  ? "Salvar rateios"
+                  : "Salvar comissão"}
             </button>
           </div>
         </div>

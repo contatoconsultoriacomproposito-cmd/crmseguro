@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { WhatsAppAttendant, WhatsAppConversation } from '../types/whatsapp'
 import { useWhatsApp } from '../hooks/useWhatsApp'
 import ConversationItem from './ConversationItem'
@@ -164,9 +164,29 @@ useEffect(() => {
 useEffect(() => {
   if (!corretoraId) return
 
-  return subscribeResumoClientesWhatsApp(corretoraId, () => {
-    void loadCrmClients()
-  })
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+  const unsubscribe = subscribeResumoClientesWhatsApp(
+    corretoraId,
+    () => {
+      if (refreshTimer !== null) {
+        clearTimeout(refreshTimer)
+      }
+
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null
+        void loadCrmClients()
+      }, 500)
+    }
+  )
+
+  return () => {
+    if (refreshTimer !== null) {
+      clearTimeout(refreshTimer)
+    }
+
+    unsubscribe()
+  }
 }, [corretoraId, loadCrmClients])
 
 const attendantById = useMemo(
@@ -229,18 +249,22 @@ useEffect(() => {
   })
 }, [corretoraId, loadAgenda])
 
-  useEffect(() => {
-    if (
-      agendaRefreshKey === undefined
-    ) {
-      return
-    }
+  const ultimoRefreshAgendaRef = useRef<number | undefined>(
+  agendaRefreshKey
+)
 
-    void loadAgenda(true)
-  }, [
-    agendaRefreshKey,
-    loadAgenda,
-  ])
+useEffect(() => {
+  if (
+    agendaRefreshKey === undefined ||
+    agendaRefreshKey === ultimoRefreshAgendaRef.current
+  ) {
+    return
+  }
+
+  ultimoRefreshAgendaRef.current = agendaRefreshKey
+
+  void loadAgenda(true)
+}, [agendaRefreshKey, loadAgenda])
 
 const handleAbrirCompromisso = useCallback(async (commitment: WhatsAppAgendaCommitment) => {
   try {

@@ -13,6 +13,13 @@ import ModalPermissoesClientes, {
   type AcaoPermissaoCliente,
   type EscopoCliente,
 } from "./components/ModalPermissoesClientes";
+import ModalPermissoesComissoes, {
+  PERMISSOES_COMISSOES_PADRAO,
+  normalizarPermissoesComissoes,
+  type PermissoesComissoes,
+  type AcaoPermissaoComissao,
+  type EscopoComissao,
+} from "./components/ModalPermissoesComissoes";
 import { PERMISSOES_CONTATOS_PADRAO, PERMISSOES_CONVERSAS_PADRAO, PERMISSOES_AGENDA_PADRAO, PERMISSOES_EQUIPE_PADRAO, PERMISSOES_PROPOSTAS_PADRAO,
  OPCOES_ESCOPO_CONTATOS, normalizarPermissoesContatos, normalizarPermissoesConversas, normalizarPermissoesAgenda, normalizarPermissoesEquipe, normalizarPermissoesPropostas,
  type PermissoesContatos, type PermissoesConversas, type PermissoesAgenda, type PermissoesEquipe, type PermissoesPropostas,
@@ -80,6 +87,11 @@ export default function ModalPermissoesUsuario({
     ...PERMISSOES_CLIENTES_PADRAO,
   });
 
+  const [permissoesComissoes, setPermissoesComissoes] =
+    useState<PermissoesComissoes>({
+      ...PERMISSOES_COMISSOES_PADRAO,
+    });
+
   const [permissoesOriginais, setPermissoesOriginais] = useState<any>({});
 
   const [loading, setLoading] =
@@ -141,6 +153,7 @@ export default function ModalPermissoesUsuario({
       setPermissoesEquipe(normalizarPermissoesEquipe(jsonAtual));
       setPermissoesPropostas(normalizarPermissoesPropostas(jsonAtual));
       setPermissoesClientes(normalizarPermissoesClientes(jsonAtual));
+      setPermissoesComissoes(normalizarPermissoesComissoes(jsonAtual));
       setPermissoesCarregadas(true);
     } catch (error) {
       console.error("Erro ao carregar permissões:", error);
@@ -158,6 +171,29 @@ export default function ModalPermissoesUsuario({
   function aplicarTodasClientes(escopo: EscopoCliente) {
     setPermissoesClientes((prev) =>
       Object.fromEntries(Object.keys(prev).map((chave) => [chave, escopo])) as PermissoesClientes
+    );
+    setSucesso("");
+  }
+
+  function alterarPermissaoComissao(
+    acao: AcaoPermissaoComissao,
+    escopo: EscopoComissao
+  ) {
+    setPermissoesComissoes((prev) => ({
+      ...prev,
+      [acao]: escopo,
+    }));
+    setSucesso("");
+  }
+
+  function aplicarTodasComissoes(escopo: EscopoComissao) {
+    setPermissoesComissoes(
+      Object.fromEntries(
+        Object.keys(PERMISSOES_COMISSOES_PADRAO).map((chave) => [
+          chave,
+          escopo,
+        ])
+      ) as PermissoesComissoes
     );
     setSucesso("");
   }
@@ -294,6 +330,7 @@ export default function ModalPermissoesUsuario({
           equipe: { ...permissoesEquipe },
           propostas: { ...permissoesPropostas },
           clientes: { ...permissoesClientes },
+          comissoes: { ...permissoesComissoes },
         },
       };
 
@@ -321,6 +358,7 @@ export default function ModalPermissoesUsuario({
       setPermissoesEquipe(normalizarPermissoesEquipe(jsonSalvo));
       setPermissoesPropostas(normalizarPermissoesPropostas(jsonSalvo));
       setPermissoesClientes(normalizarPermissoesClientes(jsonSalvo));
+      setPermissoesComissoes(normalizarPermissoesComissoes(jsonSalvo));
       setSucesso("Permissões atualizadas com sucesso.");
       onSaved?.();
     } catch (error) {
@@ -454,6 +492,12 @@ export default function ModalPermissoesUsuario({
                     <ModalPermissoesEquipe value={permissoesEquipe} disabled={saving || loading} onChange={alterarPermissaoEquipe} onAplicarTodas={aplicarTodasEquipe} />
                     <ModalPermissoesClientes value={permissoesClientes} disabled={saving || loading} onChange={alterarPermissaoCliente} onAplicarTodas={aplicarTodasClientes} />
                     <ModalPermissoesPropostas value={permissoesPropostas} disabled={saving || loading} onChange={alterarPermissaoProposta} onAplicarTodas={aplicarTodasPropostas} />
+                    <ModalPermissoesComissoes
+                      value={permissoesComissoes}
+                      disabled={saving || loading}
+                      onChange={alterarPermissaoComissao}
+                      onAplicarTodas={aplicarTodasComissoes}
+                    />
                   </div>
                 </section>
 

@@ -21,7 +21,8 @@ interface ComissaoContratoCardProps {
 
   minhaComissao?: ItemMinhaComissaoCorretor | null;
 
-  podeOperar: boolean;
+  podeCriar: boolean;
+  podeEditar: boolean;
 
   onConfigurarComissao: () => void;
   onVerComissao: () => void;
@@ -31,7 +32,8 @@ export default function ComissaoContratoCard({
   loading = false,
   comissao,
   minhaComissao = null,
-  podeOperar,
+  podeCriar,
+  podeEditar,
   onConfigurarComissao,
   onVerComissao,
 }: ComissaoContratoCardProps) {
@@ -81,6 +83,17 @@ export default function ComissaoContratoCard({
               Sua comissão está configurada para este contrato.
             </p>
           </div>
+
+          {podeEditar && (
+            <button
+              type="button"
+              onClick={onConfigurarComissao}
+              className="ml-auto inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <HandCoins size={14} />
+              Editar
+            </button>
+          )}
         </div>
 
         <div className="px-4 py-4">
@@ -194,7 +207,7 @@ export default function ComissaoContratoCard({
             </div>
           </div>
 
-          {podeOperar && (
+          {podeCriar && (
             <button
               type="button"
               onClick={onConfigurarComissao}
@@ -240,7 +253,7 @@ export default function ComissaoContratoCard({
           </div>
         </div>
 
-        {podeOperar && (
+        {podeEditar && (
           <button
             type="button"
             onClick={onConfigurarComissao}

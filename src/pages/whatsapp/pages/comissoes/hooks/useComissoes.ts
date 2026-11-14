@@ -6,6 +6,7 @@ import {
 } from "react";
 
 import { useAuth } from "../../../../../auth/AuthContext";
+import { temFiltro } from "../services/filtrosComissoesUtils";
 
 import type {
   FiltrosComissoes,
@@ -407,24 +408,18 @@ export function useComissoes() {
         .total_paginas,
     ]);
 
-  const temFiltrosAtivos =
-    useMemo(() => {
-      return Boolean(
-        filtros.busca?.trim() ||
-          filtros.data_inicio ||
-          filtros.data_fim ||
-          filtros.corretor_id ||
-          filtros.seguradora_id ||
-          filtros.produto_id ||
-          filtros
-            .situacao_recebimento ||
-          filtros
-            .situacao_pagamento ||
-          filtros.tipo_participante ||
-          filtros.contrato_id ||
-          filtros.cliente_id
-      );
-    }, [filtros]);
+  const temFiltrosAtivos = useMemo(() => Boolean(
+    filtros.busca?.trim() ||
+    filtros.data_inicio || filtros.data_fim ||
+    temFiltro(filtros.corretor_id) ||
+    temFiltro(filtros.seguradora_id) ||
+    temFiltro(filtros.produto_id) ||
+    temFiltro(filtros.situacao_recebimento) ||
+    temFiltro(filtros.situacao_pagamento) ||
+    temFiltro(filtros.tipo_participante) ||
+    temFiltro(filtros.participante_id) ||
+    filtros.contrato_id || filtros.cliente_id
+  ), [filtros]);
 
   const possuiResultados =
     resultadoAtual.itens.length >
