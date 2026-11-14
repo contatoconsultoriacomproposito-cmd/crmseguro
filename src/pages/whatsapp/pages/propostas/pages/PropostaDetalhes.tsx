@@ -570,15 +570,16 @@ export default function PropostaDetalhes() {
           (contrato) => contrato.status === "ATIVO",
         );
 
-      await Promise.all(
+      // A proposta pode ser exibida assim que seus dados principais chegam.
+      // Financeiro e comissões possuem estados de carregamento próprios e
+      // não devem bloquear toda a página.
+      setLoading(false);
+
+      void Promise.all(
         contratosAtivos.flatMap((contrato) => [
-          carregarFinanceiroContrato(
-            contrato.id
-          ),
-          carregarComissaoContrato(
-            contrato.id
-          ),
-        ])
+          carregarFinanceiroContrato(contrato.id),
+          carregarComissaoContrato(contrato.id),
+        ]),
       );
 
       setCabecalho({
@@ -589,9 +590,8 @@ export default function PropostaDetalhes() {
           resultado.observacoes ?? "",
       });
 
-      await carregarProdutoRenovacao(
-        propostaOrdenada,
-      );
+      // Complemento independente: indicador próprio de carregamento.
+      void carregarProdutoRenovacao(propostaOrdenada);
     } catch (error) {
       console.error(
         "Erro ao carregar proposta:",

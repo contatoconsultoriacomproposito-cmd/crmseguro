@@ -6,6 +6,13 @@ import ModalPermissoesConversas from "./components/ModalPermissoesConversas";
 import ModalPermissoesAgenda from "./components/ModalPermissoesAgenda";
 import ModalPermissoesEquipe from "./components/ModalPermissoesEquipe";
 import ModalPermissoesPropostas from "./components/ModalPermissoesPropostas";
+import ModalPermissoesRenovacoes, {
+  PERMISSOES_RENOVACOES_PADRAO,
+  normalizarPermissoesRenovacoes,
+  type PermissoesRenovacoes,
+  type AcaoPermissaoRenovacao,
+  type EscopoRenovacao,
+} from "./components/ModalPermissoesRenovacoes";
 import ModalPermissoesClientes, {
   PERMISSOES_CLIENTES_PADRAO,
   normalizarPermissoesClientes,
@@ -83,6 +90,8 @@ export default function ModalPermissoesUsuario({
 
   const [permissoesPropostas, setPermissoesPropostas] = useState<PermissoesPropostas>({ ...PERMISSOES_PROPOSTAS_PADRAO });
 
+  const [permissoesRenovacoes, setPermissoesRenovacoes] = useState<PermissoesRenovacoes>({ ...PERMISSOES_RENOVACOES_PADRAO });
+
   const [permissoesClientes, setPermissoesClientes] = useState<PermissoesClientes>({
     ...PERMISSOES_CLIENTES_PADRAO,
   });
@@ -152,6 +161,7 @@ export default function ModalPermissoesUsuario({
       setPermissoesAgenda(normalizarPermissoesAgenda(jsonAtual));
       setPermissoesEquipe(normalizarPermissoesEquipe(jsonAtual));
       setPermissoesPropostas(normalizarPermissoesPropostas(jsonAtual));
+      setPermissoesRenovacoes(normalizarPermissoesRenovacoes(jsonAtual));
       setPermissoesClientes(normalizarPermissoesClientes(jsonAtual));
       setPermissoesComissoes(normalizarPermissoesComissoes(jsonAtual));
       setPermissoesCarregadas(true);
@@ -195,6 +205,16 @@ export default function ModalPermissoesUsuario({
         ])
       ) as PermissoesComissoes
     );
+    setSucesso("");
+  }
+
+  function alterarPermissaoRenovacao(acao: AcaoPermissaoRenovacao, escopo: EscopoRenovacao) {
+    setPermissoesRenovacoes((prev) => ({ ...prev, [acao]: escopo }));
+    setSucesso("");
+  }
+
+  function aplicarTodasRenovacoes(escopo: EscopoRenovacao) {
+    setPermissoesRenovacoes({ read: escopo, export: escopo });
     setSucesso("");
   }
 
@@ -329,6 +349,7 @@ export default function ModalPermissoesUsuario({
         operacoes: {
           equipe: { ...permissoesEquipe },
           propostas: { ...permissoesPropostas },
+          renovacoes: { ...permissoesRenovacoes },
           clientes: { ...permissoesClientes },
           comissoes: { ...permissoesComissoes },
         },
@@ -357,6 +378,7 @@ export default function ModalPermissoesUsuario({
       setPermissoesOriginais(jsonSalvo);
       setPermissoesEquipe(normalizarPermissoesEquipe(jsonSalvo));
       setPermissoesPropostas(normalizarPermissoesPropostas(jsonSalvo));
+      setPermissoesRenovacoes(normalizarPermissoesRenovacoes(jsonSalvo));
       setPermissoesClientes(normalizarPermissoesClientes(jsonSalvo));
       setPermissoesComissoes(normalizarPermissoesComissoes(jsonSalvo));
       setSucesso("Permissões atualizadas com sucesso.");
@@ -492,6 +514,7 @@ export default function ModalPermissoesUsuario({
                     <ModalPermissoesEquipe value={permissoesEquipe} disabled={saving || loading} onChange={alterarPermissaoEquipe} onAplicarTodas={aplicarTodasEquipe} />
                     <ModalPermissoesClientes value={permissoesClientes} disabled={saving || loading} onChange={alterarPermissaoCliente} onAplicarTodas={aplicarTodasClientes} />
                     <ModalPermissoesPropostas value={permissoesPropostas} disabled={saving || loading} onChange={alterarPermissaoProposta} onAplicarTodas={aplicarTodasPropostas} />
+                    <ModalPermissoesRenovacoes value={permissoesRenovacoes} disabled={saving || loading} onChange={alterarPermissaoRenovacao} onAplicarTodas={aplicarTodasRenovacoes} />
                     <ModalPermissoesComissoes
                       value={permissoesComissoes}
                       disabled={saving || loading}

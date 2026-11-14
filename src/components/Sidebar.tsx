@@ -79,6 +79,9 @@ export default function Sidebar({
   const podeVerPropostas =
     escopo("operacoes.propostas", "read") !== "none"
 
+  const podeVerRenovacoes =
+    escopo("operacoes.renovacoes", "read") !== "none"
+
   const podeVerCorretor =
   userProfile?.tipo_usuario === "CORRETORA" ||
   userProfile?.tipo_usuario === "ADMIN"
@@ -284,6 +287,17 @@ export default function Sidebar({
               collapsed={isCollapsed}
               onNavigate={handleNavigate}
               iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
+            />
+          )}
+
+          {podeVerRenovacoes && (
+            <SidebarItem
+              to="/whatsapp/renovacoes"
+              icon={<FileClock size={18} />}
+              label="Renovações"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-400"
             />
           )}
 

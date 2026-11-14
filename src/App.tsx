@@ -37,6 +37,9 @@ import CentralClientes from "./pages/whatsapp/central-clientes/CentralClientes"
 import PropostasLista from "./pages/whatsapp/pages/propostas/pages/PropostasLista"
 import PropostaDetalhes from "./pages/whatsapp/pages/propostas/pages/PropostaDetalhes"
 
+// Renovações
+import RenovacoesLista from "./pages/whatsapp/pages/renovacoes/pages/RenovacoesLista"
+
 // Financeiro
 import Financeiro from "./pages/whatsapp/pages/financeiro/pages/Financeiro"
 import FinanceiroContrato from "./pages/whatsapp/pages/financeiro/pages/FinanceiroContrato"
@@ -252,6 +255,15 @@ export default function App() {
             <Route
               path="/whatsapp/propostas/:id"
               element={<PropostaDetalhes />}
+            />
+
+            {/* ================================================
+                RENOVAÇÕES
+            ================================================ */}
+
+            <Route
+              path="/whatsapp/renovacoes"
+              element={<RenovacoesLista />}
             />
 
             {/* ================================================
