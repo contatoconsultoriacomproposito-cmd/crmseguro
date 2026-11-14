@@ -50,6 +50,8 @@ import {
 import {
   atualizarEmpresa,
   atualizarPessoa,
+  enviarEmpresaParaLead,
+  enviarPessoaParaLead,
   buscarProdutosPortfolioCrm,
   type CrmClassificacao,
   type CrmProdutoPortfolio,
@@ -578,18 +580,20 @@ export default function ContactPanel({
               novaClassificacao
           }
 
-          if (
-            tipo === 'PJ'
-          ) {
-            await atualizarEmpresa(
-              registro.id,
-              payload
-            )
+          // A transição para Lead exige a RPC específica do núcleo CRM.
+          // atualizarPessoa/atualizarEmpresa rejeitam deliberadamente essa operação.
+          if (novaClassificacao === 'LEAD') {
+            if (classificacao !== 'LEAD') {
+              if (tipo === 'PJ') {
+                await enviarEmpresaParaLead(registro.id)
+              } else {
+                await enviarPessoaParaLead(registro.id)
+              }
+            }
+          } else if (tipo === 'PJ') {
+            await atualizarEmpresa(registro.id, payload)
           } else {
-            await atualizarPessoa(
-              registro.id,
-              payload
-            )
+            await atualizarPessoa(registro.id, payload)
           }
 
           if (conversation) {
@@ -645,6 +649,7 @@ export default function ContactPanel({
       [
         clienteCrm,
         registro?.id,
+        classificacao,
         conversation,
         carregarClienteCrm,
         onContactUpdate,
