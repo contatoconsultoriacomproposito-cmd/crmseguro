@@ -111,7 +111,7 @@ export function gerarPdfRelatorioComissoes(dados: DadosRelatorioComissoes, opcoe
       9: { cellWidth: 25, halign: "right" },
     },
     didDrawPage: () => {
-      const pagina = pdf.internal.getCurrentPageInfo().pageNumber;
+      const pagina = pdf.internal.pages.length - 1;
       const altura = pdf.internal.pageSize.getHeight();
       pdf.setFontSize(7.5); pdf.setFont("helvetica", "normal"); pdf.setTextColor(130, 142, 158);
       pdf.text("SeguroCRM • Comissões", 12, altura - 7);
