@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../../../lib/supabaseClient";
 import { useAuth } from "../../../../auth/AuthContext";
+import { usePermissoes } from "../../hooks/usePermissoes";
 import { toast } from "sonner";
 import ModalArmazenamento from "../../configuracao-corretora/ModalArmazenamento";
 import { useStorageCommercial } from "../../hooks/useStorageCommercial";
@@ -247,8 +248,14 @@ export default function SinistroDetalhes() {
   const navigate = useNavigate();
   const inputArquivoRef = useRef<HTMLInputElement | null>(null);
   const { userProfile } = useAuth();
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const escopoLeitura = escopo("operacoes.sinistros", "read");
+  const escopoEdicao = escopo("operacoes.sinistros", "update");
+  const escopoExclusao = escopo("operacoes.sinistros", "delete");
+  const autoriza = (nivel: string, responsavelId: string | null) =>
+    !carregandoPermissoes && (nivel === "tenant" || (nivel === "own" && responsavelId === userProfile?.id));
   const storageCommercial = useStorageCommercial();
-  const podeExcluir = userProfile?.tipo_usuario === "CORRETORA";
+
 
   const [dossie, setDossie] = useState<CrmSinistroDossie | null>(null);
   const [cliente, setCliente] = useState<ClienteInfo | null>(null);
@@ -258,6 +265,10 @@ export default function SinistroDetalhes() {
   const [aba, setAba] = useState<Aba>("RESUMO");
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const sinistro = dossie?.sinistro ?? null;
+  const podeVisualizar = autoriza(escopoLeitura, sinistro?.responsavel_id ?? null);
+  const podeEditar = autoriza(escopoEdicao, sinistro?.responsavel_id ?? null) && podeVisualizar;
+  const podeExcluir = autoriza(escopoExclusao, sinistro?.responsavel_id ?? null) && podeVisualizar;
   const [erro, setErro] = useState("");
 
   const [modalOcorrencia, setModalOcorrencia] = useState(false);
@@ -284,7 +295,6 @@ export default function SinistroDetalhes() {
   const [prioridadeCompromisso, setPrioridadeCompromisso] =
     useState<CrmPrioridade>("NORMAL");
 
-  const sinistro = dossie?.sinistro ?? null;
 
   const carregarDadosComplementares = useCallback(
     async (sinistroAtual: CrmSinistro) => {
@@ -425,7 +435,7 @@ export default function SinistroDetalhes() {
     campo: "etapa_atual" | "status" | "prioridade",
     valor: string
   ) => {
-    if (!sinistro) return;
+    if (!sinistro || !podeEditar) return;
 
     setSalvando(true);
     setErro("");
@@ -452,7 +462,7 @@ export default function SinistroDetalhes() {
   };
 
   const salvarOcorrencia = async () => {
-    if (!sinistro) return;
+    if (!sinistro || !podeEditar) return;
 
     if (!relatoOcorrencia.trim()) {
       setErro("Informe o relato da ocorrência.");
@@ -488,7 +498,7 @@ export default function SinistroDetalhes() {
   };
 
   const salvarEnvolvido = async () => {
-    if (!sinistro) return;
+    if (!sinistro || !podeEditar) return;
 
     if (!nomeEnvolvido.trim()) {
       setErro("Informe o nome do envolvido.");
@@ -529,7 +539,7 @@ export default function SinistroDetalhes() {
   };
 
   const salvarCompromisso = async () => {
-    if (!sinistro) return;
+    if (!sinistro || !podeEditar) return;
 
     if (!tituloCompromisso.trim()) {
       setErro("Informe o título do compromisso.");
@@ -579,6 +589,7 @@ export default function SinistroDetalhes() {
     compromisso: CrmAgendaEvento,
     acao: "CONCLUIR" | "CANCELAR"
   ) => {
+    if (!podeEditar) return;
     setSalvando(true);
     setErro("");
 
@@ -599,6 +610,7 @@ export default function SinistroDetalhes() {
   };
 
   const selecionarArquivo = () => {
+    if (!podeEditar) return;
     inputArquivoRef.current?.click();
   };
 
@@ -607,7 +619,7 @@ export default function SinistroDetalhes() {
   ) => {
     const arquivo = event.target.files?.[0];
 
-    if (!arquivo || !sinistro) return;
+    if (!arquivo || !sinistro || !podeEditar) return;
 
     setEnviandoAnexo(true);
     setErro("");
@@ -699,6 +711,7 @@ export default function SinistroDetalhes() {
   };
 
   const excluirAnexo = async (anexo: CrmEventoAnexo) => {
+    if (!podeEditar) return;
     const confirmar = window.confirm(
       `Deseja realmente remover "${anexo.nome_arquivo}"?`
     );
@@ -769,7 +782,7 @@ export default function SinistroDetalhes() {
     );
   }
 
-  if (!sinistro || !dossie) {
+  if (!sinistro || !dossie || (!carregandoPermissoes && !podeVisualizar)) {
     return (
       <div className="p-6">
         <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">
@@ -862,6 +875,7 @@ export default function SinistroDetalhes() {
               <button
                 type="button"
                 onClick={() => setModalOcorrencia(true)}
+                disabled={!podeEditar}
                 className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <Plus size={16} />
@@ -871,6 +885,7 @@ export default function SinistroDetalhes() {
               <button
                 type="button"
                 onClick={() => setModalCompromisso(true)}
+                disabled={!podeEditar}
                 className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <CalendarPlus size={16} />
@@ -880,7 +895,7 @@ export default function SinistroDetalhes() {
               <button
                 type="button"
                 onClick={selecionarArquivo}
-                disabled={enviandoAnexo}
+                disabled={!podeEditar || enviandoAnexo}
                 className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
               >
                 {enviandoAnexo ? (
@@ -957,7 +972,7 @@ export default function SinistroDetalhes() {
 
                     <select
                       value={sinistro.etapa_atual}
-                      disabled={salvando}
+                      disabled={!podeEditar || salvando}
                       onChange={(event) =>
                         atualizarCampoSinistro(
                           "etapa_atual",
@@ -981,7 +996,7 @@ export default function SinistroDetalhes() {
 
                     <select
                       value={sinistro.status}
-                      disabled={salvando}
+                      disabled={!podeEditar || salvando}
                       onChange={(event) =>
                         atualizarCampoSinistro("status", event.target.value)
                       }
@@ -1002,7 +1017,7 @@ export default function SinistroDetalhes() {
 
                     <select
                       value={sinistro.prioridade}
-                      disabled={salvando}
+                      disabled={!podeEditar || salvando}
                       onChange={(event) =>
                         atualizarCampoSinistro(
                           "prioridade",
@@ -1212,6 +1227,7 @@ export default function SinistroDetalhes() {
               <button
                 type="button"
                 onClick={() => setModalOcorrencia(true)}
+                disabled={!podeEditar}
                 className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <Plus size={16} />
@@ -1273,6 +1289,7 @@ export default function SinistroDetalhes() {
               <button
                 type="button"
                 onClick={() => setModalEnvolvido(true)}
+                disabled={!podeEditar}
                 className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <UserPlus size={16} />
@@ -1342,6 +1359,7 @@ export default function SinistroDetalhes() {
               <button
                 type="button"
                 onClick={() => setModalCompromisso(true)}
+                disabled={!podeEditar}
                 className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <CalendarPlus size={16} />
@@ -1401,7 +1419,7 @@ export default function SinistroDetalhes() {
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          disabled={salvando}
+                          disabled={!podeEditar || salvando}
                           onClick={() =>
                             alterarStatusCompromisso(compromisso, "CONCLUIR")
                           }
@@ -1413,7 +1431,7 @@ export default function SinistroDetalhes() {
 
                         <button
                           type="button"
-                          disabled={salvando}
+                          disabled={!podeEditar || salvando}
                           onClick={() =>
                             alterarStatusCompromisso(compromisso, "CANCELAR")
                           }
@@ -1446,7 +1464,7 @@ export default function SinistroDetalhes() {
               <button
                 type="button"
                 onClick={selecionarArquivo}
-                disabled={enviandoAnexo}
+                disabled={!podeEditar || enviandoAnexo}
                 className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
               >
                 {enviandoAnexo ? (
@@ -1591,7 +1609,7 @@ export default function SinistroDetalhes() {
 
               <button
                 type="button"
-                disabled={salvando}
+                disabled={!podeEditar || salvando}
                 onClick={salvarOcorrencia}
                 className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-60"
               >
@@ -1714,7 +1732,7 @@ export default function SinistroDetalhes() {
 
               <button
                 type="button"
-                disabled={salvando}
+                disabled={!podeEditar || salvando}
                 onClick={salvarEnvolvido}
                 className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-60"
               >
@@ -1834,7 +1852,7 @@ export default function SinistroDetalhes() {
 
               <button
                 type="button"
-                disabled={salvando}
+                disabled={!podeEditar || salvando}
                 onClick={salvarCompromisso}
                 className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-60"
               >

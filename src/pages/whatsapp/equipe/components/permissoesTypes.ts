@@ -44,6 +44,7 @@ export interface ModalPermissoesUsuarioProps {
   corretoraId: string | null;
   nomeUsuario?: string | null;
   emailUsuario?: string | null;
+  funcaoUsuario?: "CORRETOR" | "ATENDIMENTO" | "COMERCIAL" | "FINANCEIRO" | "ADMINISTRATIVO" | "OUTRO" | null;
   onClose: () => void;
   onSaved?: () => void;
 }

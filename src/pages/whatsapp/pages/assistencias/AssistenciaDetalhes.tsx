@@ -23,6 +23,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "../../../../lib/supabaseClient";
 import { useAuth } from "../../../../auth/AuthContext";
+import { usePermissoes } from "../../hooks/usePermissoes";
 import ModalArmazenamento from "../../configuracao-corretora/ModalArmazenamento";
 import { useStorageCommercial } from "../../hooks/useStorageCommercial";
 import { isStorageLimitError } from "../../services/storageQuotaError";
@@ -244,8 +245,14 @@ export default function AssistenciaDetalhes() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { userProfile } = useAuth();
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const escopoLeitura = escopo("operacoes.assistencias", "read");
+  const escopoEdicao = escopo("operacoes.assistencias", "update");
+  const escopoExclusao = escopo("operacoes.assistencias", "delete");
+  const autoriza = (nivel: string, responsavelId: string | null) =>
+    !carregandoPermissoes && (nivel === "tenant" || (nivel === "own" && responsavelId === userProfile?.id));
   const storageCommercial = useStorageCommercial();
-  const podeExcluir = userProfile?.tipo_usuario === "CORRETORA";
+
 
   const [dossie, setDossie] =
     useState<CrmAssistenciaDossie | null>(null);
@@ -267,6 +274,10 @@ export default function AssistenciaDetalhes() {
 
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const assistencia = dossie?.assistencia ?? null;
+  const podeVisualizar = autoriza(escopoLeitura, assistencia?.responsavel_id ?? null);
+  const podeEditar = autoriza(escopoEdicao, assistencia?.responsavel_id ?? null) && podeVisualizar;
+  const podeExcluir = autoriza(escopoExclusao, assistencia?.responsavel_id ?? null) && podeVisualizar;
   const [erro, setErro] = useState<string | null>(null);
 
   const [modalOcorrencia, setModalOcorrencia] =
@@ -301,7 +312,6 @@ export default function AssistenciaDetalhes() {
       prioridade: "NORMAL",
     });
 
-  const assistencia = dossie?.assistencia ?? null;
 
   const carregarRelacionamentos = useCallback(
     async (item: CrmAssistencia) => {
@@ -574,6 +584,7 @@ export default function AssistenciaDetalhes() {
   );
 
   const salvarAssistencia = useCallback(async () => {
+    if (!podeEditar) return;
     if (!assistencia || !form || salvando) return;
 
     try {
@@ -641,9 +652,10 @@ export default function AssistenciaDetalhes() {
     } finally {
       setSalvando(false);
     }
-  }, [assistencia, form, salvando]);
+  }, [assistencia, form, salvando, podeEditar]);
 
   const salvarOcorrencia = useCallback(async () => {
+    if (!podeEditar) return;
     if (!assistencia) return;
 
     if (!formOcorrencia.relato.trim()) {
@@ -692,11 +704,12 @@ export default function AssistenciaDetalhes() {
     assistencia,
     formOcorrencia,
     carregarDossie,
+    podeEditar,
   ]);
 
   const salvarCompromisso =
     useCallback(async () => {
-      if (!assistencia) return;
+      if (!assistencia || !podeEditar) return;
 
       if (!formCompromisso.titulo.trim()) {
         toast.error(
@@ -803,7 +816,7 @@ export default function AssistenciaDetalhes() {
 
   const enviarArquivo = useCallback(
     async (arquivo: File) => {
-      if (!assistencia) return;
+      if (!assistencia || !podeEditar) return;
 
       try {
         setEnviandoAnexo(true);
@@ -883,7 +896,7 @@ export default function AssistenciaDetalhes() {
       );
 
       toast.success("Assistência excluída com sucesso.");
-      navigate("/whatsapp/assistencias");
+      navigate("/whatsapp/assistencia");
     } catch (error: any) {
       console.error(
         "Erro ao excluir assistência:",
@@ -927,6 +940,7 @@ export default function AssistenciaDetalhes() {
 
   const excluirAnexo = useCallback(
     async (anexo: CrmEventoAnexo) => {
+      if (!podeEditar) return;
       const confirmou = window.confirm(
         `Remover o arquivo "${anexo.nome_arquivo}"?`
       );
@@ -972,7 +986,7 @@ export default function AssistenciaDetalhes() {
     );
   }
 
-  if (erro || !assistencia || !dossie || !form) {
+  if (erro || !assistencia || !dossie || !form || (!carregandoPermissoes && !podeVisualizar)) {
     return (
       <div className="min-h-full bg-slate-50 p-6 dark:bg-slate-950">
         <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">
@@ -989,7 +1003,7 @@ export default function AssistenciaDetalhes() {
               <button
                 type="button"
                 onClick={() =>
-                  navigate("/whatsapp/assistencias")
+                  navigate("/whatsapp/assistencia")
                 }
                 className="mt-4 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium"
               >
@@ -1010,7 +1024,7 @@ export default function AssistenciaDetalhes() {
             <button
               type="button"
               onClick={() =>
-                navigate("/whatsapp/assistencias")
+                navigate("/whatsapp/assistencia")
               }
               className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
             >
@@ -1064,7 +1078,7 @@ export default function AssistenciaDetalhes() {
               Atualizar
             </button>
 
-            <button
+            {podeEditar && <button
               type="button"
               onClick={() =>
                 void salvarAssistencia()
@@ -1081,7 +1095,7 @@ export default function AssistenciaDetalhes() {
                 <Save size={16} />
               )}
               Salvar alterações
-            </button>
+            </button>}
 
             {podeExcluir && (
               <button
@@ -1525,7 +1539,7 @@ export default function AssistenciaDetalhes() {
 
                   <button
                     type="button"
-                    disabled={enviandoAnexo}
+                    disabled={!podeEditar || enviandoAnexo}
                     onClick={() =>
                       fileInputRef.current?.click()
                     }

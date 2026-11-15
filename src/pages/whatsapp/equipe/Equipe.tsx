@@ -1228,6 +1228,7 @@ export default function Equipe() {
         corretoraId={membroSelecionado?.corretora_id ?? null}
         nomeUsuario={membroSelecionado?.nome ?? null}
         emailUsuario={membroSelecionado?.email ?? null}
+        funcaoUsuario={membroSelecionado?.funcao_equipe ?? null}
         onClose={() => {
           setModalPermissoes(false);
           setMembroSelecionado(null);

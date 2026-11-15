@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { ChevronDown, ChevronRight, ContactRound, LayoutPanelTop, ShieldCheck } from "lucide-react";
-import { LinhaPermissao } from "./PermissaoUI";
+import { ContactRound } from "lucide-react";
+import { LinhaPermissao, ModuloPermissao, SecaoPermissao } from "./PermissaoUI";
 
 export type EscopoCliente = "none" | "own" | "tenant";
 
@@ -131,91 +130,16 @@ export interface ModalPermissoesClientesProps {
   onChange: (acao: AcaoPermissaoCliente, escopo: EscopoCliente) => void;
   onAplicarTodas: (escopo: EscopoCliente) => void;
 }
-
-export default function ModalPermissoesClientes({
-  value,
-  disabled = false,
-  onChange,
-  onAplicarTodas,
-}: ModalPermissoesClientesProps) {
-  const [abasExpandidas, setAbasExpandidas] = useState(true);
-  const botao = "rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
-
-  function renderizarLinha(acao: DefinicaoAcao) {
-    return (
-      <LinhaPermissao
-        key={acao.key}
-        label={acao.label}
-        descricao={acao.descricao}
-        value={value[acao.key]}
-        disabled={disabled}
-        opcoes={OPCOES_ESCOPO_CLIENTES}
-        onChange={(escopo) => onChange(acao.key, escopo as EscopoCliente)}
-      />
-    );
-  }
-
-  return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
-      <div className="border-b border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400">
-              <ContactRound size={19} />
-            </div>
-            <div>
-              <p className="font-bold text-zinc-900 dark:text-white">Clientes</p>
-              <p className="mt-0.5 text-xs text-zinc-500">Acesso à carteira, ao Cliente 360° e às ações comerciais.</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={disabled} onClick={() => onAplicarTodas("own")} className={botao}>Próprios</button>
-            <button type="button" disabled={disabled} onClick={() => onAplicarTodas("tenant")} className={botao}>Toda corretora</button>
-            <button type="button" disabled={disabled} onClick={() => onAplicarTodas("none")} className={botao + " !border-red-200 !text-red-600 dark:!border-red-900 dark:!text-red-400"}>Remover acessos</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-        {ACOES_GERAIS.map(renderizarLinha)}
-
-        <div>
-          <div className="flex items-center gap-2 bg-indigo-50/50 px-4 py-3 dark:bg-indigo-500/5">
-            <LayoutPanelTop size={17} className="text-indigo-600 dark:text-indigo-400" />
-            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100">Card do cliente (360°)</span>
-          </div>
-          {renderizarLinha(ACAO_CARD)}
-          <button
-            type="button"
-            aria-expanded={abasExpandidas}
-            onClick={() => setAbasExpandidas((anterior) => !anterior)}
-            className="flex w-full items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50/70 px-4 py-3 text-left text-xs font-bold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-200 dark:hover:bg-zinc-800"
-          >
-            <span>Permissões individuais das nove abas</span>
-            {abasExpandidas ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
-          {abasExpandidas && (
-            <div className="ml-4 border-l-2 border-indigo-200 dark:border-indigo-900">
-              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                {ACOES_ABAS.map(renderizarLinha)}
-              </div>
-              <p className="border-t border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                O acesso às abas é independente da leitura dos módulos gerais. As ações realizadas dentro das abas continuam sujeitas às permissões específicas.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2 bg-indigo-50/50 px-4 py-3 dark:bg-indigo-500/5">
-            <ShieldCheck size={17} className="text-indigo-600 dark:text-indigo-400" />
-            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100">Ações do cliente</span>
-          </div>
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {ACOES_OPERACIONAIS.map(renderizarLinha)}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+export default function ModalPermissoesClientes({ value, disabled = false, onChange, onAplicarTodas }: ModalPermissoesClientesProps) {
+  const linha = (acao: DefinicaoAcao) => <LinhaPermissao key={acao.key} label={acao.label} descricao={acao.descricao}
+    value={value[acao.key]} disabled={disabled} opcoes={OPCOES_ESCOPO_CLIENTES} onChange={escopo => onChange(acao.key, escopo)} />;
+  return <ModuloPermissao titulo="Clientes" descricao="Cliente 360°, abas independentes e movimentações do Kanban."
+    icon={<ContactRound size={21} />} disabled={disabled}
+    opcoesRapidas={[{ value: "own", label: "Próprios" }, { value: "tenant", label: "Corretora" }, { value: "none", label: "Remover acessos" }]}
+    onAplicarTodas={onAplicarTodas} rodape="As abas do Cliente 360° são independentes das permissões gerais dos outros módulos. Visualizar cadastro e Editar são ações distintas.">
+    <SecaoPermissao titulo="Listagem e criação">{ACOES_GERAIS.map(linha)}</SecaoPermissao>
+    <SecaoPermissao titulo="Card do cliente">{linha(ACAO_CARD)}</SecaoPermissao>
+    <SecaoPermissao titulo="Abas do Cliente 360°">{ACOES_ABAS.map(linha)}</SecaoPermissao>
+    <SecaoPermissao titulo="Ações operacionais">{ACOES_OPERACIONAIS.map(linha)}</SecaoPermissao>
+  </ModuloPermissao>;
 }

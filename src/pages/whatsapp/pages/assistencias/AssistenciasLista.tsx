@@ -17,6 +17,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../../../auth/AuthContext";
+import { usePermissoes } from "../../hooks/usePermissoes";
 import { supabase } from "../../../../lib/supabaseClient";
 import ModalNovaAssistencia from "./components/ModalNovaAssistencia";
 
@@ -165,6 +167,12 @@ function classeStatus(status?: string | null) {
 
 export default function AssistenciasLista() {
   const navigate = useNavigate();
+  const { userProfile } = useAuth();
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const escopoLeitura = escopo("operacoes.assistencias", "read");
+  const escopoCriacao = escopo("operacoes.assistencias", "create");
+  const podeCriar = !carregandoPermissoes && escopoCriacao !== "none" && escopoLeitura !== "none";
+  const podeVisualizar = !carregandoPermissoes && escopoLeitura !== "none";
   const [modalNovaAssistenciaAberto, setModalNovaAssistenciaAberto] = useState(false);  
   const [assistencias, setAssistencias] = useState<Assistencia[]>([]);
   const [responsaveis, setResponsaveis] = useState<
@@ -300,13 +308,23 @@ export default function AssistenciasLista() {
   );
 
   const carregarAssistencias = useCallback(async () => {
+    if (carregandoPermissoes) return;
+    if (escopoLeitura === "none") {
+      setAssistencias([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setErro(null);
 
     try {
-      const { data, error } = await supabase
+      let consulta = supabase
         .from("crm_assistencias")
-        .select("*")
+        .select("*");
+      if (escopoLeitura === "own" && userProfile?.id) {
+        consulta = consulta.eq("responsavel_id", userProfile.id);
+      }
+      const { data, error } = await consulta
         .order("solicitado_em", { ascending: false });
 
       if (error) {
@@ -329,7 +347,7 @@ export default function AssistenciasLista() {
     } finally {
       setLoading(false);
     }
-  }, [carregarRelacionamentos]);
+  }, [carregarRelacionamentos, carregandoPermissoes, escopoLeitura, userProfile?.id]);
 
   useEffect(() => {
     void carregarAssistencias();
@@ -465,7 +483,12 @@ export default function AssistenciasLista() {
     }
 
   function handleAbrirAssistencia(assistencia: Assistencia) {
+    if (!podeVisualizar) return;
     navigate(`/whatsapp/assistencia/${assistencia.id}`);
+  }
+
+  if (!carregandoPermissoes && !podeVisualizar && !podeCriar) {
+    return <div className="p-6 text-sm text-slate-500">Sem acesso ao módulo.</div>;
   }
 
   return (
@@ -502,14 +525,14 @@ export default function AssistenciasLista() {
               Atualizar
             </button>
 
-            <button
+            {podeCriar && <button
               type="button"
               onClick={handleNovaAssistencia}
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               <Plus size={17} />
               Nova Assistência
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -940,7 +963,7 @@ export default function AssistenciasLista() {
           </div>
         )}
       </div>
-      <ModalNovaAssistencia
+      {podeCriar && <ModalNovaAssistencia
         open={modalNovaAssistenciaAberto}
         onClose={() => setModalNovaAssistenciaAberto(false)}
         onCreated={(assistencia) => {
@@ -948,7 +971,7 @@ export default function AssistenciasLista() {
             void carregarAssistencias();
             console.log("Assistência criada:", assistencia);
         }}
-        />
+        />}
     </div>
   );
 }

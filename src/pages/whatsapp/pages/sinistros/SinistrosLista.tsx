@@ -17,6 +17,8 @@ import {
 import { supabase } from "../../../../lib/supabaseClient";
 import ModalNovoSinistro from "./components/ModalNovoSinistro";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../../../auth/AuthContext";
+import { usePermissoes } from "../../hooks/usePermissoes";
 
 type Sinistro = {
   id: string;
@@ -221,6 +223,12 @@ export default function SinistrosLista() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { userProfile } = useAuth();
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const escopoLeitura = escopo("operacoes.sinistros", "read");
+  const escopoCriacao = escopo("operacoes.sinistros", "create");
+  const podeCriar = !carregandoPermissoes && escopoCriacao !== "none" && escopoLeitura !== "none";
+  const podeVisualizar = !carregandoPermissoes && escopoLeitura !== "none";
 
   const carregarRelacionamentos = useCallback(async (lista: Sinistro[]) => {
     const responsavelIds = [
@@ -334,13 +342,23 @@ export default function SinistrosLista() {
   }, []);
 
   const carregarSinistros = useCallback(async () => {
+    if (carregandoPermissoes) return;
+    if (escopoLeitura === "none") {
+      setSinistros([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setErro(null);
 
     try {
-      const { data, error } = await supabase
+      let consulta = supabase
         .from("crm_sinistros")
-        .select("*")
+        .select("*");
+      if (escopoLeitura === "own" && userProfile?.id) {
+        consulta = consulta.eq("responsavel_id", userProfile.id);
+      }
+      const { data, error } = await consulta
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -363,7 +381,7 @@ export default function SinistrosLista() {
     } finally {
       setLoading(false);
     }
-  }, [carregarRelacionamentos]);
+  }, [carregarRelacionamentos, carregandoPermissoes, escopoLeitura, userProfile?.id]);
 
   useEffect(() => {
     carregarSinistros();
@@ -458,8 +476,13 @@ export default function SinistrosLista() {
   };
 
   const handleAbrirSinistro = (sinistro: Sinistro) => {
+    if (!podeVisualizar) return;
     navigate(`/whatsapp/sinistro/${sinistro.id}`);
   };
+
+  if (!carregandoPermissoes && !podeVisualizar && !podeCriar) {
+    return <div className="p-6 text-sm text-slate-500">Sem acesso ao módulo.</div>;
+  }
 
   return (
     <div className="min-h-full bg-slate-50 p-4 dark:bg-slate-950 sm:p-6">
@@ -497,14 +520,14 @@ export default function SinistrosLista() {
               Atualizar
             </button>
 
-            <button
+            {podeCriar && <button
               type="button"
               onClick={handleNovoSinistro}
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               <Plus size={17} />
               Novo Sinistro
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -927,7 +950,7 @@ export default function SinistrosLista() {
       </div>
       
       
-      <ModalNovoSinistro
+      {podeCriar && <ModalNovoSinistro
         open={modalNovoSinistroAberto}
         onClose={() => setModalNovoSinistroAberto(false)}
         onCreated={(sinistro) => {
@@ -935,7 +958,7 @@ export default function SinistrosLista() {
           carregarSinistros();
           console.log("Sinistro criado:", sinistro);
         }}
-      />
+      />}
     </div>
   );
 }

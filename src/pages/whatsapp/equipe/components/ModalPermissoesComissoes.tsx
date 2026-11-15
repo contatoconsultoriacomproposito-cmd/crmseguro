@@ -1,5 +1,5 @@
-import { Banknote, ChartNoAxesCombined, FileText, HandCoins, ShieldCheck } from "lucide-react";
-import { LinhaPermissao } from "./PermissaoUI";
+import { HandCoins } from "lucide-react";
+import { LinhaPermissao, ModuloPermissao, SecaoPermissao } from "./PermissaoUI";
 
 export type EscopoComissao = "none" | "own" | "tenant";
 
@@ -149,81 +149,16 @@ export interface ModalPermissoesComissoesProps {
   onChange: (acao: AcaoPermissaoComissao, escopo: EscopoComissao) => void;
   onAplicarTodas: (escopo: EscopoComissao) => void;
 }
-
-export default function ModalPermissoesComissoes({
-  value,
-  disabled = false,
-  onChange,
-  onAplicarTodas,
-}: ModalPermissoesComissoesProps) {
-  const botao = "rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800";
-
-  const renderizarLinha = (acao: DefinicaoAcao) => (
-    <LinhaPermissao
-      key={acao.key}
-      label={acao.label}
-      descricao={acao.descricao}
-      value={value[acao.key]}
-      disabled={disabled}
-      opcoes={OPCOES_ESCOPO_COMISSOES}
-      onChange={(escopo) => onChange(acao.key, escopo as EscopoComissao)}
-    />
-  );
-
-  return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
-      <div className="border-b border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-              <HandCoins size={19} />
-            </div>
-            <div>
-              <p className="font-bold text-zinc-900 dark:text-white">Comissões</p>
-              <p className="mt-0.5 text-xs text-zinc-500">Visibilidade financeira, lançamentos, rateios, baixas e provisões.</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={disabled} onClick={() => onAplicarTodas("own")} className={botao}>Próprios</button>
-            <button type="button" disabled={disabled} onClick={() => onAplicarTodas("tenant")} className={botao}>Toda corretora</button>
-            <button type="button" disabled={disabled} onClick={() => onAplicarTodas("none")} className={botao + " !border-red-200 !text-red-600 dark:!border-red-900 dark:!text-red-400"}>Remover acessos</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-        <div>
-          <div className="flex items-center gap-2 bg-emerald-50/50 px-4 py-3 dark:bg-emerald-500/5">
-            <ChartNoAxesCombined size={17} className="text-emerald-600 dark:text-emerald-400" />
-            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100">Consulta e relatórios</span>
-          </div>
-          {ACOES_CONSULTA.map(renderizarLinha)}
-        </div>
-        <div>
-          <div className="flex items-center gap-2 bg-emerald-50/50 px-4 py-3 dark:bg-emerald-500/5">
-            <FileText size={17} className="text-emerald-600 dark:text-emerald-400" />
-            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100">Lançamento e manutenção</span>
-          </div>
-          {ACOES_LANCAMENTO.map(renderizarLinha)}
-        </div>
-        <div>
-          <div className="flex items-center gap-2 bg-emerald-50/50 px-4 py-3 dark:bg-emerald-500/5">
-            <Banknote size={17} className="text-emerald-600 dark:text-emerald-400" />
-            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100">Recebimentos e pagamentos</span>
-          </div>
-          {ACOES_FINANCEIRAS.map(renderizarLinha)}
-        </div>
-        <div>
-          <div className="flex items-center gap-2 bg-emerald-50/50 px-4 py-3 dark:bg-emerald-500/5">
-            <ShieldCheck size={17} className="text-emerald-600 dark:text-emerald-400" />
-            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100">Controle de provisões</span>
-          </div>
-          {ACOES_PROVISOES.map(renderizarLinha)}
-        </div>
-      </div>
-      <p className="border-t border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-        As permissões são independentes. A visão pessoal mostra somente a participação do usuário; a visão completa pode mostrar valores de outros participantes conforme o escopo. Baixas de pagamentos e estornos devem respeitar a integração com Contas a Pagar.
-      </p>
-    </section>
-  );
+export default function ModalPermissoesComissoes({ value, disabled = false, onChange, onAplicarTodas }: ModalPermissoesComissoesProps) {
+  const linha = (acao: DefinicaoAcao) => <LinhaPermissao key={acao.key} label={acao.label} descricao={acao.descricao}
+    value={value[acao.key]} disabled={disabled} opcoes={OPCOES_ESCOPO_COMISSOES} onChange={escopo => onChange(acao.key, escopo)} />;
+  return <ModuloPermissao titulo="Comissões" descricao="Visibilidade financeira, rateios, recebimentos e provisões."
+    icon={<HandCoins size={21} />} disabled={disabled}
+    opcoesRapidas={[{ value: "own", label: "Próprios" }, { value: "tenant", label: "Corretora" }, { value: "none", label: "Remover acessos" }]}
+    onAplicarTodas={onAplicarTodas} rodape="Leitura pessoal e leitura completa são autorizações diferentes. Baixas e estornos continuam sujeitos às regras do fluxo financeiro integrado.">
+    <SecaoPermissao titulo="Consulta e relatórios">{ACOES_CONSULTA.map(linha)}</SecaoPermissao>
+    <SecaoPermissao titulo="Lançamentos e manutenção">{ACOES_LANCAMENTO.map(linha)}</SecaoPermissao>
+    <SecaoPermissao titulo="Recebimentos e pagamentos">{ACOES_FINANCEIRAS.map(linha)}</SecaoPermissao>
+    <SecaoPermissao titulo="Controle de provisões">{ACOES_PROVISOES.map(linha)}</SecaoPermissao>
+  </ModuloPermissao>;
 }
