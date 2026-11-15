@@ -13,7 +13,7 @@ export type ModuloPermissaoId =
   | "contas_pagar" | "contas_receber" | "fluxo_caixa" | "parcelas_clientes"
   | "conexoes_whatsapp" | "armazenamento" | "seguradoras" | "configuracoes";
 export type ModuloAtivoId = Exclude<ModuloPermissaoId,
-  "tarefas" | "contas_pagar" | "contas_receber" | "fluxo_caixa" | "parcelas_clientes" |
+  "contas_pagar" | "contas_receber" | "fluxo_caixa" | "parcelas_clientes" |
   "conexoes_whatsapp" | "armazenamento" | "seguradoras" | "configuracoes">;
 
 export interface DefinicaoModulo {
@@ -39,7 +39,7 @@ export const GRUPOS_PERMISSOES: DefinicaoGrupo[] = [
       { id: "contatos", titulo: "Contatos", descricao: "Cadastros do WhatsApp", icon: ContactRound, implementado: true },
       { id: "conversas", titulo: "Conversas", descricao: "Atendimento por mensagens", icon: MessageCircle, implementado: true },
       { id: "agenda", titulo: "Agenda", descricao: "Compromissos e Google", icon: CalendarDays, implementado: true },
-      { id: "tarefas", titulo: "Tarefas", descricao: "Organização de atividades", icon: ListChecks, implementado: false },
+      { id: "tarefas", titulo: "Tarefas", descricao: "Organização de atividades", icon: ListChecks, implementado: true },
     ],
   },
   {

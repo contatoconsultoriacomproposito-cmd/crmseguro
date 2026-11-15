@@ -24,6 +24,7 @@ export function construirPreset(cargo: CargoPreset): PermissoesAtivas {
     base.contatos = { ...base.contatos, read: "assigned", create: "assigned", update: "assigned", send: "assigned" };
     base.conversas = { ...base.conversas, read: "assigned", start: "assigned", interact: "assigned" };
     base.agenda = { read: "own", manage: "own", google: "own" };
+    base.tarefas = { read: "own", create: "own", update: "own", delete: "none" };
     base.clientes = { ...base.clientes, read: "own", create: "own", open: "own", view_cadastro: "own", view_agenda: "own", view_propostas: "own", view_contratos: "own", view_sinistros: "own", view_assistencias: "own", view_arquivos: "own", update: "own", whatsapp: "own" };
     base.propostas = { ...base.propostas, read: "own", create: "own", update: "own", renew: "own" };
     base.renovacoes = { read: "own", export: "none" };
@@ -34,11 +35,13 @@ export function construirPreset(cargo: CargoPreset): PermissoesAtivas {
     base.contatos = { ...base.contatos, read: "assigned", create: "assigned", update: "assigned", send: "assigned" };
     base.conversas = { ...base.conversas, read: "assigned", start: "assigned", interact: "assigned", manage: "assigned" };
     base.agenda = { read: "own", manage: "own", google: "none" };
+    base.tarefas = { read: "own", create: "own", update: "own", delete: "none" };
     base.clientes = { ...base.clientes, read: "own", open: "own", view_cadastro: "own", view_agenda: "own", whatsapp: "own" };
   } else if (cargo === "COMERCIAL") {
     base.contatos = { ...base.contatos, read: "assigned", create: "assigned", send: "assigned" };
     base.conversas = { ...base.conversas, read: "assigned", start: "assigned", interact: "assigned" };
     base.agenda = { read: "own", manage: "own", google: "none" };
+    base.tarefas = { read: "own", create: "own", update: "own", delete: "none" };
     base.clientes = { ...base.clientes, read: "own", create: "own", open: "own", view_cadastro: "own", view_propostas: "own", view_contratos: "own", update: "own", whatsapp: "own" };
     base.propostas = { ...base.propostas, read: "own", create: "own", update: "own", lose: "own", renew: "own" };
     base.renovacoes = { read: "own", export: "none" };

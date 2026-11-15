@@ -11,12 +11,14 @@ import { normalizarPermissoesClientes, type PermissoesClientes } from "./ModalPe
 import { normalizarPermissoesComissoes, type PermissoesComissoes } from "./ModalPermissoesComissoes";
 import { normalizarPermissoesSinistro, type PermissoesSinistro } from "./ModalPermissoesSinistro";
 import { normalizarPermissoesAssistencia, type PermissoesAssistencia } from "./ModalPermissoesAssistencia";
+import { normalizarPermissoesTarefas, type PermissoesTarefas } from "./ModalPermissoesTarefas";
 import { MODULOS_ATIVOS, type ModuloAtivoId } from "./estruturaPermissoes";
 
 export interface PermissoesAtivas {
   contatos: PermissoesContatos;
   conversas: PermissoesConversas;
   agenda: PermissoesAgenda;
+  tarefas: PermissoesTarefas;
   equipe: PermissoesEquipe;
   clientes: PermissoesClientes;
   propostas: PermissoesPropostas;
@@ -32,6 +34,7 @@ export function normalizarAtivas(json: unknown): PermissoesAtivas {
     contatos: normalizarPermissoesContatos(json),
     conversas: normalizarPermissoesConversas(json),
     agenda: normalizarPermissoesAgenda(json),
+    tarefas: normalizarPermissoesTarefas(json),
     equipe: normalizarPermissoesEquipe(json),
     clientes: normalizarPermissoesClientes(json),
     propostas: normalizarPermissoesPropostas(json),
@@ -49,7 +52,7 @@ export function atualizarModulo<K extends ModuloAtivoId>(
 }
 
 const GRUPO_DO_MODULO: Record<ModuloAtivoId, "atendimento" | "operacoes"> = {
-  contatos: "atendimento", conversas: "atendimento", agenda: "atendimento",
+  contatos: "atendimento", conversas: "atendimento", agenda: "atendimento", tarefas: "atendimento",
   equipe: "operacoes", clientes: "operacoes", propostas: "operacoes",
   renovacoes: "operacoes", comissoes: "operacoes", sinistros: "operacoes", assistencias: "operacoes",
 };

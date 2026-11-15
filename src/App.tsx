@@ -30,6 +30,10 @@ import WhatsAppKanban from "./pages/whatsapp/pages/WhatsAppKanban"
 // Agenda
 import AgendaCRM from "./pages/whatsapp/pages/agenda/pages/AgendaCRM"
 
+// Tarefas
+import Tarefas from "./pages/whatsapp/tarefas/Tarefas"
+import { usePermissoes } from "./pages/whatsapp/hooks/usePermissoes"
+
 // Clientes
 import CentralClientes from "./pages/whatsapp/central-clientes/CentralClientes"
 
@@ -115,6 +119,33 @@ function PrivateWrapper() {
   }
 
   return <Outlet />
+}
+
+// ======================================================
+// ACESSO AO MÓDULO TAREFAS
+// Ocultar o menu não impede entrada por URL direta.
+// ======================================================
+function TarefasReadWrapper() {
+  const { escopo, loading } = usePermissoes()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-600 border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (escopo("atendimento.tarefas", "read") === "none") {
+    return (
+      <div className="mx-auto max-w-xl p-8 text-center">
+        <h1 className="text-lg font-bold text-slate-800 dark:text-white">Acesso não autorizado</h1>
+        <p className="mt-2 text-sm text-slate-500">Você não possui permissão para visualizar tarefas.</p>
+      </div>
+    )
+  }
+
+  return <Tarefas />
 }
 
 // ======================================================
@@ -232,6 +263,11 @@ export default function App() {
             <Route
               path="/whatsapp/agenda"
               element={<AgendaCRM />}
+            />
+
+            <Route
+              path="/whatsapp/tarefas"
+              element={<TarefasReadWrapper />}
             />
 
             {/* ================================================

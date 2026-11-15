@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleCheck,
+  Pencil,
   Flame,
   Heart,
   ListTodo,
@@ -32,11 +33,13 @@ import type {
 
 import ModalCadastroWhatsApp from '../automation/components/ModalCadastroWhatsApp'
 
+import { useAuth } from '../../../auth/AuthContext'
+import { usePermissoes } from '../hooks/usePermissoes'
+import ModalTarefa from '../tarefas/components/ModalTarefa'
 import {
-  buscarTarefasWhatsApp,
-  concluirTarefaWhatsApp,
-  type WhatsAppTask,
-} from '../services/whatsappTaskService'
+  listarTarefasConversa, criarTarefa, editarTarefa, alterarStatusTarefa, buscarResponsaveis,
+} from '../tarefas/services/tarefasService'
+import type { Tarefa, TarefaInput } from '../tarefas/types/tarefas'
 
 import {
   buscarClienteCrmPorContatoWhatsApp,
@@ -284,7 +287,7 @@ export default function ContactPanel({
     tarefas,
     setTarefas,
   ] = useState<
-    WhatsAppTask[]
+    Tarefa[]
   >([])
 
   const [
@@ -297,6 +300,33 @@ export default function ContactPanel({
     setConcluindoTarefaId,
   ] =
     useState<string | null>(null)
+
+  // Escopos independentes de tarefas; a RLS é a autorização final.
+  const { userProfile } = useAuth()
+  const { escopo, loading: permissoesCarregando } = usePermissoes()
+  const usuarioId = userProfile?.id ?? ''
+  const corretoraId = userProfile?.corretora_id ||
+    (userProfile?.tipo_usuario === 'CORRETORA' ? usuarioId : '')
+  const acessoEstrutural = userProfile?.tipo_usuario === 'CORRETORA' || userProfile?.tipo_usuario === 'ADMIN'
+  const nivelTarefa = (acao: 'read' | 'create' | 'update'): 'none' | 'own' | 'tenant' => {
+    if (permissoesCarregando) return 'none'
+    if (acessoEstrutural) return 'tenant'
+    const valor = escopo('atendimento.tarefas', acao)
+    return valor === 'tenant' || valor === 'own' ? valor : 'none'
+  }
+  const leituraTarefas = nivelTarefa('read')
+  const criacaoTarefas = nivelTarefa('create')
+  const edicaoTarefas = nivelTarefa('update')
+  const podeVerTarefas = leituraTarefas !== 'none'
+  const podeCriarTarefas = criacaoTarefas !== 'none'
+  const podeEditarTarefa = (tarefa: Tarefa) =>
+    podeVerTarefas && edicaoTarefas !== 'none' &&
+    (edicaoTarefas === 'tenant' || tarefa.responsavel_id === usuarioId)
+  const [modalTarefaAberto, setModalTarefaAberto] = useState(false)
+  const [tarefaEmEdicao, setTarefaEmEdicao] = useState<Tarefa | null>(null)
+  const [operandoTarefa, setOperandoTarefa] = useState(false)
+  const [responsaveisTarefas, setResponsaveisTarefas] = useState<Array<{ id: string; nome: string }>>([])
+
 
   const carregarClienteCrm =
     useCallback(
@@ -366,43 +396,60 @@ export default function ContactPanel({
       }
     }, [])
 
-  const carregarTarefas =
-    useCallback(async () => {
-      if (!conversation?.id) {
-        setTarefas([])
-        return
-      }
+  const carregarTarefas = useCallback(async () => {
+    if (!conversation?.id || !podeVerTarefas) {
+      setTarefas([])
+      return
+    }
+    setCarregandoTarefas(true)
+    try {
+      const resultado = await listarTarefasConversa(conversation.id)
+      setTarefas(resultado.filter(item => item.status !== 'CANCELADA'))
+    } catch (error) {
+      console.error('Erro ao carregar tarefas da conversa:', error)
+      setTarefas([])
+      toast.error('Não foi possível consultar as tarefas desta conversa.')
+    } finally {
+      setCarregandoTarefas(false)
+    }
+  }, [conversation?.id, podeVerTarefas])
 
-      try {
-        setCarregandoTarefas(
-          true
-        )
-
-        const resultado =
-          await buscarTarefasWhatsApp(
-            conversation.id
-          )
-
-        setTarefas(
-          resultado
-        )
-      } catch (error) {
-        console.error(
-          'Erro ao carregar tarefas:',
-          error
-        )
-
-        setTarefas([])
-      } finally {
-        setCarregandoTarefas(
-          false
-        )
-      }
-    }, [conversation?.id])
+  useEffect(() => { void carregarTarefas() }, [carregarTarefas])
 
   useEffect(() => {
-    void carregarTarefas()
-  }, [carregarTarefas])
+    if (!modalTarefaAberto || !corretoraId || (tarefaEmEdicao && edicaoTarefas === 'own')) return
+    let ativo = true
+    void buscarResponsaveis(corretoraId).then(lista => {
+      if (ativo) setResponsaveisTarefas(lista)
+    }).catch(() => { if (ativo) setResponsaveisTarefas([]) })
+    return () => { ativo = false }
+  }, [modalTarefaAberto, corretoraId, criacaoTarefas, edicaoTarefas, tarefaEmEdicao])
+
+  const salvarTarefaConversa = async (input: TarefaInput): Promise<boolean> => {
+    if (!usuarioId || !corretoraId || operandoTarefa) return false
+    const editando = tarefaEmEdicao
+    if (editando) {
+      if (!podeEditarTarefa(editando)) { toast.error('Sem permissão para editar esta tarefa.'); return false }
+      if (edicaoTarefas === 'own' && input.responsavel_id !== usuarioId) {
+        toast.error('Não é permitido transferir tarefas no escopo Próprios.'); return false
+      }
+    } else if (!podeCriarTarefas || !input.responsavel_id) {
+      toast.error('Sem permissão para criar esta tarefa.'); return false
+    }
+    setOperandoTarefa(true)
+    try {
+      if (editando) await editarTarefa(editando.id, input)
+      else await criarTarefa(corretoraId, usuarioId, input)
+      await carregarTarefas()
+      toast.success(editando ? 'Tarefa atualizada.' : input.responsavel_id !== usuarioId ? 'Tarefa delegada com sucesso.' : 'Tarefa criada.')
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível salvar a tarefa.')
+      return false
+    } finally {
+      setOperandoTarefa(false)
+    }
+  }
 
   useEffect(() => {
     if (!conversation) {
@@ -1065,62 +1112,19 @@ export default function ContactPanel({
       ]
     )
 
-  const handleConcluirTarefa =
-    useCallback(
-      async (
-        tarefaId: string
-      ) => {
-        if (
-          concluindoTarefaId
-        ) {
-          return
-        }
-
-        try {
-          setConcluindoTarefaId(
-            tarefaId
-          )
-
-          await concluirTarefaWhatsApp(
-            tarefaId
-          )
-
-          setTarefas(
-            atuais =>
-              atuais.map(
-                tarefa =>
-                  tarefa.id ===
-                  tarefaId
-                    ? {
-                        ...tarefa,
-                        status:
-                          'CONCLUIDA',
-                      }
-                    : tarefa
-              )
-          )
-
-          toast.success(
-            'Tarefa concluída.'
-          )
-        } catch (error: any) {
-          console.error(
-            'Erro ao concluir tarefa:',
-            error
-          )
-
-          toast.error(
-            error?.message ||
-              'Não foi possível concluir a tarefa.'
-          )
-        } finally {
-          setConcluindoTarefaId(
-            null
-          )
-        }
-      },
-      [concluindoTarefaId]
-    )
+  const handleConcluirTarefa = useCallback(async (tarefa: Tarefa) => {
+    if (concluindoTarefaId || !podeEditarTarefa(tarefa)) return
+    setConcluindoTarefaId(tarefa.id)
+    try {
+      await alterarStatusTarefa(tarefa.id, tarefa.status !== 'CONCLUIDA')
+      await carregarTarefas()
+      toast.success(tarefa.status === 'CONCLUIDA' ? 'Tarefa reaberta.' : 'Tarefa concluída.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível atualizar a tarefa.')
+    } finally {
+      setConcluindoTarefaId(null)
+    }
+  }, [concluindoTarefaId, podeVerTarefas, edicaoTarefas, usuarioId, carregarTarefas])
 
   const tarefasPendentes =
     useMemo(
@@ -1311,7 +1315,7 @@ export default function ContactPanel({
           />
         </div>
 
-          <div className="border-b border-slate-100">
+          {podeVerTarefas && <div className="border-b border-slate-100">
             <AccordionSection
               title="Tarefas"
               summary={
@@ -1330,15 +1334,9 @@ export default function ContactPanel({
                 secaoAberta ===
                 'tarefas'
               }
-              onToggle={() =>
-                setSecaoAberta(
-                  value =>
-                    value ===
-                    'tarefas'
-                      ? null
-                      : 'tarefas'
-                )
-              }
+              onToggle={() => setSecaoAberta(value => value === 'tarefas' ? null : 'tarefas')}
+              actionLabel={podeCriarTarefas ? 'Nova tarefa' : undefined}
+              onAction={podeCriarTarefas ? () => { setTarefaEmEdicao(null); setModalTarefaAberto(true) } : undefined}
             >
               {carregandoTarefas ? (
                 <div className="flex items-center justify-center gap-2 py-4 text-xs text-slate-500">
@@ -1375,18 +1373,16 @@ export default function ContactPanel({
                           concluindoTarefaId ===
                           tarefa.id
                         }
-                        onConcluir={() =>
-                          void handleConcluirTarefa(
-                            tarefa.id
-                          )
-                        }
+                        podeEditar={podeEditarTarefa(tarefa)}
+                        onEditar={() => { setTarefaEmEdicao(tarefa); setModalTarefaAberto(true) }}
+                        onConcluir={() => void handleConcluirTarefa(tarefa)}
                       />
                     )
                   )}
                 </div>
               )}
             </AccordionSection>
-          </div>
+          </div>}
 
           {!clienteCrm ? (
             <div className="p-5">
@@ -1911,6 +1907,18 @@ export default function ContactPanel({
         </div>
       </aside>
 
+       <ModalTarefa
+         open={modalTarefaAberto}
+         tarefa={tarefaEmEdicao}
+         usuarioId={usuarioId}
+         somenteProprio={Boolean(tarefaEmEdicao) && edicaoTarefas === 'own'}
+         responsaveis={responsaveisTarefas}
+         ocupado={operandoTarefa}
+         conversaInicialId={conversation.id}
+         onClose={() => { setModalTarefaAberto(false); setTarefaEmEdicao(null) }}
+         onSave={salvarTarefaConversa}
+       />
+
       <ModalCadastroWhatsApp
         open={
           cadastroWhatsAppAberto
@@ -2121,10 +2129,14 @@ function TarefaCard({
   tarefa,
   concluindo,
   onConcluir,
+  onEditar,
+  podeEditar,
 }: {
-  tarefa: WhatsAppTask
+  tarefa: Tarefa
   concluindo: boolean
   onConcluir: () => void
+  onEditar: () => void
+  podeEditar: boolean
 }) {
   const concluida =
     tarefa.status ===
@@ -2195,10 +2207,10 @@ function TarefaCard({
                     : 'Normal'}
             </span>
 
-            {tarefa.vencimentoEm && (
+            {tarefa.vencimento_em && (
               <span className="text-[10px] text-slate-400">
                 {new Date(
-                  tarefa.vencimentoEm
+                  tarefa.vencimento_em
                 ).toLocaleString(
                   'pt-BR',
                   {
@@ -2221,7 +2233,8 @@ function TarefaCard({
             </p>
           )}
 
-          {!concluida && (
+          {podeEditar && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={
@@ -2243,8 +2256,13 @@ function TarefaCard({
                 />
               )}
 
-              Concluir
+              {concluida ? 'Reabrir' : 'Concluir'}
             </button>
+            <button type="button" disabled={concluindo} onClick={onEditar}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50">
+              <Pencil size={12} /> Editar / reagendar
+            </button>
+            </div>
           )}
         </div>
       </div>

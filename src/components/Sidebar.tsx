@@ -9,6 +9,7 @@ import {
   Building2,
   Cable,
   Calendar,
+  ListTodo,
   ChartNoAxesCombined,
   ChevronLeft,
   ChevronRight,
@@ -39,6 +40,7 @@ import { useAuth } from "../auth/AuthContext"
 import { supabase } from "../lib/supabaseClient"
 import LogoutButton from "./LogoutButton"
 import { usePermissoes } from "../pages/whatsapp/hooks/usePermissoes"
+import NotificacoesTarefas from "../pages/whatsapp/tarefas/components/NotificacoesTarefas"
 
 type Props = {
   collapsed: boolean
@@ -64,6 +66,19 @@ export default function Sidebar({
   const location = useLocation()
   const { escopo } = usePermissoes()
 
+  // Um único sino montado por vez: evita duas consultas simultâneas no mobile e desktop.
+  const [mobileViewport, setMobileViewport] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
+  )
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)")
+    const atualizarViewport = () => setMobileViewport(media.matches)
+    atualizarViewport()
+    media.addEventListener("change", atualizarViewport)
+    return () => media.removeEventListener("change", atualizarViewport)
+  }, [])
+
   const podeVerContatos =
     escopo("atendimento.contatos", "read") !== "none"
 
@@ -71,7 +86,10 @@ export default function Sidebar({
     escopo("atendimento.conversas", "read") !== "none"
 
   const podeVerAgenda =
-    escopo("atendimento.agenda", "read") !== "none"  
+    escopo("atendimento.agenda", "read") !== "none"
+
+  const podeVerTarefas =
+    escopo("atendimento.tarefas", "read") !== "none"
 
   const podeVerClientes =
     escopo("operacoes.clientes", "read") !== "none"
@@ -81,6 +99,12 @@ export default function Sidebar({
 
   const podeVerRenovacoes =
     escopo("operacoes.renovacoes", "read") !== "none"
+
+  const podeVerSinistros =
+    escopo("operacoes.sinistros", "read") !== "none"
+
+  const podeVerAssistencias =
+    escopo("operacoes.assistencias", "read") !== "none"
 
   const podeVerCorretor =
   userProfile?.tipo_usuario === "CORRETORA" ||
@@ -237,6 +261,17 @@ export default function Sidebar({
             />
           )}
 
+          {podeVerTarefas && (
+            <SidebarItem
+              to="/whatsapp/tarefas"
+              icon={<ListTodo size={18} />}
+              label="Tarefas"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
+            />
+          )}
+
           {/*
           <SidebarItem
             to="/whatsapp/automacoes"
@@ -310,6 +345,7 @@ export default function Sidebar({
             iconClassName="bg-lime-50 text-lime-600 dark:bg-lime-500/10 dark:text-lime-400"
           />
 
+          {podeVerSinistros && (
           <SidebarItem
             to="/whatsapp/sinistro"
             icon={<ShieldCheck size={18} />}
@@ -318,7 +354,9 @@ export default function Sidebar({
             onNavigate={handleNavigate}
             iconClassName="bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
           />
+          )}
 
+          {podeVerAssistencias && (
           <SidebarItem
             to="/whatsapp/assistencia"
             icon={<Headphones size={18} />}
@@ -327,6 +365,7 @@ export default function Sidebar({
             onNavigate={handleNavigate}
             iconClassName="bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400"
           />
+          )}
         </NavSection>
 
         {/* =================================================
@@ -583,7 +622,11 @@ export default function Sidebar({
           </div>
         </div>
 
-        <button
+        <div className="flex shrink-0 items-center gap-2">
+          {mobileViewport && podeVerTarefas && (
+            <NotificacoesTarefas alinhamento="direita" />
+          )}
+          <button
           type="button"
           onClick={() => {
             if (podeVerCorretor) {
@@ -610,7 +653,8 @@ export default function Sidebar({
               className="text-blue-600"
             />
           )}
-        </button>
+          </button>
+        </div>
       </header>
 
       {/* ===================================================
@@ -722,6 +766,10 @@ export default function Sidebar({
             </div>
           )}
 
+          <div className="flex shrink-0 items-center gap-1">
+            {!collapsed && !mobileViewport && podeVerTarefas && (
+              <NotificacoesTarefas alinhamento="esquerda" />
+            )}
           <button
             type="button"
             onClick={() =>
@@ -740,7 +788,14 @@ export default function Sidebar({
               <ChevronLeft size={18} />
             )}
           </button>
+          </div>
         </div>
+
+        {collapsed && !mobileViewport && podeVerTarefas && (
+          <div className="flex shrink-0 justify-center border-b border-slate-100 py-2 dark:border-zinc-800">
+            <NotificacoesTarefas alinhamento="esquerda" />
+          </div>
+        )}
 
         {/* NAVEGAÇÃO */}
 
