@@ -52,6 +52,7 @@ import ModalFecharProposta from "../components/ModalFecharProposta";
 import ModalEmitirContrato from "../components/ModalEmitirContrato";
 import ModalIniciarRenovacao from "../components/ModalIniciarRenovacao";
 import ModalAcoesProposta from "../components/ModalAcoesProposta";
+import ModalExcluirPropostaCompleta from "../components/ModalExcluirPropostaCompleta";
 import { useAuth } from "../../../../../auth/AuthContext";
 import { usePermissoes } from "../../../hooks/usePermissoes";
 
@@ -225,6 +226,7 @@ export default function PropostaDetalhes() {
 
   const [modalAcoesAberto, setModalAcoesAberto] =
     useState(false);
+  const [modalExclusaoCompleta, setModalExclusaoCompleta] = useState(false);
 
   const [contratoParaEmitir, setContratoParaEmitir] =
   useState<ContratoResumo | null>(null);
@@ -356,6 +358,7 @@ export default function PropostaDetalhes() {
   const podeCorrigirVigencia = podeExecutarAcao("correct_term", proposta);
   const podeReativarContrato = podeExecutarAcao("reactivate", proposta);
   const podeRenovar = podeExecutarAcao("renew", proposta);
+  const podeExcluirCompleta = escopo("operacoes.propostas", "delete_cascade") === "tenant" && !carregandoPermissoes && Boolean(proposta);
 
 
   const podeLancarFinanceiro = podeExecutarAcao("financial", proposta);
@@ -1730,7 +1733,16 @@ useEffect(() => {
               Atualizar
             </button>
 
-            {contextoAcoesProposta && podeAbrirAcoes && (
+            {modalExclusaoCompleta && proposta && podeExcluirCompleta && (
+        <ModalExcluirPropostaCompleta
+          propostaId={proposta.id}
+          numeroProposta={proposta.numero_proposta}
+          onClose={() => setModalExclusaoCompleta(false)}
+          onDeleted={() => { setModalExclusaoCompleta(false); navigate("/whatsapp/propostas"); }}
+        />
+      )}
+
+      {contextoAcoesProposta && podeAbrirAcoes && (
               <button
                 type="button"
                 onClick={() =>
@@ -1740,6 +1752,13 @@ useEffect(() => {
               >
                 <Edit3 size={16} />
                 Ações
+              </button>
+            )}
+
+            {podeExcluirCompleta && (
+              <button type="button" onClick={() => setModalExclusaoCompleta(true)}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 dark:border-red-900 dark:bg-zinc-900 dark:text-red-400 dark:hover:bg-red-950/30">
+                <Trash2 size={16}/> Exclusão completa
               </button>
             )}
 

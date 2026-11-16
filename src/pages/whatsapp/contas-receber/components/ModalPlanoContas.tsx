@@ -1,3 +1,4 @@
+import { usePermissoes } from '../../hooks/usePermissoes';
 import {
   useEffect,
   useMemo,
@@ -63,6 +64,11 @@ export default function ModalPlanoContas({
   onClose,
   onAlterado,
 }: Props) {
+  const { escopo } = usePermissoes();
+  const podeCriarPlano = escopo('financeiro.contas_receber', 'plano_create') === 'tenant';
+  const podeEditarPlano = escopo('financeiro.contas_receber', 'plano_update') === 'tenant';
+  const podeDesativarPlano = escopo('financeiro.contas_receber', 'plano_delete') === 'tenant';
+
   const [itens, setItens] = useState<PlanoContaItem[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -240,6 +246,7 @@ export default function ModalPlanoContas({
     event: FormEvent
   ) {
     event.preventDefault();
+    if (form.id ? !podeEditarPlano : !podeCriarPlano) { setErro('Sem permissão para esta operação no plano de contas.'); return; }
 
     if (salvando) {
       return;
@@ -340,6 +347,7 @@ export default function ModalPlanoContas({
   async function handleAlterarStatus(
     item: PlanoContaItem
   ) {
+    if (item.ativo ? !podeDesativarPlano : !podeEditarPlano) { setErro('Sem permissão para alterar a situação da conta.'); return; }
     if (alterandoStatusId) {
       return;
     }

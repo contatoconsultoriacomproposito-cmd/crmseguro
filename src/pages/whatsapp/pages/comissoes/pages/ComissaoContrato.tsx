@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Users,
   WalletCards,
+  ExternalLink,
   Plus,
   ChevronDown,
   ChevronRight
@@ -57,8 +58,6 @@ import {
   podeCancelarProvisaoComissao,
   podeCriarComissao,
   podeEditarComissao,
-  podeEstornarRecebimentoComissao,
-  podeReceberComissao,
   podeReverterCancelamentoProvisaoComissao,
 } from "../services/comissoesPermissoes";
 
@@ -272,19 +271,9 @@ const podeEditar =
       )
     : false;
 
-const podeReceber =
-  contextoPermissao
-    ? podeReceberComissao(
-        contextoPermissao
-      )
-    : false;
+const podeReceber = false; // Recebimentos exclusivos do Contas a Receber.
 
-const podeEstornarRecebimento =
-  contextoPermissao
-    ? podeEstornarRecebimentoComissao(
-        contextoPermissao
-      )
-    : false;
+const podeEstornarRecebimento = false; // Estornos exclusivos do Contas a Receber.
 
 const podeCancelarProvisao =
   contextoPermissao
@@ -983,7 +972,11 @@ useEffect(() => {
               </section>
             </div>
 
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
+                <p className="text-xs leading-relaxed text-blue-800 dark:text-blue-200">As provisões são administradas em Comissões. O registro e o estorno de recebimentos ficam exclusivamente em Contas a Receber. Confirme o lançamento financeiro correspondente antes de efetuar a baixa.</p>
+                <button type="button" onClick={() => navigate(`/whatsapp/financeiro/contas-receber?origem=COMISSAO&contrato_id=${encodeURIComponent(contratoId ?? "")}`)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white"><ExternalLink size={14}/> Abrir Contas a Receber</button>
+              </div>
+              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <CalendarClock
@@ -997,7 +990,7 @@ useEffect(() => {
                     </h2>
 
                     <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      Seguradora → Corretora
+                      Seguradora → Corretora · Baixas exclusivas no Contas a Receber
                     </p>
                   </div>
                 </div>
@@ -1519,7 +1512,11 @@ useEffect(() => {
               </div>
             </section>
 
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/20">
+                <p className="text-xs text-emerald-800 dark:text-emerald-200">Pagamentos aos participantes são liquidados no Contas a Pagar. Esta tela acompanha o resultado do financeiro.</p>
+                <button type="button" onClick={() => navigate(`/whatsapp/financeiro/contas-pagar?origem=COMISSAO&contrato_id=${encodeURIComponent(contratoId ?? "")}`)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white"><ExternalLink size={14}/> Abrir Contas a Pagar</button>
+              </div>
+              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <WalletCards
@@ -1533,7 +1530,7 @@ useEffect(() => {
                     </h2>
 
                     <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      Corretora → Participantes · Liquidação controlada pelo Contas a Pagar
+                      Corretora → Participantes · Liquidação exclusiva do Contas a Pagar
                     </p>
                   </div>
                 </div>

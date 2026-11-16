@@ -1,3 +1,5 @@
+import { usePermissoes } from '../../hooks/usePermissoes';
+import { gerarPdfFluxoCaixa } from '../services/fluxoCaixaPdfService';
 import {
   useCallback,
   useEffect,
@@ -14,6 +16,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   Filter,
+  FileDown,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -69,6 +72,10 @@ const FILTROS_INICIAIS: FiltrosTela = {
 };
 
 export default function FluxoCaixa() {
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const podeLer = escopo('financeiro.fluxo_caixa', 'read') === 'tenant';
+  const podeExportar = escopo('financeiro.fluxo_caixa', 'export') === 'tenant';
+  const [exportando, setExportando] = useState(false);
   const [busca, setBusca] = useState('');
   const [periodoRapido, setPeriodoRapido] = useState<PeriodoRapido>('MES');
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
@@ -163,6 +170,10 @@ export default function FluxoCaixa() {
       filtrosAplicados.origem
   );
 
+  if (carregandoPermissoes) return <div className="p-8 text-sm text-slate-500 dark:text-slate-400" role="status">Carregando permissões...</div>;
+
+  if (!podeLer) return <div className="p-8 text-sm text-slate-600">Sem permissão para visualizar o Fluxo de Caixa.</div>;
+
   return (
     <div className="min-h-full bg-slate-50 dark:bg-slate-950">
       <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-5 p-4 md:p-6">
@@ -179,6 +190,12 @@ export default function FluxoCaixa() {
             </p>
           </div>
 
+          {podeExportar && <button type="button" disabled={exportando || loading} onClick={async () => {
+            setExportando(true);
+            try { await gerarPdfFluxoCaixa(movimentos, filtrosService); }
+            catch (e) { setErro(e instanceof Error ? e.message : 'Falha ao exportar PDF.'); }
+            finally { setExportando(false); }
+          }} className="inline-flex h-10 items-center gap-2 rounded-lg bg-cyan-700 px-4 text-sm font-semibold text-white disabled:opacity-50"><FileDown size={16}/>{exportando ? 'Gerando...' : 'Exportar PDF'}</button>}
           <div className="flex flex-wrap gap-2">
             {([
               ['MES', 'Este mês'],

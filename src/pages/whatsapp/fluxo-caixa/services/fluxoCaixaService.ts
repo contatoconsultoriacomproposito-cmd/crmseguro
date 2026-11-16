@@ -118,44 +118,23 @@ function mapearMovimento(row: any): MovimentoFluxoCaixa {
 export async function buscarMovimentosFluxoCaixa(
   filtros: FiltrosFluxoCaixa = {}
 ): Promise<MovimentoFluxoCaixa[]> {
-  let query = supabase
-    .from('crm_fluxo_caixa_movimentos')
-    .select('*')
-    .order('data_movimento', { ascending: false })
-    .order('movimento_chave', { ascending: true });
-
-  if (filtros.dataInicial) {
-    query = query.gte('data_movimento', filtros.dataInicial);
-  }
-
-  if (filtros.dataFinal) {
-    query = query.lte('data_movimento', filtros.dataFinal);
-  }
-
-  if (filtros.natureza) {
-    query = query.eq('natureza', filtros.natureza);
-  }
-
-  if (filtros.tipoMovimento) {
-    query = query.eq('tipo_movimento', filtros.tipoMovimento);
-  }
-
-  if (filtros.modulo) {
-    query = query.eq('modulo', filtros.modulo);
-  }
-
-  if (filtros.origem) {
-    query = query.eq('origem', filtros.origem);
-  }
-
-  const { data, error } = await query;
-
+  // RPC com permissão independente das tabelas de Pagar/Receber.
+  // Retorna exclusivamente registros da corretora autenticada.
+  const { data, error } = await supabase.rpc('crm_fluxo_caixa_consultar');
   if (error) {
-    console.error('[FluxoCaixa] Erro ao buscar movimentos:', error);
+    console.error('[FluxoCaixa] Erro ao consultar movimentos:', error);
     throw new Error(error.message || 'Não foi possível carregar o Fluxo de Caixa.');
   }
 
-  let movimentos = (data ?? []).map(mapearMovimento);
+  let movimentos: MovimentoFluxoCaixa[] = (data ?? []).map(mapearMovimento);
+  movimentos = movimentos.filter(m =>
+    (!filtros.dataInicial || m.data_movimento >= filtros.dataInicial) &&
+    (!filtros.dataFinal || m.data_movimento <= filtros.dataFinal) &&
+    (!filtros.natureza || m.natureza === filtros.natureza) &&
+    (!filtros.tipoMovimento || m.tipo_movimento === filtros.tipoMovimento) &&
+    (!filtros.modulo || m.modulo === filtros.modulo) &&
+    (!filtros.origem || m.origem === filtros.origem)
+  ).sort((a,b) => b.data_movimento.localeCompare(a.data_movimento) || a.movimento_chave.localeCompare(b.movimento_chave));
   const busca = filtros.busca?.trim().toLocaleLowerCase('pt-BR');
 
   if (busca) {

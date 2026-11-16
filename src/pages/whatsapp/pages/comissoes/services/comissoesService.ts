@@ -10,6 +10,7 @@ import type {
   ComissaoPagamentoComSituacao,
   ComissaoPagamentoFinanceiro,
   ComissaoRecebimento,
+  ComissaoRecebimentoComSituacao,
   ResumoPagamentosComissao,
   ComissaoSplit,
   ComissaoSplitDeducao,
@@ -142,6 +143,68 @@ function situacaoTemporalPagamento(
   }
 
   return "A_PAGAR";
+}
+
+/**
+ * Ponte de leitura para Contas a Receber. Usa o ID da provisão como origem_id,
+ * sem cadastrar nem baixar lançamentos automaticamente. A ausência do vínculo
+ * preserva o legado e precisa ser tratada na migração do banco.
+ */
+async function aplicarFinanceiroContasReceber(
+  recebimentos: ComissaoRecebimento[]
+): Promise<ComissaoRecebimento[]> {
+  if (!recebimentos.length) return [];
+  const ids = recebimentos.map(r => r.id);
+  const financeiros = new Map<string, { total_baixado: number; saldo_pendente: number }>();
+  // Consulta em lotes para não exceder o limite da URL PostgREST.
+  for (let inicio=0; inicio<ids.length; inicio+=100) {
+    const { data, error } = await supabase
+      .from("crm_contas_receber_resumo")
+      .select("origem_id,total_baixado,saldo_pendente")
+      .eq("origem", "COMISSAO")
+      .in("origem_id", ids.slice(inicio,inicio+100));
+    // Ainda existem usuários cuja RLS financeira não foi migrada. Nunca substituir
+    // um recebimento existente por zero por falha de autorização na leitura.
+    if (error) {
+      console.warn("Resumo financeiro de recebimentos indisponível:", error.message);
+      return recebimentos;
+    }
+    for (const row of data ?? []) {
+      const id = row.origem_id as string | null;
+      if (!id) continue;
+      const anterior = financeiros.get(id) ?? {total_baixado:0,saldo_pendente:0};
+      financeiros.set(id, {
+        total_baixado: anterior.total_baixado + Number(row.total_baixado ?? 0),
+        saldo_pendente: anterior.saldo_pendente + Number(row.saldo_pendente ?? 0),
+      });
+    }
+  }
+  return recebimentos.map(item=>{
+    const financeiro=financeiros.get(item.id);
+    if (!financeiro || item.status === "CANCELADA") return item;
+    return {
+      ...item,
+      valor_recebido: financeiro.total_baixado,
+      status: financeiro.saldo_pendente <= 0 ? "RECEBIDA" : "PENDENTE",
+    };
+  });
+}
+
+/** Ajusta os saldos quando existe recebimento parcial no financeiro. */
+function calcularResumoRecebimentosParciais(recebimentos: ComissaoRecebimentoComSituacao[]) {
+  const resumo = calcularResumoRecebimentos(recebimentos);
+  const parcial = recebimentos.filter(r => r.status === "PENDENTE")
+    .reduce((total,r)=>total+Number(r.valor_recebido ?? 0),0);
+  if (!parcial) return resumo;
+  const ajuste=arredondarMoeda(parcial);
+  return {
+    ...resumo,
+    valor_recebido: arredondarMoeda(resumo.valor_recebido + ajuste),
+    valor_pendente: arredondarMoeda(Math.max(0,resumo.valor_pendente - ajuste)),
+    valor_a_receber: arredondarMoeda(Math.max(0,resumo.valor_a_receber - recebimentos.filter(r=>r.status==="PENDENTE"&&r.situacao==="A_RECEBER").reduce((v,r)=>v+Number(r.valor_recebido??0),0))),
+    valor_recebe_hoje: arredondarMoeda(Math.max(0,resumo.valor_recebe_hoje - recebimentos.filter(r=>r.status==="PENDENTE"&&r.situacao==="RECEBE_HOJE").reduce((v,r)=>v+Number(r.valor_recebido??0),0))),
+    valor_atrasado: arredondarMoeda(Math.max(0,resumo.valor_atrasado - recebimentos.filter(r=>r.status==="PENDENTE"&&r.situacao==="ATRASADA").reduce((v,r)=>v+Number(r.valor_recebido??0),0))),
+  };
 }
 
 async function aplicarFinanceiroContasPagar(
@@ -909,8 +972,9 @@ export async function buscarComissaoContratoDetalhada(
       : Promise.resolve([] as ComissaoMovimentacao[]),
   ]);
 
-  const recebimentos =
-    adicionarSituacaoRecebimentos(recebimentosBrutos);
+  const recebimentos = adicionarSituacaoRecebimentos(
+    await aplicarFinanceiroContasReceber(recebimentosBrutos)
+  );
 
   const pagamentos = pagamentosBrutos;
 
@@ -925,7 +989,7 @@ export async function buscarComissaoContratoDetalhada(
       ? movimentacoes
       : undefined,
     resumo_recebimentos:
-      calcularResumoRecebimentos(recebimentos),
+      calcularResumoRecebimentosParciais(recebimentos),
     resumo_pagamentos:
       calcularResumoPagamentosIntegrado(
         pagamentos
@@ -2049,7 +2113,9 @@ async function buscarResumosComissoes(
   if (pagamentosResult.error) throw new Error(pagamentosResult.error.message);
   if (splitsResult.error) throw new Error(splitsResult.error.message);
 
-  const recebimentos = (recebimentosResult.data ?? []) as ComissaoRecebimento[];
+  const recebimentos = await aplicarFinanceiroContasReceber(
+    (recebimentosResult.data ?? []) as ComissaoRecebimento[]
+  );
   const pagamentosBrutos =
     (pagamentosResult.data ??
       []) as ComissaoPagamento[];
@@ -2117,7 +2183,7 @@ async function buscarResumosComissoes(
         : pagamentosBase;
 
     mapa.set(comissao.id, {
-      recebimentos: calcularResumoRecebimentos(recebimentosComissao),
+      recebimentos: calcularResumoRecebimentosParciais(recebimentosComissao),
       pagamentos:
       calcularResumoPagamentosIntegrado(
         pagamentosComissao
@@ -2712,57 +2778,18 @@ export async function salvarComissaoContrato(
   }
 }
 
+/** Operação desativada para evitar dupla baixa. Mantida a assinatura até remoção do hook legado. */
 export async function receberComissao(
-  payload: ReceberComissaoPayload
+  _payload: ReceberComissaoPayload
 ): Promise<ResultadoOperacaoComissao> {
-  try {
-    if (!payload.recebimento_id) throw new Error("Recebimento não informado.");
-
-    const { data, error } = await supabase.rpc("crm_executar_acao_comissao", {
-      p_acao: "RECEBER",
-      p_recebimento_id: payload.recebimento_id,
-      p_pagamento_id: null,
-      p_data: payload.data_recebimento ?? null,
-      p_valor: payload.valor_recebido ?? null,
-      p_justificativa: null,
-    });
-
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error("A operação não retornou o recebimento atualizado.");
-
-    return data as ResultadoOperacaoComissao;
-  } catch (erro) {
-    throw new Error(
-      mensagemErro(erro, "Não foi possível registrar o recebimento.")
-    );
-  }
+  throw new Error("Baixas de comissões devem ser feitas exclusivamente em Financeiro → Contas a Receber.");
 }
 
+/** Operação desativada para evitar dupla baixa. Mantida a assinatura até remoção do hook legado. */
 export async function estornarRecebimentoComissao(
-  payload: EstornarRecebimentoComissaoPayload
+  _payload: EstornarRecebimentoComissaoPayload
 ): Promise<ResultadoOperacaoComissao> {
-  try {
-    if (!payload.recebimento_id) throw new Error("Recebimento não informado.");
-    if (!payload.justificativa?.trim()) throw new Error("Informe a justificativa do estorno.");
-
-    const { data, error } = await supabase.rpc("crm_executar_acao_comissao", {
-      p_acao: "ESTORNAR_RECEBIMENTO",
-      p_recebimento_id: payload.recebimento_id,
-      p_pagamento_id: null,
-      p_data: null,
-      p_valor: null,
-      p_justificativa: payload.justificativa.trim(),
-    });
-
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error("A operação não retornou o recebimento atualizado.");
-
-    return data as ResultadoOperacaoComissao;
-  } catch (erro) {
-    throw new Error(
-      mensagemErro(erro, "Não foi possível estornar o recebimento.")
-    );
-  }
+  throw new Error("Estornos de recebimento devem ser feitos exclusivamente em Financeiro → Contas a Receber.");
 }
 
 export async function cancelarProvisaoComissao(

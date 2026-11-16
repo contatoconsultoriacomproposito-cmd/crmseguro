@@ -1,3 +1,4 @@
+import { usePermissoes } from '../../hooks/usePermissoes';
 import {
   useEffect,
   useMemo,
@@ -105,6 +106,13 @@ export default function ModalDetalheContaPagar({
   onClose,
   onAlterado,
 }: Props) {
+  const { escopo } = usePermissoes();
+  const recursoFinanceiro = 'financeiro.contas_pagar';
+  const permiteBaixa = escopo(recursoFinanceiro,'baixar') === 'tenant';
+  const permiteEstorno = escopo(recursoFinanceiro,'estornar') === 'tenant';
+  const permiteEdicao = escopo(recursoFinanceiro,'lancamento_update') === 'tenant';
+  const permiteCancelamento = escopo(recursoFinanceiro,'lancamento_delete') === 'tenant';
+
   const [
     lancamento,
     setLancamento,
@@ -228,7 +236,7 @@ export default function ModalDetalheContaPagar({
     );
 
   const podeBaixar =
-    lancamento &&
+    permiteBaixa && lancamento &&
     lancamento.situacao !== 'PAGA' &&
     lancamento.situacao !== 'CANCELADA' &&
     lancamento.saldo > 0;
@@ -330,6 +338,8 @@ export default function ModalDetalheContaPagar({
   }
 
   async function abrirEdicao() {
+  if (!permiteEdicao) { setErro('Sem permissão para esta operação financeira.'); return; }
+
   if (
     !lancamento ||
     lancamento.origem === 'COMISSAO'
@@ -400,6 +410,8 @@ export default function ModalDetalheContaPagar({
 async function handleSalvarEdicao(
   event: FormEvent
 ) {
+  if (!permiteEdicao) { setErro('Sem permissão para esta operação financeira.'); return; }
+
   event.preventDefault();
 
   if (
@@ -530,6 +542,8 @@ async function handleSalvarEdicao(
 }
 
 async function handleCancelarLancamento() {
+  if (!permiteCancelamento) { setErro('Sem permissão para esta operação financeira.'); return; }
+
   if (
     !lancamento ||
     cancelandoLancamento
@@ -654,6 +668,8 @@ async function handleCancelarLancamento() {
   async function handleRegistrarBaixa(
     event: FormEvent
   ) {
+  if (!permiteBaixa) { setErro('Sem permissão para esta operação financeira.'); return; }
+
     event.preventDefault();
 
     if (
@@ -813,6 +829,8 @@ async function handleCancelarLancamento() {
   }
 
   async function handleEstornarBaixa() {
+  if (!permiteEstorno) { setErro('Sem permissão para esta operação financeira.'); return; }
+
   if (
     !baixaEstorno ||
     !lancamento ||

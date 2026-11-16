@@ -197,7 +197,7 @@ export default function ModalPermissoesUsuario({
       case "agenda": return <ModalPermissoesAgenda value={dados.agenda} disabled={disabled} onChange={(a, v) => alterar("agenda", a, v)} onAplicarOperacional={v => aplicarTodas("agenda", v, ["read", "manage"])} onRemover={() => aplicarTodas("agenda", "none")} />;
       case "equipe": return <ModalPermissoesEquipe value={dados.equipe} disabled={disabled} onChange={(a, v) => alterar("equipe", a, v)} onAplicarTodas={v => aplicarTodas("equipe", v)} />;
       case "clientes": return <ModalPermissoesClientes value={dados.clientes} disabled={disabled} onChange={(a, v) => alterar("clientes", a, v)} onAplicarTodas={v => aplicarTodas("clientes", v)} />;
-      case "propostas": return <ModalPermissoesPropostas value={dados.propostas} disabled={disabled} onChange={(a, v) => alterar("propostas", a, v)} onAplicarTodas={v => aplicarTodas("propostas", v)} />;
+      case "propostas": return <ModalPermissoesPropostas value={dados.propostas} disabled={disabled} onChange={(a, v) => alterar("propostas", a, v)} onAplicarTodas={v => aplicarTodas("propostas", v, Object.keys(dados.propostas).filter(a => a !== "delete_cascade"))} />;
       case "renovacoes": return <ModalPermissoesRenovacoes value={dados.renovacoes} disabled={disabled} onChange={(a, v) => alterar("renovacoes", a, v)} onAplicarTodas={v => aplicarTodas("renovacoes", v)} />;
       case "comissoes": return <ModalPermissoesComissoes value={dados.comissoes} disabled={disabled} onChange={(a, v) => alterar("comissoes", a, v)} onAplicarTodas={v => aplicarTodas("comissoes", v)} />;
       case "sinistros": return <ModalPermissoesSinistro value={dados.sinistros} disabled={disabled} onChange={(a, v) => alterar("sinistros", a, v)} onAplicarTodas={v => aplicarTodas("sinistros", v)} />;
@@ -215,9 +215,9 @@ export default function ModalPermissoesUsuario({
             }
           />
         );
-      case "contas_pagar": return <ModalPermissoesContasPagar />;
-      case "contas_receber": return <ModalPermissoesContasReceber />;
-      case "fluxo_caixa": return <ModalPermissoesFluxoCaixa />;
+      case "contas_pagar": return <ModalPermissoesContasPagar value={dados.contas_pagar} disabled={disabled} onChange={(a, v) => alterar("contas_pagar", a, v)} onAplicarTodas={v => aplicarTodas("contas_pagar", v)} />;
+      case "contas_receber": return <ModalPermissoesContasReceber value={dados.contas_receber} disabled={disabled} onChange={(a, v) => alterar("contas_receber", a, v)} onAplicarTodas={v => aplicarTodas("contas_receber", v)} />;
+      case "fluxo_caixa": return <ModalPermissoesFluxoCaixa value={dados.fluxo_caixa} disabled={disabled} onChange={(a, v) => alterar("fluxo_caixa", a, v)} onAplicarTodas={v => aplicarTodas("fluxo_caixa", v)} />;
       case "parcelas_clientes": return <ModalPermissoesParcelasClientes />;
       case "conexoes_whatsapp": return <ModalPermissoesConexoesWhatsapp />;
       case "armazenamento": return <ModalPermissoesArmazenamento />;

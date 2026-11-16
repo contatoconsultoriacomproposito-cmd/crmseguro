@@ -21,60 +21,48 @@ const ESCOPOS_VALIDOS = new Set<EscopoPermissao>([
   "all",
 ])
 
-function lerCaminho(
-  origem: unknown,
-  caminho: string,
-): unknown {
-  if (!origem || typeof origem !== "object") {
-    return undefined
-  }
+function lerCaminho(origem: unknown, caminho: string): unknown {
+  if (!origem || typeof origem !== "object") return undefined
 
   return caminho
     .split(".")
     .filter(Boolean)
     .reduce<unknown>((valor, chave) => {
-      if (!valor || typeof valor !== "object") {
-        return undefined
-      }
-
+      if (!valor || typeof valor !== "object") return undefined
       return (valor as Record<string, unknown>)[chave]
     }, origem)
 }
 
 export function usePermissoes() {
   const { user, userProfile } = useAuth()
-
-  const [permissoes, setPermissoes] =
-    useState<PermissoesJson>({})
-
+  const [permissoes, setPermissoes] = useState<PermissoesJson>({})
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
   const tipoUsuario = userProfile?.tipo_usuario
-
-  const acessoEstruturalTotal =
-    tipoUsuario === "CORRETORA" ||
-    tipoUsuario === "ADMIN"
+  const acessoEstruturalTotal = tipoUsuario === "CORRETORA" || tipoUsuario === "ADMIN"
 
   const tenantId = useMemo(() => {
     if (!userProfile) return null
-
-    if (userProfile.corretora_id) {
-      return userProfile.corretora_id
-    }
-
-    if (tipoUsuario === "CORRETORA") {
-      return userProfile.id ?? user?.id ?? null
-    }
-
+    if (userProfile.corretora_id) return userProfile.corretora_id
+    if (tipoUsuario === "CORRETORA") return userProfile.id ?? user?.id ?? null
     return null
   }, [userProfile, tipoUsuario, user?.id])
 
   const carregar = useCallback(async () => {
-    if (!user?.id || !userProfile) {
+    if (!user?.id) {
       setPermissoes({})
       setErro(null)
       setLoading(false)
+      return
+    }
+
+    // O JWT pode estar pronto antes do perfil. Não conclua a autorização
+    // enquanto o perfil de quem está autenticado ainda não foi identificado.
+    if (!userProfile) {
+      setPermissoes({})
+      setErro(null)
+      setLoading(true)
       return
     }
 
@@ -103,90 +91,42 @@ export function usePermissoes() {
         .eq("corretora_id", tenantId)
         .maybeSingle()
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
-      const json =
-        data?.permissoes &&
-        typeof data.permissoes === "object"
-          ? (data.permissoes as PermissoesJson)
-          : {}
+      const json = data?.permissoes && typeof data.permissoes === "object"
+        ? (data.permissoes as PermissoesJson)
+        : {}
 
       setPermissoes(json)
     } catch (error) {
-      console.error(
-        "Erro ao carregar permissões do usuário:",
-        error,
-      )
-
+      console.error("Erro ao carregar permissões do usuário:", error)
       setPermissoes({})
-      setErro(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível carregar as permissões.",
-      )
+      setErro(error instanceof Error ? error.message : "Não foi possível carregar as permissões.")
     } finally {
       setLoading(false)
     }
-  }, [
-    user?.id,
-    userProfile,
-    acessoEstruturalTotal,
-    tenantId,
-  ])
+  }, [user?.id, userProfile, acessoEstruturalTotal, tenantId])
 
   useEffect(() => {
     void carregar()
   }, [carregar])
 
-  const escopo = useCallback(
-    (
-      recurso: string,
-      acao: string,
-    ): EscopoPermissao => {
-      /*
-       * CORRETORA / ADMIN possuem acesso estrutural total
-       * dentro do tenant, mas Google Calendar é sempre
-       * pessoal. Nunca devolvemos tenant para agenda.google.
-       */
-      if (acessoEstruturalTotal) {
-        if (
-          recurso === "atendimento.agenda" &&
-          acao === "google"
-        ) {
-          return "own"
-        }
+  const escopo = useCallback((recurso: string, acao: string): EscopoPermissao => {
+    if (acessoEstruturalTotal) {
+      if (recurso === "atendimento.agenda" && acao === "google") return "own"
+      return "tenant"
+    }
 
-        return "tenant"
-      }
-
-      const valor = lerCaminho(
-        permissoes,
-        `${recurso}.${acao}`,
-      )
-
-      return typeof valor === "string" &&
-        ESCOPOS_VALIDOS.has(valor as EscopoPermissao)
-        ? (valor as EscopoPermissao)
-        : "none"
-    },
-    [permissoes, acessoEstruturalTotal],
-  )
+    const valor = lerCaminho(permissoes, `${recurso}.${acao}`)
+    return typeof valor === "string" && ESCOPOS_VALIDOS.has(valor as EscopoPermissao)
+      ? (valor as EscopoPermissao)
+      : "none"
+  }, [permissoes, acessoEstruturalTotal])
 
   const possui = useCallback(
-    (recurso: string, acao: string) =>
-      escopo(recurso, acao) !== "none",
+    (recurso: string, acao: string) => escopo(recurso, acao) !== "none",
     [escopo],
   )
 
-  return {
-    permissoes,
-    loading,
-    erro,
-    tenantId,
-    escopo,
-    possui,
-    refresh: carregar,
-  }
+  return { permissoes, loading, erro, tenantId, escopo, possui, refresh: carregar }
 }

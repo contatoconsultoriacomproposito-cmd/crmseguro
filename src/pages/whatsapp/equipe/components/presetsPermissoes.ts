@@ -6,7 +6,7 @@ export const CARGOS_PRESET: Array<{ value: CargoPreset; label: string; descricao
   { value: "CORRETOR", label: "Corretor", descricao: "Carteira própria, propostas e atendimento comercial básico." },
   { value: "ATENDIMENTO", label: "Atendimento", descricao: "Conversas e contatos atribuídos, agenda e consulta básica." },
   { value: "COMERCIAL", label: "Comercial", descricao: "Clientes e negociações da carteira própria, sem exclusões." },
-  { value: "FINANCEIRO", label: "Financeiro", descricao: "Consulta controlada de comissões; novas rotinas financeiras ainda pendentes." },
+  { value: "FINANCEIRO", label: "Financeiro", descricao: "Consulta financeira e acompanhamento de comissões; baixas e estornos concedidos individualmente." },
   { value: "ADMINISTRATIVO", label: "Administrativo", descricao: "Visão operacional da corretora, sem poderes de exclusão ou gestão de acessos." },
   { value: "OUTRO", label: "Outros", descricao: "Base sem acessos; personalizar individualmente." },
 ];
@@ -48,6 +48,9 @@ export function construirPreset(cargo: CargoPreset): PermissoesAtivas {
   } else if (cargo === "FINANCEIRO") {
     base.comissoes = { ...base.comissoes, read_own: "own", read_full: "own", report: "own" };
     base.clientes = { ...base.clientes, read: "own", open: "own", view_financeiro: "own" };
+    base.contas_pagar = { ...base.contas_pagar, read: "tenant" };
+    base.contas_receber = { ...base.contas_receber, read: "tenant" };
+    base.fluxo_caixa = { read: "tenant", export: "none" };
   } else if (cargo === "ADMINISTRATIVO") {
     base.agenda = { read: "tenant", manage: "none", google: "none" };
     base.clientes = { ...base.clientes, read: "tenant", open: "tenant", view_cadastro: "tenant", view_agenda: "tenant", view_propostas: "tenant", view_contratos: "tenant" };

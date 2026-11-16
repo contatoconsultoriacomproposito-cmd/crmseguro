@@ -13,7 +13,7 @@ export type ModuloPermissaoId =
   | "contas_pagar" | "contas_receber" | "fluxo_caixa" | "parcelas_clientes"
   | "conexoes_whatsapp" | "armazenamento" | "seguradoras" | "configuracoes";
 export type ModuloAtivoId = Exclude<ModuloPermissaoId,
-  "contas_pagar" | "contas_receber" | "fluxo_caixa" | "parcelas_clientes" |
+  "parcelas_clientes" |
   "conexoes_whatsapp" | "armazenamento" | "seguradoras" | "configuracoes">;
 
 export interface DefinicaoModulo {
@@ -59,9 +59,9 @@ export const GRUPOS_PERMISSOES: DefinicaoGrupo[] = [
     id: "financeiro", titulo: "Financeiro", icon: Wallet,
     descricao: "Contas, recebimentos, fluxo e parcelas de clientes.",
     modulos: [
-      { id: "contas_pagar", titulo: "Contas a pagar", descricao: "Despesas e baixas", icon: CreditCard, implementado: false },
-      { id: "contas_receber", titulo: "Contas a receber", descricao: "Receitas e cobranças", icon: Landmark, implementado: false },
-      { id: "fluxo_caixa", titulo: "Fluxo de caixa", descricao: "Visão consolidada", icon: ListChecks, implementado: false },
+      { id: "contas_pagar", titulo: "Contas a pagar", descricao: "Despesas e baixas", icon: CreditCard, implementado: true },
+      { id: "contas_receber", titulo: "Contas a receber", descricao: "Receitas e cobranças", icon: Landmark, implementado: true },
+      { id: "fluxo_caixa", titulo: "Fluxo de caixa", descricao: "Visão consolidada", icon: ListChecks, implementado: true },
       { id: "parcelas_clientes", titulo: "Parcelas clientes", descricao: "Parcelas e recebimentos", icon: FileText, implementado: false },
     ],
   },

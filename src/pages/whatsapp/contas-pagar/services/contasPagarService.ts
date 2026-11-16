@@ -95,7 +95,7 @@ export interface PlanoContaItem {
 export interface FiltrosContasPagar {
   busca?: string;
 
-  situacao?: SituacaoContaPagar | 'TODAS';
+  situacao?: SituacaoContaPagar[] | SituacaoContaPagar | 'TODAS';
 
   tipoDespesa?: TipoDespesaContaPagar | '';
 
@@ -276,14 +276,15 @@ export async function buscarContasPagar(
       }
     );
 
-  if (
-    filtros.situacao &&
-    filtros.situacao !== 'TODAS'
-  ) {
-    query = query.eq(
-      'situacao',
-      filtros.situacao
-    );
+  // Sem itens selecionados = todas as situações. Compatível com chamadas antigas.
+  const situacoes = Array.isArray(filtros.situacao)
+    ? filtros.situacao
+    : filtros.situacao && filtros.situacao !== 'TODAS'
+      ? [filtros.situacao]
+      : [];
+
+  if (situacoes.length > 0) {
+    query = query.in('situacao', situacoes);
   }
 
   if (

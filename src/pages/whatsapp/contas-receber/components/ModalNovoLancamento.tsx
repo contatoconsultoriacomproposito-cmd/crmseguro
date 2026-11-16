@@ -1,3 +1,4 @@
+import { usePermissoes } from '../../hooks/usePermissoes';
 import {
   useMemo,
   useState,
@@ -85,6 +86,9 @@ export default function ModalNovoLancamento({
   onClose,
   onCriado,
 }: Props) {
+  const { escopo } = usePermissoes();
+  const podeCriarLancamento = escopo('financeiro.contas_receber', 'lancamento_create') === 'tenant';
+
   const [
     form,
     setForm,
@@ -269,6 +273,7 @@ export default function ModalNovoLancamento({
     event: FormEvent
   ) {
     event.preventDefault();
+    if (!podeCriarLancamento) { setErro('Sem permissão para criar lançamentos.'); return; }
 
     if (salvando) {
       return;

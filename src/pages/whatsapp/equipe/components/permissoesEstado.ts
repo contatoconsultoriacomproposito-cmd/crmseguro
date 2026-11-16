@@ -12,6 +12,9 @@ import { normalizarPermissoesComissoes, type PermissoesComissoes } from "./Modal
 import { normalizarPermissoesSinistro, type PermissoesSinistro } from "./ModalPermissoesSinistro";
 import { normalizarPermissoesAssistencia, type PermissoesAssistencia } from "./ModalPermissoesAssistencia";
 import { normalizarPermissoesTarefas, type PermissoesTarefas } from "./ModalPermissoesTarefas";
+import { normalizarPermissoesContasPagar, type PermissoesContasPagar } from "./ModalPermissoesContasPagar";
+import { normalizarPermissoesContasReceber, type PermissoesContasReceber } from "./ModalPermissoesContasReceber";
+import { normalizarPermissoesFluxoCaixa, type PermissoesFluxoCaixa } from "./ModalPermissoesFluxoCaixa";
 import { MODULOS_ATIVOS, type ModuloAtivoId } from "./estruturaPermissoes";
 
 export interface PermissoesAtivas {
@@ -24,6 +27,9 @@ export interface PermissoesAtivas {
   propostas: PermissoesPropostas;
   renovacoes: PermissoesRenovacoes;
   comissoes: PermissoesComissoes;
+  contas_pagar: PermissoesContasPagar;
+  contas_receber: PermissoesContasReceber;
+  fluxo_caixa: PermissoesFluxoCaixa;
   sinistros: PermissoesSinistro;
   assistencias: PermissoesAssistencia;
 }
@@ -40,6 +46,9 @@ export function normalizarAtivas(json: unknown): PermissoesAtivas {
     propostas: normalizarPermissoesPropostas(json),
     renovacoes: normalizarPermissoesRenovacoes(json),
     comissoes: normalizarPermissoesComissoes(json),
+    contas_pagar: normalizarPermissoesContasPagar(json),
+    contas_receber: normalizarPermissoesContasReceber(json),
+    fluxo_caixa: normalizarPermissoesFluxoCaixa(json),
     sinistros: normalizarPermissoesSinistro(json),
     assistencias: normalizarPermissoesAssistencia(json),
   };
@@ -51,10 +60,11 @@ export function atualizarModulo<K extends ModuloAtivoId>(
   return { ...estado, [modulo]: proximo };
 }
 
-const GRUPO_DO_MODULO: Record<ModuloAtivoId, "atendimento" | "operacoes"> = {
+const GRUPO_DO_MODULO: Record<ModuloAtivoId, "atendimento" | "operacoes" | "financeiro"> = {
   contatos: "atendimento", conversas: "atendimento", agenda: "atendimento", tarefas: "atendimento",
   equipe: "operacoes", clientes: "operacoes", propostas: "operacoes",
   renovacoes: "operacoes", comissoes: "operacoes", sinistros: "operacoes", assistencias: "operacoes",
+  contas_pagar: "financeiro", contas_receber: "financeiro", fluxo_caixa: "financeiro",
 };
 
 export type Diferenca = {
@@ -100,7 +110,7 @@ export function contarConcedidas(estado: PermissoesAtivas): number {
 }
 
 export function permissoesCriticas(diferencas: Diferenca[]): number {
-  const sensiveis = new Set(["delete", "permissions", "password", "reverse", "reverse_receive", "reverse_pay", "pay", "receive", "manage_splits", "issue", "close", "financial", "commissions"]);
+  const sensiveis = new Set(["delete", "delete_cascade", "permissions", "password", "reverse", "reverse_receive", "reverse_pay", "pay", "receive", "manage_splits", "issue", "close", "financial", "commissions"]);
   return diferencas.filter(({ acao, proximo, anterior }) =>
     proximo !== "none" && proximo !== anterior && (proximo === "tenant" || sensiveis.has(acao))).length;
 }

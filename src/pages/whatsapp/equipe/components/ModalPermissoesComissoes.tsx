@@ -9,10 +9,6 @@ export type AcaoPermissaoComissao =
   | "create"
   | "update"
   | "manage_splits"
-  | "receive"
-  | "reverse_receive"
-  | "pay"
-  | "reverse_pay"
   | "cancel_provision"
   | "restore_provision"
   | "report";
@@ -25,10 +21,6 @@ export const PERMISSOES_COMISSOES_PADRAO: PermissoesComissoes = {
   create: "none",
   update: "none",
   manage_splits: "none",
-  receive: "none",
-  reverse_receive: "none",
-  pay: "none",
-  reverse_pay: "none",
   cancel_provision: "none",
   restore_provision: "none",
   report: "none",
@@ -86,28 +78,6 @@ const ACOES_LANCAMENTO: DefinicaoAcao[] = [
   },
 ];
 
-const ACOES_FINANCEIRAS: DefinicaoAcao[] = [
-  {
-    key: "receive",
-    label: "Baixar comissão recebida",
-    descricao: "Registrar o recebimento de comissão pela corretora, pago pela seguradora.",
-  },
-  {
-    key: "reverse_receive",
-    label: "Estornar recebimento",
-    descricao: "Estornar uma baixa de recebimento previamente registrada.",
-  },
-  {
-    key: "pay",
-    label: "Baixar comissão paga",
-    descricao: "Liquidar pagamento a participante pelo fluxo integrado ao Contas a Pagar, sem gerar baixa duplicada.",
-  },
-  {
-    key: "reverse_pay",
-    label: "Estornar pagamento",
-    descricao: "Estornar uma baixa de pagamento pelo mesmo fluxo financeiro integrado.",
-  },
-];
 
 const ACOES_PROVISOES: DefinicaoAcao[] = [
   {
@@ -152,13 +122,12 @@ export interface ModalPermissoesComissoesProps {
 export default function ModalPermissoesComissoes({ value, disabled = false, onChange, onAplicarTodas }: ModalPermissoesComissoesProps) {
   const linha = (acao: DefinicaoAcao) => <LinhaPermissao key={acao.key} label={acao.label} descricao={acao.descricao}
     value={value[acao.key]} disabled={disabled} opcoes={OPCOES_ESCOPO_COMISSOES} onChange={escopo => onChange(acao.key, escopo)} />;
-  return <ModuloPermissao titulo="Comissões" descricao="Visibilidade financeira, rateios, recebimentos e provisões."
+  return <ModuloPermissao titulo="Comissões" descricao="Cálculo, distribuição, provisões e acompanhamento. Baixas financeiras são controladas em Contas a Pagar/Receber."
     icon={<HandCoins size={21} />} disabled={disabled}
     opcoesRapidas={[{ value: "own", label: "Próprios" }, { value: "tenant", label: "Corretora" }, { value: "none", label: "Remover acessos" }]}
-    onAplicarTodas={onAplicarTodas} rodape="Leitura pessoal e leitura completa são autorizações diferentes. Baixas e estornos continuam sujeitos às regras do fluxo financeiro integrado.">
+    onAplicarTodas={onAplicarTodas} rodape="Leitura pessoal e leitura completa são autorizações diferentes. Recebimentos e pagamentos são registrados exclusivamente no grupo Financeiro.">
     <SecaoPermissao titulo="Consulta e relatórios">{ACOES_CONSULTA.map(linha)}</SecaoPermissao>
     <SecaoPermissao titulo="Lançamentos e manutenção">{ACOES_LANCAMENTO.map(linha)}</SecaoPermissao>
-    <SecaoPermissao titulo="Recebimentos e pagamentos">{ACOES_FINANCEIRAS.map(linha)}</SecaoPermissao>
     <SecaoPermissao titulo="Controle de provisões">{ACOES_PROVISOES.map(linha)}</SecaoPermissao>
   </ModuloPermissao>;
 }

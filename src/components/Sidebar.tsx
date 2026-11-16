@@ -100,6 +100,12 @@ export default function Sidebar({
   const podeVerRenovacoes =
     escopo("operacoes.renovacoes", "read") !== "none"
 
+  // Comissões: leitura própria ou leitura completa.
+  // As ações de receber/pagar pertencem agora ao Financeiro.
+  const podeVerComissoes =
+    escopo("operacoes.comissoes", "read_own") !== "none" ||
+    escopo("operacoes.comissoes", "read_full") !== "none"
+
   const podeVerSinistros =
     escopo("operacoes.sinistros", "read") !== "none"
 
@@ -109,6 +115,10 @@ export default function Sidebar({
   const podeVerCorretor =
   userProfile?.tipo_usuario === "CORRETORA" ||
   userProfile?.tipo_usuario === "ADMIN"
+
+  const podeVerContasPagar = escopo("financeiro.contas_pagar", "read") === "tenant" || podeVerCorretor
+  const podeVerContasReceber = escopo("financeiro.contas_receber", "read") === "tenant" || podeVerCorretor
+  const podeVerFluxoCaixa = escopo("financeiro.fluxo_caixa", "read") === "tenant" || podeVerCorretor
 
   const podeVerEquipe =
   podeVerCorretor ||
@@ -336,14 +346,16 @@ export default function Sidebar({
             />
           )}
 
-          <SidebarItem
-            to="/whatsapp/comissoes"
-            icon={<HandCoins size={18} />}
-            label="Comissões"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-lime-50 text-lime-600 dark:bg-lime-500/10 dark:text-lime-400"
-          />
+          {podeVerComissoes && (
+            <SidebarItem
+              to="/whatsapp/comissoes"
+              icon={<HandCoins size={18} />}
+              label="Comissões"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-lime-50 text-lime-600 dark:bg-lime-500/10 dark:text-lime-400"
+            />
+          )}
 
           {podeVerSinistros && (
           <SidebarItem
@@ -376,8 +388,8 @@ export default function Sidebar({
           title="Financeiro"
           collapsed={isCollapsed}
         >
-          {podeVerCorretor && (
-            <>
+          <>
+              {podeVerContasPagar && (
               <SidebarItem
                 to="/whatsapp/financeiro/contas-pagar"
                 icon={<ReceiptText size={18} />}
@@ -386,7 +398,9 @@ export default function Sidebar({
                 onNavigate={handleNavigate}
                 iconClassName="bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
               />
+              )}
 
+              {podeVerContasReceber && (
               <SidebarItem
                 to="/whatsapp/financeiro/contas-receber"
                 icon={<CircleDollarSign size={18} />}
@@ -395,7 +409,9 @@ export default function Sidebar({
                 onNavigate={handleNavigate}
                 iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
               />
+              )}
 
+              {podeVerFluxoCaixa && (
               <SidebarItem
                 to="/whatsapp/financeiro/fluxo-caixa"
                 icon={<ChartNoAxesCombined size={18} />}
@@ -404,8 +420,8 @@ export default function Sidebar({
                 onNavigate={handleNavigate}
                 iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
               />
-            </>
-          )}
+              )}
+          </>
 
           <SidebarItem
             to="/whatsapp/financeiro/controle-parcelas"

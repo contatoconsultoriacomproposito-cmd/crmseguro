@@ -1,3 +1,5 @@
+import { usePermissoes } from '../../hooks/usePermissoes';
+
 import {
   useCallback,
   useEffect,
@@ -8,7 +10,6 @@ import {
 
 import {
   AlertTriangle,
-  ChevronDown,
   CircleDollarSign,
   Filter,
   Plus,
@@ -34,13 +35,10 @@ import {
   type TipoReceitaContaReceber,
 } from '../services/contasReceberService';
 
+import FiltroSituacoes from '../../components/FiltroSituacoes';
 import ModalNovoLancamento from '../components/ModalNovoLancamento';
 import ModalPlanoContas from '../components/ModalPlanoContas';
 import ModalDetalheContaReceber from '../components/ModalDetalheContaReceber';
-
-type FiltroSituacao =
-  | SituacaoContaReceber
-  | 'TODAS';
 
 interface FiltrosTela {
   tipoReceita: TipoReceitaContaReceber | '';
@@ -75,10 +73,16 @@ const RESUMO_INICIAL: ResumoFinanceiroContasReceber = {
 };
 
 export default function ContasReceber() {
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const recurso = 'financeiro.contas_receber';
+  const podeLer = escopo(recurso,'read') === 'tenant';
+  const podeCriar = escopo(recurso,'lancamento_create') === 'tenant';
+  const podePlano = ['plano_create','plano_update','plano_delete'].some(a => escopo(recurso,a) === 'tenant');
+
   const [busca, setBusca] = useState('');
 
-  const [situacao, setSituacao] =
-    useState<FiltroSituacao>('TODAS');
+  const [situacoes, setSituacoes] =
+    useState<SituacaoContaReceber[]>([]);
 
   const [filtrosAbertos, setFiltrosAbertos] =
     useState(false);
@@ -131,7 +135,7 @@ export default function ContasReceber() {
   const filtrosService = useMemo<FiltrosContasReceber>(
     () => ({
       busca,
-      situacao,
+      situacao: situacoes,
 
       tipoReceita:
         filtrosAplicados.tipoReceita,
@@ -163,7 +167,7 @@ export default function ContasReceber() {
     }),
     [
       busca,
-      situacao,
+      situacoes,
       filtrosAplicados,
     ]
   );
@@ -306,7 +310,7 @@ export default function ContasReceber() {
     void carregarLancamentos();
   }, [
     busca,
-    situacao,
+    situacoes,
     filtrosAplicados,
   ]);
 
@@ -373,6 +377,10 @@ export default function ContasReceber() {
         filtrosAplicados.valorMaximo
     );
 
+  if (carregandoPermissoes) return <div className="p-8 text-sm text-slate-500 dark:text-slate-400" role="status">Carregando permissões...</div>;
+
+  if (!podeLer) return <div className="p-8 text-sm text-slate-600">Você não possui permissão para visualizar este módulo financeiro.</div>;
+
   return (
     <div className="min-h-full bg-slate-50 dark:bg-slate-950">
       <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-5 p-4 md:p-6">
@@ -394,29 +402,36 @@ export default function ContasReceber() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                setModalPlanoContasAberto(true)
-              }
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              <FolderTree size={17} />
-              Plano de Contas
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setModalNovoLancamentoAberto(true)
-              }
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
-            >
-              <Plus size={17} />
-              Novo lançamento
-            </button>
-          </div>
+          {(podePlano || podeCriar) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {podePlano && (
+              <button
+                type="button"
+  
+                onClick={() =>
+                  setModalPlanoContasAberto(true)
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <FolderTree size={17} />
+                Plano de Contas
+              </button>
+              )}
+              {podeCriar && (
+              <button
+                type="button"
+  
+                onClick={() =>
+                  setModalNovoLancamentoAberto(true)
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                <Plus size={17} />
+                Novo lançamento
+              </button>
+              )}
+            </div>
+          )}
         </section>
 
         {/* RESUMO */}
@@ -521,44 +536,17 @@ export default function ContasReceber() {
               />
             </div>
 
-            {/* SITUAÇÃO */}
-            <div className="relative min-w-[190px]">
-              <select
-                value={situacao}
-                onChange={(e) =>
-                  setSituacao(
-                    e.target
-                      .value as FiltroSituacao
-                  )
-                }
-                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-9 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-              >
-                <option value="TODAS">
-                  Todas as situações
-                </option>
-
-                <option value="PENDENTE">
-                  Pendentes
-                </option>
-
-                <option value="VENCIDA">
-                  Vencidas
-                </option>
-
-                <option value="RECEBIDA">
-                  Recebidas
-                </option>
-
-                <option value="CANCELADA">
-                  Canceladas
-                </option>
-              </select>
-
-              <ChevronDown
-                size={16}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-            </div>
+            {/* SITUAÇÃO — seleção múltipla */}
+            <FiltroSituacoes<SituacaoContaReceber>
+              selecionadas={situacoes}
+              onChange={setSituacoes}
+              opcoes={[
+                { valor: 'PENDENTE', rotulo: 'Pendentes' },
+                { valor: 'VENCIDA', rotulo: 'Vencidas' },
+                { valor: 'RECEBIDA', rotulo: 'Recebidas' },
+                { valor: 'CANCELADA', rotulo: 'Canceladas' },
+              ]}
+            />
 
             {/* MAIS FILTROS */}
             <button
@@ -900,9 +888,9 @@ export default function ContasReceber() {
                     Situação
                   </Th>
 
-                  <Th align="center">
+                  <th scope="col" className="sticky right-0 z-20 min-w-[100px] whitespace-nowrap border-l border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 shadow-[-6px_0_10px_-8px_rgba(15,23,42,0.4)] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                     Ações
-                  </Th>
+                  </th>
                 </tr>
               </thead>
 
@@ -1215,7 +1203,7 @@ function LinhaContaReceber({
       </td>
 
       {/* AÇÕES */}
-      <td className="whitespace-nowrap px-4 py-3.5 text-center align-middle">
+      <td className="sticky right-0 z-10 min-w-[100px] whitespace-nowrap border-l border-slate-200 bg-white px-4 py-3.5 text-center align-middle shadow-[-6px_0_10px_-8px_rgba(15,23,42,0.4)] dark:border-slate-700 dark:bg-slate-900">
         <button
             type="button"
             title="Abrir lançamento"

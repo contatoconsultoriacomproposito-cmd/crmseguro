@@ -92,6 +92,7 @@ export interface PermissoesPropostas {
   read: EscopoProposta;
   update: EscopoProposta;
   delete: EscopoProposta;
+  delete_cascade: EscopoProposta;
   lose: EscopoProposta;
   reverse: EscopoProposta;
   close: EscopoProposta;
@@ -109,6 +110,7 @@ export const PERMISSOES_PROPOSTAS_PADRAO: PermissoesPropostas = {
   read: "none",
   update: "none",
   delete: "none",
+  delete_cascade: "none",
   lose: "none",
   reverse: "none",
   close: "none",
@@ -145,6 +147,11 @@ export const ACOES_PROPOSTAS: Array<{
     key: "delete",
     label: "Excluir proposta",
     descricao: "Excluir propostas conforme as regras de integridade do módulo.",
+  },
+  {
+    key: "delete_cascade",
+    label: "Exclusão completa excepcional",
+    descricao: "Exclui proposta, contratos, comissões e lançamentos vinculados, com justificativa e auditoria. Bloqueada se houver liquidações ou vínculos externos.",
   },
   {
     key: "lose",
