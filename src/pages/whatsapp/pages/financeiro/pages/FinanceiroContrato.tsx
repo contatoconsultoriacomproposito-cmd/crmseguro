@@ -11,11 +11,11 @@ import {
   WalletCards,
   FilePlus2
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
-import { useAuth } from "../../../../../auth/AuthContext";
+import { usePermissoes } from "../../../hooks/usePermissoes";
 
 
 import ModalBaixaParcela from "../components/ModalBaixaParcela";
@@ -27,7 +27,6 @@ import ModalLancamentoAvulso from "../components/ModalLancamentoAvulso";
 import ModalReconstruirFinanceiro from "../components/ModalReconstruirFinanceiro";
 
 import type {
-  ContextoPermissaoFinanceiro,
   FinanceiroContratoDetalhado,
   ParcelaFinanceiraComSituacao,
 } from "../types/financeiro";
@@ -41,9 +40,7 @@ import {
   buscarFinanceiroContratoDetalhado,
 } from "../services/financeiroService";
 
-import {
-  podeOperarFinanceiro,
-} from "../services/financeiroPermissoes";
+
 
 interface FinanceiroContratoProps {
   contratoId?: string;
@@ -56,7 +53,14 @@ export default function FinanceiroContrato({
 }: FinanceiroContratoProps) {
   const navigate = useNavigate();
   const params = useParams();
-  const { userProfile } = useAuth();
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const autorizado = (acao: string) => !carregandoPermissoes && escopo("financeiro.parcelas_clientes", acao) === "tenant";
+  const podeVisualizar = autorizado("view_contract");
+  const podeEditar = autorizado("update");
+  const podeBaixar = autorizado("settle");
+  const podeEstornar = autorizado("reverse");
+  const podeCriarAvulso = autorizado("create_extra");
+  const podeReconstruir = autorizado("rebuild");
 
   const contratoId =
     contratoIdProp ??
@@ -118,40 +122,15 @@ export default function FinanceiroContrato({
     setModalReconstruir,
   ] = useState(false);
 
-  const contextoFinanceiro =
-    useMemo<ContextoPermissaoFinanceiro | null>(() => {
-      if (!userProfile) {
-        return null;
-      }
-
-      if (
-        userProfile.tipo_usuario !== "CORRETORA" &&
-        userProfile.tipo_usuario !== "CORRETOR" &&
-        userProfile.tipo_usuario !== "ADMIN"
-      ) {
-        return null;
-      }
-
-      return {
-        tipoUsuario:
-          userProfile.tipo_usuario,
-        usuarioId:
-          userProfile.id,
-      };
-    }, [userProfile]);
-
-  const usuarioPodeOperar =
-    contextoFinanceiro
-      ? podeOperarFinanceiro(
-          contextoFinanceiro,
-        )
-      : false;
-
   const carregarFinanceiro =
     useCallback(
       async (
         mostrarLoadingPrincipal = false,
       ) => {
+        if (carregandoPermissoes || !podeVisualizar) {
+          setLoading(false);
+          return;
+        }
         if (!contratoId) {
           setFinanceiro(null);
           setErro(
@@ -200,7 +179,7 @@ export default function FinanceiroContrato({
           setAtualizando(false);
         }
       },
-      [contratoId],
+      [contratoId, carregandoPermissoes, podeVisualizar],
     );
 
   useEffect(() => {
@@ -234,7 +213,7 @@ export default function FinanceiroContrato({
   const abrirBaixa = (
     parcela: ParcelaFinanceiraComSituacao,
   ) => {
-    if (!usuarioPodeOperar) {
+    if (!podeBaixar) {
       toast.error(
         "Você não possui permissão para realizar baixas financeiras.",
       );
@@ -258,7 +237,7 @@ export default function FinanceiroContrato({
   const abrirEdicao = (
     parcela: ParcelaFinanceiraComSituacao,
   ) => {
-    if (!usuarioPodeOperar) {
+    if (!podeEditar) {
       toast.error(
         "Você não possui permissão para editar parcelas financeiras.",
       );
@@ -283,7 +262,7 @@ export default function FinanceiroContrato({
   const abrirEstorno = (
     parcela: ParcelaFinanceiraComSituacao,
   ) => {
-    if (!usuarioPodeOperar) {
+    if (!podeEstornar) {
       toast.error(
         "Você não possui permissão para estornar baixas financeiras.",
       );
@@ -300,7 +279,7 @@ export default function FinanceiroContrato({
     setParcelaEstorno(parcela);
   };
 
-  if (loading) {
+  if (loading || carregandoPermissoes) {
     return (
       <div className="flex min-h-[420px] items-center justify-center p-6">
         <div className="flex flex-col items-center gap-3 text-center">
@@ -321,6 +300,10 @@ export default function FinanceiroContrato({
         </div>
       </div>
     );
+  }
+
+  if (!podeVisualizar) {
+    return <div className="p-6 text-sm text-slate-600 dark:text-slate-300">Você não possui permissão para visualizar o financeiro deste contrato.</div>;
   }
 
   if (
@@ -555,7 +538,7 @@ const valorSelecionadoLote =
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="min-w-0">
-            {parcelasSelecionadasLote.length >
+            {podeBaixar && parcelasSelecionadasLote.length >
               0 && (
               <div className="mb-3 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-900/60 dark:bg-blue-950/20 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -598,7 +581,7 @@ const valorSelecionadoLote =
                       )
                     }
                     disabled={
-                      !usuarioPodeOperar
+                      !podeBaixar
                     }
                     className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -618,9 +601,9 @@ const valorSelecionadoLote =
   
             <TabelaParcelasFinanceiras
               parcelas={parcelas}
-              podeOperar={
-                usuarioPodeOperar
-              }
+              podeBaixar={podeBaixar}
+              podeEditar={podeEditar}
+              podeEstornar={podeEstornar}
               loading={
                 atualizando
               }
@@ -717,9 +700,9 @@ const valorSelecionadoLote =
                     </span>
                   </div>
                 </div>
-                {usuarioPodeOperar && (
+                {(podeCriarAvulso || podeReconstruir) && (
                   <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
-                    <button
+                    {podeCriarAvulso && <button
                       type="button"
                       onClick={() =>
                         setModalLancamentoAvulso(
@@ -732,9 +715,9 @@ const valorSelecionadoLote =
                         size={15}
                       />
                       Novo lançamento avulso
-                    </button>
+                    </button>}
 
-                    <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    {podeReconstruir && <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
                       <button
                         type="button"
                         onClick={() =>
@@ -753,7 +736,7 @@ const valorSelecionadoLote =
                       <p className="mt-2 text-[10px] leading-4 text-slate-400">
                         Substitui o parcelamento atual preservando o histórico financeiro.
                       </p>
-                    </div>
+                    </div>}
                   </div>
                 )}
               </div>

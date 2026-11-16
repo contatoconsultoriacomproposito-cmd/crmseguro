@@ -17,6 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { usePermissoes } from "../../../hooks/usePermissoes";
 
 import {
   buscarFinanceiroGeral,
@@ -188,6 +189,9 @@ function ResumoCard({
 
 export default function Financeiro() {
   const navigate = useNavigate();
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const podeVisualizar = !carregandoPermissoes && escopo("financeiro.parcelas_clientes", "read") === "tenant";
+  const podeAbrirContrato = !carregandoPermissoes && escopo("financeiro.parcelas_clientes", "view_contract") === "tenant";
 
   const [resultado, setResultado] =
     useState<ResultadoBuscaFinanceiroGeral>(
@@ -265,6 +269,7 @@ export default function Financeiro() {
 
   const carregar =
     useCallback(async () => {
+      if (carregandoPermissoes || !podeVisualizar) { setLoading(false); return; }
       setLoading(true);
 
       try {
@@ -292,7 +297,7 @@ export default function Financeiro() {
       } finally {
         setLoading(false);
       }
-    }, [filtros]);
+    }, [filtros, carregandoPermissoes, podeVisualizar]);
 
   useEffect(() => {
     void carregar();
@@ -374,6 +379,7 @@ export default function Financeiro() {
   const abrirContrato = (
     contratoId: string,
   ) => {
+    if (!podeAbrirContrato) return;
     navigate(
       `/whatsapp/financeiro/contratos/${contratoId}`,
     );
@@ -385,6 +391,9 @@ export default function Financeiro() {
     total,
     total_paginas: totalPaginas,
   } = resultado;
+
+  if (carregandoPermissoes) return <div className="p-6 text-sm">Carregando permissões...</div>;
+  if (!podeVisualizar) return <div className="p-6 text-sm">Você não possui permissão para visualizar o controle de parcelas.</div>;
 
   return (
     <div className="min-h-full bg-zinc-50 p-4 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 md:p-6">
@@ -877,7 +886,7 @@ export default function Financeiro() {
                         </td>
 
                         <td className="px-4 py-3 text-center">
-                          <button
+                          {podeAbrirContrato && <button
                             type="button"
                             title="Ver financeiro do contrato"
                             onClick={() =>
@@ -892,7 +901,7 @@ export default function Financeiro() {
                             <Eye
                               size={15}
                             />
-                          </button>
+                          </button>}
                         </td>
                       </tr>
                     ),

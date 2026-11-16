@@ -218,7 +218,7 @@ export default function ModalPermissoesUsuario({
       case "contas_pagar": return <ModalPermissoesContasPagar value={dados.contas_pagar} disabled={disabled} onChange={(a, v) => alterar("contas_pagar", a, v)} onAplicarTodas={v => aplicarTodas("contas_pagar", v)} />;
       case "contas_receber": return <ModalPermissoesContasReceber value={dados.contas_receber} disabled={disabled} onChange={(a, v) => alterar("contas_receber", a, v)} onAplicarTodas={v => aplicarTodas("contas_receber", v)} />;
       case "fluxo_caixa": return <ModalPermissoesFluxoCaixa value={dados.fluxo_caixa} disabled={disabled} onChange={(a, v) => alterar("fluxo_caixa", a, v)} onAplicarTodas={v => aplicarTodas("fluxo_caixa", v)} />;
-      case "parcelas_clientes": return <ModalPermissoesParcelasClientes />;
+      case "parcelas_clientes": return <ModalPermissoesParcelasClientes value={dados.parcelas_clientes} disabled={disabled} onChange={(a, v) => alterar("parcelas_clientes", a, v)} onAplicarTodas={v => aplicarTodas("parcelas_clientes", v)} />;
       case "conexoes_whatsapp": return <ModalPermissoesConexoesWhatsapp />;
       case "armazenamento": return <ModalPermissoesArmazenamento />;
       case "seguradoras": return <ModalPermissoesSeguradoras />;

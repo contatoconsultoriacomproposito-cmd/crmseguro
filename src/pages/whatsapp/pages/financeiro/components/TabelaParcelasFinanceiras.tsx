@@ -21,7 +21,9 @@ import type {
 
 interface TabelaParcelasFinanceirasProps {
   parcelas: ParcelaFinanceiraComSituacao[];
-  podeOperar: boolean;
+  podeBaixar: boolean;
+  podeEditar: boolean;
+  podeEstornar: boolean;
   loading?: boolean;
   parcelasSelecionadas?: string[];
   onSelecionadasChange?: (
@@ -99,7 +101,9 @@ function classeSituacao(
 
 export default function TabelaParcelasFinanceiras({
   parcelas,
-  podeOperar,
+  podeBaixar,
+  podeEditar,
+  podeEstornar,
   loading = false,
   parcelasSelecionadas = [],
   onSelecionadasChange,
@@ -166,7 +170,7 @@ export default function TabelaParcelasFinanceiras({
 
   const alternarTodas = () => {
     if (
-      !podeOperar ||
+      !podeBaixar ||
       loading ||
       !onSelecionadasChange
     ) {
@@ -189,7 +193,7 @@ export default function TabelaParcelasFinanceiras({
     parcelaId: string,
   ) => {
     if (
-      !podeOperar ||
+      !podeBaixar ||
       loading ||
       !onSelecionadasChange
     ) {
@@ -246,7 +250,7 @@ export default function TabelaParcelasFinanceiras({
                     todasSelecionadas
                   }
                   disabled={
-                    !podeOperar ||
+                    !podeBaixar ||
                     loading ||
                     idsElegiveis.length ===
                       0
@@ -313,14 +317,14 @@ export default function TabelaParcelasFinanceiras({
                     }`}
                   >
                     <td className="px-3 py-3 text-center">
-                      {elegivel ? (
+                      {elegivel && podeBaixar ? (
                         <input
                           type="checkbox"
                           checked={
                             selecionada
                           }
                           disabled={
-                            !podeOperar ||
+                            !podeBaixar ||
                             loading
                           }
                           onChange={() =>
@@ -407,11 +411,11 @@ export default function TabelaParcelasFinanceiras({
                         {parcela.status ===
                           "PENDENTE" && (
                           <>
-                            <button
+                            {podeBaixar && <button
                               type="button"
                               title="Baixar parcela"
                               disabled={
-                                !podeOperar ||
+                                !podeBaixar ||
                                 loading
                               }
                               onClick={() =>
@@ -427,15 +431,15 @@ export default function TabelaParcelasFinanceiras({
                                 }
                               />
                               Baixar
-                            </button>
+                            </button>}
 
-                            {parcela.tipo_lancamento ===
+                            {podeEditar && parcela.tipo_lancamento ===
                               "PARCELA" && (
                               <button
                                 type="button"
                                 title="Editar parcela"
                                 disabled={
-                                  !podeOperar ||
+                                  !podeEditar ||
                                   loading
                                 }
                                 onClick={() =>
@@ -455,13 +459,13 @@ export default function TabelaParcelasFinanceiras({
                           </>
                         )}
 
-                        {parcela.status ===
+                        {podeEstornar && parcela.status ===
                           "PAGA" && (
                           <button
                             type="button"
                             title="Estornar baixa"
                             disabled={
-                              !podeOperar ||
+                              !podeEstornar ||
                               loading
                             }
                             onClick={() =>

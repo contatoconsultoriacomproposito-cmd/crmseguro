@@ -119,6 +119,7 @@ export default function Sidebar({
   const podeVerContasPagar = escopo("financeiro.contas_pagar", "read") === "tenant" || podeVerCorretor
   const podeVerContasReceber = escopo("financeiro.contas_receber", "read") === "tenant" || podeVerCorretor
   const podeVerFluxoCaixa = escopo("financeiro.fluxo_caixa", "read") === "tenant" || podeVerCorretor
+  const podeVerParcelasClientes = escopo("financeiro.parcelas_clientes", "read") === "tenant"
 
   const podeVerEquipe =
   podeVerCorretor ||
@@ -423,6 +424,7 @@ export default function Sidebar({
               )}
           </>
 
+          {podeVerParcelasClientes && (
           <SidebarItem
             to="/whatsapp/financeiro/controle-parcelas"
             icon={<FileClock size={18} />}
@@ -431,6 +433,7 @@ export default function Sidebar({
             onNavigate={handleNavigate}
             iconClassName="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
           />
+          )}
         </NavSection>
 
         {/* =================================================

@@ -15,6 +15,7 @@ import { normalizarPermissoesTarefas, type PermissoesTarefas } from "./ModalPerm
 import { normalizarPermissoesContasPagar, type PermissoesContasPagar } from "./ModalPermissoesContasPagar";
 import { normalizarPermissoesContasReceber, type PermissoesContasReceber } from "./ModalPermissoesContasReceber";
 import { normalizarPermissoesFluxoCaixa, type PermissoesFluxoCaixa } from "./ModalPermissoesFluxoCaixa";
+import { normalizarPermissoesParcelasClientes, type PermissoesParcelasClientes } from "./ModalPermissoesParcelasClientes";
 import { MODULOS_ATIVOS, type ModuloAtivoId } from "./estruturaPermissoes";
 
 export interface PermissoesAtivas {
@@ -30,6 +31,7 @@ export interface PermissoesAtivas {
   contas_pagar: PermissoesContasPagar;
   contas_receber: PermissoesContasReceber;
   fluxo_caixa: PermissoesFluxoCaixa;
+  parcelas_clientes: PermissoesParcelasClientes;
   sinistros: PermissoesSinistro;
   assistencias: PermissoesAssistencia;
 }
@@ -49,6 +51,7 @@ export function normalizarAtivas(json: unknown): PermissoesAtivas {
     contas_pagar: normalizarPermissoesContasPagar(json),
     contas_receber: normalizarPermissoesContasReceber(json),
     fluxo_caixa: normalizarPermissoesFluxoCaixa(json),
+    parcelas_clientes: normalizarPermissoesParcelasClientes(json),
     sinistros: normalizarPermissoesSinistro(json),
     assistencias: normalizarPermissoesAssistencia(json),
   };
@@ -64,7 +67,7 @@ const GRUPO_DO_MODULO: Record<ModuloAtivoId, "atendimento" | "operacoes" | "fina
   contatos: "atendimento", conversas: "atendimento", agenda: "atendimento", tarefas: "atendimento",
   equipe: "operacoes", clientes: "operacoes", propostas: "operacoes",
   renovacoes: "operacoes", comissoes: "operacoes", sinistros: "operacoes", assistencias: "operacoes",
-  contas_pagar: "financeiro", contas_receber: "financeiro", fluxo_caixa: "financeiro",
+  contas_pagar: "financeiro", contas_receber: "financeiro", fluxo_caixa: "financeiro", parcelas_clientes: "financeiro",
 };
 
 export type Diferenca = {

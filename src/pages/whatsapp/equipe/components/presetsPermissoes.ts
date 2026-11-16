@@ -51,6 +51,7 @@ export function construirPreset(cargo: CargoPreset): PermissoesAtivas {
     base.contas_pagar = { ...base.contas_pagar, read: "tenant" };
     base.contas_receber = { ...base.contas_receber, read: "tenant" };
     base.fluxo_caixa = { read: "tenant", export: "none" };
+    base.parcelas_clientes = { ...base.parcelas_clientes, read: "tenant", view_contract: "tenant" };
   } else if (cargo === "ADMINISTRATIVO") {
     base.agenda = { read: "tenant", manage: "none", google: "none" };
     base.clientes = { ...base.clientes, read: "tenant", open: "tenant", view_cadastro: "tenant", view_agenda: "tenant", view_propostas: "tenant", view_contratos: "tenant" };
