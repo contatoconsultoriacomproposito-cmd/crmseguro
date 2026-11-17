@@ -221,7 +221,7 @@ export default function ModalPermissoesUsuario({
       case "parcelas_clientes": return <ModalPermissoesParcelasClientes value={dados.parcelas_clientes} disabled={disabled} onChange={(a, v) => alterar("parcelas_clientes", a, v)} onAplicarTodas={v => aplicarTodas("parcelas_clientes", v)} />;
       case "conexoes_whatsapp": return <ModalPermissoesConexoesWhatsapp value={dados.conexoes_whatsapp} disabled={disabled} onChange={(a, v) => alterar("conexoes_whatsapp", a, v)} onAplicarTodas={v => aplicarTodas("conexoes_whatsapp", v)} />;
       case "armazenamento": return <ModalPermissoesArmazenamento value={dados.armazenamento} disabled={disabled} onChange={(a, v) => alterar("armazenamento", a, v)} onAplicarTodas={v => aplicarTodas("armazenamento", v)} />;
-      case "seguradoras": return <ModalPermissoesSeguradoras />;
+      case "seguradoras": return <ModalPermissoesSeguradoras value={dados.seguradoras} disabled={disabled} onChange={(a, v) => alterar("seguradoras", a, v)} onAplicarTodas={v => aplicarTodas("seguradoras", v)} />;
       case "configuracoes": return <ModalPermissoesConfiguracoes />;
       default: return null;
     }
@@ -340,14 +340,14 @@ export default function ModalPermissoesUsuario({
                           return <button type="button" key={modulo.id} onClick={() => setModuloSelecionado(modulo.id)} aria-current={selecionado ? "page" : undefined}
                             className={`flex min-w-0 items-center gap-2.5 rounded-xl p-2.5 text-left transition ${selecionado ? "bg-violet-50 text-violet-800 ring-1 ring-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-900" : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}>
                             <Icon size={17} className="shrink-0"/>
-                            <span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{modulo.titulo}</span><span className="mt-0.5 block truncate text-[10px] opacity-70">{modulo.implementado ? "Configurável" : "Em preparação"}</span></span>
+                            <span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{modulo.titulo}</span><span className="mt-0.5 block truncate text-[10px] opacity-70">{modulo.id === "configuracoes" ? "Acesso administrativo" : modulo.implementado ? "Configurável" : "Em preparação"}</span></span>
                             {mudou && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" title="Alterações pendentes"/>}
                           </button>;
                         })}
                       </nav>
                     </aside>
                     <div className="min-w-0 space-y-3">
-                      {moduloAtual && !moduloAtual.implementado && <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300"><Clock3 size={15}/> Módulo futuro — nenhuma autorização será enviada ao banco.</div>}
+                      {moduloAtual && !moduloAtual.implementado && moduloAtual.id !== "configuracoes" && <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300"><Clock3 size={15}/> Módulo futuro — nenhuma autorização será enviada ao banco.</div>}
                       {renderizarModulo()}
                     </div>
                   </div>

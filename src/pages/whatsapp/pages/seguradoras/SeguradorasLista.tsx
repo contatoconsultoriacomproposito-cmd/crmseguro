@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { 
   Building2, Loader2, Search, Shield, 
-  Power, Check, Plus, X
+  Power, Check
 } from "lucide-react";
 import { supabase } from "../../../../lib/supabaseClient";
 import { useAuth } from "../../../../auth/AuthContext";
@@ -9,16 +9,13 @@ import { useNavigate } from "react-router-dom";
 
 export default function SeguradorasLista() {
   const { user } = useAuth();
+  const [podeAtualizar, setPodeAtualizar] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   
-  // Estados para o Modal de Nova Seguradora
-  const [showModal, setShowModal] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [formData, setFormData] = useState({ nome: "", cnpj: "", site: "", logo: null as File | null });
-
   const [corretoraIdEfetivo, setCorretoraIdEfetivo] = useState<string | null>(null);
   const [baseSeguradoras, setBaseSeguradoras] = useState<any[]>([]);
   const [baseProdutos, setBaseProdutos] = useState<any[]>([]);
@@ -38,8 +35,22 @@ export default function SeguradorasLista() {
         return;
       }
 
-      setIsAuthorized(true);
+      // Escopo global de leitura dos dados é diferente do escopo do portfólio.
+      const administrativo = perfil.tipo_usuario === "CORRETORA" || perfil.tipo_usuario === "ADMIN";
+      const [permissaoRead, permissaoUpdate] = administrativo
+        ? [{ data: "tenant", error: null }, { data: "tenant", error: null }]
+        : await Promise.all([
+            supabase.rpc("crm_escopo_permissao", { p_recurso: "gestao.seguradoras", p_acao: "read" }),
+            supabase.rpc("crm_escopo_permissao", { p_recurso: "gestao.seguradoras", p_acao: "update" }),
+          ]);
+      if (permissaoRead.error || permissaoUpdate.error) throw new Error("Falha ao verificar permissões de Seguradoras.");
+      const leitura = permissaoRead.data === "tenant";
+      const edicao = permissaoUpdate.data === "tenant";
+      setPodeAtualizar(edicao);
+      setIsAuthorized(leitura);
+      if (!leitura) return;
       const targetId = perfil.tipo_usuario === "CORRETORA" ? user?.id : perfil.corretora_id;
+      if (!targetId) { setIsAuthorized(false); return; }
       setCorretoraIdEfetivo(targetId);
 
       const [resSegs, resProds, resPort] = await Promise.all([
@@ -51,57 +62,17 @@ export default function SeguradorasLista() {
           .eq("corretora_id", targetId)
       ]);
 
+      if (resSegs.error || resProds.error || resPort.error) throw new Error("Não foi possível consultar o portfólio.");
       setBaseSeguradoras(resSegs.data || []);
       setBaseProdutos(resProds.data || []);
       setPortfolio(resPort.data || []);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
+      setIsAuthorized(false);
     } finally {
       setLoading(false);
     }
   }
-
-  const handleNovaSeguradora = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.logo || !formData.nome) return alert("Nome e logo são obrigatórios!");
-
-    setIsUploading(true);
-    try {
-      const fileExt = formData.logo.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('logo_seguradoras')
-        .upload(fileName, formData.logo);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('logo_seguradoras')
-        .getPublicUrl(fileName);
-
-      const { error: dbError } = await supabase
-        .from("base_seguradoras")
-        .insert({
-          nome: formData.nome.toUpperCase(),
-          cnpj: formData.cnpj,
-          site: formData.site,
-          logo_url: publicUrl
-        });
-
-      if (dbError) throw dbError;
-      
-      alert("Seguradora cadastrada com sucesso!");
-      setShowModal(false);
-      setFormData({ nome: "", cnpj: "", site: "", logo: null });
-      carregarDados();
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao cadastrar.");
-    } finally {
-      setIsUploading(false);
-    }
-  };
 
   useEffect(() => {
     if (user) carregarDados();
@@ -111,16 +82,20 @@ export default function SeguradorasLista() {
   const isProdutoAtivo = (segId: string, prodId: string) => portfolio.some(p => p.base_seguradora_id === segId && p.base_produto_id === prodId);
 
   const toggleProduto = async (segId: string, prodId: string) => {
-    if (!corretoraIdEfetivo) return;
+    if (!corretoraIdEfetivo || !podeAtualizar || salvando) return;
+    setSalvando(true);
     const ativo = isProdutoAtivo(segId, prodId);
     try {
       if (ativo) {
-        await supabase
+        const { data, error } = await supabase
           .from("crm_corretora_portfolio")
           .delete()
           .eq("corretora_id", corretoraIdEfetivo)
           .eq("base_seguradora_id", segId)
-          .eq("base_produto_id", prodId);
+          .eq("base_produto_id", prodId)
+          .select("id");
+        if (error) throw error;
+        if (!data?.length) throw new Error("Exclusão não autorizada ou vínculo não encontrado.");
         setPortfolio(prev => prev.filter(p => !(p.base_seguradora_id === segId && p.base_produto_id === prodId)));
       } else {
         const { data, error } = await supabase
@@ -135,19 +110,23 @@ export default function SeguradorasLista() {
         if (error) throw error;
         setPortfolio(prev => [...prev, data]);
       }
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error(error); alert("Não foi possível atualizar o produto. Verifique sua permissão."); }
+    finally { setSalvando(false); }
   };
 
   const desligarSeguradora = async (segId: string) => {
-    if (!corretoraIdEfetivo || !confirm("Isso desativará todos os produtos desta seguradora. Continuar?")) return;
+    if (!corretoraIdEfetivo || !podeAtualizar || salvando || !confirm("Isso desativará todos os produtos desta seguradora. Continuar?")) return;
+    setSalvando(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from("crm_corretora_portfolio")
         .delete()
         .eq("corretora_id", corretoraIdEfetivo)
         .eq("base_seguradora_id", segId);
+      if (error) throw error;
       setPortfolio(prev => prev.filter(p => p.base_seguradora_id !== segId));
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error(error); alert("Não foi possível desativar a seguradora."); }
+    finally { setSalvando(false); }
   };
 
   const seguradorasFiltradas = baseSeguradoras.filter(seg => seg.nome.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -156,8 +135,8 @@ export default function SeguradorasLista() {
     return (
       <div className="flex flex-col items-center justify-center p-20 text-center min-h-screen">
         <Shield size={60} className="text-red-500 mb-4" />
-        <h1 className="text-2xl font-bold font-black italic tracking-tighter uppercase">Erro de Vínculo</h1>
-        <p className="text-slate-500 text-sm">Não encontramos uma corretora vinculada.</p>
+        <h1 className="text-2xl font-bold font-black italic tracking-tighter uppercase">Acesso restrito</h1>
+        <p className="text-slate-500 text-sm">Você não possui permissão para consultar seguradoras e produtos.</p>
         <button onClick={() => navigate("/dashboard")} className="mt-6 px-8 py-3 bg-zinc-900 text-white rounded-2xl font-bold uppercase text-xs tracking-widest">Voltar ao Dashboard</button>
       </div>
     );
@@ -171,33 +150,8 @@ export default function SeguradorasLista() {
             <h1 className="text-3xl font-black text-slate-800 dark:text-zinc-100 italic tracking-tighter uppercase leading-none">Portfólio de Seguros</h1>
             <p className="text-sm text-slate-500 font-medium mt-1 uppercase tracking-wider">Ative as seguradoras e ramos operados.</p>
           </div>
-          <button 
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all"
-          >
-            <Plus size={16} /> Nova Seguradora
-          </button>
+          {!podeAtualizar && <span className="text-xs font-semibold text-slate-500">Somente consulta</span>}
         </header>
-
-        {/* Modal de Inclusão */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <form onSubmit={handleNovaSeguradora} className="bg-white dark:bg-zinc-900 p-8 rounded-[32px] w-full max-w-md shadow-2xl">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-lg font-black uppercase tracking-widest text-slate-800 dark:text-zinc-100">Nova Seguradora</h2>
-                <button type="button" onClick={() => setShowModal(false)}><X size={20} className="text-slate-500"/></button>
-              </div>
-              <input type="text" placeholder="Nome da Seguradora" className="w-full p-4 mb-3 rounded-xl border bg-slate-50 dark:bg-zinc-800 dark:border-zinc-700" onChange={e => setFormData({...formData, nome: e.target.value})} required />
-              <input type="text" placeholder="CNPJ" className="w-full p-4 mb-3 rounded-xl border bg-slate-50 dark:bg-zinc-800 dark:border-zinc-700" onChange={e => setFormData({...formData, cnpj: e.target.value})} />
-              <input type="text" placeholder="Site" className="w-full p-4 mb-3 rounded-xl border bg-slate-50 dark:bg-zinc-800 dark:border-zinc-700" onChange={e => setFormData({...formData, site: e.target.value})} />
-              <label className="block text-[10px] font-bold text-slate-400 mb-2 uppercase">Logo da Seguradora</label>
-              <input type="file" accept="image/*" onChange={e => setFormData({...formData, logo: e.target.files?.[0] || null})} className="mb-6 w-full" required />
-              <button disabled={isUploading} className="w-full p-4 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 disabled:opacity-50">
-                {isUploading ? <Loader2 className="animate-spin mx-auto"/> : "CADASTRAR SEGURADORA"}
-              </button>
-            </form>
-          </div>
-        )}
 
         <div className="relative mb-8 group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
@@ -235,7 +189,7 @@ export default function SeguradorasLista() {
                     </div>
                     <button 
                       onClick={() => ativa ? desligarSeguradora(seg.id) : null}
-                      disabled={!ativa}
+                      disabled={!ativa || !podeAtualizar || salvando}
                       className={`flex items-center gap-2 px-8 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${ativa ? 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
                     >
                       <Power size={16} /> {ativa ? 'Desativar Seguradora' : 'Indisponível'}
@@ -253,7 +207,8 @@ export default function SeguradorasLista() {
                             <button
                               key={prod.id}
                               onClick={() => toggleProduto(seg.id, prod.id)}
-                              className={`flex items-center justify-between p-4 rounded-2xl border text-[11px] font-black uppercase transition-all ${prodAtivo ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white dark:bg-zinc-900 border-slate-200 text-slate-500'}`}
+                              disabled={!podeAtualizar || salvando}
+                              className={`flex items-center justify-between p-4 rounded-2xl border text-[11px] font-black uppercase transition-all disabled:cursor-not-allowed disabled:opacity-70 ${prodAtivo ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white dark:bg-zinc-900 border-slate-200 text-slate-500'}`}
                             >
                               <span className="truncate">{prod.nome}</span>
                               {prodAtivo && <Check size={14} />}

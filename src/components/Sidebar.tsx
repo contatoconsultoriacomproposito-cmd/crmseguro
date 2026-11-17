@@ -116,10 +116,66 @@ export default function Sidebar({
   userProfile?.tipo_usuario === "CORRETORA" ||
   userProfile?.tipo_usuario === "ADMIN"
 
-  // Gestão / Conexões WhatsApp: basta uma das três ações autorizadas.
-  const podeVerConexoesWhatsApp = ["create", "disconnect", "cancel"].some(
-    (acao) => escopo("gestao.conexoes_whatsapp", acao) === "tenant"
-  )
+  // Gestão: consulta a autorização efetiva no banco, com JWT do usuário.
+  // Não depende da leitura direta do JSONB de crm_usuario_permissoes,
+  // que pode estar sujeita a RLS e não retornar o registro ao corretor.
+  const [acessosGestao, setAcessosGestao] = useState({
+    conexoes: false,
+    armazenamento: false,
+    seguradoras: false,
+  })
+
+  useEffect(() => {
+    let vigente = true
+
+    setAcessosGestao({ conexoes: false, armazenamento: false, seguradoras: false })
+
+    if (!user?.id || !userProfile || !userProfile.ativo) return
+
+    if (podeVerCorretor) {
+      setAcessosGestao({ conexoes: true, armazenamento: true, seguradoras: true })
+      return
+    }
+
+    async function carregarAcessosGestao() {
+      const consultar = async (recurso: string, acao: string) => {
+        const { data, error } = await supabase.rpc("crm_escopo_permissao", {
+          p_recurso: recurso,
+          p_acao: acao,
+        })
+        if (error) throw error
+        return data === "own" || data === "tenant"
+      }
+
+      try {
+        const [criar, desconectar, cancelar, armazenamento, seguradoras] = await Promise.all([
+          consultar("gestao.conexoes_whatsapp", "create"),
+          consultar("gestao.conexoes_whatsapp", "disconnect"),
+          consultar("gestao.conexoes_whatsapp", "cancel"),
+          consultar("gestao.armazenamento", "read"),
+          consultar("gestao.seguradoras", "read"),
+        ])
+        if (!vigente) return
+        setAcessosGestao({
+          conexoes: criar || desconectar || cancelar,
+          armazenamento,
+          seguradoras,
+        })
+      } catch (error) {
+        console.error("Não foi possível validar os menus de Gestão:", error)
+        if (vigente) {
+          setAcessosGestao({ conexoes: false, armazenamento: false, seguradoras: false })
+        }
+      }
+    }
+
+    void carregarAcessosGestao()
+    return () => { vigente = false }
+  }, [user?.id, userProfile?.id, userProfile?.tipo_usuario, userProfile?.ativo, podeVerCorretor])
+
+  const podeVerConexoesWhatsApp = acessosGestao.conexoes
+  const podeVerArmazenamento = acessosGestao.armazenamento
+  const podeVerSeguradoras = acessosGestao.seguradoras
 
   const podeVerContasPagar = escopo("financeiro.contas_pagar", "read") === "tenant" || podeVerCorretor
   const podeVerContasReceber = escopo("financeiro.contas_receber", "read") === "tenant" || podeVerCorretor
@@ -460,16 +516,18 @@ export default function Sidebar({
             />
           )}
 
-          <SidebarItem
-            to="/whatsapp/armazenamento"
-            icon={<HardDrive size={18} />}
-            label="Armazenamento"
-            collapsed={isCollapsed}
-            onNavigate={handleNavigate}
-            iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
-          />
+          {podeVerArmazenamento && (
+            <SidebarItem
+              to="/whatsapp/armazenamento"
+              icon={<HardDrive size={18} />}
+              label="Armazenamento"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
+            />
+          )}
 
-          {podeVerCorretor && (
+          {podeVerSeguradoras && (
             <SidebarItem
               to="/whatsapp/seguradoras"
               icon={<Building2 size={18} />}
