@@ -1008,7 +1008,7 @@ export async function removerAnexoAssistencia(
   const { data, error } =
     await supabase.functions.invoke("b2-media", {
       body: {
-        action: "delete",
+        action: "event-delete",
         arquivoId: anexo.id,
       },
     });

@@ -19,9 +19,12 @@ import {
   Trash2,
   Users,
   PhoneCall,
+  XCircle,
+  ArrowDownWideNarrow,
 } from 'lucide-react'
 
 import { useAuth } from '../../../../auth/AuthContext'
+import { supabase } from '../../../../lib/supabaseClient'
 
 import {
   buscarStorageDashboard,
@@ -31,6 +34,9 @@ import {
   formatarBytes,
   listarCorretoresStorage,
   listarStorageArquivos,
+  listarConversasConsumoStorage,
+  listarArquivosConversaStorage,
+  type StorageConversaConsumo,
   type StorageArquivo,
   type StorageCategoriaDocumento,
   type StorageClassificacaoArquivo,
@@ -368,6 +374,36 @@ export default function CentralArmazenamento() {
   const [arquivoEmAcao, setArquivoEmAcao] =
     useState<string | null>(null)
 
+  const [permissoes, setPermissoes] = useState({ read: 'none', view: 'none', download: 'none', delete: 'none' })
+  const [permissoesCarregadas, setPermissoesCarregadas] = useState(false)
+  const [ordenacao, setOrdenacao] = useState<'RECENTES' | 'ANTIGOS' | 'MAIORES' | 'MENORES'>('RECENTES')
+  const [tamanhoMin, setTamanhoMin] = useState('')
+  const [selecionados, setSelecionados] = useState<Record<string, StorageArquivo>>({})
+  const [excluindoLote, setExcluindoLote] = useState(false)
+  const [resultadoExclusao, setResultadoExclusao] = useState<string[]>([])
+  const [mostrarInteligencia, setMostrarInteligencia] = useState(false)
+  // Explorador por formato: agregados do dashboard e arquivos paginados pela RPC.
+  const [tipoInteligencia, setTipoInteligencia] = useState<StorageClassificacaoArquivo | null>(null)
+  const [origemInteligencia, setOrigemInteligencia] = useState<StorageOrigem | ''>('')
+  const [paginaTipoInteligencia, setPaginaTipoInteligencia] = useState(1)
+  const [arquivosTipoInteligencia, setArquivosTipoInteligencia] = useState<StorageArquivo[]>([])
+  const [totalTipoInteligencia, setTotalTipoInteligencia] = useState(0)
+  const [paginasTipoInteligencia, setPaginasTipoInteligencia] = useState(0)
+  const [carregandoTipoInteligencia, setCarregandoTipoInteligencia] = useState(false)
+  const [erroTipoInteligencia, setErroTipoInteligencia] = useState('')
+  const [versaoTipoInteligencia, setVersaoTipoInteligencia] = useState(0)
+
+  const [classificacaoConversa, setClassificacaoConversa] = useState('')
+  const [paginaConversas, setPaginaConversas] = useState(1)
+  const [conversasConsumo, setConversasConsumo] = useState<StorageConversaConsumo[]>([])
+  const [totalPaginasConversas, setTotalPaginasConversas] = useState(0)
+  const [erroInteligencia, setErroInteligencia] = useState('')
+  const [loadingInteligencia, setLoadingInteligencia] = useState(false)
+  const [conversaAtiva, setConversaAtiva] = useState<StorageConversaConsumo | null>(null)
+  const [arquivosConversa, setArquivosConversa] = useState<StorageArquivo[]>([])
+  const [paginaArquivosConversa, setPaginaArquivosConversa] = useState(1)
+  const [totalPaginasArquivosConversa, setTotalPaginasArquivosConversa] = useState(0)
+  const [loadingArquivosConversa, setLoadingArquivosConversa] = useState(false)
   const porPagina = 20
 
   const isCorretora =
@@ -376,12 +412,12 @@ export default function CentralArmazenamento() {
   const isCorretor =
     userProfile?.tipo_usuario === 'CORRETOR'
 
-  const podeAcessar =
-    Boolean(userProfile) &&
-    (isCorretora || isCorretor)
+  const podeAcessar = Boolean(userProfile) && (isCorretora || isCorretor) &&
+    (isCorretora || (permissoesCarregadas && permissoes.read !== 'none'))
+  const podeVisualizar = isCorretora || (permissoesCarregadas && permissoes.view !== 'none')
+  const podeBaixar = isCorretora || (permissoesCarregadas && permissoes.download !== 'none')
+  const podeExcluir = isCorretora || (permissoesCarregadas && permissoes.delete !== 'none')
 
-  const podeExcluir =
-    isCorretora
 
   const corretoraId = useMemo(() => {
     if (!userProfile) return null
@@ -396,6 +432,59 @@ export default function CentralArmazenamento() {
 
     return null
   }, [userProfile])
+
+  useEffect(() => {
+    let ativo = true
+    setPermissoesCarregadas(false)
+    setPermissoes({ read: 'none', view: 'none', download: 'none', delete: 'none' })
+    if (!userProfile?.id || !corretoraId) return
+    if (isCorretora) {
+      setPermissoesCarregadas(true)
+      return
+    }
+    Promise.all((['read', 'view', 'download', 'delete'] as const).map(async (acao) => {
+      const { data, error } = await supabase.rpc('crm_escopo_permissao', {
+        p_recurso: 'gestao.armazenamento', p_acao: acao,
+      })
+      if (error) throw error
+      return [acao, data === 'own' || data === 'tenant' ? data : 'none'] as const
+    })).then((pares) => {
+      if (ativo) setPermissoes(Object.fromEntries(pares) as typeof permissoes)
+    }).catch((error) => {
+      console.error('Falha ao consultar permissões da Central', error)
+    }).finally(() => { if (ativo) setPermissoesCarregadas(true) })
+    return () => { ativo = false }
+  }, [userProfile?.id, corretoraId, isCorretora])
+
+  const carregarInteligencia = useCallback(async () => {
+    if (!corretoraId || !mostrarInteligencia || !podeAcessar) return
+    setLoadingInteligencia(true)
+    setErroInteligencia('')
+    try {
+      const resultado = await listarConversasConsumoStorage(
+        corretoraId, classificacaoConversa || null, paginaConversas, 20
+      )
+      setConversasConsumo(resultado.conversas)
+      setTotalPaginasConversas(resultado.total_paginas)
+    } catch (error) {
+      setErroInteligencia(error instanceof Error ? error.message : 'Falha ao carregar ranking.')
+      setConversasConsumo([])
+    } finally { setLoadingInteligencia(false) }
+  }, [corretoraId, mostrarInteligencia, podeAcessar, classificacaoConversa, paginaConversas])
+  useEffect(() => { void carregarInteligencia() }, [carregarInteligencia])
+
+  useEffect(() => {
+    let ativo = true
+    if (!corretoraId || !conversaAtiva) { setArquivosConversa([]); return }
+    setLoadingArquivosConversa(true)
+    listarArquivosConversaStorage(corretoraId, conversaAtiva.conversa_id, paginaArquivosConversa)
+      .then((r) => { if (ativo) { setArquivosConversa(r.arquivos); setTotalPaginasArquivosConversa(r.total_paginas) } })
+      .catch((error) => { if (ativo) setErroInteligencia(error instanceof Error ? error.message : 'Falha ao listar arquivos da conversa.') })
+      .finally(() => { if (ativo) setLoadingArquivosConversa(false) })
+    return () => { ativo = false }
+  }, [corretoraId, conversaAtiva, paginaArquivosConversa, versaoTipoInteligencia])
+
+  useEffect(() => { setSelecionados({}); setResultadoExclusao([]); setConversaAtiva(null); setTipoInteligencia(null) }, [userProfile?.id, corretoraId])
 
   const corretorFiltroEfetivo = useMemo(() => {
     if (!userProfile) return null
@@ -430,6 +519,59 @@ export default function CentralArmazenamento() {
 
   const consumoPorOrigemAtivo =
     dashboardAtivo?.consumo_por_origem ?? []
+
+  const resumoTiposInteligencia = useMemo(() => {
+    const tipos: StorageClassificacaoArquivo[] = ['IMAGEM', 'AUDIO', 'VIDEO', 'DOCUMENTO', 'LIGACAO', 'OUTRO']
+    return tipos.map((tipo) => {
+      const linhas = subcategoriasAtivas.filter((item) =>
+        item.tipo_arquivo === tipo && (!origemInteligencia || item.origem === origemInteligencia)
+      )
+      return {
+        tipo,
+        quantidade: linhas.reduce((soma, item) => soma + item.total_arquivos, 0),
+        bytes: linhas.reduce((soma, item) => soma + item.tamanho_bytes, 0),
+      }
+    })
+  }, [subcategoriasAtivas, origemInteligencia])
+
+  useEffect(() => {
+    let ativo = true
+    if (!mostrarInteligencia || !tipoInteligencia || !corretoraId || !podeAcessar) {
+      setArquivosTipoInteligencia([])
+      setTotalTipoInteligencia(0)
+      setPaginasTipoInteligencia(0)
+      return
+    }
+    setCarregandoTipoInteligencia(true)
+    setErroTipoInteligencia('')
+    // LIGACAO corresponde exclusivamente às gravações do WhatsApp.
+    // O servidor filtra/ordena o conjunto completo ANTES de paginar.
+    listarStorageArquivos(corretoraId, {
+      origem: tipoInteligencia === 'LIGACAO' ? 'WHATSAPP' : origemInteligencia || undefined,
+      tipo_arquivo: tipoInteligencia === 'LIGACAO' ? undefined : tipoInteligencia,
+      gravacao_ligacao: tipoInteligencia === 'LIGACAO'
+        ? true
+        : tipoInteligencia === 'AUDIO' && (!origemInteligencia || origemInteligencia === 'WHATSAPP')
+          ? false
+          : undefined,
+      corretor_id: corretorFiltroEfetivo || undefined,
+      ordenacao: 'MAIORES',
+      pagina: paginaTipoInteligencia,
+      por_pagina: 20,
+    }).then((resultado) => {
+      if (!ativo) return
+      setArquivosTipoInteligencia(resultado.arquivos)
+      setTotalTipoInteligencia(resultado.total)
+      setPaginasTipoInteligencia(resultado.total_paginas)
+    }).catch((error) => {
+      if (!ativo) return
+      setArquivosTipoInteligencia([])
+      setErroTipoInteligencia(error instanceof Error ? error.message : 'Não foi possível carregar os arquivos deste tipo.')
+    }).finally(() => { if (ativo) setCarregandoTipoInteligencia(false) })
+    return () => { ativo = false }
+  }, [mostrarInteligencia, tipoInteligencia, origemInteligencia, paginaTipoInteligencia,
+      corretoraId, corretorFiltroEfetivo, podeAcessar, versaoTipoInteligencia])
+
 
   const carregarCorretores =
     useCallback(async () => {
@@ -556,6 +698,8 @@ export default function CentralArmazenamento() {
                 undefined,
 
               status: 'ATIVO',
+              ordenacao,
+              min_bytes: tamanhoMin ? Number(tamanhoMin) * 1024 * 1024 : null,
               pagina,
               por_pagina: porPagina,
             }
@@ -599,6 +743,8 @@ export default function CentralArmazenamento() {
       tipoTitularDocumento,
       corretorFiltroEfetivo,
       pagina,
+      ordenacao,
+      tamanhoMin,
     ])
 
   const atualizarTudo =
@@ -1167,12 +1313,61 @@ export default function CentralArmazenamento() {
       setPagina(1)
     }, [])
 
+  const selecionarArquivo = (arquivo: StorageArquivo, checked: boolean) => {
+    if (!podeExcluir || excluindoLote) return
+    setSelecionados((atual) => {
+      const proximo = { ...atual }
+      if (checked) proximo[arquivo.id] = arquivo
+      else delete proximo[arquivo.id]
+      return proximo
+    })
+  }
+  const selecionarPagina = (checked: boolean) => {
+    if (!podeExcluir || excluindoLote) return
+    setSelecionados((atual) => {
+      const proximo = { ...atual }
+      for (const arquivo of arquivos) {
+        if (checked) proximo[arquivo.id] = arquivo
+        else delete proximo[arquivo.id]
+      }
+      return proximo
+    })
+  }
+  const selecionadosLista = Object.values(selecionados)
+  const selecionadosBytes = selecionadosLista.reduce((total, item) => total + item.tamanho_bytes, 0)
+  const excluirSelecionados = async () => {
+    if (!podeExcluir || !selecionadosLista.length || excluindoLote) return
+    if (!window.confirm(`Excluir permanentemente ${selecionadosLista.length} arquivo(s), totalizando ${formatarBytes(selecionadosBytes)}?\n\nTodas as versões serão removidas do armazenamento. Esta ação não pode ser desfeita.`)) return
+    setExcluindoLote(true)
+    setResultadoExclusao([])
+    const falhas: string[] = []
+    const removidos: string[] = []
+    // Sequencial por segurança: preserva resultado individual e evita tempestade de requests.
+    for (const arquivo of selecionadosLista) {
+      try {
+        await excluirArquivoStorage(arquivo.id)
+        removidos.push(arquivo.id)
+      } catch (error) {
+        falhas.push(`${arquivo.nome_original}: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+      }
+    }
+    setSelecionados((atual) => {
+      const proximo = { ...atual }
+      for (const id of removidos) delete proximo[id]
+      return proximo
+    })
+    setResultadoExclusao([`${removidos.length} arquivo(s) excluído(s). ${falhas.length} falha(s).`, ...falhas])
+    await Promise.allSettled([carregarDashboard(), carregarArquivos(), carregarInteligencia()])
+    setVersaoTipoInteligencia((v) => v + 1)
+    setExcluindoLote(false)
+  }
+
   const handleVisualizarArquivo =
     async (
       arquivo:
         StorageArquivo
     ) => {
-      if (arquivoEmAcao) return
+      if (arquivoEmAcao || !podeVisualizar) return
 
       const novaAba =
         window.open(
@@ -1187,7 +1382,7 @@ export default function CentralArmazenamento() {
 
         const readUrl =
           await criarUrlLeituraStorage(
-            arquivo.storage_path
+            arquivo.id
           )
 
         if (!novaAba) {
@@ -1217,7 +1412,7 @@ export default function CentralArmazenamento() {
       arquivo:
         StorageArquivo
     ) => {
-      if (arquivoEmAcao) return
+      if (arquivoEmAcao || !podeBaixar) return
 
       try {
         setArquivoEmAcao(
@@ -1226,7 +1421,8 @@ export default function CentralArmazenamento() {
 
         const readUrl =
           await criarUrlLeituraStorage(
-            arquivo.storage_path
+            arquivo.id,
+            true
           )
 
         const response =
@@ -1327,6 +1523,9 @@ export default function CentralArmazenamento() {
           ])
         }
 
+        setVersaoTipoInteligencia((v) => v + 1)
+        void carregarInteligencia()
+        setSelecionados((atual) => { const proximo = { ...atual }; delete proximo[arquivo.id]; return proximo })
         alert(
           'Arquivo excluído com sucesso.'
         )
@@ -1347,7 +1546,7 @@ export default function CentralArmazenamento() {
       }
     }
 
-  if (authLoading) {
+  if (authLoading || (userProfile?.tipo_usuario === 'CORRETOR' && !permissoesCarregadas)) {
     return (
       <div className="flex min-h-[500px] items-center justify-center">
         <Loader2 className="h-7 w-7 animate-spin text-slate-500" />
@@ -1961,6 +2160,124 @@ export default function CentralArmazenamento() {
           </>
         ) : null}
 
+        <section className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+          <button type="button" onClick={() => setMostrarInteligencia((a) => !a)} className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-900">
+            <span className="flex items-center gap-2 font-semibold"><ArrowDownWideNarrow size={18} /> Central de inteligência de armazenamento</span>
+            <span className="text-xs text-blue-600">{mostrarInteligencia ? 'Ocultar' : 'Explorar tipos e conversas'}</span>
+          </button>
+          {mostrarInteligencia && <div className="border-t border-slate-200 p-4 dark:border-slate-800">
+            <div className="mb-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Explorar por tipo de arquivo</h3>
+                  <p className="mt-1 text-xs text-slate-500">Selecione uma categoria para abrir todos os arquivos autorizados, ordenados dos maiores para os menores.</p>
+                </div>
+                <select
+                  aria-label="Filtrar a inteligência por origem"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  value={origemInteligencia}
+                  onChange={(e) => { setOrigemInteligencia(e.target.value as StorageOrigem | ''); setTipoInteligencia(null); setPaginaTipoInteligencia(1) }}
+                >
+                  <option value="">Todas as origens</option>
+                  {ORIGENS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                {resumoTiposInteligencia.map(({ tipo, quantidade, bytes }) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    disabled={!quantidade}
+                    onClick={() => { setTipoInteligencia((atual) => atual === tipo ? null : tipo); setPaginaTipoInteligencia(1) }}
+                    aria-pressed={tipoInteligencia === tipo}
+                    className={`rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${tipoInteligencia === tipo ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500/10 dark:bg-blue-950/30' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900'}`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold"><IconeArquivo tipo={tipo} className="h-4 w-4" />{labelTipo(tipo)}</span>
+                    <span className="mt-2 block text-lg font-semibold">{formatarBytes(bytes)}</span>
+                    <span className="block text-xs text-slate-500">{quantidade.toLocaleString('pt-BR')} arquivo(s)</span>
+                    <span className="mt-2 block text-xs font-medium text-blue-600">{tipoInteligencia === tipo ? 'Fechar arquivos' : 'Ver arquivos'}</span>
+                  </button>
+                ))}
+              </div>
+              {tipoInteligencia && (
+                <div className="rounded-xl border border-blue-200 p-3 dark:border-blue-900/60">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h4 className="font-semibold">{labelTipo(tipoInteligencia)} — maiores arquivos primeiro</h4>
+                      <p className="text-xs text-slate-500">{totalTipoInteligencia.toLocaleString('pt-BR')} arquivo(s) no filtro • até 20 por página</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setVersaoTipoInteligencia((v) => v + 1)} className="rounded-lg border px-3 py-1.5 text-xs" title="Atualizar arquivos">Atualizar</button>
+                      <button type="button" onClick={() => setTipoInteligencia(null)} className="rounded-lg border p-1.5" aria-label="Fechar detalhes"><XCircle size={17} /></button>
+                    </div>
+                  </div>
+                  {erroTipoInteligencia && <p role="alert" className="mb-3 text-sm text-red-600">{erroTipoInteligencia}</p>}
+                  {carregandoTipoInteligencia ? <div className="py-6 text-center"><Loader2 className="inline-block animate-spin" size={20} /></div> : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {arquivosTipoInteligencia.map((arquivo) => (
+                        <div key={arquivo.id} className="flex flex-wrap items-center gap-2 py-3">
+                          {podeExcluir && <input type="checkbox" aria-label={`Selecionar ${arquivo.nome_original}`} checked={Boolean(selecionados[arquivo.id])} disabled={excluindoLote} onChange={(e) => selecionarArquivo(arquivo, e.target.checked)} />}
+                          <IconeArquivo tipo={arquivo.tipo_arquivo} className="h-5 w-5 shrink-0 text-slate-500" />
+                          <div className="min-w-[180px] flex-1">
+                            <p className="truncate text-sm font-medium" title={arquivo.nome_original}>{arquivo.nome_original}</p>
+                            <p className="truncate text-xs text-slate-500">{labelOrigem(arquivo.origem)} • {arquivo.contexto?.titulo || 'Sem contexto'} • {formatarBytes(arquivo.tamanho_bytes)}</p>
+                          </div>
+                          {podeVisualizar && <button type="button" aria-label={`Visualizar ${arquivo.nome_original}`} title="Visualizar" disabled={Boolean(arquivoEmAcao) || excluindoLote} onClick={() => void handleVisualizarArquivo(arquivo)} className="rounded-lg border p-2 disabled:opacity-40"><ExternalLink size={16} /></button>}
+                          {podeBaixar && <button type="button" aria-label={`Baixar ${arquivo.nome_original}`} title="Baixar" disabled={Boolean(arquivoEmAcao) || excluindoLote} onClick={() => void handleBaixarArquivo(arquivo)} className="rounded-lg border p-2 disabled:opacity-40"><Download size={16} /></button>}
+                          {podeExcluir && <button type="button" aria-label={`Excluir ${arquivo.nome_original}`} title="Excluir permanentemente" disabled={Boolean(arquivoEmAcao) || excluindoLote} onClick={() => void handleExcluirArquivo(arquivo)} className="rounded-lg border border-red-200 p-2 text-red-600 disabled:opacity-40 dark:border-red-900"><Trash2 size={16} /></button>}
+                        </div>
+                      ))}
+                      {!arquivosTipoInteligencia.length && <p className="py-5 text-sm text-slate-500">Nenhum arquivo encontrado.</p>}
+                    </div>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <button type="button" disabled={paginaTipoInteligencia <= 1 || carregandoTipoInteligencia} onClick={() => setPaginaTipoInteligencia((p) => p - 1)} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Anterior</button>
+                      <span>Página {paginaTipoInteligencia} de {Math.max(1, paginasTipoInteligencia)}</span>
+                      <button type="button" disabled={paginaTipoInteligencia >= paginasTipoInteligencia || carregandoTipoInteligencia} onClick={() => setPaginaTipoInteligencia((p) => p + 1)} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Próxima</button>
+                    </div>
+                    {podeExcluir && selecionadosLista.length > 0 && <button type="button" disabled={excluindoLote} onClick={() => void excluirSelecionados()} className="rounded-lg border border-red-200 px-3 py-1.5 font-medium text-red-600 disabled:opacity-40">Excluir {selecionadosLista.length} selecionado(s)</button>}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="mb-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+              <h3 className="mb-1 text-sm font-semibold">Inteligência por conversa WhatsApp</h3>
+              <p className="mb-3 text-xs text-slate-500">Clique em uma conversa para ver seus arquivos; as classificações de vínculo são sugestões para revisão.</p>
+            </div>
+            <p className="mb-3 text-xs text-slate-500">Ranking de conversas WhatsApp com arquivos armazenados. Classificações sem cliente são sugestões para revisão, não vínculos confirmados.</p>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <select aria-label="Classificação da conversa" className="h-9 rounded-lg border px-3 text-sm dark:bg-slate-900" value={classificacaoConversa} onChange={(e) => { setClassificacaoConversa(e.target.value); setPaginaConversas(1); setConversaAtiva(null) }}>
+                <option value="">Todas as conversas</option>
+                <option value="SEM_CLIENTE_CRM_IDENTIFICADO">Sem cliente CRM identificado</option>
+                <option value="CLIENTE_CRM_VINCULADO">Cliente CRM vinculado</option>
+                <option value="CLIENTE_CRM_IDENTIFICADO">Cliente CRM identificado por telefone</option>
+                <option value="MULTIPLAS_CORRESPONDENCIAS_CRM">Múltiplas correspondências</option>
+                <option value="TELEFONE_INVALIDO_OU_AUSENTE">Telefone inválido ou ausente</option>
+              </select>
+              <button type="button" className="rounded-lg border px-3 text-sm" onClick={() => void carregarInteligencia()}>Atualizar ranking</button>
+            </div>
+            {erroInteligencia && <p role="alert" className="mb-3 text-sm text-red-600">{erroInteligencia}</p>}
+            {loadingInteligencia ? <Loader2 className="animate-spin" size={20} /> : <div className="space-y-2">
+              {conversasConsumo.map((item) => <button key={item.conversa_id} type="button" onClick={() => { setConversaAtiva(item); setPaginaArquivosConversa(1) }} className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-left hover:border-blue-400 ${conversaAtiva?.conversa_id === item.conversa_id ? 'border-blue-500' : 'border-slate-200 dark:border-slate-800'}`}>
+                <span className="min-w-0 flex-1"><span className="block truncate font-medium">{item.titulo}</span><span className="block truncate text-xs text-slate-500">{item.telefone || item.conversa_id} • {item.classificacao.replace(/_/g, ' ').toLowerCase()}</span></span>
+                <span className="text-right"><strong className="block">{formatarBytes(item.total_bytes)}</strong><span className="text-xs text-slate-500">{item.total_arquivos} arquivo(s)</span></span>
+              </button>)}
+              {!conversasConsumo.length && <p className="text-sm text-slate-500">Nenhuma conversa encontrada.</p>}
+            </div>}
+            <div className="mt-3 flex items-center gap-3 text-sm">
+              <button type="button" disabled={paginaConversas <= 1} onClick={() => setPaginaConversas((p) => p - 1)} className="rounded-lg border px-3 py-1 disabled:opacity-40">Anterior</button>
+              <span>Página {paginaConversas} de {Math.max(1, totalPaginasConversas)}</span>
+              <button type="button" disabled={paginaConversas >= totalPaginasConversas} onClick={() => setPaginaConversas((p) => p + 1)} className="rounded-lg border px-3 py-1 disabled:opacity-40">Próxima</button>
+            </div>
+            {conversaAtiva && <div className="mt-5 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+              <div className="mb-3 flex items-center justify-between"><strong>Arquivos da conversa — maiores primeiro</strong><button type="button" onClick={() => setConversaAtiva(null)} title="Fechar detalhes"><XCircle size={18} /></button></div>
+              {loadingArquivosConversa ? <Loader2 size={18} className="animate-spin" /> : <div className="space-y-2">{arquivosConversa.map((arquivo) => <div key={arquivo.id} className="flex flex-wrap items-center gap-2 border-b py-2 text-sm last:border-0"><span className="min-w-0 flex-1 truncate" title={arquivo.nome_original}>{arquivo.nome_original}</span><span className="text-slate-500">{formatarBytes(arquivo.tamanho_bytes)}</span>{podeVisualizar && <button type="button" onClick={() => void handleVisualizarArquivo(arquivo)} title="Visualizar"><ExternalLink size={16} /></button>}{podeBaixar && <button type="button" onClick={() => void handleBaixarArquivo(arquivo)} title="Baixar"><Download size={16} /></button>}{podeExcluir && <><label className="inline-flex items-center gap-1 text-xs"><input type="checkbox" disabled={excluindoLote} checked={Boolean(selecionados[arquivo.id])} onChange={(e) => selecionarArquivo(arquivo, e.target.checked)} /> Selecionar</label><button type="button" disabled={Boolean(arquivoEmAcao) || excluindoLote} aria-label={`Excluir ${arquivo.nome_original}`} onClick={() => void handleExcluirArquivo(arquivo)} title="Excluir arquivo" className="rounded-lg border border-red-200 p-1.5 text-red-600 disabled:opacity-40"><Trash2 size={16} /></button></>}</div>)}{!arquivosConversa.length && <p className="text-slate-500">Nenhum arquivo nesta página.</p>}</div>}
+              <div className="mt-2 flex gap-3 text-xs"><button type="button" disabled={paginaArquivosConversa <= 1} onClick={() => setPaginaArquivosConversa((p) => p - 1)}>Anterior</button><span>Página {paginaArquivosConversa} / {Math.max(1, totalPaginasArquivosConversa)}</span><button type="button" disabled={paginaArquivosConversa >= totalPaginasArquivosConversa} onClick={() => setPaginaArquivosConversa((p) => p + 1)}>Próxima</button></div>
+            </div>}
+          </div>}
+        </section>
+
         <div className="mt-6">
           <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
             <button
@@ -2063,7 +2380,21 @@ export default function CentralArmazenamento() {
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="flex flex-wrap gap-2 sm:flex-row">
+                  <select aria-label="Ordenar arquivos" value={ordenacao} onChange={(e) => { setOrdenacao(e.target.value as typeof ordenacao); setPagina(1) }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+                    <option value="RECENTES">Mais recentes</option>
+                    <option value="ANTIGOS">Mais antigos</option>
+                    <option value="MAIORES">Maiores arquivos primeiro</option>
+                    <option value="MENORES">Menores arquivos primeiro</option>
+                  </select>
+                  <select aria-label="Tamanho mínimo" value={tamanhoMin} onChange={(e) => { setTamanhoMin(e.target.value); setPagina(1) }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+                    <option value="">Qualquer tamanho</option>
+                    <option value="1">A partir de 1 MB</option>
+                    <option value="5">A partir de 5 MB</option>
+                    <option value="10">A partir de 10 MB</option>
+                    <option value="25">A partir de 25 MB</option>
+                    <option value="50">A partir de 50 MB</option>
+                  </select>
                   <div className="relative min-w-0 sm:w-[280px]">
                     <Search
                       size={16}
@@ -2178,6 +2509,23 @@ export default function CentralArmazenamento() {
               </div>
             </div>
 
+            {podeExcluir && (
+              <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 text-sm dark:border-slate-800">
+                <label className="inline-flex items-center gap-2">
+                  <input type="checkbox" aria-label="Selecionar todos os arquivos desta página" checked={arquivos.length > 0 && arquivos.every((a) => Boolean(selecionados[a.id]))} onChange={(e) => selecionarPagina(e.target.checked)} disabled={excluindoLote || !arquivos.length} />
+                  Selecionar página ({arquivos.length})
+                </label>
+                <span className="text-slate-500">{selecionadosLista.length} selecionado(s) • {formatarBytes(selecionadosBytes)}</span>
+                {selecionadosLista.length > 0 && <>
+                  <button type="button" onClick={() => setSelecionados({})} className="rounded-lg border px-3 py-1.5">Limpar seleção</button>
+                  <button type="button" disabled={excluindoLote} onClick={excluirSelecionados} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 font-medium text-white disabled:opacity-50">
+                    {excluindoLote ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />} Excluir selecionados
+                  </button>
+                </>}
+              </div>
+            )}
+            {resultadoExclusao.length > 0 && <div role="status" className="m-4 rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800"><p className="font-semibold">Resultado da exclusão</p>{resultadoExclusao.map((linha, i) => <p key={i} className="break-words">{linha}</p>)}</div>}
+
             {erroArquivos && (
               <div className="m-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
                 {erroArquivos}
@@ -2211,6 +2559,7 @@ export default function CentralArmazenamento() {
                   <table className="w-full min-w-[1100px]">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 text-left dark:border-slate-800 dark:bg-slate-900/50">
+                        {podeExcluir && <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Sel.</th>}
                         <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                           Arquivo
                         </th>
@@ -2275,6 +2624,7 @@ export default function CentralArmazenamento() {
                             key={arquivo.id}
                             className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50 dark:border-slate-900 dark:hover:bg-slate-900/40"
                           >
+                            {podeExcluir && <td className="px-4 py-3.5"><input type="checkbox" aria-label={`Selecionar ${arquivo.nome_original}`} checked={Boolean(selecionados[arquivo.id])} onChange={(e) => selecionarArquivo(arquivo, e.target.checked)} disabled={excluindoLote} /></td>}
                             <td className="px-4 py-3.5">
                               <div className="flex min-w-0 items-center gap-3">
                                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
@@ -2364,7 +2714,7 @@ export default function CentralArmazenamento() {
 
                             <td className="px-4 py-3.5">
                               <div className="flex items-center justify-end gap-2">
-                                <button
+                                {podeVisualizar && <button
                                   type="button"
                                   title="Visualizar arquivo"
                                   disabled={
@@ -2389,9 +2739,9 @@ export default function CentralArmazenamento() {
                                       size={16}
                                     />
                                   )}
-                                </button>
+                                </button>}
 
-                                <button
+                                {podeBaixar && <button
                                   type="button"
                                   title="Baixar arquivo"
                                   disabled={
@@ -2416,7 +2766,7 @@ export default function CentralArmazenamento() {
                                       size={16}
                                     />
                                   )}
-                                </button>
+                                </button>}
 
                                 {podeExcluir && (
                                   <button

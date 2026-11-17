@@ -17,6 +17,7 @@ import { normalizarPermissoesContasReceber, type PermissoesContasReceber } from 
 import { normalizarPermissoesFluxoCaixa, type PermissoesFluxoCaixa } from "./ModalPermissoesFluxoCaixa";
 import { normalizarPermissoesParcelasClientes, type PermissoesParcelasClientes } from "./ModalPermissoesParcelasClientes";
 import { normalizarPermissoesConexoesWhatsapp, type PermissoesConexoesWhatsapp } from "./ModalPermissoesConexoesWhatsapp";
+import { normalizarPermissoesArmazenamento, type PermissoesArmazenamento } from "./ModalPermissoesArmazenamento";
 import { MODULOS_ATIVOS, type ModuloAtivoId } from "./estruturaPermissoes";
 
 export interface PermissoesAtivas {
@@ -36,6 +37,7 @@ export interface PermissoesAtivas {
   sinistros: PermissoesSinistro;
   assistencias: PermissoesAssistencia;
   conexoes_whatsapp: PermissoesConexoesWhatsapp;
+  armazenamento: PermissoesArmazenamento;
 }
 export type EscopoAtivo = "none" | "assigned" | "own" | "tenant";
 
@@ -57,6 +59,7 @@ export function normalizarAtivas(json: unknown): PermissoesAtivas {
     sinistros: normalizarPermissoesSinistro(json),
     assistencias: normalizarPermissoesAssistencia(json),
     conexoes_whatsapp: normalizarPermissoesConexoesWhatsapp(json),
+    armazenamento: normalizarPermissoesArmazenamento(json),
   };
 }
 
@@ -71,7 +74,7 @@ const GRUPO_DO_MODULO: Record<ModuloAtivoId, "atendimento" | "operacoes" | "fina
   equipe: "operacoes", clientes: "operacoes", propostas: "operacoes",
   renovacoes: "operacoes", comissoes: "operacoes", sinistros: "operacoes", assistencias: "operacoes",
   contas_pagar: "financeiro", contas_receber: "financeiro", fluxo_caixa: "financeiro", parcelas_clientes: "financeiro",
-  conexoes_whatsapp: "gestao",
+  conexoes_whatsapp: "gestao", armazenamento: "gestao",
 };
 
 export type Diferenca = {

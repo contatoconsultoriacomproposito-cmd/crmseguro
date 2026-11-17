@@ -943,7 +943,7 @@ export async function excluirDocumento(
       'b2-media',
       {
         body: {
-          action: 'delete',
+          action: 'document-delete',
           arquivoId: id,
         },
       }
