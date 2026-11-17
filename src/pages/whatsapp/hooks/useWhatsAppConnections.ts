@@ -93,6 +93,43 @@ function getErrorMessage(error: unknown, fallback: string) {
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+type ConnectionPermissionAction = "create" | "disconnect" | "cancel";
+export interface WhatsAppConnectionPermissions {
+  create: boolean;
+  disconnect: boolean;
+  cancel: boolean;
+}
+const NO_PERMISSIONS: WhatsAppConnectionPermissions = {
+  create: false,
+  disconnect: false,
+  cancel: false,
+};
+const PERMISSION_ACTIONS: ConnectionPermissionAction[] = [
+  "create", "disconnect", "cancel",
+];
+
+async function consultarPermissaoConexao(
+  acao: ConnectionPermissionAction,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("crm_escopo_permissao", {
+    p_recurso: "gestao.conexoes_whatsapp",
+    p_acao: acao,
+  });
+  if (error) throw error;
+  return data === "tenant";
+}
+
+async function exigirPermissaoConexao(
+  acao: ConnectionPermissionAction,
+): Promise<void> {
+  if (!(await consultarPermissaoConexao(acao))) {
+    throw new Error(`Sem permissão para ${
+      acao === "create" ? "criar ou administrar" :
+      acao === "disconnect" ? "desconectar" : "cancelar"
+    } conexões WhatsApp.`);
+  }
+}
+
 export function useWhatsAppConnections() {
   const [connections, setConnections] = useState<WhatsAppConnection[]>([]);
   const [commercialLimit, setCommercialLimit] =
@@ -110,6 +147,32 @@ export function useWhatsAppConnections() {
   const [creating, setCreating] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [permissions, setPermissions] =
+    useState<WhatsAppConnectionPermissions>(NO_PERMISSIONS);
+  const [loadingPermissions, setLoadingPermissions] = useState(true);
+
+  const refreshPermissions = useCallback(async () => {
+    setLoadingPermissions(true);
+    try {
+      const results = await Promise.all(
+        PERMISSION_ACTIONS.map((action) => consultarPermissaoConexao(action)),
+      );
+      const next: WhatsAppConnectionPermissions = {
+        create: results[0],
+        disconnect: results[1],
+        cancel: results[2],
+      };
+      setPermissions(next);
+      return next;
+    } catch (err) {
+      setPermissions(NO_PERMISSIONS);
+      setError(getErrorMessage(err, "Não foi possível consultar as permissões."));
+      throw err;
+    } finally {
+      setLoadingPermissions(false);
+    }
+  }, []);
+
 
   const invoke = useCallback(
     async <T = unknown>(
@@ -158,6 +221,14 @@ export function useWhatsAppConnections() {
       setError(null);
 
       try {
+        const allowed = await Promise.all(
+          PERMISSION_ACTIONS.map(consultarPermissaoConexao),
+        );
+        if (!allowed.some(Boolean)) {
+          setConnections([]);
+          setCommercialLimit(null);
+          throw new Error("Sem permissão para visualizar as conexões WhatsApp.");
+        }
         const response = await invoke({ action: "LISTAR" });
 
         const items = Array.isArray(response.instancias)
@@ -188,6 +259,7 @@ export function useWhatsAppConnections() {
     setLoadingResponsibles(true);
 
     try {
+      await exigirPermissaoConexao("create");
       const items = await buscarMembrosAtivosDaCorretora();
 
       setResponsibles(items);
@@ -211,6 +283,7 @@ export function useWhatsAppConnections() {
     setLoadingOperators(true);
 
     try {
+      await exigirPermissaoConexao("create");
       const vinculos = await buscarVinculosOperadores();
 
       const grouped = vinculos.reduce<Record<string, string[]>>(
@@ -255,6 +328,7 @@ export function useWhatsAppConnections() {
       setError(null);
 
       try {
+        await exigirPermissaoConexao("create");
         const response = await invoke({
           action: "CRIAR",
           nome,
@@ -319,6 +393,7 @@ export function useWhatsAppConnections() {
       setError(null);
 
       try {
+        await exigirPermissaoConexao("create");
         const maxTentativas = 4;
         const intervaloMs = 1500;
 
@@ -398,6 +473,12 @@ export function useWhatsAppConnections() {
       setError(null);
 
       try {
+        const allowed = await Promise.all(
+          PERMISSION_ACTIONS.map(consultarPermissaoConexao),
+        );
+        if (!allowed.some(Boolean)) {
+          throw new Error("Sem permissão para consultar o status da conexão.");
+        }
         const response = await invoke({
           action: "STATUS",
           instancia_id: instanciaId,
@@ -440,6 +521,7 @@ export function useWhatsAppConnections() {
       setError(null);
 
       try {
+        await exigirPermissaoConexao("create");
         const connection = connections.find(
           (item) => item.id === instanciaId,
         );
@@ -512,6 +594,7 @@ export function useWhatsAppConnections() {
       setError(null);
 
       try {
+        await exigirPermissaoConexao("create");
         if (responsavelId) {
           await garantirOperadorDaInstancia(
             instanciaId,
@@ -566,6 +649,7 @@ export function useWhatsAppConnections() {
       setError(null);
 
       try {
+        await exigirPermissaoConexao("disconnect");
         const response = await invoke({
           action: "DESCONECTAR",
           instancia_id: instanciaId,
@@ -602,6 +686,7 @@ export function useWhatsAppConnections() {
       setError(null);
 
       try {
+        await exigirPermissaoConexao("cancel");
         const response = await invoke({
           action: "CANCELAR",
           instancia_id: instanciaId,
@@ -650,18 +735,43 @@ export function useWhatsAppConnections() {
   );
 
   useEffect(() => {
-    void listConnections().catch(() => undefined);
-    void listResponsibles().catch(() => undefined);
-    void listOperators().catch(() => undefined);
-  }, [
-    listConnections,
-    listResponsibles,
-    listOperators,
-  ]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const access = await refreshPermissions();
+        if (cancelled) return;
+        if (access.create || access.disconnect || access.cancel) {
+          void listConnections().catch(() => undefined);
+        } else {
+          setConnections([]);
+          setCommercialLimit(null);
+          setLoading(false);
+        }
+        if (access.create) {
+          void listResponsibles().catch(() => undefined);
+          void listOperators().catch(() => undefined);
+        } else {
+          setResponsibles([]);
+          setOperatorsByConnection({});
+          setLoadingResponsibles(false);
+          setLoadingOperators(false);
+        }
+      } catch {
+        if (cancelled) return;
+        setLoading(false);
+        setLoadingResponsibles(false);
+        setLoadingOperators(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [refreshPermissions, listConnections, listResponsibles, listOperators]);
 
   return {
     connections,
     commercialLimit,
+    permissions,
+    loadingPermissions,
+    refreshPermissions,
     responsibles,
     operatorsByConnection,
     loading,

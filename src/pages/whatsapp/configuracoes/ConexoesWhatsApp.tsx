@@ -122,6 +122,8 @@ export default function ConexoesWhatsApp() {
   const {
     connections,
     commercialLimit,
+    permissions,
+    loadingPermissions,
     responsibles,
     operatorsByConnection,
     loading,
@@ -153,6 +155,7 @@ export default function ConexoesWhatsApp() {
   );
 
   const openCreateModal = () => {
+    if (loadingPermissions || !permissions.create) return;
     setName("");
     setResponsibleId("");
     setSelected(null);
@@ -175,6 +178,7 @@ export default function ConexoesWhatsApp() {
     };
 
   const handleCreate = async () => {
+    if (loadingPermissions || !permissions.create) return;
     if (commercialLimit?.atingido) {
       setModal("limit");
       return;
@@ -225,6 +229,7 @@ export default function ConexoesWhatsApp() {
     };
 
   const handleQr = async (connection: WhatsAppConnection) => {
+    if (loadingPermissions || !permissions.create) return;
     setSelected(connection);
     setQr(null);
     setModal("qr");
@@ -264,6 +269,7 @@ export default function ConexoesWhatsApp() {
   connection: WhatsAppConnection,
   responsavelId: string,
   ) => {
+  if (loadingPermissions || !permissions.create) return;
   try {
       await updateResponsible(
       connection.id,
@@ -289,6 +295,7 @@ export default function ConexoesWhatsApp() {
     usuarioId: string,
     checked: boolean,
   ) => {
+    if (loadingPermissions || !permissions.create) return;
     const current = operatorsByConnection[connection.id] || [];
 
     const next = checked
@@ -313,7 +320,7 @@ export default function ConexoesWhatsApp() {
   };
 
   const handleDisconnect = async () => {
-    if (!selected) return;
+    if (!selected || loadingPermissions || !permissions.disconnect) return;
     try {
       await disconnectConnection(selected.id);
       toast.success("WhatsApp desconectado.");
@@ -325,7 +332,7 @@ export default function ConexoesWhatsApp() {
   };
 
   const handleCancel = async () => {
-    if (!selected) return;
+    if (!selected || loadingPermissions || !permissions.cancel) return;
     try {
       const result = await cancelConnection(selected.id);
       toast.success(
@@ -343,6 +350,9 @@ export default function ConexoesWhatsApp() {
   const handleSolicitarConexoes = async (
   novaQuantidade: number,
 ) => {
+  if (loadingPermissions || !permissions.create) {
+    throw new Error("Sem permissão para solicitar conexões adicionais.");
+  }
   const { data, error } = await supabase.rpc(
     "crm_solicitar_adicional_whatsapp",
     {
@@ -452,6 +462,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
             </div>
           </div>
 
+          {permissions.create && !loadingPermissions && (
           <button
             onClick={openCreateModal}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700"
@@ -459,6 +470,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
             <Plus size={18} />
             Nova conexão
           </button>
+          )}
         </div>
 
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
@@ -511,12 +523,16 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
           </div>
         </div>
 
-        {loading ? (
+        {loadingPermissions || loading ? (
           <div className="flex min-h-64 items-center justify-center rounded-2xl border border-slate-200 bg-white">
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Loader2 size={18} className="animate-spin" />
               Carregando conexões...
             </div>
+          </div>
+        ) : !permissions.create && !permissions.disconnect && !permissions.cancel ? (
+          <div className="rounded-xl border border-amber-200 bg-white p-6 text-sm text-slate-600">
+            Você não possui permissão para acessar as conexões WhatsApp.
           </div>
         ) : connections.length === 0 ? (
           <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
@@ -525,8 +541,11 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
             </div>
             <h2 className="text-base font-semibold text-slate-900">Nenhuma conexão WhatsApp</h2>
             <p className="mt-1 max-w-md text-sm text-slate-500">
-              Adicione um número para começar a receber e enviar mensagens pelo SeguroCRM.
+              {permissions.create
+                ? "Adicione um número para começar a receber e enviar mensagens pelo SeguroCRM."
+                : "Não há conexões disponíveis para esta corretora."}
             </p>
+            {permissions.create && (
             <button
               type="button"
               onClick={openCreateModal}
@@ -535,6 +554,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
               <Plus size={17} />
               Adicionar conexão
             </button>
+            )}
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -557,6 +577,8 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
                     <StatusBadge status={connection.status} />
                   </div>
 
+                  {permissions.create ? (
+                  <>
                   <div className="mt-5 rounded-xl bg-slate-50 p-3.5">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                         <UserRound size={14} />
@@ -696,8 +718,16 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
                     </p>
                   </div>
 
+                  </>
+                  ) : (
+                    <div className="mt-5 rounded-xl bg-slate-50 p-3.5 text-sm text-slate-600">
+                      <span className="font-semibold">Responsável padrão:</span>{" "}
+                      {responsible?.nome || "Sem responsável"}
+                    </div>
+                  )}
+
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {(connection.status === "aguardando_qr" ||
+                    {permissions.create && (connection.status === "aguardando_qr" ||
                       connection.status === "desconectada" ||
                       connection.status === "erro" ||
                       connection.status === "conectando") && (
@@ -720,7 +750,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
                       Verificar status
                     </button>
 
-                    {connection.status === "conectada" && (
+                    {permissions.disconnect && connection.status === "conectada" && (
                       <button
                         onClick={() => {
                           setSelected(connection);
@@ -734,6 +764,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
                       </button>
                     )}
 
+                    {permissions.cancel && (
                     <button
                       onClick={() => {
                         setSelected(connection);
@@ -745,6 +776,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
                       <Trash2 size={15} />
                       Cancelar
                     </button>
+                    )}
                   </div>
                 </div>
               );
@@ -753,7 +785,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
         )}
       </div>
 
-        {modal === "limit" && commercialLimit && (
+        {permissions.create && modal === "limit" && commercialLimit && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
             <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
               <div className="border-b border-slate-100 px-5 py-5">
@@ -859,7 +891,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
           </div>
         )}
 
-        {modal === "create" && (
+        {permissions.create && modal === "create" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -938,7 +970,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
         </div>
       )}
 
-      {modal === "qr" && selected && (
+      {permissions.create && modal === "qr" && selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -1006,7 +1038,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
         </div>
       )}
 
-      {modal === "disconnect" && selected && (
+      {permissions.disconnect && modal === "disconnect" && selected && (
         <ConfirmModal
           title="Desconectar WhatsApp?"
           description={`O número ${formatPhone(selected.telefone)} será desconectado da D-API. A conexão continuará cadastrada no SeguroCRM.`}
@@ -1017,7 +1049,7 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
         />
       )}
 
-      {modal === "cancel" && selected && (
+      {permissions.cancel && modal === "cancel" && selected && (
         <ConfirmModal
           danger
           title="Cancelar conexão?"
@@ -1029,12 +1061,14 @@ Olá! Gostaria de concluir a contratação das novas conexões WhatsApp do Segur
         />
       )}
 
+      {permissions.create && (
       <ModalConexoes
         isOpen={showModalConexoes}
         onClose={() => setShowModalConexoes(false)}
         quantidadeAtual={commercialLimit?.limite ?? 1}
         onSolicitar={handleSolicitarConexoes}
       />
+      )}
     </div>
   );
 }

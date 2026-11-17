@@ -11,11 +11,19 @@ export interface VinculoOperadorInstancia {
 interface PerfilLogado {
   id: string;
   corretora_id: string;
-  tipo_usuario: "CORRETORA" | "CORRETOR" | "ADMIN";
+  tipo_usuario: "CORRETOR" | "CORRETORA" | "ADMIN";
   ativo: boolean;
 }
 
-async function buscarPerfilLogado(): Promise<PerfilLogado> {
+/**
+ * Autoriza o gerenciamento de operadores com a mesma chave utilizada pela
+ * Edge Function dapi-sessions: gestao.conexoes_whatsapp.create = tenant.
+ * A consulta RPC ocorre com o JWT do usuário, nunca com service_role.
+ *
+ * Importante: a proteção definitiva dos INSERTs/DELETEs também precisa
+ * existir nas policies RLS ou em RPCs autorizadas no banco.
+ */
+async function validarGerenciamentoConexoes(): Promise<PerfilLogado> {
   const {
     data: { user },
     error: authError,
@@ -24,54 +32,104 @@ async function buscarPerfilLogado(): Promise<PerfilLogado> {
   if (authError) throw authError;
   if (!user?.id) throw new Error("Usuário não autenticado.");
 
-  const { data, error } = await supabase
+  const { data: perfil, error: perfilError } = await supabase
     .from("usuarios_perfis")
     .select("id, corretora_id, tipo_usuario, ativo")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  if (error) throw error;
-  if (!data) throw new Error("Perfil não encontrado.");
-
-  return data as PerfilLogado;
-}
-
-async function validarCorretoraLogada(): Promise<PerfilLogado> {
-  const perfil = await buscarPerfilLogado();
-
-  if (perfil.tipo_usuario !== "CORRETORA" || perfil.ativo !== true) {
-    throw new Error("Apenas a corretora pode gerenciar operadores das conexões.");
+  if (perfilError) throw perfilError;
+  if (!perfil) throw new Error("Perfil não encontrado.");
+  if (perfil.ativo !== true || !perfil.corretora_id) {
+    throw new Error("Usuário inativo ou sem corretora vinculada.");
   }
 
-  return perfil;
+  const { data: escopo, error: permissaoError } = await supabase.rpc(
+    "crm_escopo_permissao",
+    {
+      p_recurso: "gestao.conexoes_whatsapp",
+      p_acao: "create",
+    },
+  );
+
+  if (permissaoError) throw permissaoError;
+  if (escopo !== "tenant") {
+    throw new Error(
+      "Você não possui permissão para gerenciar operadores das conexões WhatsApp.",
+    );
+  }
+
+  return perfil as PerfilLogado;
 }
 
-export async function buscarVinculosOperadores(): Promise<VinculoOperadorInstancia[]> {
-  const perfil = await validarCorretoraLogada();
+/** Impede editar vínculos de instâncias inativas ou de outra corretora. */
+async function validarInstanciaDaCorretora(
+  instanciaId: string,
+  corretoraId: string,
+): Promise<void> {
+  if (!instanciaId?.trim()) throw new Error("Instância não informada.");
+
+  const { data: instancia, error } = await supabase
+    .from("whatsapp_instancias")
+    .select("id")
+    .eq("id", instanciaId)
+    .eq("corretora_id", corretoraId)
+    .eq("provider", "dapi")
+    .eq("ativo", true)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!instancia) {
+    throw new Error(
+      "Conexão não encontrada, inativa ou não pertencente à sua corretora.",
+    );
+  }
+}
+
+async function validarOperadoresAtivos(
+  usuarioIds: string[],
+  corretoraId: string,
+): Promise<void> {
+  if (usuarioIds.length === 0) return;
+
+  const { data: usuarios, error } = await supabase
+    .from("usuarios_perfis")
+    .select("id")
+    .eq("corretora_id", corretoraId)
+    .eq("tipo_usuario", "CORRETOR")
+    .eq("ativo", true)
+    .in("id", usuarioIds);
+
+  if (error) throw error;
+
+  const idsValidos = new Set((usuarios ?? []).map((item) => item.id));
+  if (usuarioIds.some((id) => !idsValidos.has(id))) {
+    throw new Error(
+      "Um ou mais operadores selecionados não pertencem à equipe ativa da corretora.",
+    );
+  }
+}
+
+export async function buscarVinculosOperadores(): Promise<
+  VinculoOperadorInstancia[]
+> {
+  const perfil = await validarGerenciamentoConexoes();
 
   const { data, error } = await supabase
     .from("whatsapp_instancias_usuarios")
-    .select(`
-      id,
-      corretora_id,
-      instancia_id,
-      usuario_id,
-      created_at
-    `)
+    .select("id, corretora_id, instancia_id, usuario_id, created_at")
     .eq("corretora_id", perfil.corretora_id)
     .order("created_at", { ascending: true });
 
   if (error) throw error;
-
-  return (data || []) as VinculoOperadorInstancia[];
+  return (data ?? []) as VinculoOperadorInstancia[];
 }
 
 export async function buscarOperadoresDaInstancia(
   instanciaId: string,
 ): Promise<string[]> {
-  if (!instanciaId) throw new Error("Instância não informada.");
-
-  const perfil = await validarCorretoraLogada();
+  const perfil = await validarGerenciamentoConexoes();
+  await validarInstanciaDaCorretora(instanciaId, perfil.corretora_id);
 
   const { data, error } = await supabase
     .from("whatsapp_instancias_usuarios")
@@ -80,45 +138,20 @@ export async function buscarOperadoresDaInstancia(
     .eq("instancia_id", instanciaId);
 
   if (error) throw error;
-
-  return (data || []).map((item) => item.usuario_id);
+  return (data ?? []).map((item) => item.usuario_id);
 }
 
 export async function atualizarOperadoresDaInstancia(
   instanciaId: string,
   usuarioIds: string[],
 ): Promise<string[]> {
-  if (!instanciaId) throw new Error("Instância não informada.");
-
-  const perfil = await validarCorretoraLogada();
+  const perfil = await validarGerenciamentoConexoes();
+  await validarInstanciaDaCorretora(instanciaId, perfil.corretora_id);
 
   const idsNormalizados = Array.from(
     new Set(usuarioIds.map((id) => id.trim()).filter(Boolean)),
   );
-
-  if (idsNormalizados.length > 0) {
-    const { data: usuarios, error: usuariosError } = await supabase
-      .from("usuarios_perfis")
-      .select("id")
-      .eq("corretora_id", perfil.corretora_id)
-      .eq("tipo_usuario", "CORRETOR")
-      .eq("ativo", true)
-      .in("id", idsNormalizados);
-
-    if (usuariosError) throw usuariosError;
-
-    const idsValidos = new Set((usuarios || []).map((item) => item.id));
-
-    const possuiUsuarioInvalido = idsNormalizados.some(
-      (id) => !idsValidos.has(id),
-    );
-
-    if (possuiUsuarioInvalido) {
-      throw new Error(
-        "Um ou mais operadores selecionados não pertencem à equipe ativa da corretora.",
-      );
-    }
-  }
+  await validarOperadoresAtivos(idsNormalizados, perfil.corretora_id);
 
   const { data: atuais, error: atuaisError } = await supabase
     .from("whatsapp_instancias_usuarios")
@@ -128,15 +161,10 @@ export async function atualizarOperadoresDaInstancia(
 
   if (atuaisError) throw atuaisError;
 
-  const atuaisIds = (atuais || []).map((item) => item.usuario_id);
-
-  const inserir = idsNormalizados.filter(
-    (id) => !atuaisIds.includes(id),
-  );
-
-  const remover = atuaisIds.filter(
-    (id) => !idsNormalizados.includes(id),
-  );
+  const atuaisIds = new Set((atuais ?? []).map((item) => item.usuario_id));
+  const novosIds = new Set(idsNormalizados);
+  const inserir = idsNormalizados.filter((id) => !atuaisIds.has(id));
+  const remover = [...atuaisIds].filter((id) => !novosIds.has(id));
 
   if (inserir.length > 0) {
     const { error } = await supabase
@@ -174,26 +202,12 @@ export async function garantirOperadorDaInstancia(
   instanciaId: string,
   usuarioId: string,
 ): Promise<void> {
-  if (!instanciaId || !usuarioId) return;
+  // Preserva a compatibilidade com chamadas que não informam responsável.
+  if (!instanciaId?.trim() || !usuarioId?.trim()) return;
 
-  const perfil = await validarCorretoraLogada();
-
-  const { data: usuario, error: usuarioError } = await supabase
-    .from("usuarios_perfis")
-    .select("id")
-    .eq("id", usuarioId)
-    .eq("corretora_id", perfil.corretora_id)
-    .eq("tipo_usuario", "CORRETOR")
-    .eq("ativo", true)
-    .maybeSingle();
-
-  if (usuarioError) throw usuarioError;
-
-  if (!usuario) {
-    throw new Error(
-      "O responsável selecionado não pertence à equipe ativa da corretora.",
-    );
-  }
+  const perfil = await validarGerenciamentoConexoes();
+  await validarInstanciaDaCorretora(instanciaId, perfil.corretora_id);
+  await validarOperadoresAtivos([usuarioId.trim()], perfil.corretora_id);
 
   const { error } = await supabase
     .from("whatsapp_instancias_usuarios")
@@ -201,7 +215,7 @@ export async function garantirOperadorDaInstancia(
       {
         corretora_id: perfil.corretora_id,
         instancia_id: instanciaId,
-        usuario_id: usuarioId,
+        usuario_id: usuarioId.trim(),
       },
       {
         onConflict: "instancia_id,usuario_id",

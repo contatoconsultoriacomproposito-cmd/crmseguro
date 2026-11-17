@@ -116,6 +116,11 @@ export default function Sidebar({
   userProfile?.tipo_usuario === "CORRETORA" ||
   userProfile?.tipo_usuario === "ADMIN"
 
+  // Gestão / Conexões WhatsApp: basta uma das três ações autorizadas.
+  const podeVerConexoesWhatsApp = ["create", "disconnect", "cancel"].some(
+    (acao) => escopo("gestao.conexoes_whatsapp", acao) === "tenant"
+  )
+
   const podeVerContasPagar = escopo("financeiro.contas_pagar", "read") === "tenant" || podeVerCorretor
   const podeVerContasReceber = escopo("financeiro.contas_receber", "read") === "tenant" || podeVerCorretor
   const podeVerFluxoCaixa = escopo("financeiro.fluxo_caixa", "read") === "tenant" || podeVerCorretor
@@ -444,7 +449,7 @@ export default function Sidebar({
           title="Gestão"
           collapsed={isCollapsed}
         >
-          {podeVerCorretor && (
+          {podeVerConexoesWhatsApp && (
             <SidebarItem
               to="/whatsapp/conexoes"
               icon={<Cable size={18} />}

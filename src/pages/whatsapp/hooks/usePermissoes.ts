@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "../../../auth/AuthContext"
 import { supabase } from "../../../lib/supabaseClient"
 
@@ -13,12 +13,7 @@ export type EscopoPermissao =
 type PermissoesJson = Record<string, unknown>
 
 const ESCOPOS_VALIDOS = new Set<EscopoPermissao>([
-  "none",
-  "own",
-  "team",
-  "assigned",
-  "tenant",
-  "all",
+  "none", "own", "team", "assigned", "tenant", "all",
 ])
 
 function lerCaminho(origem: unknown, caminho: string): unknown {
@@ -38,6 +33,7 @@ export function usePermissoes() {
   const [permissoes, setPermissoes] = useState<PermissoesJson>({})
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
+  const ultimaRequisicao = useRef(0)
 
   const tipoUsuario = userProfile?.tipo_usuario
   const acessoEstruturalTotal = tipoUsuario === "CORRETORA" || tipoUsuario === "ADMIN"
@@ -50,6 +46,8 @@ export function usePermissoes() {
   }, [userProfile, tipoUsuario, user?.id])
 
   const carregar = useCallback(async () => {
+    const requisicao = ++ultimaRequisicao.current
+
     if (!user?.id) {
       setPermissoes({})
       setErro(null)
@@ -57,8 +55,6 @@ export function usePermissoes() {
       return
     }
 
-    // O JWT pode estar pronto antes do perfil. Não conclua a autorização
-    // enquanto o perfil de quem está autenticado ainda não foi identificado.
     if (!userProfile) {
       setPermissoes({})
       setErro(null)
@@ -66,6 +62,9 @@ export function usePermissoes() {
       return
     }
 
+    // Mantém o comportamento existente dos módulos que concedem acesso
+    // estrutural à CORRETORA / ADMIN. Gestão será tratada separadamente
+    // durante a homologação integral desses perfis.
     if (acessoEstruturalTotal) {
       setPermissoes({})
       setErro(null)
@@ -92,23 +91,43 @@ export function usePermissoes() {
         .maybeSingle()
 
       if (error) throw error
+      if (requisicao !== ultimaRequisicao.current) return
 
-      const json = data?.permissoes && typeof data.permissoes === "object"
+      const json = data?.permissoes && typeof data.permissoes === "object" && !Array.isArray(data.permissoes)
         ? (data.permissoes as PermissoesJson)
         : {}
 
       setPermissoes(json)
     } catch (error) {
+      if (requisicao !== ultimaRequisicao.current) return
       console.error("Erro ao carregar permissões do usuário:", error)
       setPermissoes({})
       setErro(error instanceof Error ? error.message : "Não foi possível carregar as permissões.")
     } finally {
-      setLoading(false)
+      if (requisicao === ultimaRequisicao.current) setLoading(false)
     }
   }, [user?.id, userProfile, acessoEstruturalTotal, tenantId])
 
   useEffect(() => {
     void carregar()
+    return () => { ultimaRequisicao.current += 1 }
+  }, [carregar])
+
+  // Uma permissão alterada em outra sessão/aba deve ser refletida ao
+  // retornar ao sistema, sem exigir logout ou recarga manual da página.
+  useEffect(() => {
+    const aoFocar = () => { void carregar() }
+    const aoMudarVisibilidade = () => {
+      if (document.visibilityState === "visible") void carregar()
+    }
+
+    window.addEventListener("focus", aoFocar)
+    document.addEventListener("visibilitychange", aoMudarVisibilidade)
+
+    return () => {
+      window.removeEventListener("focus", aoFocar)
+      document.removeEventListener("visibilitychange", aoMudarVisibilidade)
+    }
   }, [carregar])
 
   const escopo = useCallback((recurso: string, acao: string): EscopoPermissao => {

@@ -16,6 +16,7 @@ import { normalizarPermissoesContasPagar, type PermissoesContasPagar } from "./M
 import { normalizarPermissoesContasReceber, type PermissoesContasReceber } from "./ModalPermissoesContasReceber";
 import { normalizarPermissoesFluxoCaixa, type PermissoesFluxoCaixa } from "./ModalPermissoesFluxoCaixa";
 import { normalizarPermissoesParcelasClientes, type PermissoesParcelasClientes } from "./ModalPermissoesParcelasClientes";
+import { normalizarPermissoesConexoesWhatsapp, type PermissoesConexoesWhatsapp } from "./ModalPermissoesConexoesWhatsapp";
 import { MODULOS_ATIVOS, type ModuloAtivoId } from "./estruturaPermissoes";
 
 export interface PermissoesAtivas {
@@ -34,6 +35,7 @@ export interface PermissoesAtivas {
   parcelas_clientes: PermissoesParcelasClientes;
   sinistros: PermissoesSinistro;
   assistencias: PermissoesAssistencia;
+  conexoes_whatsapp: PermissoesConexoesWhatsapp;
 }
 export type EscopoAtivo = "none" | "assigned" | "own" | "tenant";
 
@@ -54,6 +56,7 @@ export function normalizarAtivas(json: unknown): PermissoesAtivas {
     parcelas_clientes: normalizarPermissoesParcelasClientes(json),
     sinistros: normalizarPermissoesSinistro(json),
     assistencias: normalizarPermissoesAssistencia(json),
+    conexoes_whatsapp: normalizarPermissoesConexoesWhatsapp(json),
   };
 }
 
@@ -63,11 +66,12 @@ export function atualizarModulo<K extends ModuloAtivoId>(
   return { ...estado, [modulo]: proximo };
 }
 
-const GRUPO_DO_MODULO: Record<ModuloAtivoId, "atendimento" | "operacoes" | "financeiro"> = {
+const GRUPO_DO_MODULO: Record<ModuloAtivoId, "atendimento" | "operacoes" | "financeiro" | "gestao"> = {
   contatos: "atendimento", conversas: "atendimento", agenda: "atendimento", tarefas: "atendimento",
   equipe: "operacoes", clientes: "operacoes", propostas: "operacoes",
   renovacoes: "operacoes", comissoes: "operacoes", sinistros: "operacoes", assistencias: "operacoes",
   contas_pagar: "financeiro", contas_receber: "financeiro", fluxo_caixa: "financeiro", parcelas_clientes: "financeiro",
+  conexoes_whatsapp: "gestao",
 };
 
 export type Diferenca = {

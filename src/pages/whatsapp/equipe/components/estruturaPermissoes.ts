@@ -13,7 +13,7 @@ export type ModuloPermissaoId =
   | "contas_pagar" | "contas_receber" | "fluxo_caixa" | "parcelas_clientes"
   | "conexoes_whatsapp" | "armazenamento" | "seguradoras" | "configuracoes";
 export type ModuloAtivoId = Exclude<ModuloPermissaoId,
-  "conexoes_whatsapp" | "armazenamento" | "seguradoras" | "configuracoes">;
+  "armazenamento" | "seguradoras" | "configuracoes">;
 
 export interface DefinicaoModulo {
   id: ModuloPermissaoId;
@@ -68,7 +68,7 @@ export const GRUPOS_PERMISSOES: DefinicaoGrupo[] = [
     id: "gestao", titulo: "Gestão", icon: Settings2,
     descricao: "Conexões, infraestrutura e configurações da corretora.",
     modulos: [
-      { id: "conexoes_whatsapp", titulo: "Conexões WhatsApp", descricao: "Números e sessões corporativas", icon: MessageCircle, implementado: false },
+      { id: "conexoes_whatsapp", titulo: "Conexões WhatsApp", descricao: "Números e sessões corporativas", icon: MessageCircle, implementado: true },
       { id: "armazenamento", titulo: "Armazenamento", descricao: "Arquivos e limites", icon: HardDrive, implementado: false },
       { id: "seguradoras", titulo: "Seguradoras", descricao: "Catálogo de seguradoras", icon: Building2, implementado: false },
       { id: "configuracoes", titulo: "Configurações", descricao: "Parâmetros da corretora", icon: ShieldCheck, implementado: false },
