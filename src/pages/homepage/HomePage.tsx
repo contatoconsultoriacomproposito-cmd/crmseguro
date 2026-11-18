@@ -37,6 +37,7 @@ import RegistroModal from "../../components/homepage/RegistroModal";
 import { useAuth } from "../../auth/AuthContext";
 
 import imgCapa from "./img/img-capa.png";
+import { PlatformUniverseSection, SitePowerSection, CommercialPowerSection, DocumentPowerSection, FinancePowerSection, OperationsPowerSection, ProductDepthSection } from "./HomePageVitrine";
 
 // ======================================================
 // CONFIGURAÇÕES COMERCIAIS
@@ -384,46 +385,20 @@ export default function HomePage() {
         onRegister={abrirCadastro}
       />
 
-      {/* ==================================================
-          NOVO CONCEITO:
-          TUDO AO REDOR DA CONVERSA
-      ================================================== */}
-
+      {/* NOVA VITRINE: seis pilares da plataforma */}
+      <PlatformUniverseSection />
+      <SitePowerSection />
+      <SiteSection onRegister={abrirCadastro} />
       <ConversationCoreSection />
-
-      {/* ==================================================
-          JORNADA COMERCIAL
-      ================================================== */}
-
       <JourneySection />
-
-      {/* ==================================================
-          MÓDULOS DO NOVO NÚCLEO
-      ================================================== */}
-
-      <ModulesSection
-        onRegister={abrirCadastro}
-      />
-
-      {/* ==================================================
-          EQUIPE + WHATSAPP
-      ================================================== */}
-
-      <WhatsAppTeamSection />
-
-      {/* ==================================================
-          SITE INTEGRADO
-      ================================================== */}
-
-      <SiteSection
-        onRegister={abrirCadastro}
-      />
-
-      {/* ==================================================
-          ARMAZENAMENTO
-      ================================================== */}
-
+      <CommercialPowerSection />
+      <FinancePowerSection />
+      <DocumentPowerSection />
       <StorageSection />
+      <OperationsPowerSection />
+      <WhatsAppTeamSection />
+      <ModulesSection onRegister={abrirCadastro} />
+      <ProductDepthSection />
 
       {/* ==================================================
           PROVA SOCIAL
@@ -802,11 +777,11 @@ function HeroSection({
             }}
             className="text-5xl font-black leading-[0.98] tracking-[-0.05em] sm:text-6xl lg:text-[88px]"
           >
-            Seu WhatsApp virou
+            Sua corretora inteira,
             <br />
 
             <span className="bg-gradient-to-r from-blue-400 via-blue-500 to-indigo-400 bg-clip-text text-transparent">
-              o centro da sua corretora.
+              conectada em um só lugar.
             </span>
           </motion.h1>
 
@@ -822,7 +797,7 @@ function HeroSection({
             }}
             className="mx-auto mt-8 max-w-3xl text-base leading-relaxed text-zinc-400 sm:text-lg lg:text-xl"
           >
-            Atenda o cliente e,
+            Da presença digital à gestão financeira: atenda o cliente e,
             sem sair da conversa,
             tenha acesso a
             clientes, propostas,
@@ -844,10 +819,10 @@ function HeroSection({
             }}
             className="mt-4 text-lg font-black text-white"
           >
-            Uma conversa.
+            Uma plataforma.
             <span className="text-blue-500">
               {" "}
-              Toda a operação.
+              Toda a sua corretora.
             </span>
           </motion.p>
 
