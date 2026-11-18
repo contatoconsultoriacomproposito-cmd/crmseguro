@@ -1,4 +1,5 @@
 import {
+  FileDown,
   LayoutGrid,
   List,
   Plus,
@@ -12,6 +13,8 @@ interface Props {
   onNovoCliente: () => void
   podeCriar: boolean
   podeVisualizar: boolean
+  podeExportar: boolean
+  onExportar: () => void
 }
 
 export default function CentralClientesHeader({
@@ -20,6 +23,8 @@ export default function CentralClientesHeader({
   onNovoCliente,
   podeCriar,
   podeVisualizar,
+  podeExportar,
+  onExportar,
 }: Props) {
   return (
     <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-4 md:px-6">
@@ -65,6 +70,17 @@ export default function CentralClientesHeader({
               Kanban
             </button>
           </div>}
+
+          {podeExportar && (
+            <button
+              type="button"
+              onClick={onExportar}
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+            >
+              <FileDown size={17} />
+              Exportar Excel / PDF
+            </button>
+          )}
 
           {podeCriar && <button
             type="button"

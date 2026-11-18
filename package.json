@@ -19,6 +19,7 @@
     "@fullcalendar/timegrid": "^6.1.20",
     "@supabase/supabase-js": "^2.88.0",
     "date-fns": "^4.1.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^12.23.26",
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.1",

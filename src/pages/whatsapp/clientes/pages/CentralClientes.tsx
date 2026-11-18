@@ -10,6 +10,11 @@ import ClientesLista from '../components/lista/ClientesLista'
 import ClientesKanban from '../components/kanban/ClientesKanban'
 import Cliente360Modal from '../components/cliente360/Cliente360Modal'
 import { useCentralClientes } from '../hooks/useCentralClientes'
+import ModalExportarClientes, {
+  type ConfiguracaoExportacaoClientes,
+} from '../components/ModalExportarClientes'
+import { exportarClientesExcel } from '../services/clientesExportacaoService'
+import { exportarClientesPdf } from '../services/clientesExportacaoPdfService'
 import type {
   ClienteCentral,
   ClienteKanbanStage,
@@ -19,11 +24,6 @@ export default function CentralClientes() {
   const navigate = useNavigate()
   const { acesso, loading: carregandoPermissoes, error: erroPermissoes } = useAcessoClientes()
   const central = useCentralClientes(carregandoPermissoes ? null : acesso)
-    console.log('PERMISSÃO CLIENTES:', {
-    usuarioId: acesso?.usuarioId,
-    read: acesso?.escopos.read,
-    tipo: 'CORRETOR',
-  })
   const permitido = (acao: Parameters<typeof podeCliente>[1], cliente?: ClienteCentral) =>
     podeCliente(acesso, acao, cliente)
   const abrirCliente = (cliente: ClienteCentral) => {
@@ -36,6 +36,19 @@ export default function CentralClientes() {
 
   const [novoClienteAberto, setNovoClienteAberto] =
     useState(false)
+
+  const [modalExportarAberto, setModalExportarAberto] = useState(false)
+
+  const exportarClientes = async (config: ConfiguracaoExportacaoClientes) => {
+    if (!acesso || !permitido('read') || !permitido('view_cadastro')) {
+      throw new Error('Sem permissão para exportar os dados cadastrais.')
+    }
+    const quantidade = config.formato === 'PDF'
+      ? await exportarClientesPdf(config, acesso)
+      : await exportarClientesExcel(config, acesso)
+    toast.success(`Arquivo gerado com ${quantidade} cliente(s).`)
+  }
+
 
   const abrirWhatsApp = (
     cliente: ClienteCentral
@@ -152,6 +165,8 @@ export default function CentralClientes() {
             }
             podeCriar={permitido('create')}
             podeVisualizar={permitido('read')}
+            podeExportar={permitido('read') && permitido('view_cadastro')}
+            onExportar={() => setModalExportarAberto(true)}
             onNovoCliente={() => {
               if (permitido('create')) setNovoClienteAberto(true)
             }}
@@ -166,6 +181,7 @@ export default function CentralClientes() {
               <CentralClientesFiltros
                 filtros={central.filtros}
                 responsaveis={central.responsaveis}
+                produtosDisponiveis={central.produtosDisponiveis}
                 buscaValida={central.buscaValida}
                 onChange={central.atualizarFiltros}
                 onReset={central.limparFiltros}
@@ -231,6 +247,15 @@ export default function CentralClientes() {
           onUpdated={central.recarregar}
         />
       )}
+
+      <ModalExportarClientes
+        open={modalExportarAberto && permitido('read') && permitido('view_cadastro')}
+        onClose={() => setModalExportarAberto(false)}
+        onExportar={exportarClientes}
+        produtosDisponiveis={central.produtosDisponiveis}
+        responsaveis={central.responsaveis}
+        filtrosAtuais={central.filtros}
+      />
 
       <ModalCadastroWhatsApp
         open={novoClienteAberto && permitido('create')}

@@ -392,6 +392,155 @@ async function carregarProdutos(
   return mapa
 }
 
+
+/**
+ * Vinculos de produtos da carteira autorizada, usando os mesmos
+ * status considerados na coluna Produtos da Central.
+ *
+ * A consulta eh dividida em lotes para limitar o tamanho dos filtros IN.
+ * Erros nao sao convertidos em resultados vazios: isso impediria
+ * classificar incorretamente clientes como "Sem produtos".
+ */
+async function carregarVinculosProdutosCentral(
+  entidades: EntidadeRow[]
+): Promise<Map<string, Set<string>>> {
+  const mapa = new Map<string, Set<string>>()
+  const TAMANHO_LOTE = 200
+
+  for (const tipo of ['PF', 'PJ'] as const) {
+    const ids = [...new Set(
+      entidades.filter(item => item.tipo === tipo).map(item => item.id)
+    )]
+
+    const campo = tipo === 'PF' ? 'crm_pessoa_id' : 'crm_empresa_id'
+
+    for (let i = 0; i < ids.length; i += TAMANHO_LOTE) {
+      const lote = ids.slice(i, i + TAMANHO_LOTE)
+
+      // Paginar os contratos evita o limite padrao de linhas do PostgREST.
+      const PAGINA_CONTRATOS = 500
+      let inicio = 0
+
+      while (true) {
+        const { data, error } = await supabase
+          .from('crm_contratos')
+          .select('id, crm_pessoa_id, crm_empresa_id, produto_id')
+          .in('status', ['AGUARDANDO_EMISSAO', 'ATIVO'])
+          .in(campo, lote)
+          .order('id', { ascending: true })
+          .range(inicio, inicio + PAGINA_CONTRATOS - 1)
+
+        if (error) throw error
+
+        for (const contrato of data || []) {
+          if (!contrato.produto_id) continue
+
+          const entidadeId = tipo === 'PF'
+            ? contrato.crm_pessoa_id
+            : contrato.crm_empresa_id
+
+          if (!entidadeId) continue
+
+          const chave = chaveEntidade(tipo, entidadeId)
+          const produtos = mapa.get(chave) || new Set<string>()
+          produtos.add(contrato.produto_id)
+          mapa.set(chave, produtos)
+        }
+
+        if (!data || data.length < PAGINA_CONTRATOS) break
+        inicio += PAGINA_CONTRATOS
+      }
+    }
+  }
+
+  return mapa
+}
+
+/**
+ * Filtra toda a carteira elegivel ANTES da paginacao.
+ * Multisselecao usa OU; semProdutos exclui qualquer vinculo valido.
+ */
+async function aplicarFiltroProdutosCentral(
+  entidades: EntidadeRow[],
+  filtros: CentralClientesFiltros
+): Promise<EntidadeRow[]> {
+  const idsSelecionados = filtros.produtoIds || []
+  if (!filtros.semProdutos && idsSelecionados.length === 0) {
+    return entidades
+  }
+  if (entidades.length === 0) return entidades
+
+  const vinculos = await carregarVinculosProdutosCentral(entidades)
+  const selecionados = new Set(idsSelecionados)
+
+  return entidades.filter(entidade => {
+    const produtos = vinculos.get(chaveEntidade(entidade.tipo, entidade.id))
+
+    if (filtros.semProdutos) {
+      return !produtos || produtos.size === 0
+    }
+
+    return Boolean(produtos && [...produtos].some(id => selecionados.has(id)))
+  })
+}
+
+/**
+ * Opcoes do filtro: apenas produtos existentes em contratos visiveis
+ * da carteira que o usuario pode ler (own ou tenant).
+ */
+
+export async function buscarProdutosDisponiveisCentral(
+  acesso: AcessoClientes
+): Promise<ClienteProdutoResumo[]> {
+  if (!podeCliente(acesso, 'read')) {
+    return []
+  }
+
+  const produtos: ClienteProdutoResumo[] = []
+  const tamanhoPagina = 500
+
+  let inicio = 0
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('base_produtos')
+      .select('id, nome')
+      .order('nome', { ascending: true })
+      .order('id', { ascending: true })
+      .range(inicio, inicio + tamanhoPagina - 1)
+
+    if (error) {
+      console.error(
+        '[CentralClientes] Falha ao buscar produtos:',
+        error
+      )
+
+      throw error
+    }
+
+    for (const produto of data || []) {
+      produtos.push({
+        id: produto.id,
+        nome: produto.nome || 'Produto sem nome',
+      })
+    }
+
+    if (!data || data.length < tamanhoPagina) {
+      break
+    }
+
+    inicio += tamanhoPagina
+  }
+
+  console.log(
+    '[CentralClientes] Produtos disponíveis:',
+    produtos.length
+  )
+
+  return produtos
+}
+
+
 async function carregarAgenda(
   entidades: EntidadeRow[]
 ): Promise<Map<string, AgendaResumo>> {
@@ -761,6 +910,9 @@ export async function buscarClientesCentral(
     return atendeBuscaEntidade(row, filtros.busca)
   })
 
+  // Produto deve filtrar toda a carteira antes da paginacao.
+  filtradas = await aplicarFiltroProdutosCentral(filtradas, filtros)
+
   filtradas = ordenarEntidades(
     filtradas,
     filtros.ordenacao
@@ -913,13 +1065,10 @@ export async function buscarResumoCentral(
     return atendeBuscaEntidade(row, filtros.busca)
   })
 
-  /*
-   * Produto ainda não participa do resumo porque o filtro
-   * atualmente aplicado na listagem também não aparece
-   * neste bloco base.
-   *
-   * Compromisso precisa da agenda para ser avaliado.
-   */
+  // Aplica o mesmo filtro de produtos da lista aos indicadores.
+  filtradas = await aplicarFiltroProdutosCentral(filtradas, filtros)
+
+  /* Compromisso precisa da agenda para ser avaliado. */
   const agenda = await carregarAgenda(filtradas).catch(() => new Map<string, AgendaResumo>())
 
   if (filtros.compromisso !== 'TODOS') {

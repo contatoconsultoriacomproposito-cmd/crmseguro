@@ -1,20 +1,28 @@
-import { type AcessoClientes, podeCliente } from './useAcessoClientes'
+
+import {
+  type AcessoClientes,
+  podeCliente,
+} from './useAcessoClientes'
+
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from 'react'
+
 import {
   atualizarKanbanCliente,
   buscarClientesCentral,
   buscarClientesKanban,
+  buscarProdutosDisponiveisCentral,
   buscarResponsaveisCentral,
   buscarResumoCentral,
   excluirClienteCentral,
   tornarClienteLead,
   transferirResponsavelCentral,
 } from '../services/centralClientesService'
+
 import {
   FILTROS_INICIAIS,
   type CentralClientesFiltros,
@@ -22,6 +30,7 @@ import {
   type CentralClientesResumo,
   type ClienteCentral,
   type ClienteKanbanStage,
+  type ClienteProdutoResumo,
   type ResponsavelCentral,
   type VisualizacaoCentral,
 } from '../types/centralClientes'
@@ -41,27 +50,48 @@ const RESUMO_INICIAL: CentralClientesResumo = {
   semCompromisso: 0,
 }
 
-export function useCentralClientes(acesso: AcessoClientes | null) {
+export function useCentralClientes(
+  acesso: AcessoClientes | null
+) {
   const [visualizacao, setVisualizacao] =
     useState<VisualizacaoCentral>('LISTA')
+
   const [filtros, setFiltros] =
     useState<CentralClientesFiltros>(FILTROS_INICIAIS)
+
   const [pagina, setPagina] = useState(1)
-  const [clientes, setClientes] = useState<ClienteCentral[]>([])
-  const [clientesKanban, setClientesKanban] = useState<
-    ClienteCentral[]
-  >([])
+
+  const [clientes, setClientes] =
+    useState<ClienteCentral[]>([])
+
+  const [clientesKanban, setClientesKanban] =
+    useState<ClienteCentral[]>([])
+
   const [resumo, setResumo] =
     useState<CentralClientesResumo>(RESUMO_INICIAL)
+
   const [paginacao, setPaginacao] =
     useState<CentralClientesPaginacao>(PAGINACAO_INICIAL)
-  const [responsaveis, setResponsaveis] = useState<
-    ResponsavelCentral[]
-  >([])
-  const [loading, setLoading] = useState(true)
-  const [loadingKanban, setLoadingKanban] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
 
+  const [responsaveis, setResponsaveis] =
+    useState<ResponsavelCentral[]>([])
+
+  // Produtos disponíveis para o filtro múltiplo.
+  const [produtosDisponiveis, setProdutosDisponiveis] =
+    useState<ClienteProdutoResumo[]>([])
+
+  const [loading, setLoading] = useState(true)
+
+  const [loadingKanban, setLoadingKanban] =
+    useState(false)
+
+  const [error, setError] =
+    useState<Error | null>(null)
+
+  /*
+   * Carrega a lista de clientes respeitando
+   * os filtros, permissões e paginação.
+   */
   const carregarLista = useCallback(async () => {
     if (!podeCliente(acesso, 'read')) {
       setClientes([])
@@ -69,8 +99,10 @@ export function useCentralClientes(acesso: AcessoClientes | null) {
       setLoading(false)
       return
     }
+
     setLoading(true)
     setError(null)
+
     try {
       const resultado = await buscarClientesCentral(
         filtros,
@@ -78,6 +110,7 @@ export function useCentralClientes(acesso: AcessoClientes | null) {
         pagina,
         20
       )
+
       setClientes(resultado.clientes)
       setPaginacao(resultado.paginacao)
     } catch (erro) {
@@ -85,49 +118,115 @@ export function useCentralClientes(acesso: AcessoClientes | null) {
         erro instanceof Error
           ? erro
           : new Error('Erro ao carregar clientes.')
+
       setError(falha)
     } finally {
       setLoading(false)
     }
   }, [filtros, pagina, acesso])
 
+  /*
+   * Carrega os clientes classificados
+   * como Lead para o Kanban.
+   */
   const carregarKanban = useCallback(async () => {
     if (!podeCliente(acesso, 'read')) {
       setClientesKanban([])
       setLoadingKanban(false)
       return
     }
+
     setLoadingKanban(true)
+
     try {
-      setClientesKanban(await buscarClientesKanban(acesso!))
+      setClientesKanban(
+        await buscarClientesKanban(acesso!)
+      )
     } finally {
       setLoadingKanban(false)
     }
   }, [acesso])
 
+  /*
+   * Carrega os indicadores e responsáveis.
+   * O resumo respeitará os filtros ativos,
+   * incluindo o novo filtro de produtos.
+   */
   const carregarApoio = useCallback(async () => {
     if (!podeCliente(acesso, 'read')) {
       setResumo(RESUMO_INICIAL)
       setResponsaveis([])
       return
     }
+
     try {
-      const [novoResumo, novosResponsaveis] =
-        await Promise.all([
-          buscarResumoCentral(filtros, acesso!),
-          buscarResponsaveisCentral(acesso!),
-        ])
+      const [
+        novoResumo,
+        novosResponsaveis,
+      ] = await Promise.all([
+        buscarResumoCentral(filtros, acesso!),
+        buscarResponsaveisCentral(acesso!),
+      ])
+
       setResumo(novoResumo)
       setResponsaveis(novosResponsaveis)
     } catch (erro) {
-      setError(erro instanceof Error ? erro : new Error('Falha ao carregar resumo de clientes.'))
+      setError(
+        erro instanceof Error
+          ? erro
+          : new Error(
+              'Falha ao carregar resumo de clientes.'
+            )
+      )
     }
   }, [filtros, acesso])
 
+  /*
+   * Carrega os produtos disponíveis.
+   *
+   * Essa consulta é independente dos
+   * filtros ativos e não precisa ser
+   * repetida a cada seleção.
+   *
+   * A consulta no service deverá respeitar
+   * a corretora e o escopo de leitura.
+   */
+  const carregarProdutos = useCallback(async () => {
+    if (!podeCliente(acesso, 'read')) {
+      setProdutosDisponiveis([])
+      return
+    }
+
+    try {
+      const produtos =
+        await buscarProdutosDisponiveisCentral(acesso!)
+
+      setProdutosDisponiveis(produtos)
+    } catch (erro) {
+      setProdutosDisponiveis([])
+
+      setError(
+        erro instanceof Error
+          ? erro
+          : new Error(
+              'Falha ao carregar produtos disponíveis.'
+            )
+      )
+    }
+  }, [acesso])
+
+  /*
+   * Recarrega os dados da Central.
+   *
+   * Inclui os produtos para refletir
+   * eventuais alterações nos vínculos
+   * dos clientes.
+   */
   const recarregar = useCallback(async () => {
     await Promise.all([
       carregarLista(),
       carregarApoio(),
+      carregarProdutos(),
       visualizacao === 'KANBAN'
         ? carregarKanban()
         : Promise.resolve(),
@@ -135,27 +234,58 @@ export function useCentralClientes(acesso: AcessoClientes | null) {
   }, [
     carregarLista,
     carregarApoio,
+    carregarProdutos,
     carregarKanban,
     visualizacao,
   ])
 
+  /*
+   * Atualização automática da lista
+   * quando filtros, página ou acesso mudam.
+   */
   useEffect(() => {
     void carregarLista()
   }, [carregarLista])
 
+  /*
+   * Atualização automática do resumo
+   * e dos responsáveis.
+   */
   useEffect(() => {
     void carregarApoio()
   }, [carregarApoio])
 
+  /*
+   * Produtos são carregados quando
+   * o acesso de leitura é definido
+   * ou alterado.
+   */
+  useEffect(() => {
+    void carregarProdutos()
+  }, [carregarProdutos])
+
+  /*
+   * Kanban só é carregado quando
+   * a visualização correspondente
+   * estiver ativa.
+   */
   useEffect(() => {
     if (visualizacao === 'KANBAN') {
       void carregarKanban()
     }
-  }, [visualizacao, carregarKanban])
+  }, [
+    visualizacao,
+    carregarKanban,
+  ])
 
+  /*
+   * Atualiza parcialmente os filtros
+   * e retorna para a primeira página.
+   */
   const atualizarFiltros = useCallback(
     (patch: Partial<CentralClientesFiltros>) => {
       setPagina(1)
+
       setFiltros(atual => ({
         ...atual,
         ...patch,
@@ -164,27 +294,53 @@ export function useCentralClientes(acesso: AcessoClientes | null) {
     []
   )
 
+  /*
+   * Limpa todos os filtros,
+   * incluindo produtos selecionados
+   * e a opção sem produtos.
+   */
   const limparFiltros = useCallback(() => {
     setPagina(1)
-    setFiltros(FILTROS_INICIAIS)
+
+    setFiltros({
+      ...FILTROS_INICIAIS,
+      produtoIds: [],
+      semProdutos: false,
+    })
   }, [])
 
+  /*
+   * Classifica o cliente como Lead.
+   */
   const tornarLead = useCallback(
     async (cliente: ClienteCentral) => {
-      if (!podeCliente(acesso, 'make_lead', cliente)) throw new Error('Sem permissão para tornar Lead.')
+      if (!podeCliente(acesso, 'make_lead', cliente)) {
+        throw new Error(
+          'Sem permissão para tornar Lead.'
+        )
+      }
+
       await tornarClienteLead(cliente)
       await recarregar()
     },
     [recarregar, acesso]
   )
 
+  /*
+   * Movimenta o cliente no Kanban.
+   */
   const moverKanban = useCallback(
     async (
       cliente: ClienteCentral,
       etapa: ClienteKanbanStage,
       posicao: number
     ) => {
-      if (!podeCliente(acesso, 'update', cliente)) throw new Error('Sem permissão para mover o Kanban.')
+      if (!podeCliente(acesso, 'update', cliente)) {
+        throw new Error(
+          'Sem permissão para mover o Kanban.'
+        )
+      }
+
       await atualizarKanbanCliente(
         cliente,
         etapa,
@@ -208,30 +364,51 @@ export function useCentralClientes(acesso: AcessoClientes | null) {
     [acesso]
   )
 
+  /*
+   * Transfere a responsabilidade
+   * de um cliente.
+   */
   const transferir = useCallback(
     async (
       cliente: ClienteCentral,
       responsavelId: string
     ) => {
-      if (!podeCliente(acesso, 'transfer', cliente)) throw new Error('Sem permissão para transferir.')
+      if (!podeCliente(acesso, 'transfer', cliente)) {
+        throw new Error(
+          'Sem permissão para transferir.'
+        )
+      }
+
       await transferirResponsavelCentral(
         cliente,
         responsavelId
       )
+
       await recarregar()
     },
     [recarregar, acesso]
   )
 
+  /*
+   * Exclui o cliente.
+   */
   const excluir = useCallback(
     async (cliente: ClienteCentral) => {
-      if (!podeCliente(acesso, 'delete', cliente)) throw new Error('Sem permissão para excluir.')
+      if (!podeCliente(acesso, 'delete', cliente)) {
+        throw new Error(
+          'Sem permissão para excluir.'
+        )
+      }
+
       await excluirClienteCentral(cliente)
       await recarregar()
     },
     [recarregar, acesso]
   )
 
+  /*
+   * Validação da busca global.
+   */
   const buscaValida = useMemo(
     () =>
       !filtros.busca.trim() ||
@@ -242,20 +419,28 @@ export function useCentralClientes(acesso: AcessoClientes | null) {
   return {
     visualizacao,
     setVisualizacao,
+
     filtros,
     atualizarFiltros,
     limparFiltros,
+
     pagina,
     setPagina,
+
     clientes,
     clientesKanban,
+
     resumo,
     paginacao,
+
     responsaveis,
+    produtosDisponiveis,
+
     loading,
     loadingKanban,
     error,
     buscaValida,
+
     recarregar,
     tornarLead,
     moverKanban,

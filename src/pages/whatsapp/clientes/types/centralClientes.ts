@@ -1,3 +1,4 @@
+
 export type ClienteCentralTipo = 'PF' | 'PJ'
 export type ClienteClassificacao = 'NAO_QUALIFICADO' | 'LEAD'
 export type ClienteTemperatura = 'FRIO' | 'MORNO' | 'QUENTE' | null
@@ -74,6 +75,12 @@ export interface CentralClientesFiltros {
   responsavelId: string
   compromisso: FiltroCompromisso
   ordenacao: OrdenacaoCentral
+
+  // Filtro múltiplo de produtos
+  produtoIds: string[]
+
+  // Clientes sem produtos relacionados
+  semProdutos: boolean
 }
 
 export interface CentralClientesResumo {
@@ -143,4 +150,6 @@ export const FILTROS_INICIAIS: CentralClientesFiltros = {
   responsavelId: '',
   compromisso: 'TODOS',
   ordenacao: 'RECENTES',
+  produtoIds: [],
+  semProdutos: false,
 }

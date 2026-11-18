@@ -1,0 +1,253 @@
+﻿arquivo;modulo_atual;tipo;importacoes_recebidas;importacoes_feitas;importacoes_recebidas_de_entradas;consumidores_outros_modulos;classe_service
+src/pages/whatsapp/armazenamento/services/CentralArmazenamento.tsx;armazenamento;.tsx;1;3;1;[EXTERNO];COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/armazenamento/services/storageService.ts;armazenamento;.ts;3;1;0;central-clientes;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/automation/components/AutomationCard.tsx;automation;.tsx;1;2;0;pages/WhatsAppAutomacoes.tsx;
+src/pages/whatsapp/automation/components/AutomationMetricCard.tsx;automation;.tsx;1;0;0;pages/WhatsAppAutomacoes.tsx;
+src/pages/whatsapp/automation/components/AutomationPreview.tsx;automation;.tsx;2;1;0;;
+src/pages/whatsapp/automation/components/AutomationStatusBadge.tsx;automation;.tsx;1;1;0;;
+src/pages/whatsapp/automation/components/ConversationAutomationPanel.tsx;automation;.tsx;0;0;0;;
+src/pages/whatsapp/automation/components/ModalCadastroWhatsApp.tsx;automation;.tsx;2;6;0;central-clientes | components;
+src/pages/whatsapp/automation/editors/PreQualificationEditor.tsx;automation;.tsx;1;2;0;pages/WhatsAppAutomacoes.tsx;
+src/pages/whatsapp/automation/editors/RoutingEditor.tsx;automation;.tsx;1;2;0;pages/WhatsAppAutomacoes.tsx;
+src/pages/whatsapp/automation/engine/automationMachine.ts;automation;.ts;3;0;0;components | hooks;
+src/pages/whatsapp/automation/mocks/automationMocks.ts;automation;.ts;1;1;0;pages/WhatsAppAutomacoes.tsx;
+src/pages/whatsapp/automation/services/automationConfigService.ts;automation;.ts;1;2;0;pages/WhatsAppAutomacoes.tsx;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/automation/services/automationService.ts;automation;.ts;0;0;0;;SEM_CONSUMIDOR_NESTE_ESCOPO
+src/pages/whatsapp/automation/services/preQualificationExecutor.ts;automation;.ts;1;2;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/automation/services/routingExecutor.ts;automation;.ts;1;2;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/automation/types/automationTypes.ts;automation;.ts;8;0;0;pages/WhatsAppAutomacoes.tsx;
+src/pages/whatsapp/central-clientes/CentralClientes.tsx;central-clientes;.tsx;1;10;1;[EXTERNO];
+src/pages/whatsapp/central-clientes/components/CentralClientesFiltros.tsx;central-clientes;.tsx;1;1;0;;
+src/pages/whatsapp/central-clientes/components/CentralClientesHeader.tsx;central-clientes;.tsx;1;1;0;;
+src/pages/whatsapp/central-clientes/components/CentralClientesResumo.tsx;central-clientes;.tsx;1;1;0;;
+src/pages/whatsapp/central-clientes/components/ModalAdicionarArquivoCliente.tsx;central-clientes;.tsx;1;3;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/Cliente360Header.tsx;central-clientes;.tsx;1;3;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/Cliente360Modal.tsx;central-clientes;.tsx;1;14;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/Cliente360Tabs.tsx;central-clientes;.tsx;1;1;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClienteAgendaTab.tsx;central-clientes;.tsx;1;10;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClienteArquivosTab.tsx;central-clientes;.tsx;1;6;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClienteAssistenciasTab.tsx;central-clientes;.tsx;1;4;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClienteCadastroTab.tsx;central-clientes;.tsx;1;5;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClienteComissoesTab.tsx;central-clientes;.tsx;1;3;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClienteContratosTab.tsx;central-clientes;.tsx;1;2;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClienteFinanceiroTab.tsx;central-clientes;.tsx;1;5;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClientePropostasTab.tsx;central-clientes;.tsx;1;4;0;;
+src/pages/whatsapp/central-clientes/components/cliente360/tabs/ClienteSinistrosTab.tsx;central-clientes;.tsx;1;4;0;;
+src/pages/whatsapp/central-clientes/components/kanban/ClienteKanbanCard.tsx;central-clientes;.tsx;2;2;0;;
+src/pages/whatsapp/central-clientes/components/kanban/ClienteKanbanColumn.tsx;central-clientes;.tsx;1;2;0;;
+src/pages/whatsapp/central-clientes/components/kanban/ClientesKanban.tsx;central-clientes;.tsx;1;4;0;;
+src/pages/whatsapp/central-clientes/components/lista/ClienteAcoesMenu.tsx;central-clientes;.tsx;1;1;0;;
+src/pages/whatsapp/central-clientes/components/lista/ClienteListaRow.tsx;central-clientes;.tsx;1;3;0;;
+src/pages/whatsapp/central-clientes/components/lista/ClientesLista.tsx;central-clientes;.tsx;1;2;0;;
+src/pages/whatsapp/central-clientes/hooks/useAcessoClientes.ts;central-clientes;.ts;6;3;0;;
+src/pages/whatsapp/central-clientes/hooks/useCentralClientes.ts;central-clientes;.ts;1;3;0;;
+src/pages/whatsapp/central-clientes/hooks/useCliente360.ts;central-clientes;.ts;1;3;0;;
+src/pages/whatsapp/central-clientes/hooks/usePermissaoModuloCliente.ts;central-clientes;.ts;4;3;0;;
+src/pages/whatsapp/central-clientes/services/centralClientesService.ts;central-clientes;.ts;2;4;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/central-clientes/services/cliente360Service.ts;central-clientes;.ts;1;5;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/central-clientes/services/clienteArquivosService.ts;central-clientes;.ts;1;3;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/central-clientes/types/centralClientes.ts;central-clientes;.ts;33;0;0;;
+src/pages/whatsapp/central-clientes/utils/clienteFormatters.ts;central-clientes;.ts;5;1;0;;
+src/pages/whatsapp/central-clientes/utils/kanbanClienteUtils.ts;central-clientes;.ts;0;1;0;;
+src/pages/whatsapp/components/CallModal.tsx;components;.tsx;1;0;0;;
+src/pages/whatsapp/components/CallTimelineItem.tsx;components;.tsx;1;1;0;;
+src/pages/whatsapp/components/ChatWindow.tsx;components;.tsx;1;32;0;pages/WhatsAppInbox.tsx;
+src/pages/whatsapp/components/ContactPanel.tsx;components;.tsx;1;17;0;pages/WhatsAppInbox.tsx;
+src/pages/whatsapp/components/ConversationItem.tsx;components;.tsx;1;2;0;;
+src/pages/whatsapp/components/ConversationList.tsx;components;.tsx;1;10;0;pages/WhatsAppInbox.tsx;
+src/pages/whatsapp/components/FiltroSituacoes.tsx;components;.tsx;2;0;0;contas-pagar | contas-receber;
+src/pages/whatsapp/components/MediaMessage.tsx;components;.tsx;1;1;0;;
+src/pages/whatsapp/components/MessageBubble.tsx;components;.tsx;1;2;0;;
+src/pages/whatsapp/components/MessageComposer.tsx;components;.tsx;1;4;0;;
+src/pages/whatsapp/components/ModalCriarTarefaWhatsApp.tsx;components;.tsx;1;0;0;;
+src/pages/whatsapp/components/ModalEncaminharMensagem.tsx;components;.tsx;1;2;0;;
+src/pages/whatsapp/components/ModalExcluirMensagem.tsx;components;.tsx;1;1;0;;
+src/pages/whatsapp/components/NewConversationModal.tsx;components;.tsx;1;2;0;pages/WhatsAppInbox.tsx;
+src/pages/whatsapp/components/WhatsAppContatoMensagemModal.tsx;components;.tsx;1;3;0;pages/WhatsAppContatos.tsx;
+src/pages/whatsapp/components/WhatsAppContatoModal.tsx;components;.tsx;1;1;0;pages/WhatsAppContatos.tsx;
+src/pages/whatsapp/components/contact-panel/ContactAssistenciasTab.tsx;components;.tsx;1;3;0;;
+src/pages/whatsapp/components/contact-panel/ContactCadastroModal.tsx;components;.tsx;1;1;0;;
+src/pages/whatsapp/components/contact-panel/ContactComissoesTab.tsx;components;.tsx;1;2;0;;
+src/pages/whatsapp/components/contact-panel/ContactContratosTab.tsx;components;.tsx;1;1;0;;
+src/pages/whatsapp/components/contact-panel/ContactDadosTab.tsx;components;.tsx;1;2;0;;
+src/pages/whatsapp/components/contact-panel/ContactFinanceiroTab.tsx;components;.tsx;1;2;0;;
+src/pages/whatsapp/components/contact-panel/ContactHeader.tsx;components;.tsx;1;1;0;;
+src/pages/whatsapp/components/contact-panel/ContactPropostasTab.tsx;components;.tsx;1;2;0;;
+src/pages/whatsapp/components/contact-panel/ContactSinistrosTab.tsx;components;.tsx;1;2;0;;
+src/pages/whatsapp/components/inputs/FormField.tsx;components;.tsx;0;0;0;;
+src/pages/whatsapp/configuracao-corretora/ConfigCorretora.tsx;configuracao-corretora;.tsx;1;6;1;[EXTERNO];
+src/pages/whatsapp/configuracao-corretora/ModalArmazenamento.tsx;configuracao-corretora;.tsx;4;1;0;components | hooks | pages/assistencias | pages/sinistros;
+src/pages/whatsapp/configuracao-corretora/ModalConexoes.tsx;configuracao-corretora;.tsx;1;1;0;configuracoes;
+src/pages/whatsapp/configuracao-corretora/ModalPlanos.tsx;configuracao-corretora;.tsx;1;2;0;;
+src/pages/whatsapp/configuracao-corretora/modalSite.tsx;configuracao-corretora;.tsx;1;1;0;;
+src/pages/whatsapp/configuracoes/ConexoesWhatsApp.tsx;configuracoes;.tsx;1;4;1;[EXTERNO];
+src/pages/whatsapp/contas-pagar/components/ModalDetalheContaPagar.tsx;contas-pagar;.tsx;1;3;0;;
+src/pages/whatsapp/contas-pagar/components/ModalNovoLancamento.tsx;contas-pagar;.tsx;1;2;0;;
+src/pages/whatsapp/contas-pagar/components/ModalPlanoContas.tsx;contas-pagar;.tsx;1;2;0;;
+src/pages/whatsapp/contas-pagar/index.ts;contas-pagar;.ts;0;0;0;;
+src/pages/whatsapp/contas-pagar/pages/ContasPagar.tsx;contas-pagar;.tsx;1;6;1;[EXTERNO];
+src/pages/whatsapp/contas-pagar/services/contasPagarService.ts;contas-pagar;.ts;4;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/contas-receber/components/ModalDetalheContaReceber.tsx;contas-receber;.tsx;1;3;0;;
+src/pages/whatsapp/contas-receber/components/ModalNovoLancamento.tsx;contas-receber;.tsx;1;2;0;;
+src/pages/whatsapp/contas-receber/components/ModalPlanoContas.tsx;contas-receber;.tsx;1;2;0;;
+src/pages/whatsapp/contas-receber/index.ts;contas-receber;.ts;0;0;0;;
+src/pages/whatsapp/contas-receber/pages/ContasReceber.tsx;contas-receber;.tsx;1;6;1;[EXTERNO];
+src/pages/whatsapp/contas-receber/services/contasReceberService.ts;contas-receber;.ts;4;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/documentos/components/DocumentosMenu.tsx;documentos;.tsx;1;2;0;components;
+src/pages/whatsapp/documentos/components/ModalAdicionarDocumento.tsx;documentos;.tsx;1;3;0;components;
+src/pages/whatsapp/documentos/services/documentosService.ts;documentos;.ts;2;4;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/documentos/types/documentos.ts;documentos;.ts;5;0;0;central-clientes;
+src/pages/whatsapp/equipe/Equipe.tsx;equipe;.tsx;1;3;1;[EXTERNO];
+src/pages/whatsapp/equipe/ModalPermissoesUsuario.tsx;equipe;.tsx;1;24;0;;
+src/pages/whatsapp/equipe/NovoMembro.tsx;equipe;.tsx;1;2;1;[EXTERNO];
+src/pages/whatsapp/equipe/components/ModalPermissoesAgenda.tsx;equipe;.tsx;1;2;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesArmazenamento.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesAssistencia.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesClientes.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesComissoes.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesConexoesWhatsapp.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesConfiguracoes.tsx;equipe;.tsx;1;0;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesContasPagar.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesContasReceber.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesContatos.tsx;equipe;.tsx;1;2;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesConversas.tsx;equipe;.tsx;1;2;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesEquipe.tsx;equipe;.tsx;1;2;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesFluxoCaixa.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesParcelasClientes.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesPropostas.tsx;equipe;.tsx;1;2;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesRenovacoes.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesSeguradoras.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesSinistro.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModalPermissoesTarefas.tsx;equipe;.tsx;2;1;0;;
+src/pages/whatsapp/equipe/components/ModuloPermissaoPlanejado.tsx;equipe;.tsx;0;0;0;;
+src/pages/whatsapp/equipe/components/PermissaoUI.tsx;equipe;.tsx;18;0;0;;
+src/pages/whatsapp/equipe/components/estruturaPermissoes.ts;equipe;.ts;2;0;0;;
+src/pages/whatsapp/equipe/components/permissoesEstado.ts;equipe;.ts;2;15;0;;
+src/pages/whatsapp/equipe/components/permissoesTypes.ts;equipe;.ts;7;0;0;;
+src/pages/whatsapp/equipe/components/presetsPermissoes.ts;equipe;.ts;1;1;0;;
+src/pages/whatsapp/fluxo-caixa/pages/FluxoCaixa.tsx;fluxo-caixa;.tsx;1;3;1;[EXTERNO];
+src/pages/whatsapp/fluxo-caixa/services/fluxoCaixaPdfService.ts;fluxo-caixa;.ts;1;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/fluxo-caixa/services/fluxoCaixaService.ts;fluxo-caixa;.ts;2;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/hooks/useConversationAutomation.ts;hooks;.ts;1;1;0;components;
+src/pages/whatsapp/hooks/useConversations.ts;hooks;.ts;3;3;0;components | pages/WhatsAppInbox.tsx | pages/WhatsAppKanban.tsx;
+src/pages/whatsapp/hooks/useMessages.ts;hooks;.ts;1;2;0;components;
+src/pages/whatsapp/hooks/usePermissoes.ts;hooks;.ts;27;2;2;[EXTERNO] | components | contas-pagar | contas-receber | fluxo-caixa | pages/WhatsAppContatos.tsx | pages/WhatsAppInbox.tsx | pages/WhatsAppKanban.tsx | pages/agenda | pages/assistencias | pages/financeiro | pages/propostas | pages/renovacoes | pages/sinistros | tarefas;
+src/pages/whatsapp/hooks/useStorageCommercial.ts;hooks;.ts;3;3;0;components | pages/assistencias | pages/sinistros;
+src/pages/whatsapp/hooks/useWhatsApp.ts;hooks;.ts;7;2;0;components | pages/WhatsAppContatos.tsx | pages/WhatsAppInbox.tsx | pages/WhatsAppKanban.tsx;
+src/pages/whatsapp/hooks/useWhatsAppConnections.ts;hooks;.ts;1;3;0;configuracoes;
+src/pages/whatsapp/hooks/useWhatsAppTimeline.ts;hooks;.ts;1;2;0;components;
+src/pages/whatsapp/pages/WhatsAppAutomacoes.tsx;pages/WhatsAppAutomacoes.tsx;.tsx;1;8;1;[EXTERNO];
+src/pages/whatsapp/pages/WhatsAppContatos.tsx;pages/WhatsAppContatos.tsx;.tsx;1;7;1;[EXTERNO];
+src/pages/whatsapp/pages/WhatsAppInbox.tsx;pages/WhatsAppInbox.tsx;.tsx;1;8;1;[EXTERNO];
+src/pages/whatsapp/pages/WhatsAppKanban.tsx;pages/WhatsAppKanban.tsx;.tsx;1;6;1;[EXTERNO];
+src/pages/whatsapp/pages/agenda/components/AgendaCalendar.tsx;pages/agenda;.tsx;2;1;0;;
+src/pages/whatsapp/pages/agenda/components/AgendaClienteSelector.tsx;pages/agenda;.tsx;1;1;0;;
+src/pages/whatsapp/pages/agenda/components/ModalCompromisso.tsx;pages/agenda;.tsx;3;2;0;central-clientes | components;
+src/pages/whatsapp/pages/agenda/components/ModalNovoCompromisso.tsx;pages/agenda;.tsx;3;4;0;central-clientes | components;
+src/pages/whatsapp/pages/agenda/pages/AgendaCRM.tsx;pages/agenda;.tsx;1;8;1;[EXTERNO];
+src/pages/whatsapp/pages/agenda/services/agendaClienteService.ts;pages/agenda;.ts;5;1;0;central-clientes | components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/pages/agenda/services/agendaService.ts;pages/agenda;.ts;4;2;0;central-clientes | components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/pages/agenda/types/agenda.ts;pages/agenda;.ts;7;0;0;central-clientes | components;
+src/pages/whatsapp/pages/assistencias/AssistenciaDetalhes.tsx;pages/assistencias;.tsx;1;7;1;[EXTERNO];
+src/pages/whatsapp/pages/assistencias/AssistenciasLista.tsx;pages/assistencias;.tsx;1;4;1;[EXTERNO];
+src/pages/whatsapp/pages/assistencias/components/ModalNovaAssistencia.tsx;pages/assistencias;.tsx;3;3;0;central-clientes | components;
+src/pages/whatsapp/pages/comissoes/components/ComissaoContratoCard.tsx;pages/comissoes;.tsx;1;2;0;pages/propostas;
+src/pages/whatsapp/pages/comissoes/components/ComissoesFiltros.tsx;pages/comissoes;.tsx;1;3;0;;
+src/pages/whatsapp/pages/comissoes/components/ComissoesResumoCards.tsx;pages/comissoes;.tsx;1;2;0;;
+src/pages/whatsapp/pages/comissoes/components/ModalCancelarProvisao.tsx;pages/comissoes;.tsx;1;2;0;;
+src/pages/whatsapp/pages/comissoes/components/ModalEstornarRecebimento.tsx;pages/comissoes;.tsx;1;2;0;;
+src/pages/whatsapp/pages/comissoes/components/ModalLancamentoComissao.tsx;pages/comissoes;.tsx;2;3;0;pages/propostas;
+src/pages/whatsapp/pages/comissoes/components/ModalReceberComissao.tsx;pages/comissoes;.tsx;1;2;0;;
+src/pages/whatsapp/pages/comissoes/components/ModalRelatorioComissoes.tsx;pages/comissoes;.tsx;1;2;0;;
+src/pages/whatsapp/pages/comissoes/components/ModalReverterCancelamento.tsx;pages/comissoes;.tsx;1;2;0;;
+src/pages/whatsapp/pages/comissoes/components/MultiSelectComissoes.tsx;pages/comissoes;.tsx;1;1;0;;
+src/pages/whatsapp/pages/comissoes/components/TabelaComissoes.tsx;pages/comissoes;.tsx;1;2;0;;
+src/pages/whatsapp/pages/comissoes/hooks/useComissaoContrato.ts;pages/comissoes;.ts;1;2;0;;
+src/pages/whatsapp/pages/comissoes/hooks/useComissoes.ts;pages/comissoes;.ts;1;4;0;;
+src/pages/whatsapp/pages/comissoes/pages/ComissaoContrato.tsx;pages/comissoes;.tsx;1;12;1;[EXTERNO];
+src/pages/whatsapp/pages/comissoes/pages/Comissoes.tsx;pages/comissoes;.tsx;1;9;1;[EXTERNO];
+src/pages/whatsapp/pages/comissoes/services/comissoesCalculos.ts;pages/comissoes;.ts;11;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/comissoes/services/comissoesPermissoes.ts;pages/comissoes;.ts;1;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/comissoes/services/comissoesRelatorioService.ts;pages/comissoes;.ts;1;3;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/comissoes/services/comissoesService.ts;pages/comissoes;.ts;8;4;0;pages/propostas;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/pages/comissoes/services/filtrosComissoesUtils.ts;pages/comissoes;.ts;4;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/comissoes/types/comissoes.ts;pages/comissoes;.ts;22;0;0;pages/propostas;
+src/pages/whatsapp/pages/financeiro/components/FinanceiroArquivos.tsx;pages/financeiro;.tsx;2;1;0;contas-pagar | contas-receber;
+src/pages/whatsapp/pages/financeiro/components/FinanceiroContratoCard.tsx;pages/financeiro;.tsx;1;2;0;pages/propostas;
+src/pages/whatsapp/pages/financeiro/components/ModalBaixaLote.tsx;pages/financeiro;.tsx;1;3;0;;
+src/pages/whatsapp/pages/financeiro/components/ModalBaixaParcela.tsx;pages/financeiro;.tsx;1;3;0;;
+src/pages/whatsapp/pages/financeiro/components/ModalEditarParcelamento.tsx;pages/financeiro;.tsx;1;2;0;;
+src/pages/whatsapp/pages/financeiro/components/ModalEstornoBaixa.tsx;pages/financeiro;.tsx;1;2;0;;
+src/pages/whatsapp/pages/financeiro/components/ModalLancamentoAvulso.tsx;pages/financeiro;.tsx;1;1;0;;
+src/pages/whatsapp/pages/financeiro/components/ModalLancamentoFinanceiro.tsx;pages/financeiro;.tsx;1;4;0;pages/propostas;
+src/pages/whatsapp/pages/financeiro/components/ModalReconstruirFinanceiro.tsx;pages/financeiro;.tsx;1;4;0;;
+src/pages/whatsapp/pages/financeiro/components/TabelaParcelasFinanceiras.tsx;pages/financeiro;.tsx;1;2;0;;
+src/pages/whatsapp/pages/financeiro/pages/Financeiro.tsx;pages/financeiro;.tsx;1;4;1;[EXTERNO];
+src/pages/whatsapp/pages/financeiro/pages/FinanceiroContrato.tsx;pages/financeiro;.tsx;1;11;1;[EXTERNO];
+src/pages/whatsapp/pages/financeiro/services/financeiroArquivosService.ts;pages/financeiro;.ts;1;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/financeiro/services/financeiroCalculos.ts;pages/financeiro;.ts;9;1;0;central-clientes;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/pages/financeiro/services/financeiroPermissoes.ts;pages/financeiro;.ts;1;1;0;pages/propostas;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/pages/financeiro/services/financeiroService.ts;pages/financeiro;.ts;12;3;0;central-clientes | components | pages/propostas;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/pages/financeiro/types/financeiro.ts;pages/financeiro;.ts;18;0;0;central-clientes | pages/propostas;
+src/pages/whatsapp/pages/propostas/components/ModalAcoesProposta.tsx;pages/propostas;.tsx;1;3;0;;
+src/pages/whatsapp/pages/propostas/components/ModalEmitirContrato.tsx;pages/propostas;.tsx;1;2;0;;
+src/pages/whatsapp/pages/propostas/components/ModalExcluirPropostaCompleta.tsx;pages/propostas;.tsx;1;1;0;;
+src/pages/whatsapp/pages/propostas/components/ModalFecharProposta.tsx;pages/propostas;.tsx;1;2;0;;
+src/pages/whatsapp/pages/propostas/components/ModalIniciarRenovacao.tsx;pages/propostas;.tsx;1;3;0;;
+src/pages/whatsapp/pages/propostas/components/ModalNovaProposta.tsx;pages/propostas;.tsx;3;5;0;central-clientes | components;
+src/pages/whatsapp/pages/propostas/components/PropostaClienteSelector.tsx;pages/propostas;.tsx;1;2;0;;
+src/pages/whatsapp/pages/propostas/components/PropostaItemForm.tsx;pages/propostas;.tsx;2;2;0;;
+src/pages/whatsapp/pages/propostas/components/PropostaStatusBadge.tsx;pages/propostas;.tsx;2;1;0;;
+src/pages/whatsapp/pages/propostas/pages/PropostaDetalhes.tsx;pages/propostas;.tsx;1;21;1;[EXTERNO];
+src/pages/whatsapp/pages/propostas/pages/PropostasLista.tsx;pages/propostas;.tsx;1;6;1;[EXTERNO];
+src/pages/whatsapp/pages/propostas/services/propostaAcoes.ts;pages/propostas;.ts;1;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/propostas/services/propostaClientesService.ts;pages/propostas;.ts;2;2;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/propostas/services/propostaCorretoresService.ts;pages/propostas;.ts;1;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/propostas/services/propostaPortfolioService.ts;pages/propostas;.ts;1;2;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/propostas/services/propostasService.ts;pages/propostas;.ts;7;3;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/propostas/types/propostas.ts;pages/propostas;.ts;15;0;0;;
+src/pages/whatsapp/pages/renovacoes/pages/RenovacoesLista.tsx;pages/renovacoes;.tsx;1;5;1;[EXTERNO];
+src/pages/whatsapp/pages/renovacoes/services/renovacoesPdfService.ts;pages/renovacoes;.ts;1;1;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/renovacoes/services/renovacoesService.ts;pages/renovacoes;.ts;1;2;0;;LOCAL_OBSERVADO
+src/pages/whatsapp/pages/renovacoes/types/renovacoes.ts;pages/renovacoes;.ts;3;0;0;;
+src/pages/whatsapp/pages/seguradoras/SeguradorasLista.tsx;pages/seguradoras;.tsx;1;2;1;[EXTERNO];
+src/pages/whatsapp/pages/sinistros/SinistroDetalhes.tsx;pages/sinistros;.tsx;1;7;1;[EXTERNO];
+src/pages/whatsapp/pages/sinistros/SinistrosLista.tsx;pages/sinistros;.tsx;1;4;1;[EXTERNO];
+src/pages/whatsapp/pages/sinistros/components/ModalNovoSinistro.tsx;pages/sinistros;.tsx;3;2;0;central-clientes | components;
+src/pages/whatsapp/providers/SupabaseWhatsAppProvider.ts;providers;.ts;3;6;0;automation | hooks;
+src/pages/whatsapp/providers/transports/DApiTransport.ts;providers;.ts;1;3;0;;
+src/pages/whatsapp/providers/transports/WhatsAppTransport.ts;providers;.ts;6;1;0;;
+src/pages/whatsapp/providers/transports/ZApiTransport.ts;providers;.ts;1;3;0;;
+src/pages/whatsapp/providers/transports/getWhatsAppTransport.ts;providers;.ts;1;3;0;;
+src/pages/whatsapp/services/WhatsAppService.ts;services;.ts;1;1;0;hooks;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/callRecordingService.ts;services;.ts;1;1;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/crmAssistenciaService.ts;services;.ts;4;2;0;central-clientes | components | pages/assistencias;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/crmBrasilApi.ts;services;.ts;1;0;0;automation;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/crmClienteService.ts;services;.ts;5;1;0;automation | central-clientes | components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/crmSinistroService.ts;services;.ts;5;2;0;central-clientes | components | pages/assistencias | pages/sinistros;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/crmWhatsAppClienteService.ts;services;.ts;5;2;0;components | documentos;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/dapiCallService.ts;services;.ts;1;1;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/equipeService.ts;services;.ts;1;1;0;hooks;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/instanciaUsuariosService.ts;services;.ts;1;1;0;hooks;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/novaConversaService.ts;services;.ts;2;1;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/quickReplyService.ts;services;.ts;1;1;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/storageQuotaError.ts;services;.ts;10;0;0;central-clientes | components | documentos | pages/assistencias | pages/sinistros | providers;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/whatsappAgendaService.ts;services;.ts;3;2;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/whatsappCallService.ts;services;.ts;3;1;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/whatsappContatosService.ts;services;.ts;4;2;0;components | pages/WhatsAppContatos.tsx;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/whatsappTaskService.ts;services;.ts;1;1;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/whatsappTimelineMapper.ts;services;.ts;1;3;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/services/whatsappTimelineService.ts;services;.ts;2;1;0;hooks;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/tarefas/Tarefas.tsx;tarefas;.tsx;1;5;1;[EXTERNO];
+src/pages/whatsapp/tarefas/components/ModalTarefa.tsx;tarefas;.tsx;2;2;0;components;
+src/pages/whatsapp/tarefas/components/NotificacoesTarefas.tsx;tarefas;.tsx;1;2;1;[EXTERNO];
+src/pages/whatsapp/tarefas/components/TarefaCard.tsx;tarefas;.tsx;1;1;0;;
+src/pages/whatsapp/tarefas/hooks/useTarefas.ts;tarefas;.ts;2;5;0;;
+src/pages/whatsapp/tarefas/services/tarefasService.ts;tarefas;.ts;4;2;0;components;COMPARTILHADO_OBSERVADO
+src/pages/whatsapp/tarefas/types/tarefas.ts;tarefas;.ts;7;0;0;components;
+src/pages/whatsapp/types/whatsapp.ts;types;.ts;22;0;0;automation | components | hooks | pages/WhatsAppInbox.tsx | pages/WhatsAppKanban.tsx | providers | services | utils;
+src/pages/whatsapp/utils/kanbanUtils.ts;utils;.ts;1;1;0;pages/WhatsAppKanban.tsx;
+src/pages/whatsapp/utils/masks.ts;utils;.ts;1;1;0;central-clientes;
+src/pages/whatsapp/utils/parsers.ts;utils;.ts;3;0;0;central-clientes;
+src/pages/whatsapp/utils/validators.ts;utils;.ts;0;1;0;;
+src/pages/whatsapp/utils/whatsappPhone.ts;utils;.ts;2;0;0;providers | services;
