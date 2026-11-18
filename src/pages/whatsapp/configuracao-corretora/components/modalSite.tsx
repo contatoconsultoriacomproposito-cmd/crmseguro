@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, Save, Globe, Loader2, Palette, Layout, CheckCircle2, ImageIcon, Upload, Camera, Star } from "lucide-react";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase } from "../../../../lib/supabaseClient";
 
 interface ModalSiteProps {
   isOpen: boolean;

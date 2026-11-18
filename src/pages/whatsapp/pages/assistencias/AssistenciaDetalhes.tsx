@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { supabase } from "../../../../lib/supabaseClient";
 import { useAuth } from "../../../../auth/AuthContext";
 import { usePermissoes } from "../../hooks/usePermissoes";
-import ModalArmazenamento from "../../configuracao-corretora/ModalArmazenamento";
+import ModalArmazenamento from "../../configuracao-corretora/components/ModalArmazenamento";
 import { useStorageCommercial } from "../../hooks/useStorageCommercial";
 import { isStorageLimitError } from "../../services/storageQuotaError";
 import {

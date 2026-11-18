@@ -30,13 +30,13 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import { useAuth } from "../../../auth/AuthContext";
-import { supabase } from "../../../lib/supabaseClient";
-import { buscarCEP, buscarCNPJ } from "../../../services/brasilApi";
-import { maskCNPJ, maskPhone } from "../../../utils/masks";
+import { useAuth } from "../../../../auth/AuthContext";
+import { supabase } from "../../../../lib/supabaseClient";
+import { buscarCEP, buscarCNPJ } from "../../../../services/brasilApi";
+import { maskCNPJ, maskPhone } from "../../../../utils/masks";
 
-import { ModalPlanos } from "./ModalPlanos";
-import { ModalSite } from "./modalSite";
+import { ModalPlanos } from "../components/ModalPlanos";
+import { ModalSite } from "../components/modalSite";
 
 interface PlanoRelacionamento {
   id: string;

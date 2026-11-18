@@ -21,8 +21,8 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { useAuth } from "../../../auth/AuthContext";
-import { supabase } from "../../../lib/supabaseClient";
+import { useAuth } from "../../../../auth/AuthContext";
+import { supabase } from "../../../../lib/supabaseClient";
 
 interface ModalPlanosProps {
   isOpen: boolean;

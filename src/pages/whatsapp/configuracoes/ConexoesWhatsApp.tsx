@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ModalConexoes } from "../configuracao-corretora/ModalConexoes";
+import { ModalConexoes } from "../configuracao-corretora/components/ModalConexoes";
 import { supabase } from "../../../lib/supabaseClient";
 import { useAuth } from "../../../auth/AuthContext";
 import {

@@ -34,7 +34,7 @@ import { useWhatsAppTimeline } from '../hooks/useWhatsAppTimeline';
 import { mapearTimelineWhatsApp, type WhatsAppTimelineRenderable } from '../services/whatsappTimelineMapper';
 import ModalCriarTarefaWhatsApp from './ModalCriarTarefaWhatsApp';
 import { criarTarefaWhatsApp } from '../services/whatsappTaskService';
-import ModalArmazenamento from '../configuracao-corretora/ModalArmazenamento';
+import ModalArmazenamento from '../configuracao-corretora/components/ModalArmazenamento';
 
 import {
   isStorageLimitError,
