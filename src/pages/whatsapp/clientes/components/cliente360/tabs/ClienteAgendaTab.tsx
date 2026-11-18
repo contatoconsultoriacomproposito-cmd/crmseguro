@@ -18,18 +18,18 @@ import type { ClienteCentral } from '../../../types/centralClientes'
 import { formatarDataHora } from '../../../utils/clienteFormatters'
 import ModalNovoCompromisso, {
   type NovoCompromissoSubmitPayload,
-} from '../../../../pages/agenda/components/ModalNovoCompromisso'
+} from '../../../../agenda/components/ModalNovoCompromisso'
 import ModalCompromisso, {
   type ModalCompromissoEdicao,
   type ModalCompromissoReagendamento,
-} from '../../../../pages/agenda/components/ModalCompromisso'
+} from '../../../../agenda/components/ModalCompromisso'
 import type {
   AgendaItem,
-} from '../../../../pages/agenda/types/agenda'
+} from '../../../../agenda/types/agenda'
 import {
   buscarAgendaClientePorVinculo,
   type AgendaClienteResultado,
-} from '../../../../pages/agenda/services/agendaClienteService'
+} from '../../../../agenda/services/agendaClienteService'
 import {
   atualizarCompromisso,
   buscarCompromissoPorId,
@@ -39,7 +39,7 @@ import {
   criarCompromissos,
   reagendarCompromisso,
   type CriarCompromissoPayload,
-} from '../../../../pages/agenda/services/agendaService'
+} from '../../../../agenda/services/agendaService'
 
 interface AgendaRow {
   id: string

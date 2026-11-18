@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, } from 'react';
 import { AlertCircle, CalendarDays, CalendarSync, CheckCircle2, Plus, RefreshCw, } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '../../../../../auth/AuthContext';
+import { useAuth } from '../../../../auth/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../../../../lib/supabaseClient';
-import { usePermissoes } from '../../../hooks/usePermissoes';
+import { supabase } from '../../../../lib/supabaseClient';
+import { usePermissoes } from '../../hooks/usePermissoes';
 import AgendaCalendar, { type AgendaCalendarNovoHorario, type AgendaCalendarPeriodo, type AgendaCalendarReagendamento, type AgendaCalendarRef, type AgendaCalendarView, } from '../components/AgendaCalendar';
 import ModalNovoCompromisso, { type NovoCompromissoSubmitPayload, } from '../components/ModalNovoCompromisso';
 import ModalCompromisso, { type ModalCompromissoEdicao, type ModalCompromissoReagendamento, } from '../components/ModalCompromisso';

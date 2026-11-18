@@ -13,20 +13,20 @@ import {
 } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 
-import ConversationList from '../components/ConversationList'
-import ChatWindow from '../components/ChatWindow'
-import ContactPanel from '../components/ContactPanel'
-import NewConversationModal from '../components/NewConversationModal'
-import { useConversations } from '../hooks/useConversations'
-import { useWhatsApp } from '../hooks/useWhatsApp'
-import { usePermissoes } from '../hooks/usePermissoes'
+import ConversationList from '../../components/ConversationList'
+import ChatWindow from '../../components/ChatWindow'
+import ContactPanel from '../../components/ContactPanel'
+import NewConversationModal from '../../components/NewConversationModal'
+import { useConversations } from '../../hooks/useConversations'
+import { useWhatsApp } from '../../hooks/useWhatsApp'
+import { usePermissoes } from '../../hooks/usePermissoes'
   
 
 import type {
   WhatsAppKanbanStage,
   WhatsAppMessage,
   WhatsAppSharedContact,
-} from '../types/whatsapp'
+} from '../../types/whatsapp'
 
 export default function WhatsAppInbox() {
   const location = useLocation()

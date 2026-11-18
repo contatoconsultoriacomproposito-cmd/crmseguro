@@ -39,23 +39,23 @@ import {
 
 import { CSS } from '@dnd-kit/utilities'
 
-import { useConversations } from '../hooks/useConversations'
-import { useWhatsApp } from '../hooks/useWhatsApp'
-import { usePermissoes } from '../hooks/usePermissoes'
-import { supabase } from '../../../lib/supabaseClient'
+import { useConversations } from '../../hooks/useConversations'
+import { useWhatsApp } from '../../hooks/useWhatsApp'
+import { usePermissoes } from '../../hooks/usePermissoes'
+import { supabase } from '../../../../lib/supabaseClient'
 
 import {
   getStageItems,
   normalizePositions,
   normalizeAllStages,
   rebuildConversations,
-} from '../utils/kanbanUtils'
+} from '../../utils/kanbanUtils'
 
 
 import type {
   WhatsAppConversation,
   WhatsAppKanbanStage,
-} from '../types/whatsapp'
+} from '../../types/whatsapp'
 import { useNavigate } from 'react-router-dom'
 
 interface KanbanColumn {

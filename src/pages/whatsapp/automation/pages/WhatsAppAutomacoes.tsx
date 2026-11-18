@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { useAuth } from '../../../auth/AuthContext'
+import { useAuth } from '../../../../auth/AuthContext'
 import {
   buscarConfiguracoesAutomacao,
   salvarPreQualificationConfig,
   salvarRoutingConfig,
-} from '../automation/services/automationConfigService'
+} from '../services/automationConfigService'
 import {
   Bot,
   Info,
@@ -19,7 +19,7 @@ import type {
   AutomationType,
   PreQualificationConfig,
   RoutingConfig,
-} from '../automation/types/automationTypes'
+} from '../types/automationTypes'
 
 import {
   automationMetricsMock,
@@ -27,12 +27,12 @@ import {
   automationVariablesMock,
   preQualificationConfigMock,
   routingConfigMock,
-} from '../automation/mocks/automationMocks'
+} from '../mocks/automationMocks'
 
-import { AutomationMetricCard } from '../automation/components/AutomationMetricCard'
-import { AutomationCard } from '../automation/components/AutomationCard'
-import { PreQualificationEditor } from '../automation/editors/PreQualificationEditor'
-import { RoutingEditor } from '../automation/editors/RoutingEditor'
+import { AutomationMetricCard } from '../components/AutomationMetricCard'
+import { AutomationCard } from '../components/AutomationCard'
+import { PreQualificationEditor } from '../editors/PreQualificationEditor'
+import { RoutingEditor } from '../editors/RoutingEditor'
 
 export default function WhatsAppAutomacoes() {
   const { userProfile } = useAuth()

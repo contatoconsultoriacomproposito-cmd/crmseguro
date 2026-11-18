@@ -17,13 +17,13 @@ import { Archive, ArrowLeft, Check, ChevronDown, FolderOpen, Phone, RotateCcw, U
 import { toast } from 'sonner';
 import { startRealPreQualification } from '../automation/services/preQualificationExecutor';
 import { startRealRouting } from '../automation/services/routingExecutor';
-import ModalNovoCompromisso, { type NovoCompromissoSubmitPayload } from '../pages/agenda/components/ModalNovoCompromisso';
+import ModalNovoCompromisso, { type NovoCompromissoSubmitPayload } from '../agenda/components/ModalNovoCompromisso';
 import {
   criarCompromisso,
   criarCompromissos,
   type CriarCompromissoPayload,
-} from '../pages/agenda/services/agendaService';
-import type { AgendaClienteResultado } from '../pages/agenda/services/agendaClienteService';
+} from '../agenda/services/agendaService';
+import type { AgendaClienteResultado } from '../agenda/services/agendaClienteService';
 import { buscarClienteCrmPorContatoWhatsApp } from '../services/crmWhatsAppClienteService';
 import { iniciarChamadaDapi } from '../services/dapiCallService';
 import { CallModal } from './CallModal';

@@ -22,13 +22,13 @@ import ResetPassword from "./components/homepage/ResetPassword"
 // ======================================================
 
 // WhatsApp
-import WhatsAppInbox from "./pages/whatsapp/pages/WhatsAppInbox"
-import WhatsAppContatos from "./pages/whatsapp/pages/WhatsAppContatos"
-import WhatsAppAutomacoes from "./pages/whatsapp/pages/WhatsAppAutomacoes"
-import WhatsAppKanban from "./pages/whatsapp/pages/WhatsAppKanban"
+import WhatsAppInbox from "./pages/whatsapp/conversas/pages/WhatsAppInbox"
+import WhatsAppContatos from "./pages/whatsapp/contatos/pages/WhatsAppContatos"
+import WhatsAppAutomacoes from "./pages/whatsapp/automation/pages/WhatsAppAutomacoes"
+import WhatsAppKanban from "./pages/whatsapp/kanban/pages/WhatsAppKanban"
 
 // Agenda
-import AgendaCRM from "./pages/whatsapp/pages/agenda/pages/AgendaCRM"
+import AgendaCRM from "./pages/whatsapp/agenda/pages/AgendaCRM"
 
 // Tarefas
 import Tarefas from "./pages/whatsapp/tarefas/pages/Tarefas"
@@ -77,7 +77,7 @@ import NovoMembro from "./pages/whatsapp/equipe/pages/NovoMembro"
 import ConexoesWhatsApp from "./pages/whatsapp/configuracoes/ConexoesWhatsApp"
 import CentralArmazenamento from "./pages/whatsapp/armazenamento/pages/CentralArmazenamento"
 import ConfigCorretora from "./pages/whatsapp/configuracao-corretora/pages/ConfigCorretora"
-import SeguradorasLista from "./pages/whatsapp/pages/seguradoras/pages/SeguradorasLista"
+import SeguradorasLista from "./pages/whatsapp/seguradoras/pages/SeguradorasLista"
 
 // ======================================================
 // ROTA PRIVADA

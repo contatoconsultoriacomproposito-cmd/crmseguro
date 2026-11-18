@@ -20,7 +20,7 @@ import {
   
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useAuth } from '../../../auth/AuthContext'
+import { useAuth } from '../../../../auth/AuthContext'
 import {
   listarInstanciasDapiAtivas,
   listarWhatsAppContatos,
@@ -28,21 +28,21 @@ import {
   type WhatsAppContato,
   type WhatsAppInstanciaResumo,
   type EscopoContatos,
-} from '../services/whatsappContatosService'
+} from '../../services/whatsappContatosService'
 
 import {
   criarWhatsAppContato,
   atualizarWhatsAppContato,
   excluirWhatsAppContato,
   restaurarWhatsAppContato,
-} from '../services/whatsappContatosService'
+} from '../../services/whatsappContatosService'
 
-import WhatsAppContatoModal from '../components/WhatsAppContatoModal'
+import WhatsAppContatoModal from '../../components/WhatsAppContatoModal'
 
 import { useNavigate } from 'react-router-dom'
-import { useWhatsApp } from '../hooks/useWhatsApp'
-import { usePermissoes } from '../hooks/usePermissoes'
-import WhatsAppContatoMensagemModal from '../components/WhatsAppContatoMensagemModal'
+import { useWhatsApp } from '../../hooks/useWhatsApp'
+import { usePermissoes } from '../../hooks/usePermissoes'
+import WhatsAppContatoMensagemModal from '../../components/WhatsAppContatoMensagemModal'
 
 const ITENS_POR_PAGINA = 20
 

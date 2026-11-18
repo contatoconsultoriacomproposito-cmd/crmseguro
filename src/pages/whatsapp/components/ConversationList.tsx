@@ -28,16 +28,16 @@ import {
 import ModalCompromisso, {
   type ModalCompromissoEdicao,
   type ModalCompromissoReagendamento,
-} from '../pages/agenda/components/ModalCompromisso'
+} from '../agenda/components/ModalCompromisso'
 import {
   atualizarCompromisso,
   buscarCompromissoPorId,
   cancelarCompromisso,
   concluirCompromisso,
   reagendarCompromisso,
-} from '../pages/agenda/services/agendaService'
+} from '../agenda/services/agendaService'
 
-import type { AgendaItem } from '../pages/agenda/types/agenda'
+import type { AgendaItem } from '../agenda/types/agenda'
 
 
 
