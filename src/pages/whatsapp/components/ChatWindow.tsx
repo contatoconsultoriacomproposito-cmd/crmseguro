@@ -2047,7 +2047,17 @@ const timelineItems =
         {podeAlterarResponsavel && activeMenu === 'responsavel' && (<ResponsavelMenu attendants={attendants} responsavelId={responsavelId} loading={loadingAttendants} assigning={assigningResponsible} mobile onSelect={handleAssignResponsible}/>)}
         </div>
     </header>
-    <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
+    <div
+    ref={messagesContainerRef}
+    onScroll={handleMessagesScroll}
+    className="min-h-0 flex-1 overflow-y-auto bg-[#efeae2] p-4"
+    style={{
+        backgroundImage: "url('/whatsapp-bg.png')",
+        backgroundRepeat: 'repeat',
+        backgroundSize: '420px auto',
+        backgroundPosition: 'center',
+    }}
+    >
     {loading ? (
     <div className="flex h-full items-center justify-center text-sm text-gray-400">
         Carregando histórico...
