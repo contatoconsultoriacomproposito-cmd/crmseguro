@@ -29,8 +29,8 @@ import {
 } from "react-router-dom";
 
 import ModalNovaProposta from "../components/ModalNovaProposta";
-import { useAuth } from "../../../../../auth/AuthContext";
-import { usePermissoes } from "../../../hooks/usePermissoes";
+import { useAuth } from "../../../../auth/AuthContext";
+import { usePermissoes } from "../../hooks/usePermissoes";
 import PropostaStatusBadge from "../components/PropostaStatusBadge";
 import {
   listarCorretoresFiltroPropostas,

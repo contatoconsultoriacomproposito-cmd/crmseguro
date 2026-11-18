@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { supabase } from '../../../../lib/supabaseClient'
-import ModalNovaProposta from '../../pages/propostas/components/ModalNovaProposta'
+import ModalNovaProposta from '../../propostas/components/ModalNovaProposta'
 
 type TipoCliente = 'PF' | 'PJ'
 

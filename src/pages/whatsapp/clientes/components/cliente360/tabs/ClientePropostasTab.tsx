@@ -13,7 +13,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { supabase } from '../../../../../../lib/supabaseClient'
-import ModalNovaProposta from '../../../../pages/propostas/components/ModalNovaProposta'
+import ModalNovaProposta from '../../../../propostas/components/ModalNovaProposta'
 import type { ClienteCentral } from '../../../types/centralClientes'
 
 interface PropostaRow {

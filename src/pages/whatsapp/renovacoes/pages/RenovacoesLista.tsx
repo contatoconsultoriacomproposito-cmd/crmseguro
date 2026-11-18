@@ -4,8 +4,8 @@ import {
   FileDown, Filter, Loader2, RefreshCw, RotateCcw, Search, X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../../../../auth/AuthContext';
-import { usePermissoes } from '../../../hooks/usePermissoes';
+import { useAuth } from '../../../../auth/AuthContext';
+import { usePermissoes } from '../../hooks/usePermissoes';
 import { listarRenovacoes, obterOpcoesRenovacoes } from '../services/renovacoesService';
 import { gerarPdfRenovacoes } from '../services/renovacoesPdfService';
 import type { FiltrosRenovacoes, OpcoesRenovacoes, ResultadoRenovacoes } from '../types/renovacoes';

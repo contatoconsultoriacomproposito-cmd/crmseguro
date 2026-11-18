@@ -38,11 +38,11 @@ import { usePermissoes } from "./pages/whatsapp/hooks/usePermissoes"
 import CentralClientes from "./pages/whatsapp/clientes/pages/CentralClientes"
 
 // Propostas
-import PropostasLista from "./pages/whatsapp/pages/propostas/pages/PropostasLista"
-import PropostaDetalhes from "./pages/whatsapp/pages/propostas/pages/PropostaDetalhes"
+import PropostasLista from "./pages/whatsapp/propostas/pages/PropostasLista"
+import PropostaDetalhes from "./pages/whatsapp/propostas/pages/PropostaDetalhes"
 
 // Renovações
-import RenovacoesLista from "./pages/whatsapp/pages/renovacoes/pages/RenovacoesLista"
+import RenovacoesLista from "./pages/whatsapp/renovacoes/pages/RenovacoesLista"
 
 // Financeiro
 import Financeiro from "./pages/whatsapp/pages/financeiro/pages/Financeiro"
