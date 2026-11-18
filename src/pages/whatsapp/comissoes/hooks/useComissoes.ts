@@ -5,7 +5,7 @@ import {
   useState,
 } from "react";
 
-import { useAuth } from "../../../../../auth/AuthContext";
+import { useAuth } from "../../../../auth/AuthContext";
 import { temFiltro } from "../services/filtrosComissoesUtils";
 
 import type {

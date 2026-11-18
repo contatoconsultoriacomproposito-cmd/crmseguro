@@ -52,7 +52,7 @@ import { ModalReceberComissao } from "../components/ModalReceberComissao";
 import { ModalEstornarRecebimento } from "../components/ModalEstornarRecebimento";
 import { ModalCancelarProvisao } from "../components/ModalCancelarProvisao";
 import { ModalReverterCancelamento } from "../components/ModalReverterCancelamento";
-import { useAuth } from "../../../../../auth/AuthContext";
+import { useAuth } from "../../../../auth/AuthContext";
 
 import {
   podeCancelarProvisaoComissao,

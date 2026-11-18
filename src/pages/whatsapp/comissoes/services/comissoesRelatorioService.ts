@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { FiltrosComissoes, ItemComissaoGeral, ResumoComissoesGeral } from "../types/comissoes";
 import { buscarComissoesGeral } from "./comissoesService";
-import { supabase } from "../../../../../lib/supabaseClient";
+import { supabase } from "../../../../lib/supabaseClient";
 
 export interface ItemRelatorioComissoes { item: ItemComissaoGeral; detalhe: null; percentualCorretor: string; percentualCorretora: string }
 export interface DadosRelatorioComissoes {

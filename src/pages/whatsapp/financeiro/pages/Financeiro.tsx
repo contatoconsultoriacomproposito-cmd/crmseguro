@@ -17,7 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { usePermissoes } from "../../../hooks/usePermissoes";
+import { usePermissoes } from "../../hooks/usePermissoes";
 
 import {
   buscarFinanceiroGeral,

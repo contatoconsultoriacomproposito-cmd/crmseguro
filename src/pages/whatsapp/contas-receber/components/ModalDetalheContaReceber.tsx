@@ -36,7 +36,7 @@ import {
   type FormaRecebimentoContaReceber,
 } from '../services/contasReceberService';
 
-import FinanceiroArquivos from '../../pages/financeiro/components/FinanceiroArquivos';
+import FinanceiroArquivos from '../../financeiro/components/FinanceiroArquivos';
 
 interface Props {
   aberto: boolean;

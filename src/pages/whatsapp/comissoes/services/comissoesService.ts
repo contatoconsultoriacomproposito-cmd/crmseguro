@@ -1,4 +1,4 @@
-import { supabase } from "../../../../../lib/supabaseClient";
+import { supabase } from "../../../../lib/supabaseClient";
 import { valoresFiltro, incluiFiltro, temFiltro } from "./filtrosComissoesUtils";
 import type {
   Comissao,

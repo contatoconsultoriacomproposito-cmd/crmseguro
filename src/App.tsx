@@ -45,8 +45,8 @@ import PropostaDetalhes from "./pages/whatsapp/propostas/pages/PropostaDetalhes"
 import RenovacoesLista from "./pages/whatsapp/renovacoes/pages/RenovacoesLista"
 
 // Financeiro
-import Financeiro from "./pages/whatsapp/pages/financeiro/pages/Financeiro"
-import FinanceiroContrato from "./pages/whatsapp/pages/financeiro/pages/FinanceiroContrato"
+import Financeiro from "./pages/whatsapp/financeiro/pages/Financeiro"
+import FinanceiroContrato from "./pages/whatsapp/financeiro/pages/FinanceiroContrato"
 
 // Contas a Receber
 import ContasReceber from "./pages/whatsapp/contas-receber/pages/ContasReceber"
@@ -58,8 +58,8 @@ import ContasPagar from "./pages/whatsapp/contas-pagar/pages/ContasPagar"
 import FluxoCaixa from "./pages/whatsapp/fluxo-caixa/pages/FluxoCaixa";
 
 // Comissões
-import Comissoes from "./pages/whatsapp/pages/comissoes/pages/Comissoes"
-import ComissaoContrato from "./pages/whatsapp/pages/comissoes/pages/ComissaoContrato"
+import Comissoes from "./pages/whatsapp/comissoes/pages/Comissoes"
+import ComissaoContrato from "./pages/whatsapp/comissoes/pages/ComissaoContrato"
 
 // Sinistros
 import SinistrosLista from "./pages/whatsapp/sinistros/pages/SinistrosLista"

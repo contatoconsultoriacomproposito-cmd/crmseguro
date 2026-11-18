@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
-import { usePermissoes } from "../../../hooks/usePermissoes";
+import { usePermissoes } from "../../hooks/usePermissoes";
 
 
 import ModalBaixaParcela from "../components/ModalBaixaParcela";

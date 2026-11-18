@@ -21,15 +21,15 @@ import { toast } from 'sonner'
 import { supabase } from '../../../../../../lib/supabaseClient'
 import {
   buscarFinanceiroContratoDetalhado,
-} from '../../../../pages/financeiro/services/financeiroService'
+} from '../../../../financeiro/services/financeiroService'
 import type {
   FinanceiroContratoDetalhado,
   ParcelaFinanceiraComSituacao,
-} from '../../../../pages/financeiro/types/financeiro'
+} from '../../../../financeiro/types/financeiro'
 import {
   formatarFormaPagamento,
   formatarMoeda,
-} from '../../../../pages/financeiro/services/financeiroCalculos'
+} from '../../../../financeiro/services/financeiroCalculos'
 import type { ClienteCentral } from '../../../types/centralClientes'
 
 interface ContratoCliente {

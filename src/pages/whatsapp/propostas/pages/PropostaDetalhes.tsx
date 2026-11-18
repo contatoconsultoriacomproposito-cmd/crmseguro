@@ -56,14 +56,14 @@ import ModalExcluirPropostaCompleta from "../components/ModalExcluirPropostaComp
 import { useAuth } from "../../../../auth/AuthContext";
 import { usePermissoes } from "../../hooks/usePermissoes";
 
-import FinanceiroContratoCard from "../../pages/financeiro/components/FinanceiroContratoCard";
-import ModalLancamentoFinanceiro from "../../pages/financeiro/components/ModalLancamentoFinanceiro";
-import { buscarFinanceiroContratoDetalhado } from "../../pages/financeiro/services/financeiroService";
-import { podeOperarFinanceiro } from "../../pages/financeiro/services/financeiroPermissoes";
+import FinanceiroContratoCard from "../../financeiro/components/FinanceiroContratoCard";
+import ModalLancamentoFinanceiro from "../../financeiro/components/ModalLancamentoFinanceiro";
+import { buscarFinanceiroContratoDetalhado } from "../../financeiro/services/financeiroService";
+import { podeOperarFinanceiro } from "../../financeiro/services/financeiroPermissoes";
 import type {
   FinanceiroContratoDetalhado,
   ContextoPermissaoFinanceiro,
-} from "../../pages/financeiro/types/financeiro";
+} from "../../financeiro/types/financeiro";
 
 import {
   buscarComissaoContratoDetalhada,
@@ -74,25 +74,25 @@ import {
   atualizarCondicoesComissao,
   gerenciarRateiosComissao,
   consultarComissaoParaOperacao,
-} from "../../pages/comissoes/services/comissoesService";
+} from "../../comissoes/services/comissoesService";
 
 import type {
   OpcaoParticipanteComissao,
-} from "../../pages/comissoes/services/comissoesService";
+} from "../../comissoes/services/comissoesService";
 
 
 import type {
   ComissaoContratoDetalhada,
   CriarComissaoPayload,
   ItemMinhaComissaoCorretor,
-} from "../../pages/comissoes/types/comissoes";
+} from "../../comissoes/types/comissoes";
 
-import ComissaoContratoCard from "../../pages/comissoes/components/ComissaoContratoCard";
+import ComissaoContratoCard from "../../comissoes/components/ComissaoContratoCard";
 
 import {
   ModalLancamentoComissao,
   type ModoModalComissao,
-} from "../../pages/comissoes/components/ModalLancamentoComissao";
+} from "../../comissoes/components/ModalLancamentoComissao";
 
 interface EdicaoCabecalhoState {
   data_emissao: string;
