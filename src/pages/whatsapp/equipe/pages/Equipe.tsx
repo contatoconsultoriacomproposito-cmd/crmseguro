@@ -27,9 +27,9 @@ import {
 } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../../../lib/supabaseClient";
-import { useAuth } from "../../../auth/AuthContext";
-import ModalPermissoesUsuario from "./ModalPermissoesUsuario";
+import { supabase } from "../../../../lib/supabaseClient";
+import { useAuth } from "../../../../auth/AuthContext";
+import ModalPermissoesUsuario from "../components/ModalPermissoesUsuario";
 
 type FuncaoEquipe =
   | "CORRETOR"

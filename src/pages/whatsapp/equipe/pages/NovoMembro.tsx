@@ -21,8 +21,8 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
-import { supabase } from "../../../lib/supabaseClient";
-import { useAuth } from "../../../auth/AuthContext";
+import { supabase } from "../../../../lib/supabaseClient";
+import { useAuth } from "../../../../auth/AuthContext";
 type FuncaoEquipe =
   | "CORRETOR"
   | "ATENDIMENTO"

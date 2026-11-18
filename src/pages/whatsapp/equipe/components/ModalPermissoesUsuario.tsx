@@ -3,33 +3,33 @@ import {
   AlertCircle, ArrowLeft, CheckCircle2, ChevronRight, Clock3, Info, Loader2,
   LockKeyhole, Save, ShieldCheck, Sparkles, UserRoundCog, X,
 } from "lucide-react";
-import { supabase } from "../../../lib/supabaseClient";
-import type { ModalPermissoesUsuarioProps } from "./components/permissoesTypes";
-import { GRUPOS_PERMISSOES, type GrupoPermissao, type ModuloPermissaoId } from "./components/estruturaPermissoes";
+import { supabase } from "../../../../lib/supabaseClient";
+import type { ModalPermissoesUsuarioProps } from "./permissoesTypes";
+import { GRUPOS_PERMISSOES, type GrupoPermissao, type ModuloPermissaoId } from "./estruturaPermissoes";
 import {
   compararPermissoes, contarConcedidas, criarPayloadParcial, normalizarAtivas,
   permissoesCriticas, type EscopoAtivo, type PermissoesAtivas,
-} from "./components/permissoesEstado";
-import { CARGOS_PRESET, construirPreset, type CargoPreset } from "./components/presetsPermissoes";
-import ModalPermissoesContatos from "./components/ModalPermissoesContatos";
-import ModalPermissoesConversas from "./components/ModalPermissoesConversas";
-import ModalPermissoesAgenda from "./components/ModalPermissoesAgenda";
-import ModalPermissoesEquipe from "./components/ModalPermissoesEquipe";
-import ModalPermissoesClientes from "./components/ModalPermissoesClientes";
-import ModalPermissoesPropostas from "./components/ModalPermissoesPropostas";
-import ModalPermissoesRenovacoes from "./components/ModalPermissoesRenovacoes";
-import ModalPermissoesComissoes from "./components/ModalPermissoesComissoes";
-import ModalPermissoesSinistro from "./components/ModalPermissoesSinistro";
-import ModalPermissoesAssistencia from "./components/ModalPermissoesAssistencia";
-import ModalPermissoesTarefas from "./components/ModalPermissoesTarefas";
-import ModalPermissoesContasPagar from "./components/ModalPermissoesContasPagar";
-import ModalPermissoesContasReceber from "./components/ModalPermissoesContasReceber";
-import ModalPermissoesFluxoCaixa from "./components/ModalPermissoesFluxoCaixa";
-import ModalPermissoesParcelasClientes from "./components/ModalPermissoesParcelasClientes";
-import ModalPermissoesConexoesWhatsapp from "./components/ModalPermissoesConexoesWhatsapp";
-import ModalPermissoesArmazenamento from "./components/ModalPermissoesArmazenamento";
-import ModalPermissoesSeguradoras from "./components/ModalPermissoesSeguradoras";
-import ModalPermissoesConfiguracoes from "./components/ModalPermissoesConfiguracoes";
+} from "./permissoesEstado";
+import { CARGOS_PRESET, construirPreset, type CargoPreset } from "./presetsPermissoes";
+import ModalPermissoesContatos from "./ModalPermissoesContatos";
+import ModalPermissoesConversas from "./ModalPermissoesConversas";
+import ModalPermissoesAgenda from "./ModalPermissoesAgenda";
+import ModalPermissoesEquipe from "./ModalPermissoesEquipe";
+import ModalPermissoesClientes from "./ModalPermissoesClientes";
+import ModalPermissoesPropostas from "./ModalPermissoesPropostas";
+import ModalPermissoesRenovacoes from "./ModalPermissoesRenovacoes";
+import ModalPermissoesComissoes from "./ModalPermissoesComissoes";
+import ModalPermissoesSinistro from "./ModalPermissoesSinistro";
+import ModalPermissoesAssistencia from "./ModalPermissoesAssistencia";
+import ModalPermissoesTarefas from "./ModalPermissoesTarefas";
+import ModalPermissoesContasPagar from "./ModalPermissoesContasPagar";
+import ModalPermissoesContasReceber from "./ModalPermissoesContasReceber";
+import ModalPermissoesFluxoCaixa from "./ModalPermissoesFluxoCaixa";
+import ModalPermissoesParcelasClientes from "./ModalPermissoesParcelasClientes";
+import ModalPermissoesConexoesWhatsapp from "./ModalPermissoesConexoesWhatsapp";
+import ModalPermissoesArmazenamento from "./ModalPermissoesArmazenamento";
+import ModalPermissoesSeguradoras from "./ModalPermissoesSeguradoras";
+import ModalPermissoesConfiguracoes from "./ModalPermissoesConfiguracoes";
 
 async function chamarEquipe(body: Record<string, unknown>): Promise<{ success: boolean; permissoes?: unknown; error?: string }> {
   const { data, error } = await supabase.functions.invoke("cadastrar-usuario", { body });

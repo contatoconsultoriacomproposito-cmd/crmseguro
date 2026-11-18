@@ -70,8 +70,8 @@ import AssistenciasLista from "./pages/whatsapp/pages/assistencias/AssistenciasL
 import AssistenciaDetalhes from "./pages/whatsapp/pages/assistencias/AssistenciaDetalhes"
 
 // Equipe
-import Equipe from "./pages/whatsapp/equipe/Equipe"
-import NovoMembro from "./pages/whatsapp/equipe/NovoMembro"
+import Equipe from "./pages/whatsapp/equipe/pages/Equipe"
+import NovoMembro from "./pages/whatsapp/equipe/pages/NovoMembro"
 
 // Configurações / Infraestrutura
 import ConexoesWhatsApp from "./pages/whatsapp/configuracoes/ConexoesWhatsApp"
