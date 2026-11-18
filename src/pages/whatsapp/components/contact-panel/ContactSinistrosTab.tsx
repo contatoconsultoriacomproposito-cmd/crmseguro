@@ -17,7 +17,7 @@ import {
   type CrmSinistro,
 } from '../../services/crmSinistroService'
 
-import ModalNovoSinistro from '../../pages/sinistros/components/ModalNovoSinistro'
+import ModalNovoSinistro from '../../sinistros/components/ModalNovoSinistro'
 
 type TipoCliente = 'PF' | 'PJ'
 

@@ -22,31 +22,31 @@ import ResetPassword from "./components/homepage/ResetPassword"
 // ======================================================
 
 // WhatsApp
-import WhatsAppInbox from "./pages/whatsapp/pages/WhatsAppInbox"
-import WhatsAppContatos from "./pages/whatsapp/pages/WhatsAppContatos"
-import WhatsAppAutomacoes from "./pages/whatsapp/pages/WhatsAppAutomacoes"
-import WhatsAppKanban from "./pages/whatsapp/pages/WhatsAppKanban"
+import WhatsAppInbox from "./pages/whatsapp/conversas/pages/WhatsAppInbox"
+import WhatsAppContatos from "./pages/whatsapp/contatos/pages/WhatsAppContatos"
+import WhatsAppAutomacoes from "./pages/whatsapp/automation/pages/WhatsAppAutomacoes"
+import WhatsAppKanban from "./pages/whatsapp/kanban/pages/WhatsAppKanban"
 
 // Agenda
-import AgendaCRM from "./pages/whatsapp/pages/agenda/pages/AgendaCRM"
+import AgendaCRM from "./pages/whatsapp/agenda/pages/AgendaCRM"
 
 // Tarefas
-import Tarefas from "./pages/whatsapp/tarefas/Tarefas"
+import Tarefas from "./pages/whatsapp/tarefas/pages/Tarefas"
 import { usePermissoes } from "./pages/whatsapp/hooks/usePermissoes"
 
 // Clientes
-import CentralClientes from "./pages/whatsapp/central-clientes/CentralClientes"
+import CentralClientes from "./pages/whatsapp/clientes/pages/CentralClientes"
 
 // Propostas
-import PropostasLista from "./pages/whatsapp/pages/propostas/pages/PropostasLista"
-import PropostaDetalhes from "./pages/whatsapp/pages/propostas/pages/PropostaDetalhes"
+import PropostasLista from "./pages/whatsapp/propostas/pages/PropostasLista"
+import PropostaDetalhes from "./pages/whatsapp/propostas/pages/PropostaDetalhes"
 
 // Renovações
-import RenovacoesLista from "./pages/whatsapp/pages/renovacoes/pages/RenovacoesLista"
+import RenovacoesLista from "./pages/whatsapp/renovacoes/pages/RenovacoesLista"
 
 // Financeiro
-import Financeiro from "./pages/whatsapp/pages/financeiro/pages/Financeiro"
-import FinanceiroContrato from "./pages/whatsapp/pages/financeiro/pages/FinanceiroContrato"
+import Financeiro from "./pages/whatsapp/financeiro/pages/Financeiro"
+import FinanceiroContrato from "./pages/whatsapp/financeiro/pages/FinanceiroContrato"
 
 // Contas a Receber
 import ContasReceber from "./pages/whatsapp/contas-receber/pages/ContasReceber"
@@ -58,26 +58,26 @@ import ContasPagar from "./pages/whatsapp/contas-pagar/pages/ContasPagar"
 import FluxoCaixa from "./pages/whatsapp/fluxo-caixa/pages/FluxoCaixa";
 
 // Comissões
-import Comissoes from "./pages/whatsapp/pages/comissoes/pages/Comissoes"
-import ComissaoContrato from "./pages/whatsapp/pages/comissoes/pages/ComissaoContrato"
+import Comissoes from "./pages/whatsapp/comissoes/pages/Comissoes"
+import ComissaoContrato from "./pages/whatsapp/comissoes/pages/ComissaoContrato"
 
 // Sinistros
-import SinistrosLista from "./pages/whatsapp/pages/sinistros/SinistrosLista"
-import SinistroDetalhes from "./pages/whatsapp/pages/sinistros/SinistroDetalhes"
+import SinistrosLista from "./pages/whatsapp/sinistros/pages/SinistrosLista"
+import SinistroDetalhes from "./pages/whatsapp/sinistros/pages/SinistroDetalhes"
 
 // Assistências
-import AssistenciasLista from "./pages/whatsapp/pages/assistencias/AssistenciasLista"
-import AssistenciaDetalhes from "./pages/whatsapp/pages/assistencias/AssistenciaDetalhes"
+import AssistenciasLista from "./pages/whatsapp/assistencias/pages/AssistenciasLista"
+import AssistenciaDetalhes from "./pages/whatsapp/assistencias/pages/AssistenciaDetalhes"
 
 // Equipe
-import Equipe from "./pages/whatsapp/equipe/Equipe"
-import NovoMembro from "./pages/whatsapp/equipe/NovoMembro"
+import Equipe from "./pages/whatsapp/equipe/pages/Equipe"
+import NovoMembro from "./pages/whatsapp/equipe/pages/NovoMembro"
 
 // Configurações / Infraestrutura
 import ConexoesWhatsApp from "./pages/whatsapp/configuracoes/ConexoesWhatsApp"
-import CentralArmazenamento from "./pages/whatsapp/armazenamento/services/CentralArmazenamento"
-import ConfigCorretora from "./pages/whatsapp/configuracao-corretora/ConfigCorretora"
-import SeguradorasLista from "./pages/whatsapp/pages/seguradoras/SeguradorasLista"
+import CentralArmazenamento from "./pages/whatsapp/armazenamento/pages/CentralArmazenamento"
+import ConfigCorretora from "./pages/whatsapp/configuracao-corretora/pages/ConfigCorretora"
+import SeguradorasLista from "./pages/whatsapp/seguradoras/pages/SeguradorasLista"
 
 // ======================================================
 // ROTA PRIVADA

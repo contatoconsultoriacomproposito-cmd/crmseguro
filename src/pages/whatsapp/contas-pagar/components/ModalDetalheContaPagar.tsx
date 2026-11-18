@@ -36,7 +36,7 @@ import {
   type FormaPagamentoContaPagar,
 } from '../services/contasPagarService';
 
-import FinanceiroArquivos from '../../pages/financeiro/components/FinanceiroArquivos';
+import FinanceiroArquivos from '../../financeiro/components/FinanceiroArquivos';
 
 interface Props {
   aberto: boolean;

@@ -36,7 +36,7 @@ import { buscarCEP, buscarCNPJ } from "../../services/brasilApi";
 import { maskCNPJ, maskPhone } from "../../utils/masks";
 
 import { ModalPlanos } from "./components/modalPlanos";
-import { ModalSite } from "../whatsapp/configuracao-corretora/modalSite";
+import { ModalSite } from "../whatsapp/configuracao-corretora/components/modalSite";
 
 const STORAGE_GRATUITO_MB = 250;
 

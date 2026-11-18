@@ -6,7 +6,7 @@ import { supabase } from "../../../lib/supabaseClient";
 
 import type {
   StoragePlanoSelecionado,
-} from "../configuracao-corretora/ModalArmazenamento";
+} from "../configuracao-corretora/components/ModalArmazenamento";
 
 interface StorageAtual {
   limiteBytes: number;

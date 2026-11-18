@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { supabase } from '../../../../lib/supabaseClient'
-import { buscarFinanceiroContratoDetalhado } from '../../pages/financeiro/services/financeiroService'
+import { buscarFinanceiroContratoDetalhado } from '../../financeiro/services/financeiroService'
 
 type TipoCliente = 'PF' | 'PJ'
 
