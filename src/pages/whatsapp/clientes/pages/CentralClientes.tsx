@@ -1,19 +1,19 @@
-import { useAcessoClientes, podeCliente, exigirCliente } from './hooks/useAcessoClientes'
+import { useAcessoClientes, podeCliente, exigirCliente } from '../hooks/useAcessoClientes'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import ModalCadastroWhatsApp from '../automation/components/ModalCadastroWhatsApp'
-import CentralClientesHeader from './components/CentralClientesHeader'
-import CentralClientesResumo from './components/CentralClientesResumo'
-import CentralClientesFiltros from './components/CentralClientesFiltros'
-import ClientesLista from './components/lista/ClientesLista'
-import ClientesKanban from './components/kanban/ClientesKanban'
-import Cliente360Modal from './components/cliente360/Cliente360Modal'
-import { useCentralClientes } from './hooks/useCentralClientes'
+import ModalCadastroWhatsApp from '../../automation/components/ModalCadastroWhatsApp'
+import CentralClientesHeader from '../components/CentralClientesHeader'
+import CentralClientesResumo from '../components/CentralClientesResumo'
+import CentralClientesFiltros from '../components/CentralClientesFiltros'
+import ClientesLista from '../components/lista/ClientesLista'
+import ClientesKanban from '../components/kanban/ClientesKanban'
+import Cliente360Modal from '../components/cliente360/Cliente360Modal'
+import { useCentralClientes } from '../hooks/useCentralClientes'
 import type {
   ClienteCentral,
   ClienteKanbanStage,
-} from './types/centralClientes'
+} from '../types/centralClientes'
 
 export default function CentralClientes() {
   const navigate = useNavigate()

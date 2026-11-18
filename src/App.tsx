@@ -35,7 +35,7 @@ import Tarefas from "./pages/whatsapp/tarefas/pages/Tarefas"
 import { usePermissoes } from "./pages/whatsapp/hooks/usePermissoes"
 
 // Clientes
-import CentralClientes from "./pages/whatsapp/central-clientes/CentralClientes"
+import CentralClientes from "./pages/whatsapp/clientes/pages/CentralClientes"
 
 // Propostas
 import PropostasLista from "./pages/whatsapp/pages/propostas/pages/PropostasLista"
