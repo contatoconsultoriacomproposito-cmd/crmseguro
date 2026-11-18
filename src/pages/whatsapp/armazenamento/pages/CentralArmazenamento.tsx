@@ -46,7 +46,7 @@ import {
   type StorageOrigem,
   type StorageTipoArquivo,
   type StorageTipoTitularDocumento,
-} from './storageService'
+} from '../services/storageService'
 
 const ORIGENS: Array<{ value: StorageOrigem; label: string }> = [
   { value: 'WHATSAPP', label: 'WhatsApp' },
