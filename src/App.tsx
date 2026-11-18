@@ -31,7 +31,7 @@ import WhatsAppKanban from "./pages/whatsapp/pages/WhatsAppKanban"
 import AgendaCRM from "./pages/whatsapp/pages/agenda/pages/AgendaCRM"
 
 // Tarefas
-import Tarefas from "./pages/whatsapp/tarefas/Tarefas"
+import Tarefas from "./pages/whatsapp/tarefas/pages/Tarefas"
 import { usePermissoes } from "./pages/whatsapp/hooks/usePermissoes"
 
 // Clientes

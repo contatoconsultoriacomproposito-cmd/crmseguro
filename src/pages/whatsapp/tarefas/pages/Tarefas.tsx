@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, CalendarDays, CheckCircle2, Clock3, ListTodo, Loader2, Plus, RefreshCw, Search, ShieldAlert, SlidersHorizontal } from 'lucide-react'
-import ModalTarefa from './components/ModalTarefa'
-import TarefaCard from './components/TarefaCard'
-import { useTarefas } from './hooks/useTarefas'
-import { buscarResponsaveis } from './services/tarefasService'
-import { categoriaTarefa, type Tarefa } from './types/tarefas'
+import ModalTarefa from '../components/ModalTarefa'
+import TarefaCard from '../components/TarefaCard'
+import { useTarefas } from '../hooks/useTarefas'
+import { buscarResponsaveis } from '../services/tarefasService'
+import { categoriaTarefa, type Tarefa } from '../types/tarefas'
 
 type Filtro = 'todas' | 'atrasadas' | 'hoje' | 'proximas' | 'semData' | 'concluidas'
 
