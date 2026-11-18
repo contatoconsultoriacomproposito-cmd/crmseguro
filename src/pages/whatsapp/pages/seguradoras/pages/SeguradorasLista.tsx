@@ -3,8 +3,8 @@ import {
   Building2, Loader2, Search, Shield, 
   Power, Check
 } from "lucide-react";
-import { supabase } from "../../../../lib/supabaseClient";
-import { useAuth } from "../../../../auth/AuthContext";
+import { supabase } from "../../../../../lib/supabaseClient";
+import { useAuth } from "../../../../../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 export default function SeguradorasLista() {

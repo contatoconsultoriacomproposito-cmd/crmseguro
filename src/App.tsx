@@ -77,7 +77,7 @@ import NovoMembro from "./pages/whatsapp/equipe/NovoMembro"
 import ConexoesWhatsApp from "./pages/whatsapp/configuracoes/ConexoesWhatsApp"
 import CentralArmazenamento from "./pages/whatsapp/armazenamento/pages/CentralArmazenamento"
 import ConfigCorretora from "./pages/whatsapp/configuracao-corretora/ConfigCorretora"
-import SeguradorasLista from "./pages/whatsapp/pages/seguradoras/SeguradorasLista"
+import SeguradorasLista from "./pages/whatsapp/pages/seguradoras/pages/SeguradorasLista"
 
 // ======================================================
 // ROTA PRIVADA
