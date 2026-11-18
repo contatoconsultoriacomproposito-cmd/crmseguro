@@ -2,25 +2,27 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
+  CheckCircle2,
   ChevronRight,
-  ClipboardList,
-  FileWarning,
+  Clock3,
   Filter,
+  Headset,
   Loader2,
   Plus,
   RefreshCw,
   Search,
-  ShieldAlert,
+  Truck,
   User,
   X,
+  XCircle,
 } from "lucide-react";
-import { supabase } from "../../../../lib/supabaseClient";
-import ModalNovoSinistro from "./components/ModalNovoSinistro";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../../auth/AuthContext";
 import { usePermissoes } from "../../hooks/usePermissoes";
+import { supabase } from "../../../../lib/supabaseClient";
+import ModalNovaAssistencia from "../components/ModalNovaAssistencia";
 
-type Sinistro = {
+type Assistencia = {
   id: string;
   corretora_id: string;
   responsavel_id: string | null;
@@ -28,25 +30,19 @@ type Sinistro = {
   crm_empresa_id: string | null;
   cliente_id_legado: string | null;
   item_id: string | null;
-  numero_sinistro: string | null;
+  tipo_assistencia: string | null;
+  descricao_solicitacao: string | null;
   protocolo: string | null;
-  tipo_sinistro: string | null;
-  data_evento: string | null;
-  hora_evento: string | null;
-  data_aviso: string | null;
-  descricao_evento: string | null;
-  local_evento: string | null;
-  causa_evento: string | null;
-  dados_especificos: Record<string, unknown> | null;
-  etapa_atual: string | null;
+  numero_atendimento: string | null;
+  solicitado_em: string | null;
+  prestador_nome: string | null;
+  prestador_telefone: string | null;
+  previsao_atendimento_em: string | null;
+  atendimento_iniciado_em: string | null;
+  atendimento_concluido_em: string | null;
   status: string | null;
-  prioridade: string | null;
-  valor_prejuizo_estimado: number | null;
-  valor_indenizacao: number | null;
-  valor_franquia: number | null;
-  desfecho: string | null;
-  data_conclusao: string | null;
-  observacoes_conclusao: string | null;
+  observacoes: string | null;
+  dados_especificos: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
@@ -75,44 +71,25 @@ type ClienteLegado = {
 type Filtros = {
   busca: string;
   status: string;
-  etapa: string;
-  prioridade: string;
+  tipo: string;
 };
 
 const FILTROS_INICIAIS: Filtros = {
   busca: "",
   status: "",
-  etapa: "",
-  prioridade: "",
+  tipo: "",
 };
 
 const STATUS_OPTIONS = [
-  "ABERTO",
-  "AGUARDANDO_CLIENTE",
+  "SOLICITADA",
   "AGUARDANDO_SEGURADORA",
-  "AGUARDANDO_TERCEIRO_PRESTADOR",
-  "SUSPENSO",
-  "CONCLUIDO",
-  "NEGADO",
-  "CANCELADO",
+  "AGUARDANDO_PRESTADOR",
+  "AGENDADA",
+  "EM_ATENDIMENTO",
+  "CONCLUIDA",
+  "CANCELADA",
+  "NAO_ATENDIDA",
 ];
-
-const ETAPAS_OPTIONS = [
-  "ABERTURA",
-  "DOCUMENTACAO",
-  "REGULACAO_ANALISE",
-  "LIQUIDACAO_SOLUCAO",
-  "ENCERRAMENTO",
-];
-
-const PRIORIDADES_OPTIONS = [
-  "BAIXA",
-  "NORMAL",
-  "ALTA",
-  "URGENTE",
-];
-
-
 
 function formatarTexto(valor?: string | null) {
   if (!valor) return "—";
@@ -123,25 +100,19 @@ function formatarTexto(valor?: string | null) {
     .replace(/\b\w/g, (letra) => letra.toUpperCase());
 }
 
-function formatarData(valor?: string | null) {
+function formatarDataHora(valor?: string | null) {
   if (!valor) return "—";
 
-  const partes = valor.slice(0, 10).split("-");
+  const data = new Date(valor);
 
-  if (partes.length !== 3) {
+  if (Number.isNaN(data.getTime())) {
     return valor;
   }
 
-  return `${partes[2]}/${partes[1]}/${partes[0]}`;
-}
-
-function formatarMoeda(valor?: number | null) {
-  if (valor === null || valor === undefined) return "—";
-
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(valor);
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(data);
 }
 
 function obterNomePessoa(pessoa?: PessoaCrm) {
@@ -169,22 +140,24 @@ function obterNomeEmpresa(empresa?: EmpresaCrm) {
 
 function classeStatus(status?: string | null) {
   switch (status) {
-    case "ABERTO":
+    case "SOLICITADA":
       return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300";
 
-    case "AGUARDANDO_CLIENTE":
     case "AGUARDANDO_SEGURADORA":
-    case "AGUARDANDO_TERCEIRO_PRESTADOR":
+    case "AGUARDANDO_PRESTADOR":
       return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300";
 
-    case "SUSPENSO":
-      return "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
+    case "AGENDADA":
+      return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300";
 
-    case "CONCLUIDO":
+    case "EM_ATENDIMENTO":
+      return "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/40 dark:text-cyan-300";
+
+    case "CONCLUIDA":
       return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
 
-    case "NEGADO":
-    case "CANCELADO":
+    case "CANCELADA":
+    case "NAO_ATENDIDA":
       return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300";
 
     default:
@@ -192,159 +165,152 @@ function classeStatus(status?: string | null) {
   }
 }
 
-function classePrioridade(prioridade?: string | null) {
-  switch (prioridade) {
-    case "URGENTE":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300";
-
-    case "ALTA":
-      return "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/40 dark:text-orange-300";
-
-    case "NORMAL":
-      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300";
-
-    case "BAIXA":
-      return "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
-
-    default:
-      return "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
-  }
-}
-
-export default function SinistrosLista() {
-  const [sinistros, setSinistros] = useState<Sinistro[]>([]);
-  const [responsaveis, setResponsaveis] = useState<Record<string, PerfilResponsavel>>({});
+export default function AssistenciasLista() {
+  const navigate = useNavigate();
+  const { userProfile } = useAuth();
+  const { escopo, loading: carregandoPermissoes } = usePermissoes();
+  const escopoLeitura = escopo("operacoes.assistencias", "read");
+  const escopoCriacao = escopo("operacoes.assistencias", "create");
+  const podeCriar = !carregandoPermissoes && escopoCriacao !== "none" && escopoLeitura !== "none";
+  const podeVisualizar = !carregandoPermissoes && escopoLeitura !== "none";
+  const [modalNovaAssistenciaAberto, setModalNovaAssistenciaAberto] = useState(false);  
+  const [assistencias, setAssistencias] = useState<Assistencia[]>([]);
+  const [responsaveis, setResponsaveis] = useState<
+    Record<string, PerfilResponsavel>
+  >({});
   const [pessoas, setPessoas] = useState<Record<string, PessoaCrm>>({});
   const [empresas, setEmpresas] = useState<Record<string, EmpresaCrm>>({});
-  const [clientesLegados, setClientesLegados] = useState<Record<string, ClienteLegado>>({});
-  const [modalNovoSinistroAberto, setModalNovoSinistroAberto] = useState(false);
+  const [clientesLegados, setClientesLegados] = useState<
+    Record<string, ClienteLegado>
+  >({});
+
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_INICIAIS);
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const { userProfile } = useAuth();
-  const { escopo, loading: carregandoPermissoes } = usePermissoes();
-  const escopoLeitura = escopo("operacoes.sinistros", "read");
-  const escopoCriacao = escopo("operacoes.sinistros", "create");
-  const podeCriar = !carregandoPermissoes && escopoCriacao !== "none" && escopoLeitura !== "none";
-  const podeVisualizar = !carregandoPermissoes && escopoLeitura !== "none";
 
-  const carregarRelacionamentos = useCallback(async (lista: Sinistro[]) => {
-    const responsavelIds = [
-      ...new Set(
-        lista
-          .map((item) => item.responsavel_id)
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
+  const carregarRelacionamentos = useCallback(
+    async (lista: Assistencia[]) => {
+      const responsavelIds = [
+        ...new Set(
+          lista
+            .map((item) => item.responsavel_id)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
 
-    const pessoaIds = [
-      ...new Set(
-        lista
-          .map((item) => item.crm_pessoa_id)
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
+      const pessoaIds = [
+        ...new Set(
+          lista
+            .map((item) => item.crm_pessoa_id)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
 
-    const empresaIds = [
-      ...new Set(
-        lista
-          .map((item) => item.crm_empresa_id)
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
+      const empresaIds = [
+        ...new Set(
+          lista
+            .map((item) => item.crm_empresa_id)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
 
-    const clienteLegadoIds = [
-      ...new Set(
-        lista
-          .map((item) => item.cliente_id_legado)
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
+      const clienteLegadoIds = [
+        ...new Set(
+          lista
+            .map((item) => item.cliente_id_legado)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
 
-    const [
-      responsaveisResponse,
-      pessoasResponse,
-      empresasResponse,
-      clientesLegadosResponse,
-    ] = await Promise.all([
-      responsavelIds.length > 0
-        ? supabase
-            .from("usuarios_perfis")
-            .select("id, nome")
-            .in("id", responsavelIds)
-        : Promise.resolve({ data: [], error: null }),
+      const [
+        responsaveisResponse,
+        pessoasResponse,
+        empresasResponse,
+        clientesLegadosResponse,
+      ] = await Promise.all([
+        responsavelIds.length
+          ? supabase
+              .from("usuarios_perfis")
+              .select("id, nome")
+              .in("id", responsavelIds)
+          : Promise.resolve({ data: [], error: null }),
 
-      pessoaIds.length > 0
-        ? supabase
-            .from("crm_pessoas")
-            .select("id, dados")
-            .in("id", pessoaIds)
-        : Promise.resolve({ data: [], error: null }),
+        pessoaIds.length
+          ? supabase
+              .from("crm_pessoas")
+              .select("id, dados")
+              .in("id", pessoaIds)
+          : Promise.resolve({ data: [], error: null }),
 
-      empresaIds.length > 0
-        ? supabase
-            .from("crm_empresas")
-            .select("id, dados")
-            .in("id", empresaIds)
-        : Promise.resolve({ data: [], error: null }),
+        empresaIds.length
+          ? supabase
+              .from("crm_empresas")
+              .select("id, dados")
+              .in("id", empresaIds)
+          : Promise.resolve({ data: [], error: null }),
 
-      clienteLegadoIds.length > 0
-        ? supabase
-            .from("tab_clientes")
-            .select("id, nome_razao_social, nome_fantasia")
-            .in("id", clienteLegadoIds)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
+        clienteLegadoIds.length
+          ? supabase
+              .from("tab_clientes")
+              .select("id, nome_razao_social, nome_fantasia")
+              .in("id", clienteLegadoIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
-    if (responsaveisResponse.error) {
-      throw responsaveisResponse.error;
-    }
+      if (responsaveisResponse.error) {
+        throw responsaveisResponse.error;
+      }
 
-    if (pessoasResponse.error) {
-      throw pessoasResponse.error;
-    }
+      if (pessoasResponse.error) {
+        throw pessoasResponse.error;
+      }
 
-    if (empresasResponse.error) {
-      throw empresasResponse.error;
-    }
+      if (empresasResponse.error) {
+        throw empresasResponse.error;
+      }
 
-    if (clientesLegadosResponse.error) {
-      throw clientesLegadosResponse.error;
-    }
+      if (clientesLegadosResponse.error) {
+        throw clientesLegadosResponse.error;
+      }
 
-    const mapaResponsaveis: Record<string, PerfilResponsavel> = {};
-    const mapaPessoas: Record<string, PessoaCrm> = {};
-    const mapaEmpresas: Record<string, EmpresaCrm> = {};
-    const mapaClientesLegados: Record<string, ClienteLegado> = {};
+      const mapaResponsaveis: Record<string, PerfilResponsavel> = {};
+      const mapaPessoas: Record<string, PessoaCrm> = {};
+      const mapaEmpresas: Record<string, EmpresaCrm> = {};
+      const mapaClientesLegados: Record<string, ClienteLegado> = {};
 
-    (responsaveisResponse.data ?? []).forEach((item: PerfilResponsavel) => {
-      mapaResponsaveis[item.id] = item;
-    });
+      (responsaveisResponse.data ?? []).forEach(
+        (item: PerfilResponsavel) => {
+          mapaResponsaveis[item.id] = item;
+        }
+      );
 
-    (pessoasResponse.data ?? []).forEach((item: PessoaCrm) => {
-      mapaPessoas[item.id] = item;
-    });
+      (pessoasResponse.data ?? []).forEach((item: PessoaCrm) => {
+        mapaPessoas[item.id] = item;
+      });
 
-    (empresasResponse.data ?? []).forEach((item: EmpresaCrm) => {
-      mapaEmpresas[item.id] = item;
-    });
+      (empresasResponse.data ?? []).forEach((item: EmpresaCrm) => {
+        mapaEmpresas[item.id] = item;
+      });
 
-    (clientesLegadosResponse.data ?? []).forEach((item: ClienteLegado) => {
-      mapaClientesLegados[item.id] = item;
-    });
+      (clientesLegadosResponse.data ?? []).forEach(
+        (item: ClienteLegado) => {
+          mapaClientesLegados[item.id] = item;
+        }
+      );
 
-    setResponsaveis(mapaResponsaveis);
-    setPessoas(mapaPessoas);
-    setEmpresas(mapaEmpresas);
-    setClientesLegados(mapaClientesLegados);
-  }, []);
+      setResponsaveis(mapaResponsaveis);
+      setPessoas(mapaPessoas);
+      setEmpresas(mapaEmpresas);
+      setClientesLegados(mapaClientesLegados);
+    },
+    []
+  );
 
-  const carregarSinistros = useCallback(async () => {
+  const carregarAssistencias = useCallback(async () => {
     if (carregandoPermissoes) return;
     if (escopoLeitura === "none") {
-      setSinistros([]);
+      setAssistencias([]);
       setLoading(false);
       return;
     }
@@ -353,30 +319,30 @@ export default function SinistrosLista() {
 
     try {
       let consulta = supabase
-        .from("crm_sinistros")
+        .from("crm_assistencias")
         .select("*");
       if (escopoLeitura === "own" && userProfile?.id) {
         consulta = consulta.eq("responsavel_id", userProfile.id);
       }
       const { data, error } = await consulta
-        .order("created_at", { ascending: false });
+        .order("solicitado_em", { ascending: false });
 
       if (error) {
         throw error;
       }
 
-      const lista = (data ?? []) as Sinistro[];
+      const lista = (data ?? []) as Assistencia[];
 
-      setSinistros(lista);
+      setAssistencias(lista);
 
       await carregarRelacionamentos(lista);
     } catch (error) {
-      console.error("Erro ao carregar sinistros:", error);
+      console.error("Erro ao carregar assistências:", error);
 
       if (error instanceof Error) {
         setErro(error.message);
       } else {
-        setErro("Não foi possível carregar os sinistros.");
+        setErro("Não foi possível carregar as assistências.");
       }
     } finally {
       setLoading(false);
@@ -384,25 +350,30 @@ export default function SinistrosLista() {
   }, [carregarRelacionamentos, carregandoPermissoes, escopoLeitura, userProfile?.id]);
 
   useEffect(() => {
-    carregarSinistros();
-  }, [carregarSinistros]);
+    void carregarAssistencias();
+  }, [carregarAssistencias]);
 
   const obterNomeCliente = useCallback(
-    (sinistro: Sinistro) => {
-      if (sinistro.crm_pessoa_id) {
-        const nome = obterNomePessoa(pessoas[sinistro.crm_pessoa_id]);
+    (assistencia: Assistencia) => {
+      if (assistencia.crm_pessoa_id) {
+        const nome = obterNomePessoa(
+          pessoas[assistencia.crm_pessoa_id]
+        );
 
         if (nome) return nome;
       }
 
-      if (sinistro.crm_empresa_id) {
-        const nome = obterNomeEmpresa(empresas[sinistro.crm_empresa_id]);
+      if (assistencia.crm_empresa_id) {
+        const nome = obterNomeEmpresa(
+          empresas[assistencia.crm_empresa_id]
+        );
 
         if (nome) return nome;
       }
 
-      if (sinistro.cliente_id_legado) {
-        const cliente = clientesLegados[sinistro.cliente_id_legado];
+      if (assistencia.cliente_id_legado) {
+        const cliente =
+          clientesLegados[assistencia.cliente_id_legado];
 
         if (cliente) {
           return (
@@ -418,21 +389,30 @@ export default function SinistrosLista() {
     [pessoas, empresas, clientesLegados]
   );
 
-  const sinistrosFiltrados = useMemo(() => {
+  const tiposAssistencia = useMemo(() => {
+    return Array.from(
+      new Set(
+        assistencias
+          .map((item) => item.tipo_assistencia)
+          .filter((tipo): tipo is string => Boolean(tipo))
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [assistencias]);
+
+  const assistenciasFiltradas = useMemo(() => {
     const busca = filtros.busca.trim().toLowerCase();
 
-    return sinistros.filter((sinistro) => {
-      if (filtros.status && sinistro.status !== filtros.status) {
-        return false;
-      }
-
-      if (filtros.etapa && sinistro.etapa_atual !== filtros.etapa) {
+    return assistencias.filter((assistencia) => {
+      if (
+        filtros.status &&
+        assistencia.status !== filtros.status
+      ) {
         return false;
       }
 
       if (
-        filtros.prioridade &&
-        sinistro.prioridade !== filtros.prioridade
+        filtros.tipo &&
+        assistencia.tipo_assistencia !== filtros.tipo
       ) {
         return false;
       }
@@ -441,15 +421,17 @@ export default function SinistrosLista() {
         return true;
       }
 
-      const cliente = obterNomeCliente(sinistro);
+      const cliente = obterNomeCliente(assistencia);
 
       const conteudo = [
-        sinistro.numero_sinistro,
-        sinistro.protocolo,
-        sinistro.tipo_sinistro,
-        sinistro.descricao_evento,
-        sinistro.local_evento,
         cliente,
+        assistencia.tipo_assistencia,
+        assistencia.descricao_solicitacao,
+        assistencia.protocolo,
+        assistencia.numero_atendimento,
+        assistencia.prestador_nome,
+        assistencia.prestador_telefone,
+        assistencia.status,
       ]
         .filter(Boolean)
         .join(" ")
@@ -457,28 +439,53 @@ export default function SinistrosLista() {
 
       return conteudo.includes(busca);
     });
-  }, [sinistros, filtros, obterNomeCliente]);
+  }, [assistencias, filtros, obterNomeCliente]);
 
   const quantidadeFiltrosAtivos = useMemo(() => {
-    return [
-      filtros.status,
-      filtros.etapa,
-      filtros.prioridade,
-    ].filter(Boolean).length;
+    return [filtros.status, filtros.tipo].filter(Boolean).length;
   }, [filtros]);
+
+  const totalEmAndamento = useMemo(() => {
+    return assistencias.filter(
+      (item) =>
+        ![
+          "CONCLUIDA",
+          "CANCELADA",
+          "NAO_ATENDIDA",
+        ].includes(item.status ?? "")
+    ).length;
+  }, [assistencias]);
+
+  const totalAgendadas = useMemo(() => {
+    return assistencias.filter(
+      (item) => item.status === "AGENDADA"
+    ).length;
+  }, [assistencias]);
+
+  const totalConcluidas = useMemo(() => {
+    return assistencias.filter(
+      (item) => item.status === "CONCLUIDA"
+    ).length;
+  }, [assistencias]);
+
+  const totalNaoAtendidas = useMemo(() => {
+    return assistencias.filter(
+      (item) => item.status === "NAO_ATENDIDA"
+    ).length;
+  }, [assistencias]);
 
   function limparFiltros() {
     setFiltros(FILTROS_INICIAIS);
   }
 
-  const handleNovoSinistro = () => {
-    setModalNovoSinistroAberto(true);
-  };
+  function handleNovaAssistencia() {
+    setModalNovaAssistenciaAberto(true);
+    }
 
-  const handleAbrirSinistro = (sinistro: Sinistro) => {
+  function handleAbrirAssistencia(assistencia: Assistencia) {
     if (!podeVisualizar) return;
-    navigate(`/whatsapp/sinistro/${sinistro.id}`);
-  };
+    navigate(`/whatsapp/assistencia/${assistencia.id}`);
+  }
 
   if (!carregandoPermissoes && !podeVisualizar && !podeCriar) {
     return <div className="p-6 text-sm text-slate-500">Sem acesso ao módulo.</div>;
@@ -488,28 +495,26 @@ export default function SinistrosLista() {
     <div className="min-h-full bg-slate-50 p-4 dark:bg-slate-950 sm:p-6">
       <div className="mx-auto max-w-[1600px]">
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400">
-                <ShieldAlert size={22} />
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+              <Headset size={22} />
+            </div>
 
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  Sinistros
-                </h1>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                Assistências
+              </h1>
 
-                <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                  Gestão e acompanhamento dos sinistros da carteira.
-                </p>
-              </div>
+              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                Gestão e acompanhamento das assistências da carteira.
+              </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={carregarSinistros}
+              onClick={() => void carregarAssistencias()}
               disabled={loading}
               className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
@@ -522,11 +527,11 @@ export default function SinistrosLista() {
 
             {podeCriar && <button
               type="button"
-              onClick={handleNovoSinistro}
+              onClick={handleNovaAssistencia}
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               <Plus size={17} />
-              Novo Sinistro
+              Nova Assistência
             </button>}
           </div>
         </div>
@@ -548,14 +553,16 @@ export default function SinistrosLista() {
                     busca: event.target.value,
                   }))
                 }
-                placeholder="Buscar por cliente, número, protocolo, tipo ou descrição..."
+                placeholder="Buscar por cliente, protocolo, atendimento, tipo ou prestador..."
                 className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
               />
             </div>
 
             <button
               type="button"
-              onClick={() => setMostrarFiltros((atual) => !atual)}
+              onClick={() =>
+                setMostrarFiltros((atual) => !atual)
+              }
               className="relative inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <Filter size={17} />
@@ -571,7 +578,7 @@ export default function SinistrosLista() {
 
           {mostrarFiltros && (
             <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Status
@@ -599,49 +606,24 @@ export default function SinistrosLista() {
 
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Etapa
+                    Tipo de assistência
                   </label>
 
                   <select
-                    value={filtros.etapa}
+                    value={filtros.tipo}
                     onChange={(event) =>
                       setFiltros((atual) => ({
                         ...atual,
-                        etapa: event.target.value,
+                        tipo: event.target.value,
                       }))
                     }
                     className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                   >
-                    <option value="">Todas</option>
+                    <option value="">Todos</option>
 
-                    {ETAPAS_OPTIONS.map((etapa) => (
-                      <option key={etapa} value={etapa}>
-                        {formatarTexto(etapa)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Prioridade
-                  </label>
-
-                  <select
-                    value={filtros.prioridade}
-                    onChange={(event) =>
-                      setFiltros((atual) => ({
-                        ...atual,
-                        prioridade: event.target.value,
-                      }))
-                    }
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-                  >
-                    <option value="">Todas</option>
-
-                    {PRIORIDADES_OPTIONS.map((prioridade) => (
-                      <option key={prioridade} value={prioridade}>
-                        {formatarTexto(prioridade)}
+                    {tiposAssistencia.map((tipo) => (
+                      <option key={tipo} value={tipo}>
+                        {formatarTexto(tipo)}
                       </option>
                     ))}
                   </select>
@@ -667,20 +649,25 @@ export default function SinistrosLista() {
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             <span className="font-semibold text-slate-800 dark:text-slate-200">
-              {sinistrosFiltrados.length}
+              {assistenciasFiltradas.length}
             </span>{" "}
-            {sinistrosFiltrados.length === 1
-              ? "sinistro encontrado"
-              : "sinistros encontrados"}
+            {assistenciasFiltradas.length === 1
+              ? "assistência encontrada"
+              : "assistências encontradas"}
           </p>
         </div>
 
         {erro && (
           <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-            <AlertTriangle size={20} className="mt-0.5 shrink-0" />
+            <AlertTriangle
+              size={20}
+              className="mt-0.5 shrink-0"
+            />
 
             <div>
-              <p className="font-semibold">Erro ao carregar sinistros</p>
+              <p className="font-semibold">
+                Erro ao carregar assistências
+              </p>
               <p className="mt-0.5 text-sm">{erro}</p>
             </div>
           </div>
@@ -693,58 +680,51 @@ export default function SinistrosLista() {
                 size={30}
                 className="mx-auto animate-spin text-blue-600"
               />
-
               <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-                Carregando sinistros...
+                Carregando assistências...
               </p>
             </div>
           </div>
-        ) : sinistrosFiltrados.length === 0 ? (
+        ) : assistenciasFiltradas.length === 0 ? (
           <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
             <div>
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                <FileWarning size={23} />
+                <Headset size={23} />
               </div>
 
               <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">
-                Nenhum sinistro encontrado
+                Nenhuma assistência encontrada
               </h3>
 
               <p className="mt-1 max-w-md text-sm text-slate-500 dark:text-slate-400">
-                Não existem sinistros correspondentes aos filtros selecionados.
+                Não existem assistências correspondentes aos filtros selecionados.
               </p>
             </div>
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px]">
+              <table className="w-full min-w-[1180px]">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950/50">
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Cliente / Sinistro
+                      Cliente / Assistência
                     </th>
-
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Evento
+                      Solicitação
                     </th>
-
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Etapa
+                      Prestador
                     </th>
-
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Status
                     </th>
-
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Prioridade
+                      Previsão
                     </th>
-
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Responsável
                     </th>
-
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Ação
                     </th>
@@ -752,16 +732,20 @@ export default function SinistrosLista() {
                 </thead>
 
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {sinistrosFiltrados.map((sinistro) => {
-                    const nomeCliente = obterNomeCliente(sinistro);
+                  {assistenciasFiltradas.map((assistencia) => {
+                    const nomeCliente =
+                      obterNomeCliente(assistencia);
 
-                    const responsavel = sinistro.responsavel_id
-                      ? responsaveis[sinistro.responsavel_id]
-                      : null;
+                    const responsavel =
+                      assistencia.responsavel_id
+                        ? responsaveis[
+                            assistencia.responsavel_id
+                          ]
+                        : null;
 
                     return (
                       <tr
-                        key={sinistro.id}
+                        key={assistencia.id}
                         className="group transition hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                       >
                         <td className="px-4 py-4">
@@ -771,29 +755,35 @@ export default function SinistrosLista() {
                             </div>
 
                             <div className="min-w-0">
-                              <p className="max-w-[280px] truncate text-sm font-semibold text-slate-900 dark:text-white">
+                              <p className="max-w-[260px] truncate text-sm font-semibold text-slate-900 dark:text-white">
                                 {nomeCliente}
                               </p>
 
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                                 <span>
-                                  {formatarTexto(sinistro.tipo_sinistro)}
+                                  {formatarTexto(
+                                    assistencia.tipo_assistencia
+                                  )}
                                 </span>
 
-                                {sinistro.numero_sinistro && (
+                                {assistencia.numero_atendimento && (
                                   <>
                                     <span>•</span>
                                     <span>
-                                      Nº {sinistro.numero_sinistro}
+                                      Nº{" "}
+                                      {
+                                        assistencia.numero_atendimento
+                                      }
                                     </span>
                                   </>
                                 )}
 
-                                {sinistro.protocolo && (
+                                {assistencia.protocolo && (
                                   <>
                                     <span>•</span>
                                     <span>
-                                      Prot. {sinistro.protocolo}
+                                      Prot.{" "}
+                                      {assistencia.protocolo}
                                     </span>
                                   </>
                                 )}
@@ -806,49 +796,74 @@ export default function SinistrosLista() {
                           <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                             <CalendarDays
                               size={15}
-                              className="text-slate-400"
+                              className="shrink-0 text-slate-400"
                             />
-                            {formatarData(sinistro.data_evento)}
+                            {formatarDataHora(
+                              assistencia.solicitado_em
+                            )}
                           </div>
 
-                          {sinistro.local_evento && (
-                            <p className="mt-1 max-w-[180px] truncate text-xs text-slate-500">
-                              {sinistro.local_evento}
+                          {assistencia.descricao_solicitacao && (
+                            <p className="mt-1 max-w-[240px] truncate text-xs text-slate-500">
+                              {
+                                assistencia.descricao_solicitacao
+                              }
                             </p>
                           )}
                         </td>
 
                         <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <ClipboardList
-                              size={15}
-                              className="text-slate-400"
-                            />
+                          {assistencia.prestador_nome ? (
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <Truck
+                                  size={15}
+                                  className="text-slate-400"
+                                />
+                                <p className="max-w-[180px] truncate text-sm text-slate-700 dark:text-slate-200">
+                                  {
+                                    assistencia.prestador_nome
+                                  }
+                                </p>
+                              </div>
 
-                            <span className="text-sm text-slate-700 dark:text-slate-200">
-                              {formatarTexto(sinistro.etapa_atual)}
+                              {assistencia.prestador_telefone && (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {
+                                    assistencia.prestador_telefone
+                                  }
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-slate-400">
+                              Não definido
                             </span>
-                          </div>
+                          )}
                         </td>
 
                         <td className="px-4 py-4">
                           <span
                             className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classeStatus(
-                              sinistro.status
+                              assistencia.status
                             )}`}
                           >
-                            {formatarTexto(sinistro.status)}
+                            {formatarTexto(
+                              assistencia.status
+                            )}
                           </span>
                         </td>
 
                         <td className="px-4 py-4">
-                          <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classePrioridade(
-                              sinistro.prioridade
-                            )}`}
-                          >
-                            {formatarTexto(sinistro.prioridade)}
-                          </span>
+                          <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                            <Clock3
+                              size={15}
+                              className="shrink-0 text-slate-400"
+                            />
+                            {formatarDataHora(
+                              assistencia.previsao_atendimento_em
+                            )}
+                          </div>
                         </td>
 
                         <td className="px-4 py-4">
@@ -860,7 +875,11 @@ export default function SinistrosLista() {
                         <td className="px-4 py-4 text-right">
                           <button
                             type="button"
-                            onClick={() => handleAbrirSinistro(sinistro)}
+                            onClick={() =>
+                              handleAbrirAssistencia(
+                                assistencia
+                              )
+                            }
                             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-800 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
                           >
                             Abrir
@@ -876,89 +895,83 @@ export default function SinistrosLista() {
           </div>
         )}
 
-        {!loading && sinistrosFiltrados.length > 0 && (
+        {!loading && assistencias.length > 0 && (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Em aberto
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Em andamento
+                </p>
+                <Clock3
+                  size={16}
+                  className="text-blue-500"
+                />
+              </div>
 
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">
-                {
-                  sinistros.filter(
-                    (item) =>
-                      !["CONCLUIDO", "NEGADO", "CANCELADO"].includes(
-                        item.status ?? ""
-                      )
-                  ).length
-                }
+                {totalEmAndamento}
               </p>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Urgentes
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Agendadas
+                </p>
+                <CalendarDays
+                  size={16}
+                  className="text-violet-500"
+                />
+              </div>
 
-              <p className="mt-1 text-2xl font-bold text-red-600 dark:text-red-400">
-                {
-                  sinistros.filter(
-                    (item) => item.prioridade === "URGENTE"
-                  ).length
-                }
+              <p className="mt-1 text-2xl font-bold text-violet-600 dark:text-violet-400">
+                {totalAgendadas}
               </p>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Concluídos
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Concluídas
+                </p>
+                <CheckCircle2
+                  size={16}
+                  className="text-emerald-500"
+                />
+              </div>
 
               <p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                {
-                  sinistros.filter(
-                    (item) => item.status === "CONCLUIDO"
-                  ).length
-                }
+                {totalConcluidas}
               </p>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Prejuízo estimado
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Não atendidas
+                </p>
+                <XCircle
+                  size={16}
+                  className="text-red-500"
+                />
+              </div>
 
-              <p className="mt-1 truncate text-xl font-bold text-slate-900 dark:text-white">
-                {formatarMoeda(
-                  sinistros
-                    .filter(
-                      (item) =>
-                        !["CANCELADO", "NEGADO"].includes(
-                          item.status ?? ""
-                        )
-                    )
-                    .reduce(
-                      (total, item) =>
-                        total + (item.valor_prejuizo_estimado ?? 0),
-                      0
-                    )
-                )}
+              <p className="mt-1 text-2xl font-bold text-red-600 dark:text-red-400">
+                {totalNaoAtendidas}
               </p>
             </div>
           </div>
         )}
       </div>
-      
-      
-      {podeCriar && <ModalNovoSinistro
-        open={modalNovoSinistroAberto}
-        onClose={() => setModalNovoSinistroAberto(false)}
-        onCreated={(sinistro) => {
-          setModalNovoSinistroAberto(false);
-          carregarSinistros();
-          console.log("Sinistro criado:", sinistro);
+      {podeCriar && <ModalNovaAssistencia
+        open={modalNovaAssistenciaAberto}
+        onClose={() => setModalNovaAssistenciaAberto(false)}
+        onCreated={(assistencia) => {
+            setModalNovaAssistenciaAberto(false);
+            void carregarAssistencias();
+            console.log("Assistência criada:", assistencia);
         }}
-      />}
+        />}
     </div>
   );
 }

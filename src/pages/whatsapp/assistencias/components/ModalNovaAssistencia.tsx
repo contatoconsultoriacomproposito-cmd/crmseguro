@@ -12,17 +12,17 @@ import {
   User,
   X,
 } from "lucide-react";
-import { supabase } from "../../../../../lib/supabaseClient";
+import { supabase } from "../../../../lib/supabaseClient";
 import {
   criarAssistencia,
   type CrmAssistencia,
   type CrmAssistenciaStatus,
-} from "../../../services/crmAssistenciaService";
+} from "../../services/crmAssistenciaService";
 import {
   buscarApolicesDoCliente,
   buscarApolicesDoRelacionamentoWhatsApp,
   type CrmApoliceCliente,
-} from "../../../services/crmSinistroService";
+} from "../../services/crmSinistroService";
 
 type TipoClienteAssistencia = "PF" | "PJ" | "LEGADO";
 

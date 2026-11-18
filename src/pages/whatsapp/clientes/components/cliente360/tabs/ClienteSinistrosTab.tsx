@@ -16,7 +16,7 @@ import {
   buscarSinistrosDoCliente,
   type CrmSinistro,
 } from '../../../../services/crmSinistroService'
-import ModalNovoSinistro from '../../../../pages/sinistros/components/ModalNovoSinistro'
+import ModalNovoSinistro from '../../../../sinistros/components/ModalNovoSinistro'
 import type { ClienteCentral } from '../../../types/centralClientes'
 import { useNavigate } from 'react-router-dom'
 

@@ -20,7 +20,7 @@ import {
   type CrmAssistencia,
 } from '../../services/crmAssistenciaService'
 
-import ModalNovaAssistencia from '../../pages/assistencias/components/ModalNovaAssistencia'
+import ModalNovaAssistencia from '../../assistencias/components/ModalNovaAssistencia'
 
 type TipoCliente = 'PF' | 'PJ'
 

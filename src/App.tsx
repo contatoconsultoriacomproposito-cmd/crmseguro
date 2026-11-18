@@ -62,12 +62,12 @@ import Comissoes from "./pages/whatsapp/pages/comissoes/pages/Comissoes"
 import ComissaoContrato from "./pages/whatsapp/pages/comissoes/pages/ComissaoContrato"
 
 // Sinistros
-import SinistrosLista from "./pages/whatsapp/pages/sinistros/SinistrosLista"
-import SinistroDetalhes from "./pages/whatsapp/pages/sinistros/SinistroDetalhes"
+import SinistrosLista from "./pages/whatsapp/sinistros/pages/SinistrosLista"
+import SinistroDetalhes from "./pages/whatsapp/sinistros/pages/SinistroDetalhes"
 
 // Assistências
-import AssistenciasLista from "./pages/whatsapp/pages/assistencias/AssistenciasLista"
-import AssistenciaDetalhes from "./pages/whatsapp/pages/assistencias/AssistenciaDetalhes"
+import AssistenciasLista from "./pages/whatsapp/assistencias/pages/AssistenciasLista"
+import AssistenciaDetalhes from "./pages/whatsapp/assistencias/pages/AssistenciaDetalhes"
 
 // Equipe
 import Equipe from "./pages/whatsapp/equipe/pages/Equipe"

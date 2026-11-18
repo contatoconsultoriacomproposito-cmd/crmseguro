@@ -17,7 +17,7 @@ import {
   buscarAssistenciasDoCliente,
   type CrmAssistencia,
 } from '../../../../services/crmAssistenciaService'
-import ModalNovaAssistencia from '../../../../pages/assistencias/components/ModalNovaAssistencia'
+import ModalNovaAssistencia from '../../../../assistencias/components/ModalNovaAssistencia'
 import type { ClienteCentral } from '../../../types/centralClientes'
 import { useNavigate } from 'react-router-dom'
 
