@@ -37,7 +37,7 @@ import RegistroModal from "../../components/homepage/RegistroModal";
 import { useAuth } from "../../auth/AuthContext";
 
 import imgCapa from "./img/img-capa.png";
-import { PlatformUniverseSection, SitePowerSection, CommercialPowerSection, DocumentPowerSection, FinancePowerSection, OperationsPowerSection, ProductDepthSection } from "./HomePageVitrine";
+import { SeguroCRMVisualHero, SeguroCRMVisualTour, SeguroCRMImageStories, SeguroCRMFeatureExplorer, SeguroCRMClosingPitch } from "./HomePageFuncionalidades";
 
 // ======================================================
 // CONFIGURAÇÕES COMERCIAIS
@@ -385,20 +385,11 @@ export default function HomePage() {
         onRegister={abrirCadastro}
       />
 
-      {/* NOVA VITRINE: seis pilares da plataforma */}
-      <PlatformUniverseSection />
-      <SitePowerSection />
-      <SiteSection onRegister={abrirCadastro} />
-      <ConversationCoreSection />
-      <JourneySection />
-      <CommercialPowerSection />
-      <FinancePowerSection />
-      <DocumentPowerSection />
-      <StorageSection />
-      <OperationsPowerSection />
-      <WhatsAppTeamSection />
-      <ModulesSection onRegister={abrirCadastro} />
-      <ProductDepthSection />
+      {/* Nova jornada comercial: artes, explicações e exploração de recursos */}
+      <SeguroCRMVisualTour />
+      <SeguroCRMImageStories />
+      <SeguroCRMFeatureExplorer />
+      <SeguroCRMClosingPitch onRegister={abrirCadastro} />
 
       {/* ==================================================
           PROVA SOCIAL
@@ -533,17 +524,17 @@ function Navbar({
 
           <div className="hidden items-center gap-7 lg:flex">
             <NavbarLink
-              href="#como-funciona"
+              href="#explorar"
               label="Como funciona"
             />
 
             <NavbarLink
-              href="#plataforma"
+              href="#funcionalidades"
               label="Plataforma"
             />
 
             <NavbarLink
-              href="#site"
+              href="#site-integrado"
               label="Site integrado"
             />
 
@@ -643,15 +634,15 @@ function Navbar({
             <div className="my-auto space-y-2 py-10">
               {[
                 [
-                  "#como-funciona",
+                  "#explorar",
                   "Como funciona",
                 ],
                 [
-                  "#plataforma",
+                  "#funcionalidades",
                   "Plataforma",
                 ],
                 [
-                  "#site",
+                  "#site-integrado",
                   "Site integrado",
                 ],
                 ["#planos", "Planos"],
@@ -854,7 +845,7 @@ function HeroSection({
             </button>
 
             <a
-              href="#como-funciona"
+              href="#explorar"
               className="flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-8 py-4 text-sm font-bold text-zinc-300 backdrop-blur transition-all hover:border-white/20 hover:bg-white/10 sm:w-auto"
             >
               Ver como funciona
@@ -880,7 +871,7 @@ function HeroSection({
           </div>
         </div>
 
-        <HeroProductPreview />
+        <SeguroCRMVisualHero />
       </div>
     </section>
   );
@@ -922,7 +913,7 @@ function HeroCheck({
   );
 }
 
-function HeroProductPreview() {
+export function HeroProductPreview() {
   return (
     <motion.div
       initial={{
@@ -986,7 +977,7 @@ function HeroProductPreview() {
 // 03. TUDO AO REDOR DA CONVERSA
 // ======================================================
 
-function ConversationCoreSection() {
+export function ConversationCoreSection() {
   return (
     <section
       id="como-funciona"
@@ -1319,7 +1310,7 @@ function ContextFeature({
 // 04. JORNADA DO PRIMEIRO OI À RENOVAÇÃO
 // ======================================================
 
-function JourneySection() {
+export function JourneySection() {
   return (
     <section className="relative overflow-hidden bg-zinc-950 py-24 text-white lg:py-32">
       <div className="absolute left-1/2 top-0 h-[400px] w-[800px] -translate-x-1/2 rounded-full bg-blue-600/10 blur-[150px]" />
@@ -1403,7 +1394,7 @@ function JourneySection() {
 // 05. MÓDULOS
 // ======================================================
 
-function ModulesSection({
+export function ModulesSection({
   onRegister,
 }: {
   onRegister: () => void;
@@ -1514,7 +1505,7 @@ function ModulesSection({
 // 06. EQUIPE + WHATSAPP
 // ======================================================
 
-function WhatsAppTeamSection() {
+export function WhatsAppTeamSection() {
   return (
     <section className="overflow-hidden bg-[#f6f8fb] py-24 lg:py-32">
       <div className="mx-auto grid max-w-7xl items-center gap-14 px-6 lg:grid-cols-2">
@@ -1682,7 +1673,7 @@ function TeamVisual() {
 // 07. SITE INTEGRADO
 // ======================================================
 
-function SiteSection({
+export function SiteSection({
   onRegister,
 }: {
   onRegister: () => void;
@@ -1859,7 +1850,7 @@ function SiteFlowVisual() {
 // 08. CENTRAL DE ARMAZENAMENTO
 // ======================================================
 
-function StorageSection() {
+export function StorageSection() {
   return (
     <section className="overflow-hidden bg-[#f6f8fb] py-24 lg:py-32">
       <div className="mx-auto grid max-w-7xl items-center gap-14 px-6 lg:grid-cols-[0.85fr_1.15fr]">
@@ -2835,15 +2826,15 @@ function Footer() {
             </FooterTitle>
 
             <FooterLinks>
-              <a href="#como-funciona">
+              <a href="#explorar">
                 Como funciona
               </a>
 
-              <a href="#plataforma">
+              <a href="#funcionalidades">
                 Recursos
               </a>
 
-              <a href="#site">
+              <a href="#site-integrado">
                 Site integrado
               </a>
 
