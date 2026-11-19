@@ -1,8 +1,10 @@
 import { usePermissoes } from '../../hooks/usePermissoes';
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
+  useRef,
   type FormEvent,
   type ReactNode,
 } from 'react';
@@ -19,6 +21,7 @@ import {
   Plus,
   Power,
   PowerOff,
+  Trash2,
   X,
 } from 'lucide-react';
 
@@ -26,7 +29,10 @@ import {
   alterarStatusPlanoConta,
   atualizarPlanoConta,
   buscarPlanoContasCompleto,
+  buscarDependenciasPlanoConta,
+  excluirPlanoConta,
   criarPlanoConta,
+  type DependenciasPlanoConta,
   type PlanoContaItem,
   type TipoDespesaContaPagar,
 } from '../services/contasPagarService';
@@ -70,6 +76,13 @@ export default function ModalPlanoContas({
   const podeDesativarPlano = escopo('financeiro.contas_pagar', 'plano_delete') === 'tenant';
 
   const [itens, setItens] = useState<PlanoContaItem[]>([]);
+  const [filtroSituacao, setFiltroSituacao] = useState<'TODAS' | 'ATIVAS' | 'INATIVAS'>('TODAS');
+  const [contaParaExcluir, setContaParaExcluir] = useState<PlanoContaItem | null>(null);
+  const [dependencias, setDependencias] = useState<DependenciasPlanoConta | null>(null);
+  const [destinoExclusaoId, setDestinoExclusaoId] = useState('');
+  const [carregandoExclusao, setCarregandoExclusao] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -86,9 +99,50 @@ export default function ModalPlanoContas({
     new Set()
   );
 
-  const arvore = useMemo(
-    () => montarArvore(itens),
-    [itens]
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [solicitacaoRolagem, setSolicitacaoRolagem] = useState(0);
+
+  function rolarParaFormulario() {
+    // O contador também funciona quando o formulário já estava aberto.
+    setSolicitacaoRolagem((valor) => valor + 1);
+  }
+
+  useLayoutEffect(() => {
+    if (!aberto || !formAberto || solicitacaoRolagem === 0) return;
+
+    // Executa após o React incluir/atualizar o formulário no DOM.
+    // Rola somente o conteúdo do modal, sem mover a página de fundo.
+    scrollContainerRef.current?.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    });
+  }, [aberto, formAberto, solicitacaoRolagem]);
+
+  const arvore = useMemo(() => {
+    const todaArvore = montarArvore(itens);
+    if (filtroSituacao === 'TODAS') return todaArvore;
+    const ativo = filtroSituacao === 'ATIVAS';
+    // Mantém ancestrais como contexto quando um descendente atende ao filtro.
+    const filtrar = (nodes: PlanoContaNode[]): PlanoContaNode[] =>
+      nodes.flatMap((node) => {
+        const filhos = filtrar(node.filhos);
+        return node.ativo === ativo || filhos.length
+          ? [{ ...node, filhos }]
+          : [];
+      });
+    return filtrar(todaArvore);
+  }, [itens, filtroSituacao]);
+
+  const destinosExclusao = useMemo(
+    () => itens.filter((item) =>
+      item.ativo && item.id !== contaParaExcluir?.id &&
+      (!dependencias?.comissoes || item.tipo_despesa === 'VARIAVEL')
+    ),
+    [itens, contaParaExcluir?.id, dependencias?.comissoes]
+  );
+
+  const possuiVinculos = Boolean(
+    dependencias && (dependencias.lancamentos > 0 || dependencias.provisionamentos > 0)
   );
 
   const contaEditando = useMemo(
@@ -171,6 +225,7 @@ export default function ModalPlanoContas({
     });
 
     setFormAberto(true);
+    rolarParaFormulario();
   }
 
   function abrirNovaSubconta(
@@ -186,6 +241,7 @@ export default function ModalPlanoContas({
     });
 
     setFormAberto(true);
+    rolarParaFormulario();
 
     setExpandidos((prev) => {
       const novo =
@@ -218,6 +274,7 @@ export default function ModalPlanoContas({
     });
 
     setFormAberto(true);
+    rolarParaFormulario();
   }
 
   function fecharFormulario() {
@@ -394,6 +451,55 @@ export default function ModalPlanoContas({
     }
   }
 
+  async function abrirExclusao(item: PlanoContaItem) {
+    if (!podeDesativarPlano) return;
+    if (itens.some((filho) => filho.parent_id === item.id)) {
+      setErro('Esta conta possui subcontas. Reorganize ou exclua as subcontas primeiro.');
+      return;
+    }
+    setErro('');
+    setErroExclusao('');
+    setDependencias(null);
+    setDestinoExclusaoId('');
+    setContaParaExcluir(item);
+    setCarregandoExclusao(true);
+    try {
+      setDependencias(await buscarDependenciasPlanoConta(item.id));
+    } catch (error) {
+      setErroExclusao(error instanceof Error ? error.message : 'Não foi possível consultar os vínculos.');
+    } finally {
+      setCarregandoExclusao(false);
+    }
+  }
+
+  async function confirmarExclusao() {
+    if (!contaParaExcluir || !dependencias || excluindo || !podeDesativarPlano) return;
+    if (possuiVinculos && !destinoExclusaoId) {
+      setErroExclusao('Escolha a conta de destino para transferir os vínculos.');
+      return;
+    }
+    setExcluindo(true);
+    setErroExclusao('');
+    try {
+      const resultado = await excluirPlanoConta(
+        contaParaExcluir.id,
+        possuiVinculos ? destinoExclusaoId : null
+      );
+      setContaParaExcluir(null);
+      setDependencias(null);
+      setDestinoExclusaoId('');
+      setMensagem(
+        `Conta excluída com sucesso. ${resultado.lancamentos_transferidos} lançamento(s) e ${resultado.provisionamentos_transferidos} provisionamento(s) transferido(s).`
+      );
+      await carregar();
+      if (onAlterado) await onAlterado();
+    } catch (error) {
+      setErroExclusao(error instanceof Error ? error.message : 'Não foi possível excluir a conta.');
+    } finally {
+      setExcluindo(false);
+    }
+  }
+
   function alternarExpandido(
     id: string
   ) {
@@ -439,7 +545,7 @@ export default function ModalPlanoContas({
           <button
             type="button"
             onClick={onClose}
-            disabled={salvando}
+            disabled={salvando || excluindo}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
           >
             <X size={19} />
@@ -447,7 +553,10 @@ export default function ModalPlanoContas({
         </div>
 
         {/* BODY */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div
+          ref={scrollContainerRef}
+          className="min-h-0 flex-1 overflow-y-auto p-5"
+        >
           {/* MENSAGENS */}
           {erro && (
             <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
@@ -485,7 +594,7 @@ export default function ModalPlanoContas({
               </p>
             </div>
 
-            <button
+            {podeCriarPlano && <button
               type="button"
               onClick={
                 abrirNovaRaiz
@@ -494,7 +603,7 @@ export default function ModalPlanoContas({
             >
               <Plus size={17} />
               Nova conta raiz
-            </button>
+            </button>}
           </div>
 
           {/* FORM */}
@@ -724,6 +833,32 @@ export default function ModalPlanoContas({
             </form>
           )}
 
+          {/* FILTRO DE SITUAÇÃO */}
+          <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar contas por situação">
+            {([
+              ['TODAS', 'Todas'],
+              ['ATIVAS', 'Ativas'],
+              ['INATIVAS', 'Inativas'],
+            ] as const).map(([valor, titulo]) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => setFiltroSituacao(valor)}
+                aria-pressed={filtroSituacao === valor}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                  filtroSituacao === valor
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                }`}
+              >
+                {titulo}
+                <span className="ml-1 opacity-80">
+                  ({valor === 'TODAS' ? itens.length : itens.filter((i) => i.ativo === (valor === 'ATIVAS')).length})
+                </span>
+              </button>
+            ))}
+          </div>
+
           {/* ÁRVORE */}
           <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
             {loading ? (
@@ -781,6 +916,11 @@ export default function ModalPlanoContas({
                       onAlterarStatus={
                         handleAlterarStatus
                       }
+                      onExcluir={abrirExclusao}
+                      podeCriar={podeCriarPlano}
+                      podeEditar={podeEditarPlano}
+                      podeAlterarStatusAtivo={podeDesativarPlano}
+                      podeExcluir={podeDesativarPlano}
                       alterandoStatusId={
                         alterandoStatusId
                       }
@@ -797,13 +937,81 @@ export default function ModalPlanoContas({
           <button
             type="button"
             onClick={onClose}
-            disabled={salvando}
+            disabled={salvando || excluindo}
             className="h-10 rounded-lg border border-slate-200 px-5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             Fechar
           </button>
         </div>
       </div>
+      {contaParaExcluir && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/60 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="titulo-excluir-plano" className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900">
+            <div className="mb-3 flex items-center gap-2 text-red-600 dark:text-red-400">
+              <Trash2 size={20} />
+              <h3 id="titulo-excluir-plano" className="text-base font-bold">Excluir conta do plano</h3>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Deseja excluir definitivamente <strong>{contaParaExcluir.nome}</strong>?
+            </p>
+            {carregandoExclusao ? (
+              <div className="my-5 flex items-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> Verificando vínculos financeiros...</div>
+            ) : dependencias && (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                  <p>Lançamentos vinculados: <strong>{dependencias.lancamentos}</strong></p>
+                  <p>Provisionamentos vinculados: <strong>{dependencias.provisionamentos}</strong></p>
+                  {dependencias.comissoes > 0 && <p>Destes, lançamentos de comissões: <strong>{dependencias.comissoes}</strong></p>}
+                </div>
+                {possuiVinculos ? (
+                  <div>
+                    <label htmlFor="destino-plano-exclusao" className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">Transferir vínculos para</label>
+                    <select
+                      id="destino-plano-exclusao"
+                      value={destinoExclusaoId}
+                      onChange={(e) => setDestinoExclusaoId(e.target.value)}
+                      className={inputClass}
+                      disabled={excluindo}
+                    >
+                      <option value="">Selecione uma conta ativa</option>
+                      {destinosExclusao.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.codigo ? `${item.codigo} - ` : ''}{obterCaminhoPlano(item, itens)}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Os valores, baixas, origem, status e tipo histórico dos lançamentos serão preservados.
+                      {dependencias.comissoes > 0 ? ' Como existem comissões, o destino deve ser uma conta variável.' : ''}
+                    </p>
+                    {destinosExclusao.length === 0 && (
+                      <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">Não há destino elegível. Cadastre ou ative uma conta compatível antes de excluir.</p>
+                    )}
+                  </div>
+                ) : <p className="text-sm text-slate-500">Esta conta não possui vínculos financeiros diretos.</p>}
+              </div>
+            )}
+            {erroExclusao && <div role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{erroExclusao}</div>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={excluindo}
+                onClick={() => { setContaParaExcluir(null); setDependencias(null); setErroExclusao(''); }}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+              >Cancelar</button>
+              <button
+                type="button"
+                onClick={() => void confirmarExclusao()}
+                disabled={excluindo || carregandoExclusao || !dependencias || (possuiVinculos && !destinoExclusaoId)}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {excluindo ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                {possuiVinculos ? 'Transferir e excluir' : 'Excluir definitivamente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -821,6 +1029,11 @@ function LinhaPlanoConta({
   onAdicionarFilho,
   onEditar,
   onAlterarStatus,
+  onExcluir,
+  podeCriar,
+  podeEditar,
+  podeAlterarStatusAtivo,
+  podeExcluir,
   alterandoStatusId,
 }: {
   node: PlanoContaNode;
@@ -837,6 +1050,11 @@ function LinhaPlanoConta({
     item: PlanoContaItem
   ) => void;
   alterandoStatusId: string | null;
+  onExcluir: (item: PlanoContaItem) => void;
+  podeCriar: boolean;
+  podeEditar: boolean;
+  podeAlterarStatusAtivo: boolean;
+  podeExcluir: boolean;
 }) {
   const temFilhos =
     node.filhos.length > 0;
@@ -912,11 +1130,13 @@ function LinhaPlanoConta({
                 }
               />
 
-              {!node.ativo && (
-                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                  Inativa
-                </span>
-              )}
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                node.ativo
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+              }`}>
+                {node.ativo ? 'Ativa' : 'Inativa'}
+              </span>
             </div>
 
             {node.descricao && (
@@ -928,7 +1148,7 @@ function LinhaPlanoConta({
         </div>
 
         <div className="ml-3 flex shrink-0 items-center gap-1">
-          <button
+          {podeCriar && <button
             type="button"
             title="Adicionar subconta"
             onClick={() =>
@@ -941,9 +1161,9 @@ function LinhaPlanoConta({
             <CirclePlus
               size={16}
             />
-          </button>
+          </button>}
 
-          <button
+          {podeEditar && <button
             type="button"
             title="Editar"
             onClick={() =>
@@ -952,9 +1172,9 @@ function LinhaPlanoConta({
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
           >
             <Edit3 size={15} />
-          </button>
+          </button>}
 
-          <button
+          {(node.ativo ? podeAlterarStatusAtivo : podeEditar) && <button
             type="button"
             title={
               node.ativo
@@ -989,7 +1209,19 @@ function LinhaPlanoConta({
                 size={15}
               />
             )}
-          </button>
+          </button>}
+          {podeExcluir && (
+            <button
+              type="button"
+              title={temFilhos ? 'Esta conta possui subcontas' : 'Excluir definitivamente'}
+              aria-label={`Excluir conta ${node.nome}`}
+              disabled={temFilhos}
+              onClick={() => onExcluir(node)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-red-950/40"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1020,6 +1252,11 @@ function LinhaPlanoConta({
               onAlterarStatus={
                 onAlterarStatus
               }
+              onExcluir={onExcluir}
+              podeCriar={podeCriar}
+              podeEditar={podeEditar}
+              podeAlterarStatusAtivo={podeAlterarStatusAtivo}
+              podeExcluir={podeExcluir}
               alterandoStatusId={
                 alterandoStatusId
               }
