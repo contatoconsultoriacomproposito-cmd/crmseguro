@@ -2841,3 +2841,94 @@ export async function criarProvisionamento(
     );
   }
 }
+
+
+// ============================================================
+// PLANO DE CONTAS: DEPENDÊNCIAS E EXCLUSÃO CONTROLADA
+// ============================================================
+// A exclusão definitiva ocorre exclusivamente na RPC transacional.
+// O backend deve validar financeiro.contas_receber/plano_delete,
+// impedir exclusão de contas com subcontas e transferir todos os
+// vínculos para conta ativa da mesma corretora antes de excluir.
+
+export interface DependenciasPlanoConta {
+  lancamentos: number;
+  provisionamentos: number;
+  comissoes: number;
+}
+
+export interface ResultadoExclusaoPlanoConta {
+  success: boolean;
+  plano_excluido_id: string;
+  conta_excluida: string;
+  destino_id: string | null;
+  lancamentos_transferidos: number;
+  provisionamentos_transferidos: number;
+  comissoes_incluidas: number;
+}
+
+export async function buscarDependenciasPlanoConta(
+  planoContaId: string
+): Promise<DependenciasPlanoConta> {
+  if (!planoContaId) throw new Error('Conta não informada.');
+
+  const contexto = await buscarContextoUsuarioFinanceiro();
+  const filtros = {
+    corretoraId: contexto.corretoraId,
+    planoContaId,
+  };
+
+  const [lancamentos, provisionamentos, comissoes] = await Promise.all([
+    supabase.from('crm_contas_receber_lancamentos')
+      .select('id', { count: 'exact', head: true })
+      .eq('corretora_id', filtros.corretoraId)
+      .eq('plano_conta_id', filtros.planoContaId),
+    supabase.from('crm_contas_receber_provisionamentos')
+      .select('id', { count: 'exact', head: true })
+      .eq('corretora_id', filtros.corretoraId)
+      .eq('plano_conta_id', filtros.planoContaId),
+    supabase.from('crm_contas_receber_lancamentos')
+      .select('id', { count: 'exact', head: true })
+      .eq('corretora_id', filtros.corretoraId)
+      .eq('plano_conta_id', filtros.planoContaId)
+      .eq('origem', 'COMISSAO'),
+  ]);
+
+  const erro = lancamentos.error || provisionamentos.error || comissoes.error;
+  if (erro) {
+    console.error('[ContasReceber] Erro ao consultar dependências do plano:', erro);
+    throw new Error(erro.message || 'Não foi possível verificar os vínculos desta conta.');
+  }
+
+  return {
+    lancamentos: lancamentos.count ?? 0,
+    provisionamentos: provisionamentos.count ?? 0,
+    comissoes: comissoes.count ?? 0,
+  };
+}
+
+export async function excluirPlanoConta(
+  planoContaId: string,
+  destinoId: string | null
+): Promise<ResultadoExclusaoPlanoConta> {
+  if (!planoContaId) throw new Error('Conta não informada.');
+
+  const { data, error } = await supabase.rpc(
+    'crm_contas_receber_excluir_plano_conta',
+    {
+      p_plano_conta_id: planoContaId,
+      p_destino_id: destinoId || null,
+    }
+  );
+
+  if (error) {
+    console.error('[ContasReceber] Erro ao excluir plano de contas:', error);
+    throw new Error(error.message || 'Não foi possível excluir a conta.');
+  }
+
+  const resultado = data as ResultadoExclusaoPlanoConta | null;
+  if (!resultado?.success) {
+    throw new Error('A exclusão não foi confirmada pelo banco.');
+  }
+  return resultado;
+}
