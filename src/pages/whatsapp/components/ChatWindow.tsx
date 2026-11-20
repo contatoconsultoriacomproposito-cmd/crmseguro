@@ -1971,7 +1971,25 @@ const timelineItems =
             {activeMenu === 'documentos' && (<DocumentosMenu conversationId={conversation.id} onClose={() => setActiveMenu(null)} onAdicionarDocumento={() => {
                 setActiveMenu(null);
                 setModalDocumentoAberto(true);
-            }} refreshKey={documentosRefreshKey}/>)}
+            }}
+                podeEnviarDocumento={podeInteragir && conversation.instanceActive !== false}
+                onEnviarDocumento={async (arquivo: File) => {
+                    if (!podeInteragir || conversation.instanceActive === false) {
+                        throw new Error('Você não tem permissão para enviar nesta conversa.');
+                    }
+                    // Envio normal com arquivo original recuperado do B2.
+                    const tipo = arquivo.type.startsWith('image/') ? 'image' : 'document';
+                    try {
+                        const resultado = await send({ type: tipo, file: arquivo });
+                        if (!resultado) throw new Error('A conversa não está disponível para envio.');
+                    } catch (error) {
+                        if (isStorageLimitError(error)) {
+                            await storageCommercial.abrirModalArmazenamento();
+                        }
+                        throw error;
+                    }
+                }}
+                refreshKey={documentosRefreshKey}/>)}
             </div>
             {podeRealizarLigacao && (
             <HeaderIconButton

@@ -18,6 +18,8 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '../../../auth/AuthContext'
+import { supabase } from '../../../lib/supabaseClient'
+import { toast } from 'sonner'
 import { buscarAgendaWhatsApp, subscribeAgendaWhatsApp } from '../services/whatsappAgendaService'
 import type { WhatsAppAgendaCommitment, WhatsAppAgendaData } from '../services/whatsappAgendaService'
 import {
@@ -108,6 +110,9 @@ export default function ConversationList({
   const [agenda, setAgenda] = useState<WhatsAppAgendaData>(EMPTY_AGENDA)
   const [agendaLoading, setAgendaLoading] = useState(false)
   const [agendaError, setAgendaError] = useState<string | null>(null)
+  const [avatarAtualizandoId, setAvatarAtualizandoId] = useState<string | null>(null)
+  const [avataresAtualizados, setAvataresAtualizados] = useState<Record<string, string>>({})
+  const avatarAtualizandoRef = useRef<string | null>(null)
   const [compromissoSelecionado, setCompromissoSelecionado] = useState<AgendaItem | null>(null)
   const [modalCompromissoAberto, setModalCompromissoAberto] = useState(false)
   const [salvandoCompromisso, setSalvandoCompromisso] = useState(false)
@@ -506,6 +511,63 @@ const handleCancelarCompromisso = useCallback(async (compromisso: AgendaItem) =>
     crmClientsByContactId,
   ])
 
+  // Consulta sob demanda, exclusivamente a conversa cujo avatar foi clicado.
+  // Não altera o fluxo de abertura, os filtros, a timeline ou o estado do inbox.
+  const handleAtualizarAvatar = async (conversation: WhatsAppConversation) => {
+    if (avatarAtualizandoRef.current || loading) return
+    if (!conversation.instanceId || conversation.instanceActive === false || conversation.status === 'encerrada') {
+      toast.info('A conexão desta conversa está inativa ou encerrada.')
+      return
+    }
+
+    avatarAtualizandoRef.current = conversation.contact.id
+    setAvatarAtualizandoId(conversation.contact.id)
+    try {
+      const { data, error } = await supabase.functions.invoke('dapi-refresh-avatars', {
+        body: { conversationIds: [conversation.id] },
+      })
+      if (error || !data || data.success !== true) {
+        console.error('Atualização individual de avatar:', error || data)
+        toast.error(data?.error || 'Não foi possível consultar a fotografia na DAPI.')
+        return
+      }
+
+      const resultado = data as {
+        atualizados?: number
+        inalterados?: number
+        semFoto?: number
+        falhas?: number
+        ignorados?: number
+        avatares?: Array<{ contatoId: string; avatarUrl: string }>
+      }
+      for (const avatar of resultado.avatares || []) {
+        if (avatar.contatoId && avatar.avatarUrl) {
+          setAvataresAtualizados(anterior => ({
+            ...anterior,
+            [avatar.contatoId]: avatar.avatarUrl,
+          }))
+        }
+      }
+      if (resultado.atualizados) {
+        toast.success('A DAPI retornou um novo endereço de fotografia para este contato.')
+      } else if (resultado.inalterados) {
+        toast.info('A DAPI retornou o mesmo endereço de fotografia. A imagem pode estar em cache no provedor.')
+      } else if (resultado.semFoto) {
+        toast.info('A DAPI não disponibilizou fotografia para este contato.')
+      } else if (resultado.ignorados) {
+        toast.warning('Esta conversa não está disponível para atualização de avatar.')
+      } else {
+        toast.error('A consulta à DAPI falhou. A fotografia anterior foi preservada.')
+      }
+    } catch (error) {
+      console.error('Erro na atualização individual de avatar:', error)
+      toast.error('Erro ao atualizar a fotografia do contato.')
+    } finally {
+      avatarAtualizandoRef.current = null
+      setAvatarAtualizandoId(null)
+    }
+  }
+
   const dateFilteredCommitments = useMemo(() => {
     if (!commitmentDateStart && !commitmentDateEnd) {
       return agenda.todos
@@ -691,8 +753,8 @@ return (
             </div>
           </div>
 
-          <div className="relative mt-3">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <div className="relative mt-3">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 
             <input
               type="text"
@@ -877,7 +939,9 @@ return (
             return (
               <ConversationItem
                 key={conversation.id}
-                conversation={conversation}
+                conversation={avataresAtualizados[conversation.contact.id]
+                  ? { ...conversation, contact: { ...conversation.contact, avatar: avataresAtualizados[conversation.contact.id] } }
+                  : conversation}
                 selected={conversation.id === selectedId}
                 nextCommitment={agenda.proximoPorConversa[conversation.id]}
                 onCommitmentClick={handleAbrirCompromisso}
@@ -888,6 +952,9 @@ return (
                   kanbanStage,
                 }}
                 onClick={() => onSelect(conversation.id)}
+                onAvatarRefresh={() => void handleAtualizarAvatar(conversation)}
+                avatarRefreshing={avatarAtualizandoId === conversation.contact.id}
+                avatarRefreshDisabled={Boolean(avatarAtualizandoId) || conversation.instanceActive === false || conversation.status === 'encerrada'}
               />
             )
           })

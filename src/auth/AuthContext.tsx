@@ -522,26 +522,25 @@ export function AuthProvider({
           
 
           if (event === "SIGNED_IN") {
-            if (
-              signingInRef.current
-            ) {
+            if (signingInRef.current) {
               console.log(
                 "SIGNED_IN ignorado durante login controlado."
               )
-
               return
             }
 
-            
-
             if (
               session?.user &&
-              activeUserIdRef.current ===
-                session.user.id
+              activeUserIdRef.current === session.user.id
             ) {
-              setUser(
-                session.user
+              // Sessão do mesmo usuário.
+              // Evita atualizar o contexto inteiro
+              // desnecessariamente.
+              console.log(
+                "SIGNED_IN do usuário atual — sem atualizar estado."
               )
+
+              return
             }
 
             return

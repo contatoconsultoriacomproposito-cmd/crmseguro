@@ -6,7 +6,7 @@ import {
 } from 'react'
 
 import {
-  Download,
+  Send,
   ExternalLink,
   FileImage,
   FileText,
@@ -21,7 +21,7 @@ import {
 import { toast } from 'sonner'
 
 import {
-  baixarDocumento,
+  criarUrlLeituraDocumento,
   excluirDocumento,
   listarDocumentos,
   visualizarDocumento,
@@ -36,6 +36,8 @@ interface DocumentosMenuProps {
   conversationId: string
   onClose: () => void
   onAdicionarDocumento: () => void
+  onEnviarDocumento: (arquivo: File) => Promise<void>
+  podeEnviarDocumento?: boolean
   refreshKey?: number
 }
 
@@ -134,6 +136,8 @@ export function DocumentosMenu({
   conversationId,
   onClose,
   onAdicionarDocumento,
+  onEnviarDocumento,
+  podeEnviarDocumento = true,
   refreshKey = 0,
 }: DocumentosMenuProps) {
   const [documentos, setDocumentos] =
@@ -437,41 +441,50 @@ export function DocumentosMenu({
       }
     }
 
-  const handleBaixar =
-    async (
-      event: React.MouseEvent,
-      documento: DocumentoArquivo
-    ) => {
-      event.stopPropagation()
+  const handleEnviar = async (
+    event: React.MouseEvent,
+    documento: DocumentoArquivo
+  ) => {
+    event.stopPropagation()
+    if (arquivoEmAcao || arquivoEmExclusao || !podeEnviarDocumento) return
 
-      if (arquivoEmAcao) {
-        return
+    try {
+      setArquivoEmAcao(documento.id)
+      const url = await criarUrlLeituraDocumento({
+        conversationId,
+        arquivoId: documento.id,
+      })
+
+      // A URL assinada é obtida exclusivamente pelo serviço autorizado.
+      const resposta = await fetch(url)
+      if (!resposta.ok) {
+        throw new Error(`Não foi possível recuperar o arquivo (HTTP ${resposta.status}).`)
       }
 
-      try {
-        setArquivoEmAcao(
-          documento.id
-        )
-
-        await baixarDocumento({
-          conversationId,
-          arquivoId: documento.id,
-        })
-      } catch (error) {
-        console.error(
-          'Erro ao baixar documento:',
-          error
-        )
-
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Não foi possível baixar o documento.'
-        )
-      } finally {
-        setArquivoEmAcao(null)
+      const conteudo = await resposta.blob()
+      if (!conteudo.size) {
+        throw new Error('O arquivo armazenado está vazio.')
       }
+      const tipo = documento.mimeType || conteudo.type || 'application/octet-stream'
+      const arquivo = new File([conteudo], documento.nomeOriginal, {
+        type: tipo,
+        lastModified: Date.now(),
+      })
+
+      // Reutiliza o envio oficial: instância da conversa, permissões,
+      // status otimista e sincronização da timeline permanecem nele.
+      await onEnviarDocumento(arquivo)
+      toast.success('Documento enviado para a conversa.')
+      onClose()
+    } catch (error) {
+      console.error('Erro ao enviar documento da Central:', error)
+      toast.error(
+        error instanceof Error ? error.message : 'Não foi possível enviar o documento.'
+      )
+    } finally {
+      setArquivoEmAcao(null)
     }
+  }
 
 const handleExcluir = async (
   event: React.MouseEvent,
@@ -1011,14 +1024,14 @@ const handleExcluir = async (
 
                       <button
                         type="button"
-                        title="Baixar"
+                        title="Enviar à conversa"
                         disabled={
                           Boolean(
-                            arquivoEmAcao
+                            arquivoEmAcao || arquivoEmExclusao || !podeEnviarDocumento
                           )
                         }
                         onClick={event => {
-                          void handleBaixar(
+                          void handleEnviar(
                             event,
                             documento
                           )
@@ -1040,7 +1053,7 @@ const handleExcluir = async (
                           'dark:hover:text-blue-400',
                         ].join(' ')}
                       >
-                        <Download
+                        <Send
                           size={14}
                         />
                       </button>

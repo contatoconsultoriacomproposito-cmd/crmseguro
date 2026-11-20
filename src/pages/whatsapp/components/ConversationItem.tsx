@@ -1,6 +1,6 @@
 import type { WhatsAppConversation } from '../types/whatsapp'
 import type { WhatsAppAgendaCommitment } from '../services/whatsappAgendaService'
-import { CalendarDays, FileText, Image, Mic, Smartphone, UserRound, Video } from 'lucide-react'
+import { CalendarDays, FileText, Image, Loader2, Mic, RefreshCw, Smartphone, UserRound, Video } from 'lucide-react'
 import { useEffect, useState } from 'react'
 const avatarsComErro = new Set<string>()
 
@@ -8,6 +8,9 @@ interface ConversationItemProps {
   conversation: WhatsAppConversation
   selected?: boolean
   onClick: () => void
+  onAvatarRefresh?: () => void
+  avatarRefreshing?: boolean
+  avatarRefreshDisabled?: boolean
   nextCommitment?: WhatsAppAgendaCommitment
   onCommitmentClick?: (commitment: WhatsAppAgendaCommitment) => void
   assignedTo?: string
@@ -36,6 +39,9 @@ export default function ConversationItem({
   conversation,
   selected,
   onClick,
+  onAvatarRefresh,
+  avatarRefreshing = false,
+  avatarRefreshDisabled = false,
   nextCommitment,
   onCommitmentClick,
   assignedTo,
@@ -60,10 +66,17 @@ export default function ConversationItem({
   const preview = getMessagePreview(lastMessage)
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`group relative w-full border-b px-3 py-3 text-left transition-colors ${selected ? 'bg-slate-100' : 'bg-white hover:bg-slate-50'}`}
+      onKeyDown={event => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault()
+          onClick()
+        }
+      }}
+      className={`group relative w-full cursor-pointer border-b px-3 py-3 text-left transition-colors ${selected ? 'bg-slate-100' : 'bg-white hover:bg-slate-50'}`}
     >
       {selected && <div className="absolute inset-y-0 left-0 w-[3px] bg-blue-500" />}
 
@@ -86,6 +99,23 @@ export default function ConversationItem({
               getInitials(contact.name)
             )}
           </div>
+
+          {onAvatarRefresh && (
+            <button
+              type="button"
+              disabled={avatarRefreshDisabled || avatarRefreshing}
+              title={avatarRefreshing ? 'Consultando fotografia...' : 'Clique para atualizar a fotografia deste contato'}
+              aria-label={`Atualizar fotografia de ${contact.name}`}
+              onClick={event => {
+                event.stopPropagation()
+                onAvatarRefresh()
+              }}
+              onKeyDown={event => event.stopPropagation()}
+              className="absolute inset-0 z-[1] flex items-center justify-center rounded-full bg-slate-900/0 text-white opacity-0 transition hover:bg-slate-900/45 hover:opacity-100 focus-visible:bg-slate-900/45 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {avatarRefreshing ? <Loader2 size={19} className="animate-spin" /> : <RefreshCw size={19} />}
+            </button>
+          )}
 
           {unreadCount > 0 && (
             <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1 text-[9px] font-bold leading-none text-white">
@@ -186,7 +216,7 @@ export default function ConversationItem({
           </div>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
