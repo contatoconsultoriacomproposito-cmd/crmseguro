@@ -108,8 +108,8 @@ export default function Comissoes() {
       ["Corretor", filtros.corretor_id, corretores],
       ["Seguradora", filtros.seguradora_id, seguradoras],
       ["Produto", filtros.produto_id, produtos],
-      ["Recebimento", filtros.situacao_recebimento, [{value:'A_RECEBER',label:'A receber'},{value:'RECEBE_HOJE',label:'Hoje'},{value:'ATRASADA',label:'Atrasada'},{value:'RECEBIDA',label:'Recebida'},{value:'CANCELADA',label:'Cancelada'}]],
-      ["Pagamento", filtros.situacao_pagamento, [{value:'A_PAGAR',label:'A pagar'},{value:'VENCE_HOJE',label:'Hoje'},{value:'ATRASADA',label:'Atrasada'},{value:'PAGA',label:'Paga'},{value:'CANCELADA',label:'Cancelada'}]],
+      ["Recebimento da corretora", filtros.situacao_recebimento, [{value:'A_RECEBER',label:'A receber'},{value:'RECEBE_HOJE',label:'Hoje'},{value:'ATRASADA',label:'Atrasada'},{value:'RECEBIDA',label:'Recebida'},{value:'CANCELADA',label:'Cancelada'}]],
+      ["Pagamento aos participantes", filtros.situacao_pagamento, [{value:'A_PAGAR',label:'A pagar'},{value:'VENCE_HOJE',label:'Hoje'},{value:'ATRASADA',label:'Atrasada'},{value:'PARCIAL',label:'Parcialmente paga'},{value:'PAGA',label:'Paga'},{value:'CANCELADA',label:'Cancelada'}]],
       ["Tipo", filtros.tipo_participante, [{value:'CORRETOR',label:'Corretor'},{value:'SUPERVISOR',label:'Supervisor'},{value:'PARCEIRO',label:'Parceiro'},{value:'INDICADOR',label:'Indicador'},{value:'OUTRO',label:'Outro'},{value:'CORRETORA',label:'Corretora'}]],
       ["Participante", filtros.participante_id, opcoesParticipantes],
     ];

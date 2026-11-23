@@ -720,6 +720,7 @@ export const SITUACOES_PAGAMENTO_COMISSAO: {
   { value: "A_PAGAR", label: "A pagar" },
   { value: "VENCE_HOJE", label: "Vence hoje" },
   { value: "ATRASADA", label: "Atrasada" },
+  { value: "PARCIAL", label: "Parcialmente paga" },
   { value: "PAGA", label: "Paga" },
   { value: "CANCELADA", label: "Cancelada" },
 ];

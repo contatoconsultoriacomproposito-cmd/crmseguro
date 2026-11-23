@@ -2095,6 +2095,8 @@ async function buscarResumosComissoes(
       correspondeParticipante: boolean;
       splitsOriginais: ComissaoSplit[];
       pagamentosOriginais: ComissaoPagamentoComSituacao[];
+      /** Pagamentos restritos ao participante/tipo selecionado, para filtros financeiros. */
+      pagamentosEscopo: ComissaoPagamentoComSituacao[];
     }
   >
 > {
@@ -2140,6 +2142,8 @@ async function buscarResumosComissoes(
       correspondeParticipante: boolean;
       splitsOriginais: ComissaoSplit[];
       pagamentosOriginais: ComissaoPagamentoComSituacao[];
+      /** Pagamentos restritos ao participante/tipo selecionado, para filtros financeiros. */
+      pagamentosEscopo: ComissaoPagamentoComSituacao[];
     }
   >();
 
@@ -2196,6 +2200,7 @@ async function buscarResumosComissoes(
         !possuiFiltroParticipante || splitsEscopo.length > 0,
       splitsOriginais: splitsComissao,
       pagamentosOriginais: pagamentosBase,
+      pagamentosEscopo: pagamentosComissao,
     });
   }
 
@@ -2692,7 +2697,11 @@ export async function buscarComissoesGeral(
             case "A_PAGAR": return resumo.valor_a_pagar > 0;
             case "VENCE_HOJE": return resumo.valor_vence_hoje > 0;
             case "ATRASADA": return resumo.valor_atrasado > 0;
-            case "PAGA": return resumo.valor_pago > 0;
+            // Uma baixa parcial não deve fazer a provisão parecer integralmente paga.
+            case "PAGA": return (resumos.get(item.comissao.id)?.pagamentosEscopo ?? [])
+              .some((pagamento) => pagamento.situacao === "PAGA");
+            case "PARCIAL": return (resumos.get(item.comissao.id)?.pagamentosEscopo ?? [])
+              .some((pagamento) => pagamento.situacao === "PARCIAL");
             case "CANCELADA": return resumo.valor_cancelado > 0;
             default: return false;
           }
