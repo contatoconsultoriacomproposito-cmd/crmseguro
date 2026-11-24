@@ -2,9 +2,9 @@ import { Landmark } from "lucide-react";
 import { LinhaPermissao, ModuloPermissao, SecaoPermissao } from "./PermissaoUI";
 
 export type EscopoFinanceiro = "none" | "tenant";
-export type AcaoContasReceber = "read" | "plano_create" | "plano_update" | "plano_delete" | "lancamento_create" | "lancamento_update" | "lancamento_delete" | "baixar" | "estornar";
+export type AcaoContasReceber = "read" | "plano_create" | "plano_update" | "plano_delete" | "lancamento_create" | "lancamento_update" | "lancamento_delete" | "lancamento_hard_delete" | "baixar" | "estornar";
 export type PermissoesContasReceber = Record<AcaoContasReceber, EscopoFinanceiro>;
-export const PADRAO_CONTAS_RECEBER: PermissoesContasReceber = {read: "none", plano_create: "none", plano_update: "none", plano_delete: "none", lancamento_create: "none", lancamento_update: "none", lancamento_delete: "none", baixar: "none", estornar: "none"};
+export const PADRAO_CONTAS_RECEBER: PermissoesContasReceber = {read: "none", plano_create: "none", plano_update: "none", plano_delete: "none", lancamento_create: "none", lancamento_update: "none", lancamento_delete: "none", lancamento_hard_delete: "none", baixar: "none", estornar: "none"};
 
 export function normalizarPermissoesContasReceber(json: unknown): PermissoesContasReceber {
   const bruto = (json as any)?.financeiro?.contas_receber;
@@ -32,6 +32,16 @@ export default function ModalPermissoesContasReceber({ value, disabled=false, on
      <LinhaPermissao label="Criar lançamento" descricao="Criar lançamentos e provisionamentos de receita." value={value.lancamento_create} disabled={disabled} opcoes={opcoes} onChange={v=>onChange("lancamento_create",v)} />
      <LinhaPermissao label="Editar lançamento" descricao="Editar lançamentos e itens de provisionamento." value={value.lancamento_update} disabled={disabled} opcoes={opcoes} onChange={v=>onChange("lancamento_update",v)} />
      <LinhaPermissao label="Cancelar lançamento" descricao="Cancelar lançamentos/provisionamentos preservando histórico." value={value.lancamento_delete} disabled={disabled} opcoes={opcoes} onChange={v=>onChange("lancamento_delete",v)} />
+   </SecaoPermissao>
+   <SecaoPermissao titulo="Permissões especiais — exclusão definitiva">
+     <LinhaPermissao
+       label="Excluir definitivamente lançamento"
+       descricao="Permissão excepcional e irreversível para excluir lançamentos manuais, inclusive os já baixados. Requer autorização adicional no banco e justificativa. Não é concedida por 'Liberar tudo'."
+       value={value.lancamento_hard_delete}
+       disabled={disabled}
+       opcoes={opcoes}
+       onChange={v => onChange("lancamento_hard_delete", v)}
+     />
    </SecaoPermissao>
    <SecaoPermissao titulo="Liquidação">
      <LinhaPermissao label="Registrar recebimento" descricao="Efetivar baixas totais ou parciais de receita." value={value.baixar} disabled={disabled} opcoes={opcoes} onChange={v=>onChange("baixar",v)} />

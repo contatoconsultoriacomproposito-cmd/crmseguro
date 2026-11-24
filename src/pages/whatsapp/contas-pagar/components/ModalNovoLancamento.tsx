@@ -1,4 +1,6 @@
 import { usePermissoes } from '../../hooks/usePermissoes';
+import CadastroFinanceiroModal from './CadastroFinanceiroModal';
+import { Search } from 'lucide-react';
 import {
   useMemo,
   useState,
@@ -105,6 +107,8 @@ export default function ModalNovoLancamento({
     erro,
     setErro,
   ] = useState('');
+  const [cadastroId, setCadastroId] = useState('');
+  const [modalCadastroAberto, setModalCadastroAberto] = useState(false);
 
   const planoOrdenado =
     useMemo(
@@ -352,6 +356,8 @@ export default function ModalNovoLancamento({
         true
       );
 
+      const cadastroParaSalvar = cadastroId || null;
+
       await criarContaPagar({
         plano_conta_id:
           form.planoContaId,
@@ -362,6 +368,7 @@ export default function ModalNovoLancamento({
         favorecido:
           form.favorecido ||
           null,
+        cadastro_id: cadastroParaSalvar,
 
         numero_documento:
           form.numeroDocumento ||
@@ -482,6 +489,8 @@ export default function ModalNovoLancamento({
         true
       );
 
+      const cadastroParaSalvar = cadastroId || null;
+
       await criarProvisionamento({
         plano_conta_id:
           form.planoContaId,
@@ -492,6 +501,7 @@ export default function ModalNovoLancamento({
         favorecido:
           form.favorecido ||
           null,
+        cadastro_id: cadastroParaSalvar,
 
         valor_base:
           valor,
@@ -539,6 +549,8 @@ export default function ModalNovoLancamento({
     setForm(
       FORM_INICIAL
     );
+    setCadastroId('');
+    setModalCadastroAberto(false);
 
     setErro('');
 
@@ -553,6 +565,8 @@ export default function ModalNovoLancamento({
     setForm(
       FORM_INICIAL
     );
+    setCadastroId('');
+    setModalCadastroAberto(false);
 
     setErro('');
 
@@ -560,6 +574,7 @@ export default function ModalNovoLancamento({
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900">
 
@@ -797,22 +812,36 @@ export default function ModalNovoLancamento({
                 />
               </Campo>
 
-              <Campo label="Favorecido">
-                <input
-                  value={
-                    form.favorecido
-                  }
-                  onChange={(e) =>
-                    alterarCampo(
-                      'favorecido',
-                      e.target.value
-                    )
-                  }
-                  placeholder="Empresa ou pessoa"
-                  className={
-                    inputClass
-                  }
-                />
+              <Campo label="Favorecido" className="md:col-span-2">
+                <div className="flex gap-2">
+                  <input
+                    value={form.favorecido}
+                    readOnly={Boolean(cadastroId)}
+                    onChange={(e) => alterarCampo('favorecido', e.target.value)}
+                    aria-label="Favorecido"
+                    title={cadastroId ? 'Cadastro vinculado: use o X para liberar a edição' : undefined}
+                    placeholder="Empresa ou pessoa (texto livre)"
+                    className={`${inputClass} ${cadastroId ? 'cursor-default bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300' : ''}`}
+                  />
+                  {cadastroId && (
+                    <button
+                      type="button"
+                      title="Desvincular cadastro e liberar texto livre"
+                      aria-label="Desvincular cadastro e liberar texto livre"
+                      disabled={salvando}
+                      onClick={() => setCadastroId('')}
+                      className="flex h-10 w-11 shrink-0 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:hover:bg-red-950/30"
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
+                  <button type="button" title="Pesquisar ou cadastrar favorecido" aria-label="Pesquisar ou cadastrar favorecido" disabled={salvando}
+                    onClick={() => setModalCadastroAberto(true)}
+                    className="flex h-10 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-blue-600 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                    <Search size={18} />
+                  </button>
+                </div>
+                {cadastroId && <span className="text-xs text-emerald-600">Cadastro vinculado: campo protegido. Clique no X para desvincular e editar livremente.</span>}
               </Campo>
 
               {!form.recorrente && (
@@ -1182,6 +1211,15 @@ export default function ModalNovoLancamento({
         </form>
       </div>
     </div>
+      <CadastroFinanceiroModal
+        aberto={modalCadastroAberto}
+        tipoConta="PAGAR"
+        nomeSugerido={form.favorecido}
+        selecionadoId={cadastroId}
+        onFechar={() => setModalCadastroAberto(false)}
+        onSelecionar={(c) => { setCadastroId(c.id); alterarCampo('favorecido', c.nome); }}
+      />
+    </>
   );
 }
 

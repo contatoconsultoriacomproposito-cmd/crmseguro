@@ -137,8 +137,12 @@ export async function buscarFinanceiroContratoDetalhado(
   };
 }
 
+export type CriterioParcelamentoFinanceiro = "TOTAL_CONTRATO" | "MENSALIDADE_FIXA";
+
 export async function salvarFinanceiroContrato(
-  payload: SalvarFinanceiroContratoPayload,
+  payload: SalvarFinanceiroContratoPayload & {
+    criterio_parcelamento?: CriterioParcelamentoFinanceiro;
+  },
 ): Promise<ResultadoSalvarFinanceiroContrato> {
   if (!payload.contrato_id) {
     throw new Error(
@@ -173,6 +177,8 @@ export async function salvarFinanceiroContrato(
           payload.baixa_automatica,
         p_parcelas:
           payload.parcelas,
+        p_criterio_parcelamento:
+          payload.criterio_parcelamento ?? "TOTAL_CONTRATO",
       },
     );
 

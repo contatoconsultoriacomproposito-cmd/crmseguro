@@ -19,6 +19,7 @@ import {
   ReceiptText,
   RefreshCw,
   WalletCards,
+  Trash2,
   X,
 } from 'lucide-react';
 
@@ -36,7 +37,9 @@ import {
   type FormaPagamentoContaPagar,
 } from '../services/contasPagarService';
 
+import { excluirDefinitivamenteLancamentoFinanceiro } from '../services/exclusaoDefinitivaFinanceiroService';
 import FinanceiroArquivos from '../../financeiro/components/FinanceiroArquivos';
+import CadastroFinanceiroVinculo from './CadastroFinanceiroVinculo';
 
 interface Props {
   aberto: boolean;
@@ -112,6 +115,7 @@ export default function ModalDetalheContaPagar({
   const permiteEstorno = escopo(recursoFinanceiro,'estornar') === 'tenant';
   const permiteEdicao = escopo(recursoFinanceiro,'lancamento_update') === 'tenant';
   const permiteCancelamento = escopo(recursoFinanceiro,'lancamento_delete') === 'tenant';
+  const permiteExclusaoDefinitiva = escopo(recursoFinanceiro,'lancamento_hard_delete') === 'tenant';
 
   const [
     lancamento,
@@ -220,6 +224,51 @@ export default function ModalDetalheContaPagar({
     cancelandoLancamento,
     setCancelandoLancamento,
     ] = useState(false);
+
+  const [modalExclusaoDefinitivaAberto, setModalExclusaoDefinitivaAberto] = useState(false);
+  const [justificativaExclusao, setJustificativaExclusao] = useState('');
+  const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('');
+  const [excluindoDefinitivamente, setExcluindoDefinitivamente] = useState(false);
+  const [erroExclusaoDefinitiva, setErroExclusaoDefinitiva] = useState('');
+
+  const nomeConfirmacaoExclusao = 'EXCLUIR';
+
+  function abrirExclusaoDefinitiva() {
+    if (!permiteExclusaoDefinitiva || !lancamento || !(lancamento.origem === 'MANUAL' || (lancamento.origem === 'PROVISIONAMENTO' && lancamento.situacao === 'CANCELADA'))) return;
+    setJustificativaExclusao('');
+    setConfirmacaoExclusao('');
+    setErroExclusaoDefinitiva('');
+    setModalExclusaoDefinitivaAberto(true);
+  }
+
+  async function confirmarExclusaoDefinitiva() {
+    if (!permiteExclusaoDefinitiva || !lancamento || excluindoDefinitivamente || !(lancamento.origem === 'MANUAL' || (lancamento.origem === 'PROVISIONAMENTO' && lancamento.situacao === 'CANCELADA'))) return;
+    if (justificativaExclusao.trim().length < 20 || confirmacaoExclusao.trim() !== nomeConfirmacaoExclusao) {
+      setErroExclusaoDefinitiva('Informe uma justificativa com 20 caracteres ou mais e digite EXCLUIR para confirmar.');
+      return;
+    }
+    setExcluindoDefinitivamente(true);
+    setErroExclusaoDefinitiva('');
+    try {
+      await excluirDefinitivamenteLancamentoFinanceiro(
+        'pagar', lancamento.id, justificativaExclusao,
+      );
+      setModalExclusaoDefinitivaAberto(false);
+      setLancamento(null);
+      onClose();
+      // A exclusão já foi confirmada; eventual falha na atualização da grade
+      // não deve ser apresentada como falha da exclusão.
+      try {
+        await onAlterado?.();
+      } catch (atualizacaoErro) {
+        console.error('[Financeiro] Exclusão concluída, mas falhou a atualização da grade:', atualizacaoErro);
+      }
+    } catch (error) {
+      setErroExclusaoDefinitiva(error instanceof Error ? error.message : 'Não foi possível excluir o lançamento.');
+    } finally {
+      setExcluindoDefinitivamente(false);
+    }
+  }
 
   const planoSelecionadoEdicao =
     useMemo(
@@ -1059,6 +1108,18 @@ async function handleCancelarLancamento() {
                     Dados do lançamento
                 </h3>
 
+                <div className="flex flex-wrap items-center gap-2">
+                  {permiteExclusaoDefinitiva && (lancamento.origem === 'MANUAL' || (lancamento.origem === 'PROVISIONAMENTO' && lancamento.situacao === 'CANCELADA')) && !modoEdicao && (
+                    <button
+                      type="button"
+                      onClick={abrirExclusaoDefinitiva}
+                      disabled={excluindoDefinitivamente}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+                      title="Excluir fisicamente lançamento manual e suas baixas (auditoria preservada)"
+                    >
+                      <Trash2 size={14} /> Excluir definitivamente
+                    </button>
+                  )}
                 {lancamento.origem !==
                 'COMISSAO' &&
                 !modoEdicao &&
@@ -1089,6 +1150,7 @@ async function handleCancelarLancamento() {
                     </button>
                     </div>
                 )}
+                </div>
                 </div>
 
                 {modoEdicao ? (
@@ -1510,6 +1572,8 @@ async function handleCancelarLancamento() {
                 </>
                 )}
               </section>
+
+              <CadastroFinanceiroVinculo tipoConta="PAGAR" lancamentoId={lancamento.id} podeEditar={permiteEdicao} />
 
               {/* ANEXOS DO LANÇAMENTO */}
               <FinanceiroArquivos
@@ -2263,6 +2327,46 @@ async function handleCancelarLancamento() {
                 </div>
             </div>
             </div>
+        )}
+        {modalExclusaoDefinitivaAberto && lancamento && (
+          <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="presentation">
+            <div role="dialog" aria-modal="true" aria-labelledby="titulo-exclusao-definitiva" className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900">
+              <div className="flex items-start justify-between border-b border-red-100 px-5 py-4 dark:border-red-950">
+                <div>
+                  <h3 id="titulo-exclusao-definitiva" className="flex items-center gap-2 text-base font-bold text-red-700 dark:text-red-300">
+                    <Trash2 size={19} /> Excluir definitivamente
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{lancamento.descricao}</p>
+                </div>
+                <button type="button" aria-label="Fechar exclusão" disabled={excluindoDefinitivamente} onClick={() => setModalExclusaoDefinitivaAberto(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
+              </div>
+              <div className="space-y-4 p-5">
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+                  Esta operação é irreversível: remove o lançamento, suas baixas e movimentações financeiras. Se a origem for PROVISIONAMENTO cancelado, remove também o item vinculado (sem apagar as demais parcelas). Uma auditoria administrativa será preservada. Não é um cancelamento ou estorno.
+                </div>
+                <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800/50">
+                  <div><span className="block text-xs text-slate-500">Valor previsto</span><strong className="text-slate-900 dark:text-white">{formatarMoeda(lancamento.valor_previsto)}</strong></div>
+                  <div><span className="block text-xs text-slate-500">Baixas registradas</span><strong className="text-slate-900 dark:text-white">{baixas.length}</strong></div>
+                </div>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  Justificativa obrigatória (mínimo de 20 caracteres)
+                  <textarea rows={4} value={justificativaExclusao} disabled={excluindoDefinitivamente} onChange={(e) => setJustificativaExclusao(e.target.value)} placeholder="Explique por que este lançamento deve ser removido permanentemente..." className={`${inputClass} mt-2 h-auto resize-none py-3`} />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  Digite <strong>EXCLUIR</strong> para confirmar
+                  <input value={confirmacaoExclusao} disabled={excluindoDefinitivamente} onChange={(e) => setConfirmacaoExclusao(e.target.value)} autoComplete="off" className={`${inputClass} mt-2`} />
+                </label>
+                {erroExclusaoDefinitiva && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{erroExclusaoDefinitiva}</div>}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-800">
+                <button type="button" disabled={excluindoDefinitivamente} onClick={() => setModalExclusaoDefinitivaAberto(false)} className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">Voltar</button>
+                <button type="button" disabled={excluindoDefinitivamente || justificativaExclusao.trim().length < 20 || confirmacaoExclusao.trim() !== 'EXCLUIR'} onClick={() => void confirmarExclusaoDefinitiva()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  {excluindoDefinitivamente ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                  Confirmar exclusão definitiva
+                </button>
+              </div>
+            </div>
+          </div>
         )}
     </div>
   );

@@ -703,7 +703,7 @@ export async function excluirFinanceiroArquivo(
     {
       body: {
         action:
-          'delete',
+          'financeiro-delete',
 
         arquivoId:
           id,
@@ -711,20 +711,59 @@ export async function excluirFinanceiroArquivo(
     }
   );
 
-  if (
-    error ||
-    !data?.success
-  ) {
-    console.error(
-      '[FinanceiroArquivos] Erro ao excluir arquivo:',
-      error,
-      data
-    );
+  if (error || !data?.success) {
+    // FunctionsHttpError encapsula a resposta HTTP em error.context.
+    // Capturamos o corpo devolvido pela Edge Function para não perder
+    // o motivo real do 403 (ou de qualquer outro status não-2xx).
+    const contexto = (error as { context?: unknown } | null)?.context;
+    let resposta: Record<string, unknown> | null = null;
+    let statusHttp: number | null = null;
+
+    if (contexto instanceof Response) {
+      statusHttp = contexto.status;
+      try {
+        // clone() evita consumir o corpo da resposta original.
+        const corpo = await contexto.clone().text();
+        if (corpo) {
+          try {
+            const json: unknown = JSON.parse(corpo);
+            resposta = json && typeof json === 'object' && !Array.isArray(json)
+              ? json as Record<string, unknown>
+              : { message: String(json) };
+          } catch {
+            resposta = { message: corpo.slice(0, 500) };
+          }
+        }
+      } catch {
+        // A mensagem padrão permanece disponível mesmo se o corpo falhar.
+      }
+    }
+
+    const dados = data && typeof data === 'object'
+      ? data as Record<string, unknown>
+      : null;
+    const detalhe = resposta ?? dados;
+    const textoSeguro = (valor: unknown): string | null =>
+      typeof valor === 'string' && valor.trim() ? valor.trim() : null;
+
+    const motivo =
+      textoSeguro(detalhe?.error) ??
+      textoSeguro(detalhe?.message) ??
+      textoSeguro(detalhe?.detail) ??
+      textoSeguro(dados?.error) ??
+      textoSeguro(error?.message) ??
+      'Não foi possível excluir o arquivo.';
+
+    const codigo = textoSeguro(detalhe?.code);
+    console.error('[FinanceiroArquivos] Exclusão B2 recusada:', {
+      statusHttp,
+      codigo,
+      motivo,
+      arquivoId: id,
+    });
 
     throw new Error(
-      data?.error ||
-        error?.message ||
-        'Não foi possível excluir o arquivo.'
+      `${statusHttp ? `HTTP ${statusHttp}: ` : ''}${motivo}${codigo ? ` (código: ${codigo})` : ''}`
     );
   }
 

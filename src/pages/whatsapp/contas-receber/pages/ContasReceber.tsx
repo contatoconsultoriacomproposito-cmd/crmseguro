@@ -35,6 +35,7 @@ import {
   type TipoReceitaContaReceber,
 } from '../services/contasReceberService';
 
+import { registrarRecebimentoContaReceber, type FormaRecebimentoContaReceber } from '../services/contasReceberService';
 import FiltroSituacoes from '../../components/FiltroSituacoes';
 import ModalNovoLancamento from '../components/ModalNovoLancamento';
 import ModalPlanoContas from '../components/ModalPlanoContas';
@@ -44,6 +45,13 @@ interface FiltrosTela {
   tipoReceita: TipoReceitaContaReceber | '';
   origem: OrigemContaReceber | '';
   planoContaId: string;
+  planoContaIds: string[];
+  competenciaInicial: string;
+  competenciaFinal: string;
+  emissaoInicial: string;
+  emissaoFinal: string;
+  baixadoMinimo: string;
+  baixadoMaximo: string;
   vencimentoInicial: string;
   vencimentoFinal: string;
   valorMinimo: string;
@@ -54,6 +62,13 @@ const FILTROS_INICIAIS: FiltrosTela = {
   tipoReceita: '',
   origem: '',
   planoContaId: '',
+  planoContaIds: [],
+  competenciaInicial: '',
+  competenciaFinal: '',
+  emissaoInicial: '',
+  emissaoFinal: '',
+  baixadoMinimo: '',
+  baixadoMaximo: '',
   vencimentoInicial: '',
   vencimentoFinal: '',
   valorMinimo: '',
@@ -79,6 +94,13 @@ export default function ContasReceber() {
   const podeCriar = escopo(recurso,'lancamento_create') === 'tenant';
   const podePlano = ['plano_create','plano_update','plano_delete'].some(a => escopo(recurso,a) === 'tenant');
 
+  const podeBaixarEmLote = escopo(recurso, 'baixar') === 'tenant';
+  const [idsSelecionados, setIdsSelecionados] = useState<string[]>([]);
+  const [modalLoteAberto, setModalLoteAberto] = useState(false);
+  const [operandoLote, setOperandoLote] = useState(false);
+  const [dataLote, setDataLote] = useState(() => new Date().toLocaleDateString('sv-SE'));
+  const [formaLote, setFormaLote] = useState('PIX');
+  const [resultadoLote, setResultadoLote] = useState('');
   const [busca, setBusca] = useState('');
 
   const [situacoes, setSituacoes] =
@@ -143,10 +165,15 @@ export default function ContasReceber() {
       origem:
         filtrosAplicados.origem,
 
-      planoContaId:
-        filtrosAplicados.planoContaId ||
-        undefined,
+      planoContaId: filtrosAplicados.planoContaId || undefined,
 
+      planoContaIds: filtrosAplicados.planoContaIds,
+      competenciaInicial: filtrosAplicados.competenciaInicial || undefined,
+      competenciaFinal: filtrosAplicados.competenciaFinal || undefined,
+      emissaoInicial: filtrosAplicados.emissaoInicial || undefined,
+      emissaoFinal: filtrosAplicados.emissaoFinal || undefined,
+      baixadoMinimo: converterValorFiltro(filtrosAplicados.baixadoMinimo),
+      baixadoMaximo: converterValorFiltro(filtrosAplicados.baixadoMaximo),
       vencimentoInicial:
         filtrosAplicados.vencimentoInicial ||
         undefined,
@@ -337,6 +364,37 @@ export default function ContasReceber() {
       setAtualizando(false);
     }
   };
+
+  const elegiveisLote = lancamentos.filter(item => item.saldo > 0 && item.situacao !== 'RECEBIDA' && item.situacao !== 'CANCELADA');
+  const selecionadosLote = elegiveisLote.filter(item => idsSelecionados.includes(item.id));
+  const totalLote = selecionadosLote.reduce((s, item) => s + item.saldo, 0);
+  async function executarBaixaLote() {
+    if (!podeBaixarEmLote || operandoLote || !selecionadosLote.length || !dataLote) return;
+    setOperandoLote(true);
+    setResultadoLote('');
+    let concluidas = 0;
+    const falhas: string[] = [];
+    // Uma operação individual autorizada por lançamento. Erros não ficam ocultos;
+    // este fluxo não promete atomicidade entre lançamentos.
+    for (const item of selecionadosLote) {
+      try {
+        await registrarRecebimentoContaReceber({
+          lancamento_id: item.id,
+          data_recebimento: dataLote,
+          valor_baixado: item.saldo,
+          forma_recebimento: formaLote as FormaRecebimentoContaReceber,
+          observacoes: 'Baixa realizada pela seleção em lote do SeguroCRM',
+        });
+        concluidas++;
+      } catch (e) {
+        falhas.push(`${item.descricao}: ${e instanceof Error ? e.message : 'Erro desconhecido'}`);
+      }
+    }
+    setIdsSelecionados([]);
+    setOperandoLote(false);
+    setResultadoLote(`${concluidas} baixa(s) registrada(s). ${falhas.length} falha(s).${falhas.length ? '\n' + falhas.join('\n') : ''}`);
+    await Promise.all([carregarLancamentos(), carregarResumo()]);
+  }
 
   const handleAplicarFiltros = () => {
     setFiltrosAplicados({
@@ -638,6 +696,18 @@ export default function ContasReceber() {
                   />
                 </CampoFiltro>
 
+                <CampoFiltro label="Competência inicial">
+                  <input type="date" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" value={filtrosEdicao.competenciaInicial} onChange={e => setFiltrosEdicao(a => ({...a, competenciaInicial: e.target.value}))} />
+                </CampoFiltro>
+                <CampoFiltro label="Competência final">
+                  <input type="date" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" value={filtrosEdicao.competenciaFinal} onChange={e => setFiltrosEdicao(a => ({...a, competenciaFinal: e.target.value}))} />
+                </CampoFiltro>
+                <CampoFiltro label="Emissão inicial">
+                  <input type="date" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" value={filtrosEdicao.emissaoInicial} onChange={e => setFiltrosEdicao(a => ({...a, emissaoInicial: e.target.value}))} />
+                </CampoFiltro>
+                <CampoFiltro label="Emissão final">
+                  <input type="date" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" value={filtrosEdicao.emissaoFinal} onChange={e => setFiltrosEdicao(a => ({...a, emissaoFinal: e.target.value}))} />
+                </CampoFiltro>
                 <CampoFiltro label="Tipo de receita">
                   <select
                     value={
@@ -671,48 +741,25 @@ export default function ContasReceber() {
                   </select>
                 </CampoFiltro>
 
-                <CampoFiltro label="Plano de contas">
-                  <select
-                    value={
-                      filtrosEdicao.planoContaId
-                    }
-                    onChange={(e) =>
-                      setFiltrosEdicao(
-                        (prev) => ({
-                          ...prev,
-                          planoContaId:
-                            e.target
-                              .value,
-                        })
-                      )
-                    }
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-                  >
-                    <option value="">
-                      Todos
-                    </option>
-
-                    {planoContas.map(
-                      (item) => (
-                        <option
-                          key={
-                            item.id
-                          }
-                          value={
-                            item.id
-                          }
-                        >
-                          {item.codigo
-                            ? `${item.codigo} - `
-                            : ''}
-                          {item.nome}
-                        </option>
-                      )
-                    )}
-                  </select>
+                <CampoFiltro label="Plano de contas (seleção múltipla)">
+                  <details className="rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-950">
+                    <summary className="cursor-pointer text-sm text-slate-700 dark:text-slate-200">
+                      {filtrosEdicao.planoContaIds.length ? `${filtrosEdicao.planoContaIds.length} selecionado(s)` : 'Todos os planos'}
+                    </summary>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" className="rounded border px-2 py-1 text-xs dark:border-slate-700" onClick={() => setFiltrosEdicao(a => ({ ...a, planoContaIds: planoContas.map(x => x.id) }))}>Marcar todos</button>
+                      <button type="button" className="rounded border px-2 py-1 text-xs dark:border-slate-700" onClick={() => setFiltrosEdicao(a => ({ ...a, planoContaIds: [] }))}>Limpar seleção</button>
+                    </div>
+                    <div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
+                      {planoContas.map(item => <label key={item.id} className="flex items-center gap-2 px-1 py-1 text-xs text-slate-700 dark:text-slate-300">
+                        <input type="checkbox" checked={filtrosEdicao.planoContaIds.includes(item.id)} onChange={e => setFiltrosEdicao(a => ({ ...a, planoContaIds: e.target.checked ? [...a.planoContaIds, item.id] : a.planoContaIds.filter(x => x !== item.id) }))} />
+                        {item.codigo ? `${item.codigo} - ` : ''}{item.nome}
+                      </label>)}
+                    </div>
+                  </details>
                 </CampoFiltro>
 
-                <CampoFiltro label="Valor mínimo">
+                <CampoFiltro label="Valor a receber mínimo">
                   <input
                     type="number"
                     min="0"
@@ -735,7 +782,7 @@ export default function ContasReceber() {
                   />
                 </CampoFiltro>
 
-                <CampoFiltro label="Valor máximo">
+                <CampoFiltro label="Valor a receber máximo">
                   <input
                     type="number"
                     min="0"
@@ -758,6 +805,12 @@ export default function ContasReceber() {
                   />
                 </CampoFiltro>
 
+                <CampoFiltro label="Valor baixado mínimo">
+                  <input type="number" min="0" step="0.01" placeholder="0,00" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" value={filtrosEdicao.baixadoMinimo} onChange={e => setFiltrosEdicao(a => ({...a, baixadoMinimo: e.target.value}))} />
+                </CampoFiltro>
+                <CampoFiltro label="Valor baixado máximo">
+                  <input type="number" min="0" step="0.01" placeholder="0,00" className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" value={filtrosEdicao.baixadoMaximo} onChange={e => setFiltrosEdicao(a => ({...a, baixadoMaximo: e.target.value}))} />
+                </CampoFiltro>
                 <CampoFiltro label="Origem">
                   <select
                     value={
@@ -842,12 +895,21 @@ export default function ContasReceber() {
           </div>
         )}
 
+        {podeBaixarEmLote && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+          <span className="text-xs text-slate-600 dark:text-slate-300">{selecionadosLote.length} selecionado(s) · Saldo: {formatarMoeda(totalLote)}</span>
+          <div className="flex gap-2">
+            <button type="button" className="rounded-lg border px-3 py-2 text-xs dark:border-slate-700" onClick={() => setIdsSelecionados([])}>Limpar seleção</button>
+            <button type="button" disabled={!selecionadosLote.length} onClick={() => { setResultadoLote(''); setModalLoteAberto(true); }} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Baixar selecionados</button>
+          </div>
+        </div>}
+        {resultadoLote && <div role="status" className="whitespace-pre-wrap rounded-lg border p-3 text-xs dark:border-slate-700">{resultadoLote}</div>}
         {/* TABELA */}
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] border-collapse">
+            <table className="w-full min-w-[1120px] border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950/50">
+                  {podeBaixarEmLote && <th className="px-3 py-3 text-center"><input type="checkbox" aria-label="Selecionar todos os lançamentos elegíveis" checked={elegiveisLote.length > 0 && elegiveisLote.every(i => idsSelecionados.includes(i.id))} onChange={e => setIdsSelecionados(e.target.checked ? elegiveisLote.map(i => i.id) : [])}/></th>}
                   <Th>
                     Vencimento
                   </Th>
@@ -864,14 +926,6 @@ export default function ContasReceber() {
                     Plano de contas
                   </Th>
 
-                  <Th>
-                    Tipo
-                  </Th>
-
-                  <Th>
-                    Origem
-                  </Th>
-
                   <Th align="right">
                     Previsto
                   </Th>
@@ -884,10 +938,6 @@ export default function ContasReceber() {
                     Saldo
                   </Th>
 
-                  <Th>
-                    Situação
-                  </Th>
-
                   <th scope="col" className="sticky right-0 z-20 min-w-[100px] whitespace-nowrap border-l border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 shadow-[-6px_0_10px_-8px_rgba(15,23,42,0.4)] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                     Ações
                   </th>
@@ -898,7 +948,7 @@ export default function ContasReceber() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={podeBaixarEmLote ? 9 : 8}
                       className="px-6 py-16"
                     >
                       <div className="flex flex-col items-center justify-center text-center">
@@ -917,7 +967,7 @@ export default function ContasReceber() {
                   0 ? (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={podeBaixarEmLote ? 9 : 8}
                     >
                       <div className="flex min-h-[340px] flex-col items-center justify-center px-6 py-12 text-center">
                         <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800">
@@ -944,6 +994,9 @@ export default function ContasReceber() {
                       <LinhaContaReceber
                         key={item.id}
                         item={item}
+                        selecionado={idsSelecionados.includes(item.id)}
+                        podeSelecionar={podeBaixarEmLote}
+                        onSelecionar={(marcado: boolean) => setIdsSelecionados(atuais => marcado ? [...new Set([...atuais, item.id])] : atuais.filter(id => id !== item.id))}
                         onAbrir={
                             handleAbrirLancamento
                         }
@@ -992,6 +1045,19 @@ export default function ContasReceber() {
         </section>
       </div>
 
+      {modalLoteAberto && <div role="dialog" aria-modal="true" aria-label="Baixa em lote" className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-4">
+        <div className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 dark:bg-slate-950">
+          <h2 className="text-lg font-semibold">Baixa em lote — Contas a Receber</h2>
+          <p className="text-sm">{selecionadosLote.length} lançamentos · {formatarMoeda(totalLote)} de saldo a baixar</p>
+          <p className="text-xs text-amber-700 dark:text-amber-400">Cada baixa será gravada individualmente, usando as regras e permissões existentes. Se houver falha, as anteriores não serão revertidas automaticamente.</p>
+          <label className="block text-xs">Data da baixa<input type="date" className="mt-1 block w-full rounded border p-2 dark:bg-slate-900" value={dataLote} onChange={e=>setDataLote(e.target.value)} /></label>
+          <label className="block text-xs">Forma de recebimento<select className="mt-1 block w-full rounded border p-2 dark:bg-slate-900" value={formaLote} onChange={e=>setFormaLote(e.target.value)}>
+            {['PIX','BOLETO','TRANSFERENCIA','DEBITO_CONTA','CARTAO_CREDITO','CARTAO_DEBITO','DINHEIRO','CHEQUE','OUTROS'].map(f=><option key={f} value={f}>{f.replaceAll('_',' ')}</option>)}
+          </select></label>
+          <div className="flex justify-end gap-2"><button type="button" disabled={operandoLote} className="rounded border px-4 py-2 dark:border-slate-700" onClick={()=>setModalLoteAberto(false)}>Cancelar</button>
+          <button type="button" disabled={operandoLote || !selecionadosLote.length || !dataLote} className="rounded bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={async()=>{ await executarBaixaLote(); setModalLoteAberto(false); }}>{operandoLote?'Processando...':'Confirmar baixas'}</button></div>
+        </div>
+      </div>}
       <ModalNovoLancamento
         aberto={modalNovoLancamentoAberto}
         planoContas={planoContas}
@@ -1042,15 +1108,22 @@ export default function ContasReceber() {
 
 function LinhaContaReceber({
   item,
+  selecionado,
+  podeSelecionar,
+  onSelecionar,
   onAbrir,
 }: {
   item: ContaReceberResumo;
+  selecionado: boolean;
+  podeSelecionar: boolean;
+  onSelecionar: (marcado: boolean) => void;
   onAbrir: (
     id: string
   ) => void;
 }) {
   return (
     <tr className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-800/40">
+      {podeSelecionar && <td className="px-3 py-3 text-center"><input type="checkbox" aria-label="Selecionar lançamento" disabled={item.saldo <= 0 || item.situacao === 'RECEBIDA' || item.situacao === 'CANCELADA'} checked={selecionado} onChange={e => onSelecionar(e.target.checked)} /></td>}
       {/* VENCIMENTO */}
       <td className="whitespace-nowrap px-4 py-3.5 align-middle">
         <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
@@ -1133,24 +1206,6 @@ function LinhaContaReceber({
         </div>
       </td>
 
-      {/* TIPO */}
-      <td className="whitespace-nowrap px-4 py-3.5 align-middle">
-        <BadgeTipo
-          tipo={
-            item.tipo_receita
-          }
-        />
-      </td>
-
-      {/* ORIGEM */}
-      <td className="whitespace-nowrap px-4 py-3.5 align-middle">
-        <BadgeOrigem
-          origem={
-            item.origem
-          }
-        />
-      </td>
-
       {/* PREVISTO */}
       <td className="whitespace-nowrap px-4 py-3.5 text-right align-middle">
         <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -1190,18 +1245,6 @@ function LinhaContaReceber({
         </span>
       </td>
 
-      {/* SITUAÇÃO */}
-      <td className="whitespace-nowrap px-4 py-3.5 align-middle">
-        <BadgeSituacao
-          situacao={
-            item.situacao
-          }
-          parcial={
-            item.parcialmente_recebida
-          }
-        />
-      </td>
-
       {/* AÇÕES */}
       <td className="sticky right-0 z-10 min-w-[100px] whitespace-nowrap border-l border-slate-200 bg-white px-4 py-3.5 text-center align-middle shadow-[-6px_0_10px_-8px_rgba(15,23,42,0.4)] dark:border-slate-700 dark:bg-slate-900">
         <button
@@ -1218,137 +1261,6 @@ function LinhaContaReceber({
         </button>
       </td>
     </tr>
-  );
-}
-
-/* ============================================================
- * BADGES
- * ============================================================
- */
-
-function BadgeSituacao({
-  situacao,
-  parcial,
-}: {
-  situacao: SituacaoContaReceber;
-  parcial: boolean;
-}) {
-  if (
-    parcial &&
-    situacao !== 'RECEBIDA' &&
-    situacao !== 'CANCELADA'
-  ) {
-    return (
-      <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-        Parcial
-      </span>
-    );
-  }
-
-  const configuracao: Record<
-    SituacaoContaReceber,
-    {
-      texto: string;
-      classe: string;
-    }
-  > = {
-    PENDENTE: {
-      texto: 'Pendente',
-      classe:
-        'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
-    },
-
-    VENCIDA: {
-      texto: 'Vencida',
-      classe:
-        'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300',
-    },
-
-    RECEBIDA: {
-      texto: 'Recebida',
-      classe:
-        'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
-    },
-
-    CANCELADA: {
-      texto: 'Cancelada',
-      classe:
-        'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
-    },
-  };
-
-  const config =
-    configuracao[situacao];
-
-  return (
-    <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${config.classe}`}
-    >
-      {config.texto}
-    </span>
-  );
-}
-
-function BadgeTipo({
-  tipo,
-}: {
-  tipo: TipoReceitaContaReceber;
-}) {
-  if (tipo === 'FIXA') {
-    return (
-      <span className="inline-flex rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        Fixa
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex rounded-md bg-violet-100 px-2 py-1 text-xs font-medium text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
-      Variável
-    </span>
-  );
-}
-
-function BadgeOrigem({
-  origem,
-}: {
-  origem: OrigemContaReceber;
-}) {
-  const configuracao: Record<
-    OrigemContaReceber,
-    {
-      texto: string;
-      classe: string;
-    }
-  > = {
-    MANUAL: {
-      texto: 'Manual',
-      classe:
-        'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    },
-
-    PROVISIONAMENTO: {
-      texto: 'Provisionamento',
-      classe:
-        'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300',
-    },
-
-    COMISSAO: {
-      texto: 'Comissão',
-      classe:
-        'bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300',
-    },
-  };
-
-  const config =
-    configuracao[origem];
-
-  return (
-    <span
-      className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${config.classe}`}
-    >
-      {config.texto}
-    </span>
   );
 }
 

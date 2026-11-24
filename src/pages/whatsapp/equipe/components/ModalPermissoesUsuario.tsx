@@ -215,8 +215,8 @@ export default function ModalPermissoesUsuario({
             }
           />
         );
-      case "contas_pagar": return <ModalPermissoesContasPagar value={dados.contas_pagar} disabled={disabled} onChange={(a, v) => alterar("contas_pagar", a, v)} onAplicarTodas={v => aplicarTodas("contas_pagar", v)} />;
-      case "contas_receber": return <ModalPermissoesContasReceber value={dados.contas_receber} disabled={disabled} onChange={(a, v) => alterar("contas_receber", a, v)} onAplicarTodas={v => aplicarTodas("contas_receber", v)} />;
+      case "contas_pagar": return <ModalPermissoesContasPagar value={dados.contas_pagar} disabled={disabled} onChange={(a, v) => alterar("contas_pagar", a, v)} onAplicarTodas={v => aplicarTodas("contas_pagar", v, Object.keys(dados.contas_pagar).filter(a => a !== "lancamento_hard_delete"))} />;
+      case "contas_receber": return <ModalPermissoesContasReceber value={dados.contas_receber} disabled={disabled} onChange={(a, v) => alterar("contas_receber", a, v)} onAplicarTodas={v => aplicarTodas("contas_receber", v, Object.keys(dados.contas_receber).filter(a => a !== "lancamento_hard_delete"))} />;
       case "fluxo_caixa": return <ModalPermissoesFluxoCaixa value={dados.fluxo_caixa} disabled={disabled} onChange={(a, v) => alterar("fluxo_caixa", a, v)} onAplicarTodas={v => aplicarTodas("fluxo_caixa", v)} />;
       case "parcelas_clientes": return <ModalPermissoesParcelasClientes value={dados.parcelas_clientes} disabled={disabled} onChange={(a, v) => alterar("parcelas_clientes", a, v)} onAplicarTodas={v => aplicarTodas("parcelas_clientes", v)} />;
       case "conexoes_whatsapp": return <ModalPermissoesConexoesWhatsapp value={dados.conexoes_whatsapp} disabled={disabled} onChange={(a, v) => alterar("conexoes_whatsapp", a, v)} onAplicarTodas={v => aplicarTodas("conexoes_whatsapp", v)} />;

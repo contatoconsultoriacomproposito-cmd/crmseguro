@@ -25,6 +25,7 @@ import {
   gerarParcelamento,
   parcelamentoFechaComContrato,
   validarParcelamento,
+  arredondarMoeda,
 } from "../services/financeiroCalculos";
 
 import {
@@ -99,6 +100,11 @@ export default function ModalLancamentoFinanceiro({
   );
 
   const [
+    criterioParcelamento,
+    setCriterioParcelamento,
+  ] = useState<"TOTAL_CONTRATO" | "MENSALIDADE_FIXA">("TOTAL_CONTRATO");
+
+  const [
     quantidadeParcelas,
     setQuantidadeParcelas,
   ] = useState(1);
@@ -141,6 +147,7 @@ export default function ModalLancamentoFinanceiro({
       "CARTAO_CREDITO",
     );
 
+    setCriterioParcelamento("TOTAL_CONTRATO");
     setQuantidadeParcelas(1);
 
     setPrimeiroVencimento(
@@ -154,6 +161,14 @@ export default function ModalLancamentoFinanceiro({
     setGerado(false);
     setSalvando(false);
   }, [open, contratoId]);
+
+  // No plano recorrente, valorContrato representa o valor de cada mensalidade,
+  // e não a soma das mensalidades a receber no horizonte escolhido.
+  const totalPrevisto = useMemo(() => {
+    if (criterioParcelamento === "TOTAL_CONTRATO") return arredondarMoeda(valorContrato);
+    const valorCentavos = Math.round(valorContrato * 100);
+    return (valorCentavos * quantidadeParcelas) / 100;
+  }, [criterioParcelamento, valorContrato, quantidadeParcelas]);
 
   const totalParcelas =
     useMemo(
@@ -169,11 +184,11 @@ export default function ModalLancamentoFinanceiro({
       () =>
         calcularDiferencaParcelamento(
           parcelas,
-          valorContrato,
+          totalPrevisto,
         ),
       [
         parcelas,
-        valorContrato,
+        totalPrevisto,
       ],
     );
 
@@ -183,11 +198,11 @@ export default function ModalLancamentoFinanceiro({
         parcelas.length > 0 &&
         parcelamentoFechaComContrato(
           parcelas,
-          valorContrato,
+          totalPrevisto,
         ),
       [
         parcelas,
-        valorContrato,
+        totalPrevisto,
       ],
     );
 
@@ -196,7 +211,7 @@ export default function ModalLancamentoFinanceiro({
       const novasParcelas =
         gerarParcelamento({
           valor_total:
-            valorContrato,
+            totalPrevisto,
           quantidade_parcelas:
             quantidadeParcelas,
           primeiro_vencimento:
@@ -311,7 +326,7 @@ export default function ModalLancamentoFinanceiro({
     const erros =
       validarParcelamento(
         parcelas,
-        valorContrato,
+        totalPrevisto,
       );
 
     if (erros.length > 0) {
@@ -330,6 +345,8 @@ export default function ModalLancamentoFinanceiro({
             formaPagamento,
           baixa_automatica:
             baixaAutomatica,
+          criterio_parcelamento:
+            criterioParcelamento,
           parcelas,
         });
 
@@ -393,10 +410,24 @@ export default function ModalLancamentoFinanceiro({
 
         <div className="flex-1 overflow-y-auto">
           <div className="space-y-6 p-5">
+            <fieldset disabled={salvando} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+              <legend className="px-1 text-sm font-semibold text-slate-800 dark:text-slate-100">Como calcular as parcelas?</legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${criterioParcelamento === "TOTAL_CONTRATO" ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" : "border-slate-200 dark:border-slate-700"}`}>
+                  <input type="radio" name="criterioParcelamento" value="TOTAL_CONTRATO" checked={criterioParcelamento === "TOTAL_CONTRATO"} onChange={() => { setCriterioParcelamento("TOTAL_CONTRATO"); setParcelas([]); setGerado(false); }} className="mt-1" />
+                  <span className="text-sm text-slate-700 dark:text-slate-200"><strong className="block">Dividir valor total</strong><span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Ex.: seguro residencial de R$ 1.000 em 10 parcelas de R$ 100.</span></span>
+                </label>
+                <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${criterioParcelamento === "MENSALIDADE_FIXA" ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" : "border-slate-200 dark:border-slate-700"}`}>
+                  <input type="radio" name="criterioParcelamento" value="MENSALIDADE_FIXA" checked={criterioParcelamento === "MENSALIDADE_FIXA"} onChange={() => { setCriterioParcelamento("MENSALIDADE_FIXA"); setParcelas([]); setGerado(false); }} className="mt-1" />
+                  <span className="text-sm text-slate-700 dark:text-slate-200"><strong className="block">Repetir mensalidade</strong><span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Ex.: seguro dental de R$ 150 por mês, durante 12 meses: R$ 1.800 previstos.</span></span>
+                </label>
+              </div>
+            </fieldset>
+
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Valor do contrato
+                  {criterioParcelamento === "MENSALIDADE_FIXA" ? "Valor mensal" : "Valor do contrato"}
                 </div>
 
                 <div className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
@@ -421,6 +452,7 @@ export default function ModalLancamentoFinanceiro({
                         .value as FormaPagamentoFinanceiro,
                     );
                     setGerado(false);
+                    setParcelas([]);
                   }}
                   disabled={salvando}
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
@@ -477,6 +509,7 @@ export default function ModalLancamentoFinanceiro({
                     );
 
                     setGerado(false);
+                    setParcelas([]);
                   }}
                   disabled={salvando}
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
@@ -499,6 +532,7 @@ export default function ModalLancamentoFinanceiro({
                         .value,
                     );
                     setGerado(false);
+                    setParcelas([]);
                   }}
                   disabled={salvando}
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
@@ -716,7 +750,7 @@ export default function ModalLancamentoFinanceiro({
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
                   <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Valor do contrato
+                    {criterioParcelamento === "MENSALIDADE_FIXA" ? "Valor da mensalidade" : "Valor do contrato"}
                   </div>
 
                   <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
@@ -779,7 +813,9 @@ export default function ModalLancamentoFinanceiro({
                     </div>
 
                     <div className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-400">
-                      O total das parcelas corresponde exatamente ao valor contratado.
+                      {criterioParcelamento === "MENSALIDADE_FIXA"
+                        ? "O total previsto corresponde à mensalidade multiplicada pelo número de meses."
+                        : "O total das parcelas corresponde exatamente ao valor contratado."}
                     </div>
                   </div>
                 </div>

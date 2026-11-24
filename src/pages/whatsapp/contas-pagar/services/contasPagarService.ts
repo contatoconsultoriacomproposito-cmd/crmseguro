@@ -70,6 +70,7 @@ export interface CriarContaPagarPayload {
   plano_conta_id: string;
   descricao: string;
   favorecido?: string | null;
+  cadastro_id?: string | null;
   numero_documento?: string | null;
 
   data_competencia?: string | null;
@@ -102,6 +103,13 @@ export interface FiltrosContasPagar {
   origem?: OrigemContaPagar | '';
 
   planoContaId?: string;
+  planoContaIds?: string[];
+  competenciaInicial?: string;
+  competenciaFinal?: string;
+  emissaoInicial?: string;
+  emissaoFinal?: string;
+  baixadoMinimo?: number | null;
+  baixadoMaximo?: number | null;
 
   vencimentoInicial?: string;
 
@@ -314,6 +322,14 @@ export async function buscarContasPagar(
     );
   }
 
+  if (filtros.planoContaIds?.length) {
+    query = query.in('plano_conta_id', filtros.planoContaIds);
+  }
+  if (filtros.competenciaInicial) query = query.gte('data_competencia', filtros.competenciaInicial);
+  if (filtros.competenciaFinal) query = query.lte('data_competencia', filtros.competenciaFinal);
+  if (filtros.emissaoInicial) query = query.gte('data_emissao', filtros.emissaoInicial);
+  if (filtros.emissaoFinal) query = query.lte('data_emissao', filtros.emissaoFinal);
+
   if (
     filtros.vencimentoInicial
   ) {
@@ -420,6 +436,10 @@ export async function buscarContasPagar(
         }
       );
   }
+
+  // A view já entrega a soma das baixas ativas por lançamento.
+  if (filtros.baixadoMinimo != null) resultado = resultado.filter(item => item.total_baixado >= filtros.baixadoMinimo!);
+  if (filtros.baixadoMaximo != null) resultado = resultado.filter(item => item.total_baixado <= filtros.baixadoMaximo!);
 
   return resultado;
 }
@@ -713,6 +733,8 @@ export async function criarContaPagar(
       favorecido:
         payload.favorecido?.trim() ||
         null,
+
+      cadastro_id: payload.cadastro_id || null,
 
       numero_documento:
         payload.numero_documento?.trim() ||
@@ -1530,6 +1552,14 @@ export async function registrarBaixaContaPagar(
     );
   }
 
+  // Cadastro opcional: herda o vínculo do lançamento na baixa.
+  const {data: vinculoCadastro, error: erroVinculoCadastro} = await supabase
+    .from('crm_contas_pagar_lancamentos')
+    .select('cadastro_id')
+    .eq('id', payload.lancamento_id)
+    .single();
+  if (erroVinculoCadastro) throw new Error(erroVinculoCadastro.message);
+
   const {
     data,
     error,
@@ -1543,6 +1573,8 @@ export async function registrarBaixaContaPagar(
 
       lancamento_id:
         payload.lancamento_id,
+
+      cadastro_id: vinculoCadastro?.cadastro_id ?? null,
 
       data_pagamento:
         payload.data_pagamento,
@@ -1715,6 +1747,7 @@ export interface AtualizarContaPagarPayload {
   descricao: string;
 
   favorecido?: string | null;
+  cadastro_id?: string | null;
   numero_documento?: string | null;
 
   data_competencia?: string | null;
@@ -1985,6 +2018,7 @@ export interface CriarProvisionamentoPayload {
 
   descricao: string;
   favorecido?: string | null;
+  cadastro_id?: string | null;
 
   valor_base: number;
 
@@ -2619,6 +2653,8 @@ export async function criarProvisionamento(
           favorecido:
             payload.favorecido?.trim() ||
             null,
+
+          cadastro_id: payload.cadastro_id || null,
 
           numero_documento:
             null,
