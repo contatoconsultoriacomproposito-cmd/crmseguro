@@ -13,7 +13,10 @@ import ModalAdicionarDocumento from '../documentos/components/ModalAdicionarDocu
 import { useAuth } from '../../../auth/AuthContext';
 import { usePermissoes } from '../hooks/usePermissoes';
 import { supabase } from '../../../lib/supabaseClient';
-import { Archive, ArrowLeft, Check, ChevronDown, FolderOpen, Phone, RotateCcw, UserRound, CalendarPlus, Loader2 } from 'lucide-react';
+import { Archive, ArrowLeft, ChevronDown, FolderOpen, Phone, RotateCcw, UserRound, CalendarPlus, Loader2, MoreHorizontal } from 'lucide-react';
+import { useWhatsAppRamal } from '../hooks/useWhatsAppRamal';
+import ModalTransferirRamal from './ModalTransferirRamal';
+import PainelGestaoAtendimento from './PainelGestaoAtendimento';
 import { toast } from 'sonner';
 import { startRealPreQualification } from '../automation/services/preQualificationExecutor';
 import { startRealRouting } from '../automation/services/routingExecutor';
@@ -59,7 +62,7 @@ interface ChatWindowProps {
   ) => Promise<void> | void
   onAgendaChanged?: () => void
 }
-type HeaderMenu = 'responsavel' | 'documentos' | null;
+type HeaderMenu = 'atendimento' | 'documentos' | 'mais' | null;
 
 export default function ChatWindow({
   conversation,
@@ -122,6 +125,55 @@ export default function ChatWindow({
         useStorageCommercial();
     const { userProfile } = useAuth();
     const { escopo } = usePermissoes();
+    const ramal = useWhatsAppRamal(conversation?.id);
+    const [modalTransferenciaAberto, setModalTransferenciaAberto] = useState(false);
+    const [transferindoRamal, setTransferindoRamal] = useState(false);
+    const [ativandoRamal, setAtivandoRamal] = useState(false);
+    const ramalAtivo = ramal.estado !== null;
+    const souOperadorRamal = !ramalAtivo || ramal.estado?.operador_ativo_id === userProfile?.id;
+    const souPrincipalRamal = ramal.estado?.responsavel_principal_id === userProfile?.id;
+    // A corretora gestora também pode intervir no atendimento,
+    // mesmo quando não é a responsável principal nem a operadora ativa.
+    // A RPC valida novamente o perfil, a corretora e as reservas.
+    const souGestorCorretoraRamal =
+        userProfile?.tipo_usuario === 'CORRETORA' &&
+        userProfile.id === userProfile.corretora_id;
+    const possoTransferirRamal = ramalAtivo &&
+        (souOperadorRamal || souPrincipalRamal || souGestorCorretoraRamal);
+    const podeInteragirRamal = !ramalAtivo || souOperadorRamal;
+    const podeAtivarRamal = !ramalAtivo && !ramal.carregando && !ramal.erro &&
+        userProfile?.tipo_usuario === 'CORRETORA' &&
+        Boolean(conversation?.assignedUserId) &&
+        conversation?.status !== 'encerrada' &&
+        conversation?.instanceActive !== false;
+    const ativarRamal = async () => {
+        if (!podeAtivarRamal || ativandoRamal) return;
+        setAtivandoRamal(true);
+        try {
+            await ramal.ativar();
+            toast.success('Ramal ativado nesta conversa.');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Não foi possível ativar o Ramal.');
+        } finally {
+            setAtivandoRamal(false);
+        }
+    };
+    const identificarAtendente = (id?: string) =>
+        attendants.find(item => item.id === id)?.name || 'Usuário da equipe';
+    const confirmarTransferenciaRamal = async (destinoId: string, motivo: string) => {
+        if (!possoTransferirRamal || transferindoRamal) return;
+        setTransferindoRamal(true);
+        try {
+            await ramal.transferir(destinoId, motivo);
+            setModalTransferenciaAberto(false);
+            toast.success(destinoId === ramal.estado?.responsavel_principal_id
+                ? 'Atendimento reassumido com sucesso.'
+                : 'Atendimento transferido com sucesso.');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Não foi possível transferir o Ramal.');
+        } finally { setTransferindoRamal(false); }
+    };
+
 
     const escopoInteract = escopo(
         'atendimento.conversas',
@@ -298,15 +350,14 @@ export default function ChatWindow({
             acessoInstanciaAtribuida
         );
 
-    const podeInteragir =
-        podeExecutarEscopoConversa(
-            escopoInteract
-        );
+    // O operador ativo recebe acesso à conversa, não à conexão inteira.
+    // A autorização real permanece obrigatória na Edge Function.
+    const podeInteragir = ramalAtivo
+        ? souOperadorRamal && (escopoInteract === 'assigned' || escopoInteract === 'tenant')
+        : podeExecutarEscopoConversa(escopoInteract);
 
     const podeAlterarResponsavel =
-        podeExecutarEscopoConversa(
-            escopoAssign
-        );
+        !ramalAtivo && podeExecutarEscopoConversa(escopoAssign);
 
     const podeGerenciarConversa =
         podeExecutarEscopoConversa(
@@ -314,9 +365,7 @@ export default function ChatWindow({
         );
 
     const podeRealizarLigacao =
-        podeExecutarEscopoConversa(
-            escopoCall
-        );
+        podeExecutarEscopoConversa(escopoCall) && podeInteragirRamal;
 
     const podeExecutarAutomacoes =
         podeExecutarEscopoConversa(
@@ -327,6 +376,7 @@ export default function ChatWindow({
             conversation?.assignedUserId ?? ''
         );
         setActiveMenu(null);
+        setModalTransferenciaAberto(false);
         setModalDocumentoAberto(false);
         setReplyMessage(null);
         }, [
@@ -1946,23 +1996,53 @@ const timelineItems =
         }}>
             {carregandoAgenda ? (<Loader2 size={18} className="animate-spin"/>) : (<CalendarPlus size={18}/>)}
         </HeaderIconButton>
-            <div className="relative hidden lg:block">
-            <button type="button" disabled={!podeAlterarResponsavel} onClick={() => {
-            if (podeAlterarResponsavel) {
-                toggleMenu('responsavel');
-            }
-        }} className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium transition ${podeAlterarResponsavel
-            ? activeMenu === 'responsavel'
-                ? 'border-blue-300 bg-blue-50 text-blue-700'
-                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-            : 'cursor-default border-gray-200 bg-gray-50 text-gray-500'}`}>
-                <UserRound size={15}/>
-                <span className="max-w-[110px] truncate">
-                {responsavel?.name || 'Não atribuído'}
+            <div className="relative min-w-0">
+              <button
+                type="button"
+                onClick={() => toggleMenu('atendimento')}
+                aria-expanded={activeMenu === 'atendimento'}
+                aria-label="Gestão do atendimento"
+                title="Gestão do atendimento"
+                className={`flex h-9 max-w-[185px] items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition ${activeMenu === 'atendimento'
+                  ? 'border-blue-300 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
+                <UserRound size={15} className="shrink-0" />
+                <span className="min-w-0 truncate">
+                  {ramalAtivo
+                    ? identificarAtendente(ramal.estado?.operador_ativo_id)
+                    : (responsavel?.name || 'Sem responsável')}
                 </span>
-                {podeAlterarResponsavel && <ChevronDown size={14}/>}
-            </button>
-            {podeAlterarResponsavel && activeMenu === 'responsavel' && (<ResponsavelMenu attendants={attendants} responsavelId={responsavelId} loading={loadingAttendants} assigning={assigningResponsible} onSelect={handleAssignResponsible}/>)}
+                <ChevronDown size={13} className="shrink-0" />
+              </button>
+              {activeMenu === 'atendimento' && (
+                <PainelGestaoAtendimento
+                  conversationId={conversation.id}
+                  ramalAtivo={ramalAtivo}
+                  responsavelPrincipal={ramalAtivo
+                    ? identificarAtendente(ramal.estado?.responsavel_principal_id)
+                    : (responsavel?.name || 'Não atribuído')}
+                  operadorAtivo={ramalAtivo
+                    ? identificarAtendente(ramal.estado?.operador_ativo_id)
+                    : null}
+                  responsavelId={responsavelId}
+                  atendentes={attendants}
+                  carregandoAtendentes={loadingAttendants}
+                  atribuindoResponsavel={assigningResponsible}
+                  podeAlterarResponsavel={podeAlterarResponsavel}
+                  podeAtivarRamal={podeAtivarRamal}
+                  ativandoRamal={ativandoRamal}
+                  podeTransferirRamal={possoTransferirRamal}
+                  transferindoRamal={transferindoRamal}
+                  onAlterarResponsavel={handleAssignResponsible}
+                  onAtivarRamal={() => void ativarRamal()}
+                  onTransferir={() => {
+                    setActiveMenu(null)
+                    setModalTransferenciaAberto(true)
+                  }}
+                  onClose={() => setActiveMenu(null)}
+                />
+              )}
             </div>
             <div className="relative">
             <HeaderIconButton title="Central de documentos" active={activeMenu === 'documentos'} onClick={() => toggleMenu('documentos')}>
@@ -2012,57 +2092,37 @@ const timelineItems =
             )}
             </HeaderIconButton>
             )}
-            {podeGerenciarConversa && (
-            <HeaderIconButton
-            title={
-                conversation.status === 'encerrada'
-                    ? 'Reabrir conversa'
-                    : 'Encerrar conversa'
-            }
-            onClick={() => {
-                void handleAlterarStatusConversa()
-            }}
-            >
-            {alterandoStatusConversa ? (
-                <Loader2
-                size={18}
-                className="animate-spin"
-                />
-            ) : conversation.status === 'encerrada' ? (
-                <RotateCcw size={18} />
-            ) : (
-                <Archive size={18} />
-            )}
-            </HeaderIconButton>
-            )}
+            <div className="relative">
+              <HeaderIconButton
+                title="Mais opções da conversa"
+                active={activeMenu === 'mais'}
+                onClick={() => toggleMenu('mais')}
+              >
+                <MoreHorizontal size={19} />
+              </HeaderIconButton>
+              {activeMenu === 'mais' && (
+                <div className="absolute right-0 top-11 z-50 w-52 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl">
+                  {podeGerenciarConversa && (
+                    <button
+                      type="button"
+                      disabled={alterandoStatusConversa}
+                      onClick={() => {
+                        setActiveMenu(null)
+                        void handleAlterarStatusConversa()
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {conversation.status === 'encerrada' ? <RotateCcw size={16} /> : <Archive size={16} />}
+                      {conversation.status === 'encerrada' ? 'Reabrir conversa' : 'Encerrar conversa'}
+                    </button>
+                  )}
+                  {!podeGerenciarConversa && (
+                    <p className="px-3 py-2 text-xs text-gray-500">Sem ações adicionais disponíveis.</p>
+                  )}
+                </div>
+              )}
+            </div>
         </div>
-        </div>
-        <div className="flex items-center gap-2 border-t border-gray-100 px-4 py-2 lg:hidden">
-        <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700">
-            Cliente
-        </span>
-        <span className="rounded-full bg-orange-50 px-2 py-1 text-[10px] font-medium text-orange-700">
-            🔥 Quente
-        </span>
-        <button
-            type="button"
-            disabled={!podeAlterarResponsavel}
-            onClick={() => {
-                if (podeAlterarResponsavel) {
-                    toggleMenu('responsavel')
-                }
-            }}
-            className={`ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
-                podeAlterarResponsavel
-                    ? 'text-gray-600 hover:bg-gray-100'
-                    : 'cursor-default text-gray-400'
-            }`}
-        >
-            <UserRound size={13}/>
-            {responsavel?.name || 'Não atribuído'}
-            {podeAlterarResponsavel && <ChevronDown size={12}/>}
-        </button>
-        {podeAlterarResponsavel && activeMenu === 'responsavel' && (<ResponsavelMenu attendants={attendants} responsavelId={responsavelId} loading={loadingAttendants} assigning={assigningResponsible} mobile onSelect={handleAssignResponsible}/>)}
         </div>
     </header>
     <div
@@ -2183,6 +2243,15 @@ const timelineItems =
             : null,
         }}
     />
+    <ModalTransferirRamal
+        aberto={modalTransferenciaAberto && ramalAtivo}
+        atendentes={attendants}
+        operadorAtivoId={ramal.estado?.operador_ativo_id || ''}
+        principalId={ramal.estado?.responsavel_principal_id || ''}
+        salvando={transferindoRamal}
+        onClose={() => setModalTransferenciaAberto(false)}
+        onConfirmar={confirmarTransferenciaRamal}
+    />
     {corretoraId && (<ModalNovoCompromisso aberto={modalAgendaAberto} corretoraId={corretoraId} clienteInicial={clienteAgenda} bloquearClienteInicial salvando={salvandoAgenda} onClose={() => {
                 if (salvandoAgenda) {
                     return;
@@ -2296,74 +2365,4 @@ function HeaderIconButton({ title, active, onClick, children, }: {
             : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
     {children}
     </button>);
-}
-function ResponsavelMenu({ attendants, responsavelId, onSelect, loading, assigning, mobile = false, }: {
-    attendants: WhatsAppAttendant[];
-    responsavelId: string;
-    onSelect: (id: string) => void | Promise<void>;
-    loading: boolean;
-    assigning: boolean;
-    mobile?: boolean;
-}) {
-    const getInitials = (name: string) => {
-        const parts = name
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean);
-        if (parts.length === 0)
-            return '?';
-        if (parts.length === 1) {
-            return parts[0].slice(0, 2).toUpperCase();
-        }
-        return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-    };
-    return (<div className={`absolute z-50 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl ${mobile
-            ? 'right-4 top-[112px] w-[260px]'
-            : 'right-0 top-[44px] w-[260px]'}`}>
-    <div className="border-b px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-        Responsável pelo atendimento
-        </p>
-    </div>
-    <div className="max-h-[320px] overflow-y-auto p-2">
-        {loading ? (<div className="px-3 py-5 text-center text-xs text-gray-400">
-            Carregando responsáveis...
-        </div>) : attendants.length === 0 ? (<div className="px-3 py-5 text-center text-xs text-gray-400">
-            Nenhum responsável disponível.
-        </div>) : (attendants.map(attendant => {
-            const selected = attendant.id === responsavelId;
-            return (<button key={attendant.id} type="button" disabled={assigning} onClick={() => {
-                    void onSelect(attendant.id);
-                }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-[10px] font-semibold text-gray-600">
-                {attendant.avatar ? (<img src={attendant.avatar} alt={attendant.name} className="h-full w-full object-cover"/>) : (getInitials(attendant.name))}
-                </div>
-                <div className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-gray-700">
-                    {attendant.name}
-                </span>
-                <span className="block text-[10px] text-gray-400">
-                    {attendant.type === 'CORRETORA'
-                    ? 'Corretora'
-                    : attendant.type === 'ADMIN'
-                        ? 'Administrador'
-                        : 'Corretor'}
-                </span>
-                </div>
-                {selected && (<Check size={16} className="shrink-0 text-blue-600"/>)}
-            </button>);
-        }))}
-        <button type="button" disabled={assigning} onClick={() => {
-            void onSelect('');
-        }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100">
-            <UserRound size={14}/>
-        </div>
-        <span className="min-w-0 flex-1">
-            Não atribuído
-        </span>
-        {!responsavelId && (<Check size={16} className="shrink-0 text-blue-600"/>)}
-        </button>
-    </div>
-    </div>);
 }

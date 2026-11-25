@@ -49,6 +49,83 @@ async function chamarEquipe(body: Record<string, unknown>): Promise<{ success: b
   return data;
 }
 
+/**
+ * Ordem visual equivalente ao Sidebar.
+ *
+ * Os IDs dos módulos, ações e escopos NÃO são alterados: somente a navegação.
+ * Os metadados (ícones/implementado) continuam vindo de estruturaPermissoes.ts.
+ */
+const MODULOS_POR_GRUPO_SIDEBAR = [
+  {
+    ancora: "conexoes_whatsapp",
+    titulo: "Gestão",
+    descricao: "Conexões WhatsApp, armazenamento, seguradoras, equipe e configurações.",
+    ordem: ["conexoes_whatsapp", "armazenamento", "seguradoras", "equipe", "configuracoes"],
+  },
+  {
+    ancora: "contatos",
+    titulo: "Atendimento",
+    descricao: "Contatos, conversas, agenda e tarefas.",
+    ordem: ["contatos", "conversas", "agenda", "tarefas"],
+  },
+  {
+    ancora: "clientes",
+    titulo: "Operação",
+    descricao: "Clientes, propostas, renovações, comissões, sinistros e assistências.",
+    ordem: ["clientes", "propostas", "renovacoes", "comissoes", "sinistros", "assistencias"],
+  },
+  {
+    ancora: "contas_pagar",
+    titulo: "Financeiro",
+    descricao: "Contas a pagar, contas a receber, fluxo de caixa e parcelas de clientes.",
+    ordem: ["contas_pagar", "contas_receber", "fluxo_caixa", "parcelas_clientes"],
+  },
+] as const;
+
+function montarGruposComoSidebar(): typeof GRUPOS_PERMISSOES {
+  const todosModulos = GRUPOS_PERMISSOES.flatMap(grupo => grupo.modulos);
+  const modulosPorId = new Map(todosModulos.map(modulo => [modulo.id, modulo]));
+  const idsAdicionados = new Set<string>();
+  const idsGruposUsados = new Set<GrupoPermissao>();
+
+  const gruposOrdenados: typeof GRUPOS_PERMISSOES = MODULOS_POR_GRUPO_SIDEBAR.flatMap(config => {
+    // Reaproveita o grupo original que já contém a âncora; preserva ID e ícone.
+    const modelo = GRUPOS_PERMISSOES.find(grupo =>
+      grupo.modulos.some(modulo => modulo.id === config.ancora)
+    );
+    if (!modelo || idsGruposUsados.has(modelo.id)) return [];
+    idsGruposUsados.add(modelo.id);
+
+    const modulos = config.ordem.flatMap(id => {
+      const modulo = modulosPorId.get(id);
+      if (!modulo || idsAdicionados.has(id)) return [];
+      idsAdicionados.add(id);
+      return [modulo];
+    });
+
+    return [{ ...modelo, titulo: config.titulo, descricao: config.descricao, modulos }];
+  });
+
+  // Segurança contra novos módulos: nunca os omitir do painel de permissões.
+  for (const grupo of GRUPOS_PERMISSOES) {
+    const restantes = grupo.modulos.filter(modulo => !idsAdicionados.has(modulo.id));
+    if (restantes.length === 0) continue;
+
+    if (idsGruposUsados.has(grupo.id)) {
+      const destino = gruposOrdenados.find(item => item.id === grupo.id);
+      if (destino) destino.modulos.push(...restantes);
+    } else {
+      gruposOrdenados.push({ ...grupo, modulos: restantes });
+      idsGruposUsados.add(grupo.id);
+    }
+    restantes.forEach(modulo => idsAdicionados.add(modulo.id));
+  }
+
+  return gruposOrdenados;
+}
+
+const GRUPOS_NAVEGACAO = montarGruposComoSidebar();
+
 const BOTAO_SECUNDARIO = "inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
 const BOTAO_PRIMARIO = "inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -101,7 +178,7 @@ export default function ModalPermissoesUsuario({
 
   const diferencas = useMemo(() => dados && originais ? compararPermissoes(originais, dados) : [], [dados, originais]);
   const quantidadeCritica = useMemo(() => permissoesCriticas(diferencas), [diferencas]);
-  const grupoAtual = GRUPOS_PERMISSOES.find(item => item.id === grupoSelecionado) ?? null;
+  const grupoAtual = GRUPOS_NAVEGACAO.find(item => item.id === grupoSelecionado) ?? null;
   const moduloAtual = grupoAtual?.modulos.find(item => item.id === moduloSelecionado) ?? null;
   const presetCalculado = useMemo(() => construirPreset(cargoPreset), [cargoPreset]);
   const previaPreset = useMemo(() => dados ? compararPermissoes(dados, presetCalculado) : [], [dados, presetCalculado]);
@@ -130,7 +207,7 @@ export default function ModalPermissoesUsuario({
   }
 
   function escolherGrupo(grupo: GrupoPermissao) {
-    const selecionado = GRUPOS_PERMISSOES.find(g => g.id === grupo);
+    const selecionado = GRUPOS_NAVEGACAO.find(g => g.id === grupo);
     setGrupoSelecionado(grupo);
     setModuloSelecionado(selecionado?.modulos[0]?.id ?? null);
     setErro("");
@@ -298,7 +375,7 @@ export default function ModalPermissoesUsuario({
 
               {!grupoAtual ? (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {GRUPOS_PERMISSOES.map(grupo => {
+                  {GRUPOS_NAVEGACAO.map(grupo => {
                     const Icon = grupo.icon;
                     const ativos = grupo.modulos.filter(m => m.implementado).length;
                     const alteracoesGrupo = diferencas.filter(d => grupo.modulos.some(m => m.id === d.modulo)).length;
@@ -323,7 +400,7 @@ export default function ModalPermissoesUsuario({
               ) : (
                 <>
                   <div className="flex flex-wrap gap-2" aria-label="Trocar grupo">
-                    {GRUPOS_PERMISSOES.map(grupo => <button type="button" key={grupo.id} onClick={() => escolherGrupo(grupo.id)}
+                    {GRUPOS_NAVEGACAO.map(grupo => <button type="button" key={grupo.id} onClick={() => escolherGrupo(grupo.id)}
                       aria-pressed={grupo.id === grupoSelecionado}
                       className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${grupo.id === grupoSelecionado ? "border-violet-600 bg-violet-600 text-white" : "border-zinc-200 bg-white text-zinc-600 hover:border-violet-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"}`}>
                       {grupo.titulo}

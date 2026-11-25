@@ -289,6 +289,70 @@ export default function Sidebar({
 
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-5 custom-scrollbar">
+
+        {/* =================================================
+            GESTÃO
+        ================================================= */}
+
+        <NavSection
+          title="Gestão"
+          collapsed={isCollapsed}
+        >
+          {podeVerConexoesWhatsApp && (
+            <SidebarItem
+              to="/whatsapp/conexoes"
+              icon={<Cable size={18} />}
+              label="Conexões WhatsApp"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+            />
+          )}
+
+          {podeVerArmazenamento && (
+            <SidebarItem
+              to="/whatsapp/armazenamento"
+              icon={<HardDrive size={18} />}
+              label="Armazenamento"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
+            />
+          )}
+
+          {podeVerSeguradoras && (
+            <SidebarItem
+              to="/whatsapp/seguradoras"
+              icon={<Building2 size={18} />}
+              label="Seguradoras"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
+            />
+          )}
+
+          {podeVerEquipe && (
+            <SidebarItem
+              to="/whatsapp/equipe"
+              icon={<UserRoundCog size={18} />}
+              label="Equipe"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
+            />
+          )}
+
+          {podeVerCorretor && (
+            <SidebarItem
+              to="/whatsapp/configuracao/perfil"
+              icon={<Settings size={18} />}
+              label="Configurações"
+              collapsed={isCollapsed}
+              onNavigate={handleNavigate}
+              iconClassName="bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
+            />
+          )}
+        </NavSection>
         
         {/* =================================================
             ATENDIMENTO
@@ -364,16 +428,7 @@ export default function Sidebar({
           title="Operação"
           collapsed={isCollapsed}
         >
-          {podeVerEquipe && (
-            <SidebarItem
-              to="/whatsapp/equipe"
-              icon={<UserRoundCog size={18} />}
-              label="Equipe"
-              collapsed={isCollapsed}
-              onNavigate={handleNavigate}
-              iconClassName="bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400"
-            />
-          )}
+          
 
           {podeVerClientes && (
             <SidebarItem
@@ -497,58 +552,7 @@ export default function Sidebar({
           )}
         </NavSection>
 
-        {/* =================================================
-            GESTÃO
-        ================================================= */}
-
-        <NavSection
-          title="Gestão"
-          collapsed={isCollapsed}
-        >
-          {podeVerConexoesWhatsApp && (
-            <SidebarItem
-              to="/whatsapp/conexoes"
-              icon={<Cable size={18} />}
-              label="Conexões WhatsApp"
-              collapsed={isCollapsed}
-              onNavigate={handleNavigate}
-              iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-            />
-          )}
-
-          {podeVerArmazenamento && (
-            <SidebarItem
-              to="/whatsapp/armazenamento"
-              icon={<HardDrive size={18} />}
-              label="Armazenamento"
-              collapsed={isCollapsed}
-              onNavigate={handleNavigate}
-              iconClassName="bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400"
-            />
-          )}
-
-          {podeVerSeguradoras && (
-            <SidebarItem
-              to="/whatsapp/seguradoras"
-              icon={<Building2 size={18} />}
-              label="Seguradoras"
-              collapsed={isCollapsed}
-              onNavigate={handleNavigate}
-              iconClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"
-            />
-          )}
-
-          {podeVerCorretor && (
-            <SidebarItem
-              to="/whatsapp/configuracao/perfil"
-              icon={<Settings size={18} />}
-              label="Configurações"
-              collapsed={isCollapsed}
-              onNavigate={handleNavigate}
-              iconClassName="bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
-            />
-          )}
-        </NavSection>
+        
       </div>
     )
   }

@@ -205,6 +205,19 @@ export class DApiTransport
             text: data.text,
             replyToProviderMessageId:
               data.replyToProviderMessageId,
+
+            // Ramal de Atendimento
+            ...(data.conversationId
+              ? { conversationId: data.conversationId }
+              : {}),
+
+            ...(data.contactId
+              ? { contactId: data.contactId }
+              : {}),
+
+            ...(data.instanceId
+              ? { instanceId: data.instanceId }
+              : {}),
           },
         }
       )
@@ -266,6 +279,8 @@ export class DApiTransport
     return {
       providerMessageId,
       async: false,
+      crmMessageId: stringValue(response.crmMessageId),
+      crmPersisted: response.crmPersisted === true,
     }
   }
 
@@ -306,6 +321,11 @@ export class DApiTransport
               'audio',
             replyToProviderMessageId:
               data.replyToProviderMessageId,
+
+            // Ramal de Atendimento
+            ...(data.conversationId
+              ? { conversationId: data.conversationId }
+              : {}),
           },
         }
       )
@@ -403,6 +423,8 @@ export class DApiTransport
           commandId &&
             !providerMessageId
         ),
+      crmMessageId: stringValue(response.crmMessageId),
+      crmPersisted: response.crmPersisted === true,
     }
   }
 
@@ -439,6 +461,11 @@ export class DApiTransport
               data.messageId,
             emoji:
               data.emoji,
+
+            // Ramal de Atendimento
+            ...(data.conversationId
+              ? { conversationId: data.conversationId }
+              : {}),
           },
         }
       )
@@ -494,6 +521,7 @@ export class DApiTransport
     return {
       providerMessageId,
       async: false,
+      crmPersisted: response.crmPersisted === true,
     }
   }
 }

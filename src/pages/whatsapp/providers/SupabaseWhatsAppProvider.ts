@@ -1547,11 +1547,6 @@ async sendContactMessage(
     )
   }
 
-  const phone =
-    normalizeWhatsAppPhone(
-      contato.telefone
-    )
-
   /*
    * ======================================================
    * INSTÂNCIA
@@ -1821,259 +1816,90 @@ async sendContactMessage(
 
   /*
    * ======================================================
-   * PRIMEIRO ENVIA AO PROVIDER
+   * PRIMEIRO CONTATO: CONVERSA ANTES DA DAPI
    * ======================================================
+   * Segurança: todos os envios percorrem sendMessage() e
+   * transportam conversationId. O índice UNIQUE de conversas
+   * ativas protege contra duplicidade na mesma conexão.
    *
-   * Nenhuma conversa foi criada até aqui.
+   * Não apagamos automaticamente uma conversa se ocorrer
+   * erro ou timeout: a DAPI pode ter recebido a mensagem.
+   * Esta etapa NÃO substitui a autorização server-side.
    */
-  const transportProvider =
-    instancia.provider as
-      WhatsAppTransportName
+  const now = new Date().toISOString()
+  let conversationId = crypto.randomUUID()
+  let conversationCreated = true
 
-  const transport =
-    getWhatsAppTransport(
-      transportProvider
-    )
-
-  const transportResult =
-    await transport.sendText({
-      instance: {
-        provider:
-          transportProvider,
-        providerInstanceId:
-          instancia.provider_instance_id ||
-          null,
-      },
-      phone,
-      text,
-    })
-
-  const providerMessageId =
-    transportResult.providerMessageId
-
-  if (!providerMessageId) {
-    throw new Error(
-      `O transporte ${transportProvider} não retornou o ID da mensagem enviada.`
-    )
-  }
-
-  /*
-   * ======================================================
-   * SOMENTE AGORA CRIA A CONVERSA
-   * ======================================================
-   */
-  const now =
-    new Date().toISOString()
-
-  let conversationId =
-    crypto.randomUUID()
-
-  let conversationCreated =
-    true
-
-  const {
-    error: conversaInsertError,
-  } = await supabase
+  const { error: conversaInsertError } = await supabase
     .from('whatsapp_conversas')
     .insert({
-      id:
-        conversationId,
-      corretora_id:
-        corretoraId,
-      contato_id:
-        contactId,
-      instancia_id:
-        instanceId,
-      responsavel_id:
-        assignedUserId,
-      status:
-        'novo',
-      unread_count:
-        0,
-      ultima_mensagem_at:
-        now,
-      updated_at:
-        now,
+      id: conversationId,
+      corretora_id: corretoraId,
+      contato_id: contactId,
+      instancia_id: instanceId,
+      responsavel_id: assignedUserId,
+      status: 'novo',
+      unread_count: 0,
+      ultima_mensagem_at: null,
+      updated_at: now,
     })
 
-  /*
-   * Concorrência:
-   * outra operação pode ter criado
-   * a conversa entre nossa consulta
-   * e o INSERT.
-   */
   if (conversaInsertError) {
-    if (
-      conversaInsertError.code !==
-      '23505'
-    ) {
+    if (conversaInsertError.code !== '23505') {
       console.error(
         '❌ sendContactMessage → criar conversa:',
         conversaInsertError
       )
-
-      throw new Error(
-        'A mensagem foi enviada pelo WhatsApp, mas não foi possível criar a conversa no CRM.'
-      )
+      throw new Error('Não foi possível criar a conversa.')
     }
 
+    // Outro atendimento criou a conversa ao mesmo tempo.
+    // Não alteramos o responsável que já estava definido.
     const {
       data: conversaConcorrente,
       error: concorrenteError,
     } = await supabase
       .from('whatsapp_conversas')
       .select('id')
-      .eq(
-        'corretora_id',
-        corretoraId
-      )
-      .eq(
-        'contato_id',
-        contactId
-      )
-      .eq(
-        'instancia_id',
-        instanceId
-      )
-      .neq(
-        'status',
-        'encerrada'
-      )
+      .eq('corretora_id', corretoraId)
+      .eq('contato_id', contactId)
+      .eq('instancia_id', instanceId)
+      .neq('status', 'encerrada')
       .single()
 
-    if (
-      concorrenteError ||
-      !conversaConcorrente
-    ) {
+    if (concorrenteError || !conversaConcorrente) {
       console.error(
         '❌ sendContactMessage → recuperar conversa concorrente:',
         concorrenteError
       )
-
-      throw new Error(
-        'A mensagem foi enviada pelo WhatsApp, mas a conversa não pôde ser recuperada no CRM.'
-      )
+      throw new Error('Não foi possível recuperar a conversa existente.')
     }
 
-    conversationId =
-      conversaConcorrente.id
-
-    conversationCreated =
-      false
+    conversationId = conversaConcorrente.id
+    conversationCreated = false
   }
 
-  /*
-   * ======================================================
-   * PERSISTE A PRIMEIRA MENSAGEM
-   * ======================================================
-   */
-  const messageId =
-    crypto.randomUUID()
+  // Fluxo único: mensagem envia com conversationId e é
+  // registrada pelo mecanismo já utilizado pelo CRM.
+  // Posteriormente a Edge exigirá autorização do servidor.
+  const mensagem = await this.sendMessage({
+    conversationId,
+    type: 'text',
+    text,
+  })
 
-  const {
-    data: mensagem,
-    error: mensagemError,
-  } = await supabase
-    .from('whatsapp_mensagens')
-    .insert({
-      id:
-        messageId,
-      corretora_id:
-        corretoraId,
-      conversa_id:
-        conversationId,
-      instancia_id:
-        instanceId,
-      provider_message_id:
-        providerMessageId,
-      provider_command_id:
-        null,
-      reply_to_provider_message_id:
-        null,
-      direction:
-        'outbound',
-      type:
-        'text',
-      text,
-      status:
-        'sent',
-      timestamp:
-        now,
-      sender_name:
-        null,
-    })
-    .select('id')
-    .single()
-
-  if (
-    mensagemError ||
-    !mensagem
-  ) {
-    console.error(
-      '❌ sendContactMessage → salvar primeira mensagem:',
-      mensagemError
-    )
-
-    /*
-     * Se nós mesmos acabamos de criar
-     * a conversa e a persistência da
-     * primeira mensagem falhou,
-     * removemos a conversa para não
-     * deixar conversa vazia no CRM.
-     */
-    if (conversationCreated) {
-      const {
-        error: rollbackError,
-      } = await supabase
-        .from(
-          'whatsapp_conversas'
-        )
-        .delete()
-        .eq(
-          'id',
-          conversationId
-        )
-
-      if (rollbackError) {
-        console.error(
-          '❌ sendContactMessage → rollback da conversa:',
-          rollbackError
-        )
-      }
-    }
-
-    throw new Error(
-      'A mensagem foi enviada pelo WhatsApp, mas não pôde ser registrada no CRM.'
-    )
-  }
-
-  /*
-   * Registra que este contato pertence
-   * também a esta conexão.
-   */
-  const {
-    error: vinculoError,
-  } = await supabase
-    .from(
-      'whatsapp_contatos_instancias'
-    )
+  // Preserva o vínculo contato/instância após envio aceito.
+  const { error: vinculoError } = await supabase
+    .from('whatsapp_contatos_instancias')
     .upsert(
       {
-        corretora_id:
-          corretoraId,
-        contato_id:
-          contactId,
-        instancia_id:
-          instanceId,
-        sincronizado_em:
-          now,
-        updated_at:
-          now,
+        corretora_id: corretoraId,
+        contato_id: contactId,
+        instancia_id: instanceId,
+        sincronizado_em: now,
+        updated_at: now,
       },
-      {
-        onConflict:
-          'contato_id,instancia_id',
-      }
+      { onConflict: 'contato_id,instancia_id' }
     )
 
   if (vinculoError) {
@@ -2085,10 +1911,10 @@ async sendContactMessage(
 
   return {
     conversationId,
-    messageId:
-      mensagem.id,
+    messageId: mensagem.id,
     conversationCreated,
   }
+
 }
 
   async sendMessage(
@@ -2250,6 +2076,9 @@ async sendContactMessage(
 
   let providerCommandId:
     string | undefined
+
+  let crmMessageId: string | undefined
+  let crmPersisted = false
 
   let mediaReadUrl = ''
   let storagePath = ''
@@ -2442,6 +2271,9 @@ async sendContactMessage(
 
             replyToProviderMessageId:
               data.replyToProviderMessageId,
+
+            conversationId:
+              conversa.id,
           }
         )
 
@@ -2452,6 +2284,8 @@ async sendContactMessage(
 
       providerCommandId =
         transportResult.commandId
+      crmMessageId = transportResult.crmMessageId
+      crmPersisted = transportResult.crmPersisted === true
 
       if (
         !providerMessageId &&
@@ -2498,11 +2332,16 @@ async sendContactMessage(
 
           replyToProviderMessageId:
             data.replyToProviderMessageId,
+
+          conversationId:
+            conversa.id,
         }
       )
 
     providerMessageId =
       transportResult.providerMessageId
+    crmMessageId = transportResult.crmMessageId
+    crmPersisted = transportResult.crmPersisted === true
 
     /*
      * Texto continua síncrono.
@@ -2550,10 +2389,23 @@ async sendContactMessage(
    * PERSISTE MENSAGEM
    * ======================================================
    */
-  const {
-    data: insertedMessage,
-    error: insertError,
-  } = await supabase
+  // Edge DAPI com registro server-side: reutiliza a mensagem persistida.
+  // Outros transports mantêm o INSERT original.
+  let insertedMessage: SupabaseMensagem | null = null
+  let insertError: unknown = null
+
+  if (crmPersisted && crmMessageId) {
+    const fetched = await supabase.from('whatsapp_mensagens')
+      .select(`id, conversa_id, direction, type, text, timestamp, status,
+               sender_name, provider_message_id, provider_command_id,
+               reply_to_provider_message_id`)
+      .eq('id', crmMessageId)
+      .eq('conversa_id', data.conversationId)
+      .single()
+    insertedMessage = fetched.data as SupabaseMensagem | null
+    insertError = fetched.error
+  } else {
+  const saved = await supabase
     .from(
       'whatsapp_mensagens'
     )
@@ -2615,6 +2467,42 @@ async sendContactMessage(
       reply_to_provider_message_id
     `)
     .single()
+
+    insertedMessage = saved.data as SupabaseMensagem | null
+    insertError = saved.error
+  }
+
+  // Proteção defensiva para coexistência de versões do transporte:
+  // a Edge pode ter persistido o texto antes do INSERT local.
+  // Nunca reenvia ao provider; recupera somente o registro já gravado.
+  if (
+    messageType === 'text' &&
+    insertError &&
+    typeof insertError === 'object' &&
+    'code' in insertError &&
+    insertError.code === '23505' &&
+    providerMessageId
+  ) {
+    const { data: existente, error: recuperacaoError } = await supabase
+      .from('whatsapp_mensagens')
+      .select(`id, conversa_id, direction, type, text, timestamp, status,
+               sender_name, provider_message_id, provider_command_id,
+               reply_to_provider_message_id`)
+      .eq('conversa_id', data.conversationId)
+      .eq('instancia_id', instancia.id)
+      .eq('provider_message_id', providerMessageId)
+      .eq('direction', 'outbound')
+      .eq('type', 'text')
+      .maybeSingle()
+
+    if (!recuperacaoError && existente) {
+      insertedMessage = existente as SupabaseMensagem
+      insertError = null
+      console.info(
+        'WhatsApp → mensagem de texto já persistida; reutilizando registro do CRM.'
+      )
+    }
+  }
 
   if (
     insertError ||
@@ -3049,11 +2937,12 @@ async sendContactMessage(
       )
     }
 
-    const transportResult =
-      await transport.sendMedia({
-        instance: transportInstance,
-        phone,
-        type: messageType,
+      const transportResult =
+        await transport.sendMedia({
+          instance: transportInstance,
+          phone,
+          conversationId: destinationConversation.id,
+          type: messageType,
         mediaUrl: mediaReadUrl,
         caption: messageText,
         fileName:
@@ -3093,10 +2982,19 @@ async sendContactMessage(
 
     const now = new Date().toISOString()
 
-    const {
-      data: insertedMessage,
-      error: insertError,
-    } = await supabase
+    let insertedMessage: SupabaseMensagem | null = null
+    let insertError: unknown = null
+    if (transportResult.crmPersisted && transportResult.crmMessageId) {
+      const fetched = await supabase.from('whatsapp_mensagens')
+        .select(`id, conversa_id, direction, type, text, timestamp, status,
+                 sender_name, provider_message_id, provider_command_id`)
+        .eq('id', transportResult.crmMessageId)
+        .eq('conversa_id', destinationConversationId)
+        .single()
+      insertedMessage = fetched.data as SupabaseMensagem | null
+      insertError = fetched.error
+    } else {
+    const saved = await supabase
       .from('whatsapp_mensagens')
       .insert({
         id: messageId,
@@ -3144,6 +3042,10 @@ async sendContactMessage(
         provider_command_id
       `)
       .single()
+
+      insertedMessage = saved.data as SupabaseMensagem | null
+      insertError = saved.error
+    }
 
     if (insertError || !insertedMessage) {
       console.error(
@@ -3578,7 +3480,7 @@ if (
       transportProvider
     )
 
-  await transport.sendReaction({
+  const reactionResult = await transport.sendReaction({
       instance: {
         provider: transportProvider,
         providerInstanceId:
@@ -3587,7 +3489,10 @@ if (
       phone,
       messageId: message.providerMessageId,
       emoji,
+      conversationId,
     })
+
+    if (reactionResult.crmPersisted) return
 
     const { error: reactionError } =
       await supabase
