@@ -8,6 +8,8 @@ import { useConversationAutomation } from '../hooks/useConversationAutomation';
 import type { AutomationMachineState } from '../automation/engine/automationMachine';
 import MessageBubble from './MessageBubble';
 import MessageComposer from './MessageComposer';
+import ModalCompartilharContato from './ModalCompartilharContato';
+import { enviarContatoWhatsApp } from '../services/whatsappContactShareService';
 import DocumentosMenu from '../documentos/components/DocumentosMenu';
 import ModalAdicionarDocumento from '../documentos/components/ModalAdicionarDocumento';
 import { useAuth } from '../../../auth/AuthContext';
@@ -234,6 +236,8 @@ export default function ChatWindow({
     });
     const [takingOverAutomation, setTakingOverAutomation] = useState(false);
     const [modalDocumentoAberto, setModalDocumentoAberto] = useState(false);
+    const [modalCompartilharContatoAberto, setModalCompartilharContatoAberto] = useState(false);
+    const [enviandoContato, setEnviandoContato] = useState(false);
     const [
     taskMessage,
     setTaskMessage,
@@ -2212,6 +2216,10 @@ const timelineItems =
         onStartPreQualification={handleStartPreQualification}
         onStartRouting={handleStartRouting}
         onTakeOverAutomation={handleTakeOver}
+        onShareContact={() => {
+            if (!conversation || !podeInteragir) return;
+            setModalCompartilharContatoAberto(true);
+        }}
         onSend={async data => {
         if (!podeInteragir) {
             toast.error(
@@ -2247,6 +2255,25 @@ const timelineItems =
         corretora: userProfile?.tipo_usuario === 'CORRETORA'
             ? userProfile.nome ?? null
             : null,
+        }}
+    />
+    <ModalCompartilharContato
+        aberto={modalCompartilharContatoAberto && Boolean(conversation) && podeInteragir}
+        enviando={enviandoContato}
+        onClose={() => { if (!enviandoContato) setModalCompartilharContatoAberto(false); }}
+        onEnviar={async (nome, telefone) => {
+            if (!conversation || !podeInteragir || enviandoContato) return;
+            setEnviandoContato(true);
+            try {
+                await enviarContatoWhatsApp(conversation.id, nome, telefone);
+                setModalCompartilharContatoAberto(false);
+                toast.success('Contato compartilhado com sucesso.');
+                void timeline.atualizarRecentes();
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : 'Não foi possível compartilhar o contato.');
+            } finally {
+                setEnviandoContato(false);
+            }
         }}
     />
     <ModalTransferirRamal

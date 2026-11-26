@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../../auth/AuthContext'
+import { toast } from 'sonner'
 import type { MessageType, SendMessageData, WhatsAppMessage } from '../types/whatsapp'
 import type { AutomationMachineState } from '../automation/engine/automationMachine'
-import { Bot, CheckCircle2, FileText, Image, Loader2, Mic, Paperclip, Route, SendHorizontal, Square, UserRoundCheck, Video, X, Zap, Search, Plus, Pencil, Trash2 } from 'lucide-react'
+import { Bot, CheckCircle2, FileText, Image, Loader2, Mic, Paperclip, ContactRound, Route, SendHorizontal, Square, UserRoundCheck, Video, X, Zap, Search, Plus, Pencil, Trash2 } from 'lucide-react'
 import { applyQuickReplyVariables, createQuickReply, deleteQuickReply, listQuickReplies, updateQuickReply, type QuickReply, type QuickReplyScope } from '../services/quickReplyService'
 interface MessageComposerProps {
   onSend: (data: Omit<SendMessageData, 'conversationId'>) => Promise<void>
+  onShareContact?: () => void
   interactionEnabled?: boolean
   automationEnabled?: boolean
   replyMessage?: WhatsAppMessage | null
@@ -63,6 +65,7 @@ function formatRecordingTime(seconds: number): string {
 }
 export default function MessageComposer({
   onSend,
+  onShareContact,
   interactionEnabled = true,
   automationEnabled = true,
   replyMessage,
@@ -905,6 +908,14 @@ const canManageQuickReply = (reply: QuickReply) => {
               {attachmentMenuOpen && (
                 <AttachmentMenu
                   onSelect={ openFilePicker }
+                  onShareContact={() => {
+                    setAttachmentMenuOpen(false)
+                    if (!interactionEnabled || !onShareContact) {
+                      toast.error('Compartilhamento indisponível neste atendimento.')
+                      return
+                    }
+                    onShareContact()
+                  }}
                   onClose={() =>
                     setAttachmentMenuOpen(false)
                   }
@@ -1276,11 +1287,13 @@ function ComposerButton({
 }
 function AttachmentMenu({
   onSelect,
+  onShareContact,
   onClose,
 }: {
   onSelect: (
     type: AttachmentType
   ) => void
+  onShareContact: () => void
   onClose: () => void
 }) {
   return (
@@ -1316,6 +1329,12 @@ function AttachmentMenu({
         onClick={() =>
           onSelect('document')
         }
+      />
+      <AttachmentMenuItem
+        icon={<ContactRound size={16} />}
+        label="Contato"
+        description="Compartilhar nome e telefone"
+        onClick={onShareContact}
       />
       <div className="my-1 border-t border-slate-100" />
       <button
