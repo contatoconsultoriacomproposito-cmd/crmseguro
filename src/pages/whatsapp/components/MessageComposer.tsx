@@ -5,6 +5,9 @@ import type { MessageType, SendMessageData, WhatsAppMessage } from '../types/wha
 import type { AutomationMachineState } from '../automation/engine/automationMachine'
 import { Bot, CheckCircle2, FileText, Image, Loader2, Mic, Paperclip, ContactRound, Route, SendHorizontal, Square, UserRoundCheck, Video, X, Zap, Search, Plus, Pencil, Trash2 } from 'lucide-react'
 import { applyQuickReplyVariables, createQuickReply, deleteQuickReply, listQuickReplies, updateQuickReply, type QuickReply, type QuickReplyScope } from '../services/quickReplyService'
+// Funcionalidade preservada para uso futuro; false oculta apenas o botão.
+const EXIBIR_AUTOMACOES_NO_COMPOSER: boolean = false
+
 interface MessageComposerProps {
   onSend: (data: Omit<SendMessageData, 'conversationId'>) => Promise<void>
   onShareContact?: () => void
@@ -1129,16 +1132,19 @@ const canManageQuickReply = (reply: QuickReply) => {
                 </div>
               )}
             </div>
-            {automationEnabled && (
+
+            {/* Reative pela constante EXIBIR_AUTOMACOES_NO_COMPOSER quando necessário. */}
+            {EXIBIR_AUTOMACOES_NO_COMPOSER && automationEnabled && (
               <div ref={automationMenuRef} className="relative">
                 <ComposerButton
                   title="Automações"
-                  active={ automationMenuOpen }
+                  active={automationMenuOpen}
                   disabled={sending}
-                  onClick={ toggleAutomationMenu }
+                  onClick={toggleAutomationMenu}
                 >
                   <Bot size={17} />
                 </ComposerButton>
+
                 {automationMenuOpen && (
                   <AutomationMenu
                     state={automationState}
