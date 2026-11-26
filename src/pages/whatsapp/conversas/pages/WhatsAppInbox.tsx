@@ -43,6 +43,8 @@ export default function WhatsAppInbox() {
     loading,
     reload,
     markAsRead,
+    ramalNotifications,
+    reconhecerRamal,
     updateConversationKanban,
     updateConversationContact,
   } = useConversations()
@@ -127,11 +129,18 @@ export default function WhatsAppInbox() {
         setSelectedId(
           selectedConversationId
         )
+        void reconhecerRamal(selectedConversationId)
 
         setMobileContactPanelOpen(false)
       },
-      []
+      [reconhecerRamal]
     )
+
+  useEffect(() => {
+    if (selectedId && ramalNotifications.some(notification => notification.conversa_id === selectedId)) {
+      void reconhecerRamal(selectedId)
+    }
+  }, [selectedId, ramalNotifications, reconhecerRamal])
 
   const handleBackToConversations =
     useCallback(() => {
@@ -485,6 +494,7 @@ export default function WhatsAppInbox() {
                 conversations={
                   conversations
                 }
+                ramalNotifications={ramalNotifications}
                 selectedId={selectedId}
                 loading={loading}
                 agendaRefreshKey={

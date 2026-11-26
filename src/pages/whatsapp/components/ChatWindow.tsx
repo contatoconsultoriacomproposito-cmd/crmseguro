@@ -140,7 +140,7 @@ export default function ChatWindow({
         userProfile.id === userProfile.corretora_id;
     const possoTransferirRamal = ramalAtivo &&
         (souOperadorRamal || souPrincipalRamal || souGestorCorretoraRamal);
-    const podeInteragirRamal = !ramalAtivo || souOperadorRamal;
+    //const podeInteragirRamal = !ramalAtivo || souOperadorRamal;
     const podeAtivarRamal = !ramalAtivo && !ramal.carregando && !ramal.erro &&
         userProfile?.tipo_usuario === 'CORRETORA' &&
         Boolean(conversation?.assignedUserId) &&
@@ -364,8 +364,15 @@ export default function ChatWindow({
             escopoManage
         );
 
+    // Ramal ativo autoriza a chamada ao operador temporário sem vínculo global à instância.
+    // A Edge Function revalida o escopo call e o operador ativo no servidor.
     const podeRealizarLigacao =
-        podeExecutarEscopoConversa(escopoCall) && podeInteragirRamal;
+        podeInteragir && (
+            escopoCall === 'tenant' ||
+            (escopoCall === 'assigned' && (
+                acessoInstanciaAtribuida || (ramalAtivo && souOperadorRamal)
+            ))
+        );
 
     const podeExecutarAutomacoes =
         podeExecutarEscopoConversa(
@@ -1785,8 +1792,7 @@ const timelineItems =
             })
             callDatabaseIdRef.current = ligacaoId
             const session = await iniciarChamadaDapi(
-            corretoraId,
-            conversation.contact.phone
+            conversation.id
             )
             await marcarLigacaoIniciada({
             ligacaoId,

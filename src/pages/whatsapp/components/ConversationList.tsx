@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { WhatsAppAttendant, WhatsAppConversation } from '../types/whatsapp'
 import { useWhatsApp } from '../hooks/useWhatsApp'
+import type { RamalNotification } from '../hooks/useConversations'
 import ConversationItem from './ConversationItem'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -45,6 +46,7 @@ import type { AgendaItem } from '../agenda/types/agenda'
 
 interface ConversationListProps {
   conversations: WhatsAppConversation[]
+  ramalNotifications?: RamalNotification[]
   selectedId?: string
   loading?: boolean
   agendaRefreshKey?: number
@@ -82,6 +84,7 @@ const EMPTY_AGENDA: WhatsAppAgendaData = {
 
 export default function ConversationList({
   conversations,
+  ramalNotifications = [],
   selectedId,
   loading,
   agendaRefreshKey,
@@ -193,6 +196,11 @@ useEffect(() => {
     unsubscribe()
   }
 }, [corretoraId, loadCrmClients])
+
+  const novasTransferencias = useMemo(
+    () => new Set(ramalNotifications.map(notification => notification.conversa_id)),
+    [ramalNotifications],
+  )
 
 const attendantById = useMemo(
   () => new Map(attendants.map(attendant => [attendant.id, attendant])),
@@ -937,8 +945,19 @@ return (
                 : undefined
 
             return (
-              <ConversationItem
+              <div
                 key={conversation.id}
+                className={novasTransferencias.has(conversation.id)
+                  ? 'border-l-[3px] border-blue-500 bg-blue-50/40'
+                  : undefined}
+              >
+                {novasTransferencias.has(conversation.id) && (
+                  <div className="flex items-center gap-1.5 px-3 pt-2 text-[10px] font-semibold text-blue-600">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                    Novo atendimento recebido
+                  </div>
+                )}
+                <ConversationItem
                 conversation={avataresAtualizados[conversation.contact.id]
                   ? { ...conversation, contact: { ...conversation.contact, avatar: avataresAtualizados[conversation.contact.id] } }
                   : conversation}
@@ -955,7 +974,8 @@ return (
                 onAvatarRefresh={() => void handleAtualizarAvatar(conversation)}
                 avatarRefreshing={avatarAtualizandoId === conversation.contact.id}
                 avatarRefreshDisabled={Boolean(avatarAtualizandoId) || conversation.instanceActive === false || conversation.status === 'encerrada'}
-              />
+                />
+              </div>
             )
           })
           )

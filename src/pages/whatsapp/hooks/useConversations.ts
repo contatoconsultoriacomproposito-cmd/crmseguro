@@ -7,52 +7,57 @@ import {
 import type { WhatsAppConversation } from '../types/whatsapp'
 import { useWhatsApp } from './useWhatsApp'
 import { supabase } from '../../../lib/supabaseClient'
+import { useAuth } from '../../../auth/AuthContext'
 
 const CONVERSATIONS_CACHE_TTL_MS =
   11 * 60 * 60 * 1000
 
 interface ConversationsCacheEntry {
+  userId: string
   conversations: WhatsAppConversation[]
   expiresAt: number
 }
 
-let conversationsCache:
-  ConversationsCacheEntry | null = null
+let conversationsCache: ConversationsCacheEntry | null = null
 
-function obterCacheConversas():
-  | ConversationsCacheEntry
-  | null {
-  if (!conversationsCache) {
-    return null
-  }
-
-  if (
-    conversationsCache.expiresAt <=
-    Date.now()
-  ) {
+function obterCacheConversas(userId?: string): ConversationsCacheEntry | null {
+  if (!userId || !conversationsCache) return null
+  if (conversationsCache.userId !== userId || conversationsCache.expiresAt <= Date.now()) {
     conversationsCache = null
     return null
   }
-
   return conversationsCache
 }
 
-function salvarCacheConversas(
-  conversations: WhatsAppConversation[]
-): void {
+function salvarCacheConversas(userId: string, conversations: WhatsAppConversation[]): void {
   conversationsCache = {
+    userId,
     conversations,
-    expiresAt:
-      Date.now() +
-      CONVERSATIONS_CACHE_TTL_MS,
+    expiresAt: Date.now() + CONVERSATIONS_CACHE_TTL_MS,
   }
+}
+
+export interface RamalNotification {
+  id: string
+  conversa_id: string
+  criado_em: string
 }
 
 export function useConversations() {
   const whatsapp = useWhatsApp()
+  const { userProfile } = useAuth()
+  const userId = userProfile?.id
+  // A referência é atualizada no render: respostas antigas nunca entram no novo login.
+  const activeUserRef = useRef(userId)
+  activeUserRef.current = userId
+  const requestVersionRef = useRef(0)
 
-  const cacheInicial =
-    obterCacheConversas()
+  const cacheInicial = obterCacheConversas(userId)
+
+  const [loadedUserId, setLoadedUserId] = useState(userId)
+  const [ramalNotifications, setRamalNotifications] = useState<RamalNotification[]>([])
+  const pendingReadRef = useRef(new Set<string>())
+  const notificationsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [conversations, setConversations] =
     useState<WhatsAppConversation[]>(
@@ -87,21 +92,21 @@ export function useConversations() {
     async (
       isSilent = false
     ): Promise<WhatsAppConversation[]> => {
-      if (!isSilent) {
-        setLoading(true)
-      }
-
+      const targetUser = userId
+      if (!targetUser) return []
+      const requestVersion = ++requestVersionRef.current
+      if (!isSilent) setLoading(true)
       setError(null)
 
       try {
-        const data =
-          await whatsapp.getConversations()
-
+        const data = await whatsapp.getConversations()
+        if (activeUserRef.current !== targetUser || requestVersion !== requestVersionRef.current) {
+          return []
+        }
         conversationsRef.current = data
         setConversations(data)
-
-        salvarCacheConversas(data)
-
+        setLoadedUserId(targetUser)
+        salvarCacheConversas(targetUser, data)
         return data
       } catch (err) {
         const error =
@@ -111,15 +116,18 @@ export function useConversations() {
                 'Erro ao carregar conversas.'
               )
 
-        setError(error)
-        throw error
+        if (activeUserRef.current === targetUser && requestVersion === requestVersionRef.current) {
+          setError(error)
+          throw error
+        }
+        return []
       } finally {
-        if (!isSilent) {
+        if (!isSilent && activeUserRef.current === targetUser && requestVersion === requestVersionRef.current) {
           setLoading(false)
         }
       }
     },
-    [whatsapp]
+    [whatsapp, userId]
   )
 
   const scheduleSilentReload = useCallback(() => {
@@ -251,33 +259,77 @@ export function useConversations() {
     []
   )
 
-  useEffect(() => {
-    const cached =
-      obterCacheConversas()
+useEffect(() => {
+  requestVersionRef.current += 1
+  const cached = obterCacheConversas(userId)
+  conversationsRef.current = cached?.conversations ?? []
+  setConversations(cached?.conversations ?? [])
+  setLoadedUserId(userId)
+  setRamalNotifications([])
+  pendingReadRef.current.clear()
+  setError(null)
 
-    if (cached) {
-      /*
-       * O estado já nasceu com o cache no primeiro render.
-       * Aqui apenas garantimos a referência e fazemos
-       * a atualização silenciosa dos dados atuais.
-       */
-      conversationsRef.current =
-        cached.conversations
+  if (!userId) {
+    setLoading(false)
+    return
+  }
+  setLoading(!cached)
+  void fetchConversations(Boolean(cached))
+}, [userId, fetchConversations])
 
-      setLoading(false)
-      setError(null)
+const fetchRamalNotifications = useCallback(async () => {
+  const targetUser = userId
+  if (!targetUser) return
+  const { data, error: notificationError } = await supabase
+    .from('whatsapp_ramal_notificacoes')
+    .select('id, conversa_id, criado_em')
+    .eq('destinatario_id', targetUser)
+    .is('lida_em', null)
+    .order('criado_em', { ascending: false })
+    .limit(100)
+  if (notificationError) {
+    console.error('Erro ao consultar notificações do Ramal:', notificationError)
+    return
+  }
+  if (activeUserRef.current !== targetUser) return
+  setRamalNotifications((data ?? []) as RamalNotification[])
+}, [userId])
 
-      void fetchConversations(true)
+const scheduleNotificationsRefresh = useCallback(() => {
+  if (notificationsTimerRef.current) clearTimeout(notificationsTimerRef.current)
+  notificationsTimerRef.current = setTimeout(() => {
+    notificationsTimerRef.current = null
+    void fetchRamalNotifications()
+  }, 180)
+}, [fetchRamalNotifications])
 
-      return
+const reconhecerRamal = useCallback(async (conversationId: string) => {
+  if (!userId || pendingReadRef.current.has(conversationId)) return
+  if (!ramalNotifications.some(n => n.conversa_id === conversationId)) return
+  pendingReadRef.current.add(conversationId)
+  try {
+    const { error: rpcError } = await supabase.rpc('crm_whatsapp_ramal_notificacao_ler', {
+      p_conversa_id: conversationId,
+    })
+    if (rpcError) throw rpcError
+    if (activeUserRef.current === userId) {
+      setRamalNotifications(current => current.filter(n => n.conversa_id !== conversationId))
     }
+  } catch (notificationError) {
+    console.error('Erro ao reconhecer notificação do Ramal:', notificationError)
+  } finally {
+    pendingReadRef.current.delete(conversationId)
+  }
+}, [userId, ramalNotifications])
 
-    /*
-     * Primeira entrada na sessão:
-     * comportamento normal com loading.
-     */
-    void fetchConversations(false)
-  }, [fetchConversations])
+useEffect(() => {
+  if (!userId) return
+  void fetchRamalNotifications()
+  return () => {
+    if (notificationsTimerRef.current) clearTimeout(notificationsTimerRef.current)
+    notificationsTimerRef.current = null
+  }
+}, [userId, fetchRamalNotifications])
 
   useEffect(() => {
     const crmChangeIsRelevant = (
@@ -306,8 +358,22 @@ export function useConversations() {
       )
     }
 
+    if (!userId) return
     const channel = supabase
-      .channel('realtime_conversas_list')
+      .channel(`realtime_conversas_list_${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'whatsapp_ramal_notificacoes',
+          filter: `destinatario_id=eq.${userId}`,
+        },
+        () => {
+          scheduleSilentReload()
+          scheduleNotificationsRefresh()
+        },
+      )
 
       .on(
         'postgres_changes',
@@ -528,10 +594,14 @@ export function useConversations() {
   }, [
     promoteConversationFromMessage,
     scheduleSilentReload,
+    scheduleNotificationsRefresh,
+    userId,
   ])
 
   return {
-    conversations,
+    conversations: loadedUserId === userId ? conversations : [],
+    ramalNotifications: loadedUserId === userId ? ramalNotifications : [],
+    reconhecerRamal,
     loading,
     error,
 
