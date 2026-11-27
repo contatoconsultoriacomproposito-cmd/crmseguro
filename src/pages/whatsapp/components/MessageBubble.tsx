@@ -519,19 +519,7 @@ export default function MessageBubble({
 
             <span>{time}</span>
 
-            {sent &&
-            (
-              !isPending ||
-              !isOptimistic
-            ) && (
-              <MessageStatus
-                status={
-                  isPending
-                    ? 'sent'
-                    : message.status
-                }
-              />
-            )}
+                         {sent && <MessageStatus status={message.status} />}
 
 
 

@@ -2394,6 +2394,28 @@ async sendContactMessage(
   let insertedMessage: SupabaseMensagem | null = null
   let insertError: unknown = null
 
+  // Defesa para transportes antigos: a Edge já pode ter persistido
+  // a mídia, mesmo quando crmPersisted/crmMessageId não chegaram ao cliente.
+  // Não cria uma segunda mensagem para o mesmo comando.
+  if (messageType !== 'text' && !crmMessageId && providerCommandId) {
+    const existing = await supabase.from('whatsapp_mensagens')
+      .select('id')
+      .eq('conversa_id', data.conversationId)
+      .eq('instancia_id', instancia.id)
+      .eq('direction', 'outbound')
+      .eq('provider_command_id', providerCommandId)
+      .limit(2)
+
+    if (existing.error) throw existing.error
+    if ((existing.data?.length ?? 0) > 1) {
+      throw new Error('Comando DAPI com registros duplicados. Não será criada outra mensagem.')
+    }
+    if (existing.data?.length === 1) {
+      crmMessageId = existing.data[0].id
+      crmPersisted = true
+    }
+  }
+
   if (crmPersisted && crmMessageId) {
     const fetched = await supabase.from('whatsapp_mensagens')
       .select(`id, conversa_id, direction, type, text, timestamp, status,
@@ -2470,6 +2492,32 @@ async sendContactMessage(
 
     insertedMessage = saved.data as SupabaseMensagem | null
     insertError = saved.error
+  }
+
+  // Um INSERT concorrente também pode ter registrado o comando antes
+  // deste cliente; uma restrição do banco evita cópias adicionais.
+  if (
+    messageType !== 'text' &&
+    insertError &&
+    typeof insertError === 'object' &&
+    'code' in insertError &&
+    insertError.code === '23505' &&
+    providerCommandId
+  ) {
+    const existing = await supabase.from('whatsapp_mensagens')
+      .select(`id, conversa_id, direction, type, text, timestamp, status,
+               sender_name, provider_message_id, provider_command_id,
+               reply_to_provider_message_id`)
+      .eq('conversa_id', data.conversationId)
+      .eq('instancia_id', instancia.id)
+      .eq('direction', 'outbound')
+      .eq('provider_command_id', providerCommandId)
+      .limit(2)
+
+    if (!existing.error && existing.data?.length === 1) {
+      insertedMessage = existing.data[0] as SupabaseMensagem
+      insertError = null
+    }
   }
 
   // Proteção defensiva para coexistência de versões do transporte:
